@@ -1,10 +1,138 @@
 @import "tailwindcss";
 
+:root {
+  --or3-background: #f7f3ea;
+  --or3-surface: #fffcf5;
+  --or3-surface-soft: #f1eadf;
+  --or3-border: #ddd4c7;
+  --or3-border-strong: #c9beaf;
+  --or3-text: #24241f;
+  --or3-text-muted: #6f6a60;
+  --or3-green: #3f8f58;
+  --or3-green-soft: #e1efe4;
+  --or3-green-dark: #28623b;
+  --or3-amber: #c89232;
+  --or3-danger: #c75c5c;
+  --or3-shadow: 0 8px 30px rgba(42, 35, 25, 0.08);
+  --or3-shadow-soft: 0 2px 10px rgba(42, 35, 25, 0.05);
+  --or3-radius-card: 22px;
+  --or3-radius-control: 18px;
+  --or3-safe-top: env(safe-area-inset-top, 0px);
+  --or3-safe-right: env(safe-area-inset-right, 0px);
+  --or3-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --or3-safe-left: env(safe-area-inset-left, 0px);
+}
+
 html {
   font-family: "Inter", sans-serif;
-  background: #0a0a0a;
+  background: var(--or3-background);
+  color: var(--or3-text);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  accent-color: var(--or3-green);
 }
 
 body {
   min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0;
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0) 42%),
+    var(--or3-background);
+  color: var(--or3-text);
+}
+
+#__nuxt {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+::selection {
+  background: rgba(63, 143, 88, 0.18);
+  color: var(--or3-text);
+}
+
+.or3-app-shell {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--or3-background);
+  color: var(--or3-text);
+}
+
+.or3-surface {
+  background: color-mix(in srgb, var(--or3-surface) 92%, white 8%);
+  border: 1px solid var(--or3-border);
+  border-radius: var(--or3-radius-card);
+  box-shadow: var(--or3-shadow-soft);
+}
+
+.or3-surface-soft {
+  background: var(--or3-surface-soft);
+  border: 1px solid color-mix(in srgb, var(--or3-border) 82%, white 18%);
+  border-radius: var(--or3-radius-card);
+}
+
+.or3-label {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--or3-green);
+}
+
+.or3-command {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  color: var(--or3-text-muted);
+}
+
+.or3-safe-top {
+  padding-top: calc(var(--or3-safe-top) + 1rem);
+}
+
+.or3-safe-bottom {
+  padding-bottom: calc(var(--or3-safe-bottom) + 1rem);
+}
+
+.or3-safe-x {
+  padding-left: calc(var(--or3-safe-left) + 1rem);
+  padding-right: calc(var(--or3-safe-right) + 1rem);
+}
+
+.or3-mobile-screen {
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding-top: calc(var(--or3-safe-top) + 1rem);
+  padding-right: calc(var(--or3-safe-right) + 1rem);
+  padding-bottom: calc(var(--or3-safe-bottom) + 5.5rem);
+  padding-left: calc(var(--or3-safe-left) + 1rem);
+}
+
+.or3-bottom-nav-safe {
+  padding-bottom: calc(var(--or3-safe-bottom) + 0.75rem);
+}
+
+.or3-touch-target {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.or3-icon-frame {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+  border: 1px solid var(--or3-border);
+  background: rgba(255, 252, 245, 0.88);
+  box-shadow: var(--or3-shadow-soft);
+}
+
+.or3-hairline {
+  border-color: color-mix(in srgb, var(--or3-border) 80%, white 20%);
+}
+
+@media (min-width: 768px) {
+  .or3-mobile-screen {
+    padding-right: calc(var(--or3-safe-right) + 1.5rem);
+    padding-left: calc(var(--or3-safe-left) + 1.5rem);
+  }
 }

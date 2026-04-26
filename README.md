@@ -10,13 +10,13 @@ Nuxt 4 starter configured for Capacitor with:
 ## Install
 
 ```bash
-npm install
+bun install
 ```
 
 ## Development
 
 ```bash
-npm run dev
+bun run dev
 ```
 
 ## Web build
@@ -24,7 +24,7 @@ npm run dev
 Builds a static bundle into `.output/public`, which is what Capacitor syncs into the native projects.
 
 ```bash
-npm run build:web
+bun run build:web
 ```
 
 ## Capacitor
@@ -32,19 +32,19 @@ npm run build:web
 Sync the latest web build into native projects:
 
 ```bash
-npm run cap:sync
+bun run cap:sync
 ```
 
 Open Android Studio:
 
 ```bash
-npm run cap:open:android
+bun run cap:open:android
 ```
 
 Open Xcode:
 
 ```bash
-npm run cap:open:ios
+bun run cap:open:ios
 ```
 
 ## iOS prerequisite
@@ -52,6 +52,6 @@ npm run cap:open:ios
 The iOS platform was not generated yet because CocoaPods is not installed on this machine. After installing CocoaPods, run:
 
 ```bash
-npx cap add ios
-npm run cap:sync
+bunx cap add ios
+bun run cap:sync
 ```

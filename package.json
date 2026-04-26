@@ -5,10 +5,10 @@
   "scripts": {
     "build": "nuxt build --preset static",
     "build:web": "nuxt build --preset static",
-    "build:mobile": "npm run build:web",
-    "cap:sync": "npm run build:web && cap sync",
-    "cap:open:android": "cap open android",
-    "cap:open:ios": "cap open ios",
+    "build:mobile": "bun run build:web",
+    "cap:sync": "bun run build:web && bunx cap sync",
+    "cap:open:android": "bunx cap open android",
+    "cap:open:ios": "bunx cap open ios",
     "dev": "nuxt dev",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
@@ -20,6 +20,8 @@
     "@nuxt/icon": "^1.15.0",
     "@nuxt/ui": "^4.7.0",
     "nuxt": "^4.4.2",
+    "or3-scroll": "0.0.3",
+    "streamdown-vue": "1.0.29",
     "vue": "^3.5.32",
     "vue-router": "^5.0.4"
   },

@@ -17,7 +17,7 @@ export default defineNuxtConfig({
       title: 'or3-app',
       meta: [
         { name: 'viewport', content: 'width=device-width, initial-scale=1, viewport-fit=cover' },
-        { name: 'theme-color', content: '#111827' }
+        { name: 'theme-color', content: '#F7F3EA' }
       ]
     }
   },
