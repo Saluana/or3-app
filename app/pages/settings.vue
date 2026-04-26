@@ -7,8 +7,18 @@
       <DeviceManagementCard />
 
       <SurfaceCard class-name="space-y-4">
-        <SectionHeader title="Host settings" subtitle="Remote configure" />
-        <p class="text-sm text-(--or3-text-muted)">Choose a section to inspect and edit the live or3-intern configuration.</p>
+        <SectionHeader
+          title="Computer preferences"
+          subtitle="Tweak how or3-intern works"
+        />
+        <p class="text-sm leading-6 text-(--or3-text-muted)">
+          Pick a section to view what's there and change a few things. These settings live on your computer, not on this phone.
+        </p>
+
+        <DangerCallout tone="caution" title="Advanced area">
+          Most people don't need to change these. If you're not sure what something does, leave it alone.
+        </DangerCallout>
+
         <p v-if="configureError" class="text-sm text-rose-600">{{ configureError }}</p>
 
         <div class="grid gap-3 md:grid-cols-2">
@@ -16,18 +26,17 @@
             v-for="section in sections"
             :key="section.key"
             type="button"
-            class="rounded-2xl border p-4 text-left transition"
-            :class="selectedSection === section.key ? 'border-(--or3-green) bg-green-50/70' : 'border-(--or3-border) bg-white/70'"
+            class="flex items-start justify-between gap-3 rounded-2xl border p-4 text-left transition or3-pressable"
+            :class="selectedSection === section.key ? 'border-(--or3-green) bg-(--or3-green-soft)' : 'border-(--or3-border) bg-white/70'"
+            :aria-pressed="selectedSection === section.key"
             @click="selectSection(section.key)"
           >
-            <div class="flex items-start justify-between gap-3">
-              <div>
-                <p class="font-mono text-sm font-semibold">{{ section.label }}</p>
-                <p class="mt-1 text-xs text-(--or3-text-muted)">{{ section.description }}</p>
-                <p class="mt-2 text-xs text-(--or3-text-muted)">{{ section.status }}</p>
-              </div>
-              <Icon name="i-lucide-chevron-right" class="size-5 text-(--or3-text-muted)" />
+            <div class="min-w-0">
+              <p class="font-mono text-sm font-semibold">{{ section.label }}</p>
+              <p class="mt-1 text-xs text-(--or3-text-muted)">{{ section.description }}</p>
+              <p v-if="section.status" class="mt-2 text-xs text-(--or3-text-muted)">{{ section.status }}</p>
             </div>
+            <Icon name="i-lucide-chevron-right" class="size-5 shrink-0 text-(--or3-text-muted)" />
           </button>
         </div>
       </SurfaceCard>
@@ -67,7 +76,7 @@ const selectedSectionDescription = computed(() => selectedSectionRecord.value?.d
 
 async function selectSection(sectionKey: string) {
   selectedSection.value = sectionKey
-  await loadFields(sectionKey)
+  await loadFields(sectionKey).catch(() => {})
 }
 
 async function saveSection(values: Record<string, unknown>) {
@@ -95,8 +104,8 @@ async function saveSection(values: Record<string, unknown>) {
     }]
   })
   if (!changes.length) return
-  await applyChanges(changes)
-  await Promise.all([loadSections(), loadFields(selectedSection.value)])
+  await applyChanges(changes).catch(() => null)
+  if (!configureError.value) await Promise.all([loadSections(), loadFields(selectedSection.value).catch(() => null)])
 }
 
 onMounted(async () => {
@@ -104,6 +113,8 @@ onMounted(async () => {
   if (!sections.value.find((section) => section.key === selectedSection.value)) {
     selectedSection.value = sections.value[0]?.key ?? 'provider'
   }
-  await loadFields(selectedSection.value)
+  if (sections.value.length) {
+    await loadFields(selectedSection.value).catch(() => {})
+  }
 })
 </script>

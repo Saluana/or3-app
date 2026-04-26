@@ -1,12 +1,14 @@
 <template>
-  <button class="flex w-full items-center gap-3 border-b border-(--or3-border) px-2 py-3 text-left last:border-b-0 active:bg-(--or3-green-soft)" type="button" @click="emit('open', entry)">
-    <RetroIcon :name="entry.type === 'directory' ? 'i-lucide-folder' : icon" size="sm" />
-    <div class="min-w-0 flex-1">
-      <p class="truncate font-mono text-sm text-(--or3-text)">{{ entry.name }}</p>
-      <p class="mt-1 text-xs text-(--or3-text-muted)">{{ meta }}</p>
-    </div>
+  <div class="flex items-center gap-2 border-b border-(--or3-border) px-2 py-2 last:border-b-0">
+    <UButton color="neutral" variant="ghost" class="min-w-0 flex-1 justify-start px-0 py-1.5 text-left active:bg-(--or3-green-soft)" type="button" @click="emit('open', entry)">
+      <RetroIcon :name="entry.type === 'directory' ? 'i-lucide-folder' : icon" size="sm" />
+      <div class="min-w-0 flex-1">
+        <p class="truncate font-mono text-sm text-(--or3-text)">{{ entry.name }}</p>
+        <p class="mt-1 text-xs text-(--or3-text-muted)">{{ meta }}</p>
+      </div>
+    </UButton>
     <UButton icon="i-lucide-more-horizontal" color="neutral" variant="ghost" size="xs" aria-label="File actions" @click.stop="emit('actions', entry)" />
-  </button>
+  </div>
 </template>
 
 <script setup lang="ts">

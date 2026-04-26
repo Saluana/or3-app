@@ -1,5 +1,6 @@
 import { ref } from 'vue'
-import type { TurnResponse } from '~/types/or3-api'
+import type { JobSnapshot, TurnResponse } from '~/types/or3-api'
+import type { AssistantSendPayload, ChatToolCall } from '~/types/app-state'
 import { useChatSessions } from './useChatSessions'
 import { useOr3Api } from './useOr3Api'
 
@@ -7,43 +8,202 @@ const isStreaming = ref(false)
 const activeJobId = ref<string | null>(null)
 let controller: AbortController | null = null
 
+function describeRequestError(error: unknown) {
+  if (error instanceof Error && error.message.trim()) return error.message
+  if (error && typeof error === 'object' && 'message' in error) {
+    const message = String((error as { message?: unknown }).message ?? '').trim()
+    if (message) return message
+  }
+  return 'Request failed'
+}
+
+function now() {
+  return new Date().toISOString()
+}
+
+function createToolCall(name: string, args?: string): ChatToolCall {
+  return {
+    id: `tool_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+    name,
+    status: 'running',
+    arguments: args,
+    startedAt: now(),
+  }
+}
+
+function normalizePayload(input: string | AssistantSendPayload): AssistantSendPayload {
+  if (typeof input === 'string') return { text: input.trim(), transportText: input.trim(), attachments: [] }
+  return {
+    text: input.text.trim(),
+    transportText: (input.transportText || input.text).trim(),
+    attachments: input.attachments ?? [],
+  }
+}
+
 export function useAssistantStream() {
   const api = useOr3Api()
   const chat = useChatSessions()
 
-  async function send(message: string) {
-    const text = message.trim()
+  async function send(message: string | AssistantSendPayload) {
+    const payload = normalizePayload(message)
+    const text = payload.transportText || payload.text
     if (!text || isStreaming.value) return
 
     const session = chat.ensureSession()
-    chat.addMessage({ sessionId: session.id, role: 'user', content: text, status: 'complete' })
-    const assistant = chat.addMessage({ sessionId: session.id, role: 'assistant', content: '', status: 'streaming' })
+    chat.addMessage({
+      sessionId: session.id,
+      role: 'user',
+      content: payload.text,
+      attachments: payload.attachments,
+      status: 'complete',
+    })
+    const assistant = chat.addMessage({
+      sessionId: session.id,
+      role: 'assistant',
+      content: '',
+      status: 'streaming',
+      reasoningText: '',
+      toolCalls: [],
+    })
     isStreaming.value = true
     const activeController = new AbortController()
     controller = activeController
 
+    const readAssistant = () => chat.messages.value.find((item) => item.id === assistant.id)
+    const updateAssistant = (patch: Parameters<typeof chat.updateMessage>[1]) => chat.updateMessage(assistant.id, patch)
+    const appendAssistantContent = (value: string) => {
+      const current = readAssistant()
+      updateAssistant({ content: `${current?.content || ''}${value}` })
+    }
+    const setToolCalls = (toolCalls: ChatToolCall[]) => updateAssistant({ toolCalls })
+    const addToolCall = (name: string, args?: string) => {
+      const current = readAssistant()
+      const toolCalls = [...(current?.toolCalls ?? []), createToolCall(name, args)]
+      setToolCalls(toolCalls)
+    }
+    const resolveToolCall = (name: string, result?: string, error?: string) => {
+      const current = readAssistant()
+      const toolCalls = [...(current?.toolCalls ?? [])]
+      const targetIndex = [...toolCalls].reverse().findIndex((call) => call.name === name && call.status === 'running')
+      const resolvedIndex = targetIndex === -1 ? -1 : toolCalls.length - 1 - targetIndex
+      if (resolvedIndex === -1) {
+        toolCalls.push({
+          ...createToolCall(name),
+          status: error ? 'error' : 'complete',
+          result,
+          error,
+          completedAt: now(),
+        })
+      } else {
+        const call = toolCalls[resolvedIndex]
+        if (call) {
+          toolCalls[resolvedIndex] = {
+            ...call,
+            status: error ? 'error' : 'complete',
+            result: result ?? call.result,
+            error: error ?? call.error,
+            completedAt: now(),
+          }
+        }
+      }
+      setToolCalls(toolCalls)
+    }
+
     try {
-      let streamed = false
+      let sawStreamEvent = false
+      let sawVisibleOutput = false
+      let streamEndedWithFailure = false
+      let streamedJobId: string | null = null
+
       for await (const event of api.stream('/internal/v1/turns', {
         body: { session_key: session.sessionKey, message: text },
         signal: activeController.signal,
       })) {
-        streamed = true
+        sawStreamEvent = true
         const payload = event.json as Record<string, unknown> | undefined
+        const eventType = String(event.event || payload?.type || '')
         const delta = String(payload?.delta ?? payload?.text ?? payload?.content ?? '')
-        if (delta) chat.updateMessage(assistant.id, { content: assistant.content + delta })
+        if (eventType === 'text_delta' && delta) {
+          sawVisibleOutput = true
+          appendAssistantContent(delta)
+        }
         const finalText = payload?.final_text
-        if (typeof finalText === 'string') chat.updateMessage(assistant.id, { content: finalText })
-        if (typeof payload?.job_id === 'string') activeJobId.value = payload.job_id
-        if (payload?.status === 'completed') chat.updateMessage(assistant.id, { status: 'complete' })
+        if ((eventType === 'assistant' || typeof finalText === 'string') && typeof finalText === 'string' && finalText.trim()) {
+          sawVisibleOutput = true
+          updateAssistant({ content: finalText })
+        }
+        if (eventType === 'tool_call') {
+          addToolCall(String(payload?.name || 'tool'), typeof payload?.arguments === 'string' ? payload.arguments : undefined)
+        }
+        if (eventType === 'tool_result') {
+          resolveToolCall(
+            String(payload?.name || 'tool'),
+            typeof payload?.result === 'string' ? payload.result : undefined,
+            typeof payload?.error === 'string' ? payload.error : undefined,
+          )
+        }
+        if (eventType === 'reasoning_delta' && typeof payload?.content === 'string') {
+          updateAssistant({ reasoningText: `${readAssistant()?.reasoningText || ''}${payload.content}` })
+        }
+        if (typeof payload?.job_id === 'string') {
+          streamedJobId = payload.job_id
+          activeJobId.value = payload.job_id
+        }
+
+        const streamError = String(payload?.error ?? '').trim()
+        const streamStatus = String(payload?.status ?? '').trim()
+        if (streamError || streamStatus === 'failed' || streamStatus === 'aborted') {
+          streamEndedWithFailure = true
+          const failureText = streamError || readAssistant()?.content || 'or3-intern could not finish this request.'
+          updateAssistant({
+            content: failureText,
+            status: 'failed',
+            error: streamError || `Turn ${streamStatus || 'failed'}`,
+            jobId: streamedJobId ?? undefined,
+          })
+        }
+
+        if (streamStatus === 'completed') updateAssistant({ status: 'complete' })
       }
 
-      if (!streamed) chat.updateMessage(assistant.id, { content: 'No streaming content was returned.', status: 'complete' })
-      chat.updateMessage(assistant.id, { status: 'complete' })
+      if (streamEndedWithFailure) return
+
+      if (!sawVisibleOutput && streamedJobId) {
+        try {
+          const snapshot = await api.request<JobSnapshot>(`/internal/v1/jobs/${encodeURIComponent(streamedJobId)}`, {
+            signal: activeController.signal,
+          })
+          const snapshotText = snapshot.final_text?.trim() || snapshot.error?.trim() || ''
+          if (snapshotText) {
+            updateAssistant({
+              content: snapshotText,
+              status: snapshot.error || snapshot.status === 'failed' || snapshot.status === 'aborted' ? 'failed' : 'complete',
+              error: snapshot.error,
+              jobId: snapshot.job_id,
+            })
+            sawVisibleOutput = true
+          }
+        } catch {
+          // Fall through to the visible empty-result message below.
+        }
+      }
+
+      if (!sawVisibleOutput) {
+        updateAssistant({
+          content: sawStreamEvent
+            ? 'or3-intern finished thinking, but did not return any visible text.'
+            : 'No streaming content was returned.',
+          status: 'complete',
+          jobId: streamedJobId ?? undefined,
+        })
+      }
+
+      const finalMessage = chat.messages.value.find((item) => item.id === assistant.id)
+      if (finalMessage?.status !== 'failed') updateAssistant({ status: 'complete' })
     } catch {
       if (activeController.signal.aborted) {
-        chat.updateMessage(assistant.id, {
-          content: assistant.content || 'Stopped.',
+        updateAssistant({
+          content: readAssistant()?.content || 'Stopped.',
           status: 'complete',
         })
         return
@@ -55,17 +215,17 @@ export function useAssistantStream() {
           signal: activeController.signal,
         })
         activeJobId.value = response.job_id
-        chat.updateMessage(assistant.id, {
+        updateAssistant({
           content: response.final_text || response.error || 'The turn completed without text.',
           status: response.error ? 'failed' : 'complete',
           error: response.error,
           jobId: response.job_id,
         })
       } catch (error) {
-        chat.updateMessage(assistant.id, {
+        updateAssistant({
           content: 'I could not reach or3-intern. Check the selected computer and try again.',
           status: 'failed',
-          error: error instanceof Error ? error.message : 'Request failed',
+          error: describeRequestError(error),
         })
       }
     } finally {

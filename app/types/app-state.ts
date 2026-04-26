@@ -18,6 +18,32 @@ export interface ChatSession {
   updatedAt: string
 }
 
+export interface ChatToolCall {
+  id: string
+  name: string
+  status: 'running' | 'complete' | 'error'
+  arguments?: string
+  result?: string
+  error?: string
+  startedAt: string
+  completedAt?: string
+}
+
+export interface ChatAttachment {
+  id: string
+  kind: 'file' | 'text'
+  name: string
+  preview?: string
+  mimeType?: string
+  size?: number
+}
+
+export interface AssistantSendPayload {
+  text: string
+  transportText?: string
+  attachments?: ChatAttachment[]
+}
+
 export interface ChatMessage {
   id: string
   sessionId: string
@@ -27,6 +53,9 @@ export interface ChatMessage {
   createdAt: string
   jobId?: string
   error?: string
+  reasoningText?: string
+  toolCalls?: ChatToolCall[]
+  attachments?: ChatAttachment[]
 }
 
 export interface RecentJobSummary {

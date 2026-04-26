@@ -2,12 +2,12 @@
   <SurfaceCard class-name="space-y-4">
     <div class="flex items-start justify-between gap-3">
       <div>
-        <SectionHeader title="Terminal" subtitle="Secure shell session" />
+        <SectionHeader title="Terminal session" subtitle="Live shell on your computer" />
         <p class="mt-1 text-sm text-(--or3-text-muted)">
-          {{ session ? `Running in ${session.cwd}` : 'Start a bounded shell session on the connected computer.' }}
+          {{ session ? `Working in ${session.cwd}` : "Pick an area above and tap 'Open terminal' to start." }}
         </p>
       </div>
-      <StatusPill :label="statusLabel" :tone="statusTone" />
+      <StatusPill :label="statusLabel" :tone="statusTone" :pulse="session?.status === 'running'" />
     </div>
 
     <div class="rounded-3xl border border-stone-800 bg-stone-950 p-4 shadow-sm">
@@ -21,8 +21,8 @@
         :rows="3"
         color="neutral"
         variant="outline"
-        placeholder="Type a command, then tap Send"
-        class="w-full"
+        placeholder="Type a command, then tap Send. ⌘+Enter sends fast."
+        class="w-full font-mono"
       />
       <div class="flex items-stretch gap-2 sm:flex-col">
         <UButton
@@ -50,7 +50,7 @@
       <span class="or3-command">or3://computer/terminal</span>
       <span v-if="session">{{ session.shell }}</span>
       <span v-if="session">{{ session.rows }}×{{ session.cols }}</span>
-      <span v-if="streaming">Live stream attached</span>
+      <span v-if="streaming" class="flex items-center gap-1"><span class="or3-live-dot" />Live</span>
     </div>
 
     <p v-if="error" class="text-sm text-rose-600">{{ error }}</p>

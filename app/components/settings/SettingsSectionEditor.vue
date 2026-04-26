@@ -5,15 +5,20 @@
       <p class="mt-1 text-sm text-(--or3-text-muted)">{{ description }}</p>
     </div>
 
-    <div v-if="!fields.length" class="rounded-2xl border border-dashed border-(--or3-border) px-4 py-5 text-sm text-(--or3-text-muted)">
-      Choose a settings section to load editable fields.
+    <div v-if="!fields.length" class="rounded-2xl border border-dashed border-(--or3-border) px-4 py-5 text-center text-sm text-(--or3-text-muted)">
+      Pick a section above to see what you can change.
     </div>
 
     <div v-else class="space-y-3">
       <div v-for="field in fields" :key="field.key" class="rounded-2xl border border-(--or3-border) bg-white/70 p-3">
-        <div class="mb-2">
-          <p class="font-mono text-sm font-semibold">{{ field.label }}</p>
-          <p v-if="field.description" class="mt-1 text-xs text-(--or3-text-muted)">{{ field.description }}</p>
+        <div class="mb-2 flex items-start justify-between gap-2">
+          <div class="min-w-0">
+            <p class="font-mono text-sm font-semibold">{{ field.label }}</p>
+            <p v-if="field.description" class="mt-1 text-xs leading-5 text-(--or3-text-muted)">{{ field.description }}</p>
+          </div>
+          <span v-if="field.kind === 'secret'" class="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+            secret
+          </span>
         </div>
 
         <USwitch
@@ -34,6 +39,7 @@
           :model-value="String(localValues[field.key] ?? '')"
           autoresize
           :rows="3"
+          placeholder="Separate items with commas"
           @update:model-value="(value) => updateValue(field.key, value)"
         />
 
@@ -48,7 +54,15 @@
     </div>
 
     <div class="flex justify-end">
-      <UButton label="Save changes" icon="i-lucide-save" color="primary" class="or3-touch-target" :loading="saving" :disabled="!fields.length" @click="emitSave" />
+      <UButton
+        label="Save changes"
+        icon="i-lucide-save"
+        color="primary"
+        size="lg"
+        :loading="saving"
+        :disabled="!fields.length"
+        @click="emitSave"
+      />
     </div>
   </SurfaceCard>
 </template>

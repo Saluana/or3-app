@@ -76,13 +76,22 @@ export function useOr3Api() {
   }
 
   async function request<T>(path: string, options: Or3ApiRequestOptions = {}): Promise<T> {
+    const requiresAuth = options.requireAuth !== false
+    if (requiresAuth && !activeHost.value?.token) {
+      throw {
+        code: 'auth_required',
+        status: 401,
+        message: 'Connect to your computer and finish pairing before using this area.',
+      } satisfies Or3AppError
+    }
+
     const headers: Record<string, string> = {
       Accept: 'application/json',
       ...options.headers,
     }
 
     if (options.body !== undefined) headers['Content-Type'] = 'application/json'
-    if (activeHost.value?.token && options.requireAuth !== false) headers.Authorization = `Bearer ${activeHost.value.token}`
+    if (activeHost.value?.token && requiresAuth) headers.Authorization = `Bearer ${activeHost.value.token}`
 
     let response: Response
     try {
@@ -102,13 +111,22 @@ export function useOr3Api() {
   }
 
   async function* stream(path: string, options: Or3ApiRequestOptions = {}): AsyncIterable<Or3SseEvent> {
+    const requiresAuth = options.requireAuth !== false
+    if (requiresAuth && !activeHost.value?.token) {
+      throw {
+        code: 'auth_required',
+        status: 401,
+        message: 'Connect to your computer and finish pairing before using this area.',
+      } satisfies Or3AppError
+    }
+
     const headers: Record<string, string> = {
       Accept: 'text/event-stream',
       ...options.headers,
     }
 
     if (options.body !== undefined) headers['Content-Type'] = 'application/json'
-    if (activeHost.value?.token && options.requireAuth !== false) headers.Authorization = `Bearer ${activeHost.value.token}`
+    if (activeHost.value?.token && requiresAuth) headers.Authorization = `Bearer ${activeHost.value.token}`
 
     let response: Response
     try {

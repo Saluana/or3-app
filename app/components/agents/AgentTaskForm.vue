@@ -1,24 +1,50 @@
 <template>
   <SurfaceCard class-name="space-y-3">
-    <div>
-      <p class="or3-label text-sm font-semibold">New Agent Task</p>
-      <p class="mt-1 text-sm text-(--or3-text-muted)">Delegate work to or3-intern and monitor it from your phone.</p>
+    <div class="flex items-start gap-3">
+      <RetroIcon name="i-lucide-bot" />
+      <div>
+        <p class="font-mono text-base font-semibold text-(--or3-text)">Hand off a task</p>
+        <p class="mt-1 text-sm text-(--or3-text-muted)">
+          Describe what you want done. or3-intern will work on it in the background and tell you when it's ready.
+        </p>
+      </div>
     </div>
-    <textarea v-model="task" rows="4" class="w-full rounded-2xl border border-(--or3-border) bg-white/70 p-3 text-sm outline-none focus:border-(--or3-green)" placeholder="Research this folder and propose next steps…" aria-label="Agent task" />
-    <UButton label="Queue agent" icon="i-lucide-bot" class="w-full justify-center bg-(--or3-green) text-white" :disabled="!task.trim()" @click="submit" />
+    <UForm :state="formState" class="space-y-3" @submit.prevent="submit">
+      <UFormField
+        label="What should or3-intern do?"
+        name="task"
+        description="Plain English works best. Example: 'Look through my Notes folder and pull out anything about the Q4 plan.'"
+      >
+        <UTextarea
+          v-model="formState.task"
+          :rows="4"
+          class="w-full"
+          placeholder="Look through this folder and tell me what stands out…"
+          aria-label="Task for or3-intern"
+        />
+      </UFormField>
+      <UButton
+        label="Send to or3-intern"
+        icon="i-lucide-send"
+        type="submit"
+        block
+        size="lg"
+        :disabled="!formState.task.trim()"
+      />
+    </UForm>
   </SurfaceCard>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { reactive } from 'vue'
 
 const emit = defineEmits<{ submit: [task: string] }>()
-const task = ref('')
+const formState = reactive({ task: '' })
 
 function submit() {
-  const value = task.value.trim()
+  const value = formState.task.trim()
   if (!value) return
   emit('submit', value)
-  task.value = ''
+  formState.task = ''
 }
 </script>

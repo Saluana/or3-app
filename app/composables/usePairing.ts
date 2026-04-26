@@ -13,6 +13,7 @@ interface StartPairingInput {
 const pendingPairing = ref<PairingRequestResponse | null>(null)
 const pairingError = ref<string | null>(null)
 const pairingHost = ref<{ baseUrl: string; displayName: string; deviceName: string } | null>(null)
+const pairingStatus = ref<'idle' | 'waiting' | 'connected'>('idle')
 
 function hostIdFromUrl(baseUrl: string) {
   return baseUrl.trim().replace(/^https?:\/\//, '').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase() || 'local'
@@ -25,6 +26,7 @@ export function usePairing() {
 
   async function startPairing(input: StartPairingInput) {
     pairingError.value = null
+    pairingStatus.value = 'idle'
     pairingHost.value = input
     const baseUrl = input.baseUrl.trim().replace(/\/+$/, '')
     const response = await fetch(`${baseUrl}/internal/v1/pairing/requests`, {
@@ -38,15 +40,20 @@ export function usePairing() {
     })
 
     if (!response.ok) {
-      pairingError.value = 'Could not start pairing. Confirm or3-intern service is running and reachable.'
+      if (response.status === 401) {
+        pairingError.value = 'This computer is not accepting new device connections yet. On your computer, allow local device pairing in or3-intern, restart the service, and then try again.'
+      } else {
+        pairingError.value = 'Could not start pairing. Confirm or3-intern service is running and reachable.'
+      }
       throw new Error(pairingError.value)
     }
 
     pendingPairing.value = await response.json() as PairingRequestResponse
+    pairingStatus.value = 'waiting'
     return pendingPairing.value
   }
 
-  async function exchangeCode(code = pendingPairing.value?.code) {
+  async function exchangeCode(code = pendingPairing.value?.code, options: { quietPending?: boolean } = {}) {
     if (!pendingPairing.value || !pairingHost.value || !code) throw new Error('No pairing request is active')
     const baseUrl = pairingHost.value.baseUrl.trim().replace(/\/+$/, '')
     const requestId = pendingPairing.value.request_id ?? pendingPairing.value.id
@@ -57,6 +64,7 @@ export function usePairing() {
     })
 
     if (!response.ok) {
+      if (options.quietPending) throw new Error('pairing_pending')
       pairingError.value = 'Pairing is not approved yet or the code expired.'
       throw new Error(pairingError.value)
     }
@@ -69,11 +77,13 @@ export function usePairing() {
       token: exchanged.token,
       role: exchanged.role,
       deviceId: exchanged.device_id,
-      status: 'unknown',
+      status: 'online',
       lastSeenAt: new Date().toISOString(),
     }
 
     cache.updateHost(host)
+    pairingError.value = null
+    pairingStatus.value = 'connected'
     pendingPairing.value = null
     pairingHost.value = null
     return host
@@ -103,6 +113,7 @@ export function usePairing() {
   return {
     pendingPairing,
     pairingError,
+    pairingStatus,
     isPairing,
     startPairing,
     exchangeCode,

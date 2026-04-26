@@ -41,6 +41,15 @@ export function useChatSessions() {
     return session
   }
 
+  function touchSession(sessionId: string, fallbackTitle?: string) {
+    const session = cache.state.value.sessions.find((item) => item.id === sessionId)
+    if (!session) return
+    session.updatedAt = now()
+    if ((!session.title || session.title === 'New conversation') && fallbackTitle?.trim()) {
+      session.title = fallbackTitle.trim().slice(0, 48)
+    }
+  }
+
   function addMessage(message: Omit<ChatMessage, 'id' | 'createdAt'> & Partial<Pick<ChatMessage, 'id' | 'createdAt'>>) {
     const complete: ChatMessage = {
       id: message.id ?? createId('msg'),
@@ -48,6 +57,7 @@ export function useChatSessions() {
       ...message,
     }
     cache.state.value.messages.push(complete)
+    touchSession(complete.sessionId, complete.role === 'user' ? complete.content : undefined)
     cache.persist()
     return complete
   }
@@ -56,6 +66,7 @@ export function useChatSessions() {
     const message = cache.state.value.messages.find((item) => item.id === id)
     if (!message) return
     Object.assign(message, patch)
+    touchSession(message.sessionId)
     cache.persist()
   }
 

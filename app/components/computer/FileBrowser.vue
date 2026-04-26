@@ -6,7 +6,7 @@
         <p class="mt-1 text-sm text-(--or3-text-muted)">Browse your trusted computer like a personal drive.</p>
       </div>
       <div class="flex items-center gap-2">
-        <input ref="uploadInput" type="file" class="hidden" multiple @change="handleUpload" />
+        <UInput ref="uploadInput" type="file" class="hidden" multiple aria-hidden="true" tabindex="-1" @change="handleUpload" />
         <UButton icon="i-lucide-upload" color="neutral" variant="ghost" aria-label="Upload files" @click="openUploadPicker" />
         <UButton icon="i-lucide-refresh-cw" color="neutral" variant="ghost" aria-label="Refresh files" @click="refresh" />
       </div>
@@ -44,7 +44,7 @@ import { useComputerFiles } from '~/composables/useComputerFiles'
 
 const files = useComputerFiles()
 const selectedEntry = ref<FileEntry | null>(null)
-const uploadInput = ref<HTMLInputElement | null>(null)
+const uploadInput = ref<{ inputRef?: HTMLInputElement | null } | null>(null)
 const { roots, entries, currentRootId, currentPath, fileError, loadRoots, listDirectory, openDirectory, copyPath, uploadFiles } = files
 const activeRoot = computed(() => roots.value.find((root) => root.id === currentRootId.value))
 
@@ -72,7 +72,7 @@ function askAssistant() {
 }
 
 function openUploadPicker() {
-  uploadInput.value?.click()
+  uploadInput.value?.inputRef?.click()
 }
 
 async function handleUpload(event: Event) {

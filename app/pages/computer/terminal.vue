@@ -3,14 +3,32 @@
     <AppHeader subtitle="TERMINAL" />
     <div class="space-y-4">
       <SurfaceCard class-name="space-y-4">
+        <div class="flex items-start gap-3">
+          <RetroIcon name="i-lucide-terminal-square" />
+          <div>
+            <p class="font-mono text-base font-semibold text-(--or3-text)">Run commands on your computer</p>
+            <p class="mt-1 text-sm leading-6 text-(--or3-text-muted)">
+              Open a terminal session and type commands. Use this if you know what you're doing.
+            </p>
+          </div>
+        </div>
+
+        <DangerCallout tone="danger" title="This is your real computer">
+          Anything you type runs on your actual computer. Don't paste commands you don't understand. or3-intern won't undo mistakes for you.
+        </DangerCallout>
+
         <div class="grid gap-3 sm:grid-cols-2">
-          <UFormField label="Root" name="root">
+          <UFormField
+            label="Which area of your computer"
+            name="root"
+            description="or3-intern only allows terminals inside areas you've approved."
+          >
             <USelectMenu
               v-model="selectedRootId"
               value-key="id"
               :items="roots"
               :disabled="starting"
-              placeholder="Select a root"
+              placeholder="Pick an area"
             >
               <template #default>
                 <span>{{ selectedRootLabel }}</span>
@@ -18,14 +36,18 @@
             </USelectMenu>
           </UFormField>
 
-          <UFormField label="Folder" name="path">
+          <UFormField
+            label="Folder to start in"
+            name="path"
+            description="Use a dot to start at the top of the area."
+          >
             <UInput v-model="selectedPath" placeholder="." :disabled="starting" />
           </UFormField>
         </div>
 
         <div class="flex flex-wrap gap-2">
           <UButton
-            label="Start session"
+            label="Open terminal"
             icon="i-lucide-play"
             color="primary"
             class="or3-touch-target"
@@ -34,7 +56,7 @@
             @click="handleStart"
           />
           <UButton
-            label="Refresh roots"
+            label="Refresh areas"
             icon="i-lucide-refresh-cw"
             color="neutral"
             variant="soft"
@@ -42,15 +64,15 @@
             :loading="loadingFiles"
             @click="refreshRoots"
           />
-          <UButton label="Review approvals" icon="i-lucide-shield-check" to="/approvals" color="neutral" variant="ghost" class="or3-touch-target" />
+          <UButton label="See pending approvals" icon="i-lucide-shield-check" to="/approvals" color="neutral" variant="ghost" class="or3-touch-target" />
         </div>
 
-        <p v-if="terminalUnavailable" class="text-sm text-amber-700">
-          Terminal mode is disabled on this host. Enable guarded privileged shell access in or3-intern before using this screen.
-        </p>
-        <p v-else-if="pendingApprovalId" class="text-sm text-amber-700">
-          Session creation is waiting on approval request #{{ pendingApprovalId }}.
-        </p>
+        <DangerCallout v-if="terminalUnavailable" tone="caution" title="Terminal is turned off">
+          The terminal feature isn't enabled on this computer. Turn on guarded shell access in or3-intern preferences first.
+        </DangerCallout>
+        <DangerCallout v-else-if="pendingApprovalId" tone="info" title="Waiting for your okay">
+          or3-intern is waiting for you to approve request #{{ pendingApprovalId }} on the Approvals screen.
+        </DangerCallout>
         <p v-if="fileError" class="text-sm text-(--or3-text-muted)">{{ fileError }}</p>
       </SurfaceCard>
 
@@ -115,15 +137,15 @@ async function handleStart() {
     path: selectedPath.value,
     rows: 28,
     cols: 100,
-  })
+  }).catch(() => {})
 }
 
 async function handleSend(value: string) {
-  await sendInput(value)
+  await sendInput(value).catch(() => {})
 }
 
 async function handleClose() {
-  await close()
+  await close().catch(() => {})
 }
 
 onMounted(async () => {
