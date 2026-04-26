@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">or3-app</string>
+    <string name="title_activity_main">or3-app</string>
+    <string name="package_name">com.or3.app</string>
+    <string name="custom_url_scheme">com.or3.app</string>
+</resources>

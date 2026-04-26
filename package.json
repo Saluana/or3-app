@@ -1,0 +1,31 @@
+{
+  "name": "or3-app",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "nuxt build --preset static",
+    "build:web": "nuxt build --preset static",
+    "build:mobile": "npm run build:web",
+    "cap:sync": "npm run build:web && cap sync",
+    "cap:open:android": "cap open android",
+    "cap:open:ios": "cap open ios",
+    "dev": "nuxt dev",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare"
+  },
+  "dependencies": {
+    "@capacitor/core": "^7.4.3",
+    "@nuxt/fonts": "^0.11.4",
+    "@nuxt/icon": "^1.15.0",
+    "@nuxt/ui": "^4.7.0",
+    "nuxt": "^4.4.2",
+    "vue": "^3.5.32",
+    "vue-router": "^5.0.4"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^7.4.3",
+    "@capacitor/cli": "^7.4.3",
+    "@capacitor/ios": "^7.4.3"
+  }
+}
