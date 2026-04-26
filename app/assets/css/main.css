@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@import "or3-scroll/style.css";
+@import "streamdown-vue/style.css";
 
 :root {
   --or3-background: #f7f3ea;
