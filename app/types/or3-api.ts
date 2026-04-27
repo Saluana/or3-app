@@ -144,10 +144,21 @@ export interface FileEntry {
   mime_type?: string
 }
 
+export interface FileSearchItem extends FileEntry {
+  root_id: string
+  root_label: string
+}
+
 export interface FileListResponse {
   root_id: string
   path: string
   entries: FileEntry[]
+}
+
+export interface FileSearchResponse {
+  root_id: string
+  query: string
+  items: FileSearchItem[]
 }
 
 export interface TerminalSessionSnapshot {

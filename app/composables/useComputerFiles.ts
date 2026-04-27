@@ -1,5 +1,5 @@
 import { computed, ref } from 'vue'
-import type { FileEntry, FileListResponse, FileRoot } from '~/types/or3-api'
+import type { FileEntry, FileListResponse, FileRoot, FileSearchItem, FileSearchResponse } from '~/types/or3-api'
 import { useOr3Api } from './useOr3Api'
 import { useActiveHost } from './useActiveHost'
 
@@ -8,6 +8,7 @@ const entries = ref<FileEntry[]>([])
 const currentRootId = ref<string>('home')
 const currentPath = ref<string>('.')
 const loadingFiles = ref(false)
+const searchingFiles = ref(false)
 const fileError = ref<string | null>(null)
 
 const fallbackRoots: FileRoot[] = [
@@ -52,6 +53,26 @@ export function useComputerFiles() {
       fileError.value = 'File browsing is using demo data until the or3-intern file API extension is running.'
     } finally {
       loadingFiles.value = false
+    }
+  }
+
+  async function searchWorkspaceFiles(query: string, limit = 12) {
+    searchingFiles.value = true
+    fileError.value = null
+    try {
+      const params = new URLSearchParams({ q: query.trim(), limit: String(limit) })
+      const response = await api.request<FileSearchResponse>(`/internal/v1/files/search?${params.toString()}`)
+      return response.items ?? []
+    } catch {
+      const lowerQuery = query.trim().toLowerCase()
+      fileError.value = 'File search is using local demo results until the or3-intern file API is running.'
+      return fallbackEntries
+        .filter((entry): entry is FileEntry & { type: 'file' } => entry.type === 'file')
+        .filter((entry) => !lowerQuery || entry.name.toLowerCase().includes(lowerQuery) || entry.path.toLowerCase().includes(lowerQuery))
+        .slice(0, limit)
+        .map((entry): FileSearchItem => ({ ...entry, root_id: 'workspace', root_label: 'Workspace' }))
+    } finally {
+      searchingFiles.value = false
     }
   }
 
@@ -109,9 +130,11 @@ export function useComputerFiles() {
     currentRootId,
     currentPath,
     loadingFiles,
+    searchingFiles,
     fileError,
     loadRoots,
     listDirectory,
+    searchWorkspaceFiles,
     uploadFiles,
     openDirectory,
     copyPath,

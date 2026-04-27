@@ -29,6 +29,15 @@ export interface ChatToolCall {
   completedAt?: string
 }
 
+export interface ChatActivityEntry {
+  id: string
+  type: string
+  label: string
+  detail?: string
+  status?: 'running' | 'complete' | 'error'
+  createdAt: string
+}
+
 export interface ChatAttachment {
   id: string
   kind: 'file' | 'text'
@@ -36,6 +45,9 @@ export interface ChatAttachment {
   preview?: string
   mimeType?: string
   size?: number
+  source?: 'local' | 'workspace'
+  path?: string
+  rootId?: string
 }
 
 export interface AssistantSendPayload {
@@ -55,6 +67,7 @@ export interface ChatMessage {
   error?: string
   reasoningText?: string
   toolCalls?: ChatToolCall[]
+  activityLog?: ChatActivityEntry[]
   attachments?: ChatAttachment[]
 }
 

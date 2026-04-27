@@ -11,6 +11,7 @@
           :tool-calls="message.toolCalls || []"
         />
         <AssistantToolCallList v-if="message.toolCalls?.length" :tool-calls="message.toolCalls" />
+        <AssistantActivityLog v-if="message.activityLog?.length" :items="message.activityLog" />
         <StreamingMarkdown v-if="message.content" :content="message.content" />
         <p v-else-if="message.status === 'streaming'" class="text-sm leading-6 text-(--or3-text-muted)">Thinking…</p>
       </template>

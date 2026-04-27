@@ -13,6 +13,36 @@
       />
     </div>
 
+    <div
+      v-if="mentionState.open"
+      class="mt-2 overflow-hidden rounded-2xl border border-(--or3-border) bg-(--or3-surface) shadow-(--or3-shadow-soft)"
+    >
+      <div class="flex items-center gap-2 border-b border-(--or3-border) px-3 py-2 text-xs text-(--or3-text-muted)">
+        <Icon name="i-lucide-file-search" class="size-3.5 text-(--or3-green-dark)" />
+        <span class="font-mono uppercase tracking-[0.16em]">Mention file</span>
+        <span v-if="mentionState.loading" class="ml-auto">Searching…</span>
+      </div>
+      <div v-if="mentionState.items.length" class="max-h-56 overflow-y-auto p-1">
+        <button
+          v-for="(item, index) in mentionState.items"
+          :key="`${item.root_id}:${item.path}`"
+          type="button"
+          class="flex w-full items-start gap-2 rounded-xl px-3 py-2 text-left text-sm"
+          :class="index === mentionState.selectedIndex ? 'bg-(--or3-green-soft) text-(--or3-green-dark)' : 'text-(--or3-text) hover:bg-(--or3-surface-soft)'"
+          @mousedown.prevent="selectMention(item)"
+        >
+          <Icon name="i-lucide-file" class="mt-0.5 size-4 shrink-0" />
+          <span class="min-w-0 flex-1">
+            <span class="block truncate font-medium">{{ item.name }}</span>
+            <span class="block truncate text-xs text-(--or3-text-muted)">{{ item.root_label }} / {{ item.path }}</span>
+          </span>
+        </button>
+      </div>
+      <p v-else class="px-3 py-3 text-sm text-(--or3-text-muted)">
+        {{ mentionState.loading ? 'Searching workspace files…' : 'No files found. Keep typing after @ to search.' }}
+      </p>
+    </div>
+
     <div v-if="attachments.length" class="mt-3 flex flex-wrap gap-2">
       <button
         v-for="attachment in attachments"
@@ -51,7 +81,9 @@ import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import { registerPaneInput, unregisterPaneInput } from '~/composables/useChatInputBridge'
 import { useComposerActions } from '~/composables/useComposerActions'
+import { useComputerFiles } from '~/composables/useComputerFiles'
 import type { AssistantSendPayload, ChatAttachment } from '~/types/app-state'
+import type { FileSearchItem } from '~/types/or3-api'
 
 const props = withDefaults(defineProps<{ modelValue?: string; streaming?: boolean; paneId?: string }>(), {
   modelValue: '',
@@ -69,15 +101,46 @@ interface DraftAttachment extends ChatAttachment {
   content?: string
 }
 
+interface MentionEditorState {
+  state: {
+    selection: {
+      empty: boolean
+      from: number
+    }
+    doc: {
+      textBetween: (from: number, to: number, blockSeparator?: string, leafText?: string) => string
+    }
+  }
+}
+
 const fileInput = ref<HTMLInputElement | null>(null)
 const editor = shallowRef<Editor>()
 const isDragging = ref(false)
 const isFocused = ref(false)
 const dragDepth = ref(0)
 const attachments = ref<DraftAttachment[]>([])
+const { searchWorkspaceFiles } = useComputerFiles()
 const formState = reactive({
   text: props.modelValue,
 })
+const mentionState = reactive<{
+  open: boolean
+  query: string
+  from: number
+  to: number
+  selectedIndex: number
+  loading: boolean
+  items: FileSearchItem[]
+}>({
+  open: false,
+  query: '',
+  from: 0,
+  to: 0,
+  selectedIndex: 0,
+  loading: false,
+  items: [],
+})
+let mentionSearchTimer: ReturnType<typeof setTimeout> | null = null
 
 watch(() => props.modelValue, (value) => {
   if (formState.text === value) return
@@ -126,6 +189,14 @@ function removeAttachment(id: string) {
   attachments.value = attachments.value.filter((attachment) => attachment.id !== id)
 }
 
+function closeMention() {
+  mentionState.open = false
+  mentionState.query = ''
+  mentionState.items = []
+  mentionState.selectedIndex = 0
+  mentionState.loading = false
+}
+
 function buildTransportText() {
   const sections: string[] = []
   const promptText = formState.text.trim()
@@ -139,9 +210,17 @@ function buildTransportText() {
     ].join('\n\n'))
   }
 
-  const fileAttachments = attachments.value.filter((attachment) => attachment.kind === 'file')
-  if (fileAttachments.length) {
-    sections.push(`Local files selected in or3-app (names only, contents not uploaded): ${fileAttachments.map((attachment) => attachment.name).join(', ')}`)
+  const workspaceFiles = attachments.value.filter((attachment) => attachment.kind === 'file' && attachment.source === 'workspace')
+  if (workspaceFiles.length) {
+    sections.push([
+      'Workspace files mentioned by the user:',
+      ...workspaceFiles.map((attachment) => `- ${attachment.rootId || 'workspace'}:${attachment.path || attachment.name}`),
+    ].join('\n'))
+  }
+
+  const localFiles = attachments.value.filter((attachment) => attachment.kind === 'file' && attachment.source !== 'workspace')
+  if (localFiles.length) {
+    sections.push(`Local files selected in or3-app (names only, contents not uploaded): ${localFiles.map((attachment) => attachment.name).join(', ')}`)
   }
 
   return sections.join('\n\n').trim()
@@ -175,8 +254,79 @@ function addFiles(files: File[]) {
       preview: file.type ? file.type.replace(/\/.+$/, '').toUpperCase() : 'FILE',
       mimeType: file.type || undefined,
       size: file.size || undefined,
+      source: 'local',
     })
   }
+}
+
+function addWorkspaceFileMention(item: FileSearchItem) {
+  const id = `${item.root_id}:${item.path}`
+  if (attachments.value.some((attachment) => attachment.id === id)) return
+  attachments.value.push({
+    id,
+    kind: 'file',
+    source: 'workspace',
+    name: item.name,
+    preview: item.path,
+    mimeType: item.mime_type || undefined,
+    size: item.size || undefined,
+    path: item.path,
+    rootId: item.root_id,
+  })
+}
+
+function scheduleMentionSearch(query: string) {
+  if (mentionSearchTimer) clearTimeout(mentionSearchTimer)
+  mentionState.loading = true
+  mentionSearchTimer = setTimeout(async () => {
+    const activeQuery = query.trim()
+    try {
+      const items = await searchWorkspaceFiles(activeQuery, 12)
+      if (!mentionState.open || mentionState.query !== query) return
+      mentionState.items = items
+      mentionState.selectedIndex = 0
+    } finally {
+      if (mentionState.query === query) mentionState.loading = false
+    }
+  }, 120)
+}
+
+function updateMentionState(instance: MentionEditorState) {
+  const { selection, doc } = instance.state
+  if (!selection.empty) {
+    closeMention()
+    return
+  }
+  const to = selection.from
+  const from = Math.max(0, to - 96)
+  const textBefore = doc.textBetween(from, to, '\n', '\n')
+  const atIndex = textBefore.lastIndexOf('@')
+  if (atIndex < 0) {
+    closeMention()
+    return
+  }
+  const previous = atIndex > 0 ? textBefore.at(atIndex - 1) : ' '
+  const query = textBefore.slice(atIndex + 1)
+  if ((previous && !/\s|[(\[{]/.test(previous)) || /\s/.test(query) || query.length > 80) {
+    closeMention()
+    return
+  }
+  mentionState.open = true
+  mentionState.query = query
+  mentionState.from = from + atIndex
+  mentionState.to = to
+  scheduleMentionSearch(query)
+}
+
+function selectMention(item = mentionState.items[mentionState.selectedIndex]) {
+  if (!item || !editor.value) return
+  addWorkspaceFileMention(item)
+  editor.value
+    .chain()
+    .focus()
+    .insertContentAt({ from: mentionState.from, to: mentionState.to }, `@${item.path} `)
+    .run()
+  closeMention()
 }
 
 function addPastedText(text: string) {
@@ -268,7 +418,30 @@ onMounted(() => {
         class: 'min-h-14 outline-none',
       },
       handleKeyDown(_view, event) {
-        if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+        if (mentionState.open) {
+          if (event.key === 'ArrowDown') {
+            event.preventDefault()
+            mentionState.selectedIndex = Math.min(mentionState.items.length - 1, mentionState.selectedIndex + 1)
+            return true
+          }
+          if (event.key === 'ArrowUp') {
+            event.preventDefault()
+            mentionState.selectedIndex = Math.max(0, mentionState.selectedIndex - 1)
+            return true
+          }
+          if ((event.key === 'Enter' || event.key === 'Tab') && mentionState.items.length) {
+            event.preventDefault()
+            selectMention()
+            return true
+          }
+          if (event.key === 'Escape') {
+            event.preventDefault()
+            closeMention()
+            return true
+          }
+        }
+
+        if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
           event.preventDefault()
           submit()
           return true
@@ -288,14 +461,18 @@ onMounted(() => {
     },
     onUpdate({ editor: instance }) {
       formState.text = instance.getText({ blockSeparator: '\n\n' })
+      updateMentionState(instance)
+    },
+    onSelectionUpdate({ editor: instance }) {
+      updateMentionState(instance)
     },
   })
 
   const dom = editor.value?.view.dom
-  dom.addEventListener('dragenter', onDragEnter)
-  dom.addEventListener('dragover', onDragOver)
-  dom.addEventListener('dragleave', onDragLeave)
-  dom.addEventListener('drop', onDrop)
+  dom?.addEventListener('dragenter', onDragEnter)
+  dom?.addEventListener('dragover', onDragOver)
+  dom?.addEventListener('dragleave', onDragLeave)
+  dom?.addEventListener('drop', onDrop)
 
   registerPaneInput(props.paneId, {
     setText: (value) => {
@@ -308,6 +485,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   unregisterPaneInput(props.paneId)
+  if (mentionSearchTimer) clearTimeout(mentionSearchTimer)
   const dom = editor.value?.view.dom
   dom?.removeEventListener('dragenter', onDragEnter)
   dom?.removeEventListener('dragover', onDragOver)

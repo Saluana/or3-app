@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import type { JobSnapshot, TurnResponse } from '~/types/or3-api'
-import type { AssistantSendPayload, ChatToolCall } from '~/types/app-state'
+import type { AssistantSendPayload, ChatActivityEntry, ChatToolCall } from '~/types/app-state'
 import { useChatSessions } from './useChatSessions'
 import { useOr3Api } from './useOr3Api'
 
@@ -31,6 +31,17 @@ function createToolCall(name: string, args?: string): ChatToolCall {
   }
 }
 
+function createActivity(type: string, label: string, detail?: string, status: ChatActivityEntry['status'] = 'running'): ChatActivityEntry {
+  return {
+    id: `activity_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+    type,
+    label,
+    detail,
+    status,
+    createdAt: now(),
+  }
+}
+
 function normalizePayload(input: string | AssistantSendPayload): AssistantSendPayload {
   if (typeof input === 'string') return { text: input.trim(), transportText: input.trim(), attachments: [] }
   return {
@@ -38,6 +49,24 @@ function normalizePayload(input: string | AssistantSendPayload): AssistantSendPa
     transportText: (input.transportText || input.text).trim(),
     attachments: input.attachments ?? [],
   }
+}
+
+function sanitizeAssistantText(text: string) {
+  if (!text) return ''
+
+  return text
+    .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '')
+    .replace(/<tool_call[\s\S]*$/i, '')
+    .replace(/<\/tool_call>/gi, '')
+    .replace(/<function=[^>]*>/gi, '')
+    .replace(/<parameter=[^>]*>/gi, '')
+    .replace(/<function=[\s\S]*$/i, '')
+    .replace(/<parameter=[\s\S]*$/i, '')
+    .trim()
+}
+
+function truncateLogDetail(value: string, limit = 500) {
+  return value.length > limit ? `${value.slice(0, limit)}\n...` : value
 }
 
 export function useAssistantStream() {
@@ -64,22 +93,33 @@ export function useAssistantStream() {
       status: 'streaming',
       reasoningText: '',
       toolCalls: [],
+      activityLog: [],
     })
     isStreaming.value = true
     const activeController = new AbortController()
     controller = activeController
+    let rawAssistantContent = ''
 
     const readAssistant = () => chat.messages.value.find((item) => item.id === assistant.id)
     const updateAssistant = (patch: Parameters<typeof chat.updateMessage>[1]) => chat.updateMessage(assistant.id, patch)
     const appendAssistantContent = (value: string) => {
-      const current = readAssistant()
-      updateAssistant({ content: `${current?.content || ''}${value}` })
+      rawAssistantContent += value
+      updateAssistant({ content: sanitizeAssistantText(rawAssistantContent) })
+    }
+    const replaceAssistantContent = (value: string) => {
+      rawAssistantContent = value
+      updateAssistant({ content: sanitizeAssistantText(rawAssistantContent) })
     }
     const setToolCalls = (toolCalls: ChatToolCall[]) => updateAssistant({ toolCalls })
+    const addActivity = (entry: ChatActivityEntry) => {
+      const current = readAssistant()
+      updateAssistant({ activityLog: [...(current?.activityLog ?? []), entry].slice(-30) })
+    }
     const addToolCall = (name: string, args?: string) => {
       const current = readAssistant()
       const toolCalls = [...(current?.toolCalls ?? []), createToolCall(name, args)]
       setToolCalls(toolCalls)
+      addActivity(createActivity('tool_call', `Tool call: ${name}`, args ? truncateLogDetail(args) : undefined, 'running'))
     }
     const resolveToolCall = (name: string, result?: string, error?: string) => {
       const current = readAssistant()
@@ -107,6 +147,7 @@ export function useAssistantStream() {
         }
       }
       setToolCalls(toolCalls)
+      addActivity(createActivity('tool_result', `Tool result: ${name}`, error || (result ? truncateLogDetail(result) : undefined), error ? 'error' : 'complete'))
     }
 
     try {
@@ -123,14 +164,23 @@ export function useAssistantStream() {
         const payload = event.json as Record<string, unknown> | undefined
         const eventType = String(event.event || payload?.type || '')
         const delta = String(payload?.delta ?? payload?.text ?? payload?.content ?? '')
+        if (eventType === 'queued' || eventType === 'started') {
+          addActivity(createActivity(eventType, eventType === 'queued' ? 'Queued turn' : 'Started turn'))
+        }
         if (eventType === 'text_delta' && delta) {
-          sawVisibleOutput = true
           appendAssistantContent(delta)
+          sawVisibleOutput = sawVisibleOutput || !!sanitizeAssistantText(rawAssistantContent)
         }
         const finalText = payload?.final_text
-        if ((eventType === 'assistant' || typeof finalText === 'string') && typeof finalText === 'string' && finalText.trim()) {
-          sawVisibleOutput = true
-          updateAssistant({ content: finalText })
+        const assistantContent = typeof payload?.content === 'string' ? payload.content : ''
+        const assistantText = typeof finalText === 'string' && finalText.trim()
+          ? finalText
+          : eventType === 'assistant'
+            ? assistantContent
+            : ''
+        if (assistantText.trim()) {
+          replaceAssistantContent(assistantText)
+          sawVisibleOutput = sawVisibleOutput || !!sanitizeAssistantText(assistantText)
         }
         if (eventType === 'tool_call') {
           addToolCall(String(payload?.name || 'tool'), typeof payload?.arguments === 'string' ? payload.arguments : undefined)
@@ -145,16 +195,19 @@ export function useAssistantStream() {
         if (eventType === 'reasoning_delta' && typeof payload?.content === 'string') {
           updateAssistant({ reasoningText: `${readAssistant()?.reasoningText || ''}${payload.content}` })
         }
+        if (eventType === 'runtime_error') {
+          addActivity(createActivity('runtime_error', 'Runtime error', String(payload?.message || 'Unknown runtime error'), 'error'))
+        }
         if (typeof payload?.job_id === 'string') {
           streamedJobId = payload.job_id
           activeJobId.value = payload.job_id
         }
 
-        const streamError = String(payload?.error ?? '').trim()
+        const streamError = String(payload?.error ?? payload?.message ?? '').trim()
         const streamStatus = String(payload?.status ?? '').trim()
         if (streamError || streamStatus === 'failed' || streamStatus === 'aborted') {
           streamEndedWithFailure = true
-          const failureText = streamError || readAssistant()?.content || 'or3-intern could not finish this request.'
+          const failureText = streamError || sanitizeAssistantText(rawAssistantContent) || readAssistant()?.content || 'or3-intern could not finish this request.'
           updateAssistant({
             content: failureText,
             status: 'failed',
@@ -163,7 +216,10 @@ export function useAssistantStream() {
           })
         }
 
-        if (streamStatus === 'completed') updateAssistant({ status: 'complete' })
+        if (streamStatus === 'completed') {
+          addActivity(createActivity('completion', 'Completed turn', typeof payload?.final_text === 'string' && payload.final_text.trim() ? undefined : 'No final text was included in the completion event.', 'complete'))
+          updateAssistant({ status: 'complete' })
+        }
       }
 
       if (streamEndedWithFailure) return
@@ -175,13 +231,13 @@ export function useAssistantStream() {
           })
           const snapshotText = snapshot.final_text?.trim() || snapshot.error?.trim() || ''
           if (snapshotText) {
+            replaceAssistantContent(snapshotText)
             updateAssistant({
-              content: snapshotText,
               status: snapshot.error || snapshot.status === 'failed' || snapshot.status === 'aborted' ? 'failed' : 'complete',
               error: snapshot.error,
               jobId: snapshot.job_id,
             })
-            sawVisibleOutput = true
+            sawVisibleOutput = sawVisibleOutput || !!sanitizeAssistantText(snapshotText)
           }
         } catch {
           // Fall through to the visible empty-result message below.
@@ -215,8 +271,8 @@ export function useAssistantStream() {
           signal: activeController.signal,
         })
         activeJobId.value = response.job_id
+        replaceAssistantContent(response.final_text || response.error || 'The turn completed without text.')
         updateAssistant({
-          content: response.final_text || response.error || 'The turn completed without text.',
           status: response.error ? 'failed' : 'complete',
           error: response.error,
           jobId: response.job_id,
