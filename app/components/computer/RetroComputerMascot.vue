@@ -1,78 +1,119 @@
 <template>
-  <svg
-    :width="size"
-    :height="size"
-    viewBox="0 0 64 64"
-    role="img"
-    aria-hidden="true"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-    class="or3-mascot"
-    :class="{ 'or3-mascot--happy': sparkle }"
-  >
-    <!-- Monitor body -->
-    <rect
-      x="6.5"
-      y="9.5"
-      width="44"
-      height="34"
-      rx="4"
-      :stroke="stroke"
-      stroke-width="2"
-    />
-    <!-- Screen -->
-    <rect
-      x="11"
-      y="14"
-      width="35"
-      height="25"
-      rx="2"
-      :stroke="stroke"
-      stroke-width="1.5"
-    />
-    <!-- Eyes -->
-    <circle :cx="22" :cy="25" r="1.6" :fill="stroke" />
-    <circle :cx="32" :cy="25" r="1.6" :fill="stroke" />
-    <!-- Smile -->
-    <path
-      d="M22 30 Q 27 34 32 30"
-      :stroke="stroke"
-      stroke-width="1.5"
-      stroke-linecap="round"
-      fill="none"
-    />
-    <!-- Vent line -->
-    <line
-      x1="11"
-      y1="41"
-      x2="46"
-      y2="41"
-      :stroke="stroke"
-      stroke-width="1"
-      stroke-dasharray="2 2"
-      opacity="0.6"
-    />
-    <!-- Stand -->
-    <path
-      d="M22 44 L20 52 L37 52 L35 44"
-      :stroke="stroke"
-      stroke-width="2"
-      stroke-linejoin="round"
-      fill="none"
-    />
-    <!-- Base -->
-    <rect x="16" y="52" width="25" height="3" rx="1.5" :stroke="stroke" stroke-width="2" />
-    <!-- Power dot -->
-    <circle cx="48" cy="40.5" r="1.2" :fill="accent" />
+    <svg
+        :width="size"
+        :height="size"
+        viewBox="0 0 80 80"
+        role="img"
+        aria-hidden="true"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        class="or3-mascot"
+    >
+        <!-- Body / case -->
+        <rect
+            x="9"
+            y="14"
+            width="52"
+            height="42"
+            rx="6"
+            fill="#F4ECD8"
+            :stroke="stroke"
+            stroke-width="2"
+        />
+        <!-- Inner face plate -->
+        <rect
+            x="13"
+            y="18"
+            width="44"
+            height="34"
+            rx="4"
+            fill="#FFFCF5"
+            :stroke="stroke"
+            stroke-width="1.5"
+        />
+        <!-- Green screen -->
+        <rect
+            x="17"
+            y="22"
+            width="36"
+            height="22"
+            rx="2"
+            :fill="accent"
+            :stroke="stroke"
+            stroke-width="1.5"
+        />
+        <!-- Eyes (on the green screen) -->
+        <rect x="26" y="29" width="3" height="3" :fill="stroke" />
+        <rect x="41" y="29" width="3" height="3" :fill="stroke" />
+        <!-- Smile -->
+        <path
+            d="M28 36 Q 35 41 42 36"
+            :stroke="stroke"
+            stroke-width="1.6"
+            stroke-linecap="round"
+            fill="none"
+        />
+        <!-- Vent / power row -->
+        <line
+            x1="17"
+            y1="48"
+            x2="44"
+            y2="48"
+            :stroke="stroke"
+            stroke-width="1"
+            stroke-dasharray="2 2"
+            opacity="0.5"
+        />
+        <circle cx="50" cy="48" r="1.3" :fill="accent" />
+        <!-- Stand -->
+        <path
+            d="M28 56 L25 64 L45 64 L42 56"
+            fill="#F4ECD8"
+            :stroke="stroke"
+            stroke-width="2"
+            stroke-linejoin="round"
+        />
+        <!-- Base -->
+        <rect
+            x="20"
+            y="64"
+            width="30"
+            height="4"
+            rx="2"
+            fill="#F4ECD8"
+            :stroke="stroke"
+            stroke-width="2"
+        />
+        <!-- Waving arm -->
+        <path
+            d="M61 28 Q 70 24 72 16"
+            :stroke="stroke"
+            stroke-width="2.2"
+            stroke-linecap="round"
+            fill="none"
+        />
+        <circle
+            cx="72.5"
+            cy="14"
+            r="2.6"
+            fill="#F4ECD8"
+            :stroke="stroke"
+            stroke-width="1.6"
+        />
 
-    <!-- Optional sparkles -->
-    <g v-if="sparkle" :stroke="accent" stroke-width="1.4" stroke-linecap="round">
-      <path d="M55 14 L55 19" />
-      <path d="M52.5 16.5 L57.5 16.5" />
-      <path d="M58 24 L58 27" />
-      <path d="M56.5 25.5 L59.5 25.5" />
-    </g>
-  </svg>
+        <!-- Sparkles -->
+        <g
+            v-if="sparkle"
+            :stroke="accent"
+            stroke-width="1.6"
+            stroke-linecap="round"
+        >
+            <path d="M68 36 L68 41" />
+            <path d="M65.5 38.5 L70.5 38.5" />
+            <path d="M73 46 L73 49" />
+            <path d="M71.5 47.5 L74.5 47.5" />
+        </g>
+    </svg>
 </template>
 
 <script setup lang="ts">
