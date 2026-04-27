@@ -6,7 +6,7 @@
     </div>
 
     <div v-if="!fields.length" class="rounded-2xl border border-dashed border-(--or3-border) px-4 py-5 text-center text-sm text-(--or3-text-muted)">
-      Pick a section above to see what you can change.
+      {{ emptyStateText }}
     </div>
 
     <div v-else class="space-y-3">
@@ -77,10 +77,12 @@ const props = withDefaults(defineProps<{
   description?: string
   fields: ConfigureField[]
   saving?: boolean
+  emptyStateText?: string
 }>(), {
   subtitle: 'Remote configure',
   description: 'Edit host settings safely from your phone.',
   saving: false,
+  emptyStateText: 'Pick a section above to see what you can change.',
 })
 
 const emit = defineEmits<{
