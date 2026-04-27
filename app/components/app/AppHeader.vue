@@ -11,28 +11,25 @@
       </div>
     </NuxtLink>
 
-    <div class="flex items-center gap-2">
-      <UButton
-        icon="i-lucide-shield-check"
-        color="neutral"
-        variant="ghost"
-        class="or3-touch-target relative rounded-2xl border border-(--or3-border) bg-(--or3-surface)"
-        :aria-label="pendingCount ? `${pendingCount} approval requests waiting` : 'Open approval requests'"
+    <div class="flex shrink-0 items-center gap-3 self-start">
+      <NuxtLink
         to="/approvals"
+        class="or3-focus-ring or3-touch-target relative inline-flex size-12 items-center justify-center rounded-[1.35rem] border border-(--or3-border) bg-(--or3-surface) shadow-[0_1px_0_rgba(255,255,255,0.65)_inset,0_8px_20px_rgba(42,35,25,0.05)] transition hover:border-(--or3-green)/30 hover:bg-white/95"
+        :aria-label="pendingCount ? `${pendingCount} approval requests waiting` : 'Open approval requests'"
       >
+        <Icon name="i-lucide-shield-check" class="size-5 text-(--or3-text)" />
         <span
           v-if="pendingCount"
           class="absolute -right-1 -top-1 min-w-4.5 rounded-full bg-(--or3-amber) px-1.5 py-0.5 text-center text-[10px] font-semibold leading-none text-white shadow-sm"
         >{{ pendingCount > 99 ? '99+' : pendingCount }}</span>
-      </UButton>
-      <UButton
-        icon="i-lucide-settings"
-        color="neutral"
-        variant="ghost"
-        class="or3-touch-target rounded-2xl border border-(--or3-border) bg-(--or3-surface)"
-        aria-label="Open settings"
+      </NuxtLink>
+      <NuxtLink
         to="/settings"
-      />
+        class="or3-focus-ring or3-touch-target inline-flex size-12 items-center justify-center rounded-[1.35rem] border border-(--or3-border) bg-(--or3-surface) shadow-[0_1px_0_rgba(255,255,255,0.65)_inset,0_8px_20px_rgba(42,35,25,0.05)] transition hover:border-(--or3-green)/30 hover:bg-white/95"
+        aria-label="Open settings"
+      >
+        <Icon name="i-lucide-settings" class="size-5 text-(--or3-text)" />
+      </NuxtLink>
     </div>
   </header>
 </template>

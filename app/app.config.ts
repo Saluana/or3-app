@@ -66,6 +66,27 @@ export default defineAppConfig({
     },
 
     selectMenu: {
+      slots: {
+        base: [
+          'rounded-2xl bg-[var(--or3-surface)] border border-[var(--or3-border)]',
+          'text-[var(--or3-text)] placeholder:text-[var(--or3-text-muted)]',
+          'focus-visible:ring-2 focus-visible:ring-[var(--or3-green)]/30',
+        ],
+        content: [
+          'overflow-hidden rounded-2xl border border-[var(--or3-border)]',
+          'bg-[var(--or3-surface)] shadow-[0_18px_40px_rgba(42,35,25,0.18)]',
+          'backdrop-blur-md',
+        ],
+        viewport: 'p-1.5',
+        item: [
+          'rounded-xl px-3 py-2 text-sm font-medium text-[var(--or3-text)]',
+          'data-[highlighted]:bg-[var(--or3-green-soft)] data-[highlighted]:text-[var(--or3-green-dark)]',
+          'data-[state=checked]:text-[var(--or3-green-dark)]',
+        ],
+        itemLeadingIcon: 'text-[var(--or3-text-muted)] size-4',
+        itemTrailingIcon: 'text-[var(--or3-green)] size-4',
+        itemLabel: 'truncate',
+      },
       defaultVariants: {
         color: 'neutral',
         variant: 'outline',
@@ -74,10 +95,68 @@ export default defineAppConfig({
     },
 
     select: {
+      slots: {
+        base: [
+          'rounded-2xl bg-[var(--or3-surface)] border border-[var(--or3-border)]',
+          'text-[var(--or3-text)] placeholder:text-[var(--or3-text-muted)]',
+          'focus-visible:ring-2 focus-visible:ring-[var(--or3-green)]/30',
+        ],
+        content: [
+          'overflow-hidden rounded-2xl border border-[var(--or3-border)]',
+          'bg-[var(--or3-surface)] shadow-[0_18px_40px_rgba(42,35,25,0.18)]',
+          'backdrop-blur-md',
+        ],
+        viewport: 'p-1.5',
+        item: [
+          'rounded-xl px-3 py-2 text-sm font-medium text-[var(--or3-text)]',
+          'data-[highlighted]:bg-[var(--or3-green-soft)] data-[highlighted]:text-[var(--or3-green-dark)]',
+        ],
+      },
       defaultVariants: {
         color: 'neutral',
         variant: 'outline',
         size: 'lg',
+      },
+    },
+
+    dropdownMenu: {
+      slots: {
+        content: [
+          'overflow-hidden rounded-2xl border border-[var(--or3-border)]',
+          'bg-[var(--or3-surface)] shadow-[0_18px_40px_rgba(42,35,25,0.18)]',
+          'backdrop-blur-md',
+        ],
+        viewport: 'p-1.5',
+        item: [
+          'rounded-xl px-3 py-2 text-sm font-medium text-[var(--or3-text)]',
+          'data-[highlighted]:bg-[var(--or3-green-soft)] data-[highlighted]:text-[var(--or3-green-dark)]',
+        ],
+        itemLeadingIcon: 'text-[var(--or3-text-muted)] size-4',
+        itemTrailingIcon: 'text-[var(--or3-text-muted)] size-4',
+      },
+    },
+
+    contextMenu: {
+      slots: {
+        content: [
+          'overflow-hidden rounded-2xl border border-[var(--or3-border)]',
+          'bg-[var(--or3-surface)] shadow-[0_18px_40px_rgba(42,35,25,0.18)]',
+          'backdrop-blur-md',
+        ],
+        viewport: 'p-1.5',
+        item: [
+          'rounded-xl px-3 py-2 text-sm font-medium text-[var(--or3-text)]',
+          'data-[highlighted]:bg-[var(--or3-green-soft)] data-[highlighted]:text-[var(--or3-green-dark)]',
+        ],
+      },
+    },
+
+    popover: {
+      slots: {
+        content: [
+          'rounded-2xl border border-[var(--or3-border)]',
+          'bg-[var(--or3-surface)] shadow-[0_18px_40px_rgba(42,35,25,0.18)]',
+        ],
       },
     },
 

@@ -1,49 +1,617 @@
 <template>
-  <AppShell>
-    <AppHeader subtitle="COMPUTER" />
+    <AppShell>
+        <AppHeader subtitle="COMPUTER" />
 
-    <div class="space-y-5">
-      <ComputerOverviewCard
-        :host-name="activeHost?.name || 'No computer paired'"
-        :base-url="activeHost?.baseUrl || 'Pair a computer in Settings to begin'"
-        :health="health"
-        :capabilities="capabilities"
-      />
+        <div class="space-y-5">
+            <ComputerOverviewCard
+                :host-name="hostName"
+                :base-url="baseUrl"
+                :health="health"
+                :capabilities="capabilities"
+                :connected="connected"
+                active-tab="/computer"
+            />
 
-      <SectionHeader title="What you can do" subtitle="Browse, run things, and review activity" />
-      <div class="grid grid-cols-2 gap-3">
-        <NuxtLink v-for="item in items" :key="item.to" :to="item.to">
-          <SurfaceCard interactive class-name="min-h-32">
-            <RetroIcon :name="item.icon" />
-            <p class="mt-3 font-mono text-sm font-semibold">{{ item.label }}</p>
-            <p class="mt-1 text-xs leading-5 text-(--or3-text-muted)">{{ item.description }}</p>
-          </SurfaceCard>
-        </NuxtLink>
-      </div>
+            <!-- What you can do -->
+            <section>
+                <p class="or3-section-label">WHAT YOU CAN DO</p>
+                <div class="mt-3 grid grid-cols-2 gap-3">
+                    <NuxtLink
+                        v-for="item in actions"
+                        :key="item.to"
+                        :to="item.to"
+                        class="or3-action-card"
+                    >
+                        <span class="or3-action-card__icon">
+                            <Icon :name="item.icon" class="size-5" />
+                        </span>
+                        <span class="or3-action-card__title">
+                            {{ item.label }}
+                        </span>
+                        <span class="or3-action-card__desc">
+                            {{ item.description }}
+                        </span>
+                    </NuxtLink>
+                </div>
+            </section>
 
-      <DangerCallout
-        v-if="readiness && !readiness.ready"
-        tone="caution"
-        title="Your computer needs attention"
-      >
-        {{ readiness.summary || "or3-intern noticed something during startup. Open Settings on your computer to take a look." }}
-      </DangerCallout>
-    </div>
-  </AppShell>
+            <DangerCallout
+                v-if="readiness && !readiness.ready"
+                tone="caution"
+                title="Your computer needs attention"
+            >
+                {{
+                    readiness.summary ||
+                    'or3-intern noticed something during startup. Open Settings on your computer to take a look.'
+                }}
+            </DangerCallout>
+
+            <!-- Connection details -->
+            <section>
+                <p class="or3-section-label">CONNECTION DETAILS</p>
+                <div class="mt-3 or3-detail-card">
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="or3-detail-row">
+                            <span class="or3-detail-row__icon">
+                                <Icon
+                                    name="i-lucide-monitor"
+                                    class="size-4"
+                                />
+                            </span>
+                            <div class="min-w-0">
+                                <p class="or3-detail-row__label">Mode</p>
+                                <p class="or3-detail-row__value">
+                                    {{ runtimeProfile }}
+                                </p>
+                            </div>
+                        </div>
+                        <div class="or3-detail-row">
+                            <span class="or3-detail-row__icon">
+                                <Icon
+                                    name="i-lucide-shield-check"
+                                    class="size-4"
+                                />
+                            </span>
+                            <div class="min-w-0">
+                                <p class="or3-detail-row__label">
+                                    Approvals
+                                </p>
+                                <p class="or3-detail-row__value">
+                                    {{ approvalsLabel }}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-3 or3-detail-row or3-detail-row--full">
+                        <span class="or3-detail-row__icon">
+                            <Icon name="i-lucide-globe" class="size-4" />
+                        </span>
+                        <div class="min-w-0 flex-1">
+                            <p class="or3-detail-row__label">Address</p>
+                            <p
+                                class="or3-detail-row__value or3-detail-row__value--mono truncate"
+                            >
+                                {{ baseUrl || 'Not paired yet' }}
+                            </p>
+                        </div>
+                        <button
+                            v-if="baseUrl"
+                            type="button"
+                            class="or3-icon-button"
+                            :aria-label="
+                                copied ? 'Address copied' : 'Copy address'
+                            "
+                            @click="copyAddress"
+                        >
+                            <Icon
+                                :name="
+                                    copied
+                                        ? 'i-lucide-check'
+                                        : 'i-lucide-copy'
+                                "
+                                class="size-4"
+                            />
+                        </button>
+                    </div>
+
+                    <NuxtLink to="/settings" class="or3-pair-button">
+                        <Icon name="i-lucide-link" class="size-4" />
+                        <span>{{
+                            connected
+                                ? 'Manage or Pair Computer'
+                                : 'Pair Computer'
+                        }}</span>
+                    </NuxtLink>
+                </div>
+            </section>
+
+            <!-- Recent activity -->
+            <section>
+                <div class="flex items-center justify-between">
+                    <p class="or3-section-label">RECENT ACTIVITY</p>
+                    <NuxtLink
+                        to="/computer/files"
+                        class="inline-flex items-center gap-1 text-sm font-medium text-(--or3-green-dark)"
+                    >
+                        <span>View all</span>
+                        <Icon
+                            name="i-lucide-chevron-right"
+                            class="size-4"
+                        />
+                    </NuxtLink>
+                </div>
+
+                <div class="mt-3 space-y-2">
+                    <div
+                        v-if="!activity.length"
+                        class="or3-activity-empty"
+                    >
+                        <Icon
+                            name="i-lucide-history"
+                            class="size-4 text-(--or3-text-muted)"
+                        />
+                        <span>No activity yet. Try a command or browse files.</span>
+                    </div>
+
+                    <div
+                        v-for="entry in activity"
+                        :key="entry.id"
+                        class="or3-activity-row"
+                    >
+                        <span class="or3-activity-row__icon">
+                            <Icon :name="entry.icon" class="size-4" />
+                        </span>
+                        <p class="or3-activity-row__text">
+                            <span class="or3-activity-row__label">{{
+                                entry.label
+                            }}</span>
+                            <span class="or3-activity-row__detail">{{
+                                entry.detail
+                            }}</span>
+                        </p>
+                        <span class="or3-activity-row__time">
+                            {{ entry.time }}
+                        </span>
+                        <span
+                            class="or3-activity-row__dot"
+                            :data-tone="entry.tone"
+                        />
+                    </div>
+                </div>
+            </section>
+        </div>
+    </AppShell>
 </template>
 
 <script setup lang="ts">
-const { activeHost } = useActiveHost()
-const { health, readiness, capabilities, refreshStatus } = useComputerStatus()
+import { computed, onMounted, ref } from 'vue';
 
-const items = [
-  { label: 'Files', description: 'Browse folders on your computer.', icon: 'i-lucide-folder', to: '/computer/files' },
-  { label: 'Terminal', description: 'Run commands. Advanced — use with care.', icon: 'i-lucide-terminal-square', to: '/computer/terminal' },
-  { label: 'Approvals', description: 'Review what or3-intern wants to do.', icon: 'i-lucide-shield-check', to: '/approvals' },
-  { label: 'Preferences', description: 'Tune how or3-intern behaves.', icon: 'i-lucide-settings', to: '/settings' },
-]
+const { activeHost, isConnected } = useActiveHost();
+const { health, readiness, capabilities, refreshStatus } =
+    useComputerStatus();
+const { jobs } = useJobs();
+const { approvals: approvalItems, loadApprovals } = useApprovals();
 
-onMounted(() => {
-  if (activeHost.value?.token) void refreshStatus().catch(() => {})
-})
+const copied = ref(false);
+
+const connected = computed(() => Boolean(isConnected.value));
+const hostName = computed(
+    () => activeHost.value?.name || 'My Computer',
+);
+const baseUrl = computed(() => activeHost.value?.baseUrl || '');
+
+const runtimeProfile = computed(
+    () => capabilities.value?.runtimeProfile || (connected.value ? 'local-dev' : 'unknown'),
+);
+
+const approvalsLabel = computed(() => {
+    if (!connected.value) return 'off';
+    if (health.value?.approvalBrokerAvailable === false) return 'off';
+    return 'on';
+});
+
+const actions = [
+    {
+        label: 'Browse Files',
+        description: 'Explore and manage files on your computer.',
+        icon: 'i-lucide-folder',
+        to: '/computer/files',
+    },
+    {
+        label: 'Run Terminal',
+        description: 'Open a terminal and run commands securely.',
+        icon: 'i-lucide-terminal',
+        to: '/computer/terminal',
+    },
+    {
+        label: 'Review Approvals',
+        description: 'See what or3-intern wants to do.',
+        icon: 'i-lucide-shield-check',
+        to: '/approvals',
+    },
+    {
+        label: 'Adjust Preferences',
+        description: 'Tune how or3-intern behaves.',
+        icon: 'i-lucide-settings',
+        to: '/settings',
+    },
+];
+
+interface ActivityEntry {
+    id: string;
+    label: string;
+    detail: string;
+    icon: string;
+    time: string;
+    tone: 'green' | 'amber' | 'danger' | 'neutral';
+}
+
+const activity = computed<ActivityEntry[]>(() => {
+    const entries: ActivityEntry[] = [];
+
+    for (const job of jobs.value.slice(0, 5)) {
+        entries.push({
+            id: `job:${job.job_id}`,
+            label: jobLabel(job.kind),
+            detail: trimSnippet(job.final_text || job.kind || ''),
+            icon: jobIcon(job.kind),
+            time: formatTime(job.updated_at || job.created_at),
+            tone:
+                job.status === 'failed' || job.status === 'aborted'
+                    ? 'danger'
+                    : job.status === 'completed'
+                      ? 'green'
+                      : 'amber',
+        });
+    }
+
+    for (const approval of approvalItems.value.slice(0, 5)) {
+        entries.push({
+            id: `appr:${approval.id}`,
+            label: 'Approval requested:',
+            detail: approvalDetail(approval),
+            icon: 'i-lucide-shield-check',
+            time: formatTime(approval.created_at),
+            tone:
+                approval.status === 'pending'
+                    ? 'amber'
+                    : approval.status === 'approved'
+                      ? 'green'
+                      : approval.status === 'denied'
+                        ? 'danger'
+                        : 'neutral',
+        });
+    }
+
+    entries.sort((a, b) => (a.time < b.time ? 1 : -1));
+    return entries.slice(0, 8);
+});
+
+function jobLabel(kind?: string): string {
+    if (!kind) return 'Activity:';
+    if (kind === 'turn') return 'Assistant reply:';
+    if (kind === 'subagent') return 'Subagent run:';
+    if (kind === 'exec' || kind === 'terminal') return 'Executed:';
+    if (kind === 'file_list') return 'Listed files in';
+    return `${kind.replace(/_/g, ' ')}:`;
+}
+
+function jobIcon(kind?: string): string {
+    if (kind === 'exec' || kind === 'terminal') return 'i-lucide-terminal';
+    if (kind === 'file_list' || kind === 'file_write')
+        return 'i-lucide-folder';
+    if (kind === 'turn' || kind === 'subagent') return 'i-lucide-bot';
+    return 'i-lucide-activity';
+}
+
+function approvalDetail(a: { type?: string; subject?: unknown }): string {
+    const subj = (a.subject ?? {}) as Record<string, unknown>;
+    const candidate =
+        (subj.command as string) ||
+        (subj.path as string) ||
+        (subj.file as string) ||
+        (subj.url as string) ||
+        '';
+    if (candidate) return trimSnippet(candidate);
+    if (a.type === 'exec') return 'shell command';
+    if (a.type === 'file_write') return 'file change';
+    return a.type || 'action';
+}
+
+function trimSnippet(input: string): string {
+    const flat = input.replace(/\s+/g, ' ').trim();
+    return flat.length > 48 ? flat.slice(0, 45) + '…' : flat;
+}
+
+function formatTime(input?: string): string {
+    if (!input) return '';
+    const ts = Date.parse(input);
+    if (!Number.isFinite(ts)) return '';
+    const d = new Date(ts);
+    const now = new Date();
+    const sameDay =
+        d.getFullYear() === now.getFullYear() &&
+        d.getMonth() === now.getMonth() &&
+        d.getDate() === now.getDate();
+    const time = d.toLocaleTimeString([], {
+        hour: 'numeric',
+        minute: '2-digit',
+    });
+    if (sameDay) return `Today, ${time}`;
+    const yest = new Date(now);
+    yest.setDate(now.getDate() - 1);
+    const isYest =
+        d.getFullYear() === yest.getFullYear() &&
+        d.getMonth() === yest.getMonth() &&
+        d.getDate() === yest.getDate();
+    if (isYest) return `Yesterday, ${time}`;
+    return d.toLocaleDateString();
+}
+
+async function copyAddress() {
+    if (!baseUrl.value) return;
+    try {
+        if (navigator?.clipboard?.writeText) {
+            await navigator.clipboard.writeText(baseUrl.value);
+        } else {
+            const ta = document.createElement('textarea');
+            ta.value = baseUrl.value;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+        }
+        copied.value = true;
+        setTimeout(() => (copied.value = false), 1500);
+    } catch {
+        /* noop */
+    }
+}
+
+onMounted(async () => {
+    if (activeHost.value?.token) {
+        void refreshStatus().catch(() => {});
+    }
+    void loadApprovals().catch(() => {});
+});
 </script>
+
+<style scoped>
+.or3-section-label {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+        'Liberation Mono', 'Courier New', monospace;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--or3-green-dark);
+}
+
+.or3-action-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 0.95rem 1rem;
+    border-radius: 18px;
+    background: var(--or3-surface);
+    border: 1px solid var(--or3-border);
+    box-shadow: var(--or3-shadow-soft);
+    text-decoration: none;
+    color: var(--or3-text);
+    transition:
+        transform 0.15s ease,
+        box-shadow 0.15s ease,
+        border-color 0.15s ease;
+}
+.or3-action-card:hover {
+    box-shadow: var(--or3-shadow);
+    border-color: color-mix(in srgb, var(--or3-green) 25%, var(--or3-border) 75%);
+}
+.or3-action-card:active {
+    transform: scale(0.99);
+}
+
+.or3-action-card__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--or3-surface-soft) 70%, white 30%);
+    border: 1px solid var(--or3-border);
+    color: var(--or3-text);
+}
+
+.or3-action-card__title {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+        'Liberation Mono', 'Courier New', monospace;
+    font-size: 0.95rem;
+    font-weight: 600;
+    line-height: 1.25;
+}
+
+.or3-action-card__desc {
+    font-size: 0.8rem;
+    line-height: 1.35rem;
+    color: var(--or3-text-muted);
+}
+
+.or3-detail-card {
+    background: var(--or3-surface);
+    border: 1px solid var(--or3-border);
+    border-radius: var(--or3-radius-card);
+    box-shadow: var(--or3-shadow-soft);
+    padding: 1rem;
+}
+
+.or3-detail-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.6rem 0.75rem;
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--or3-surface) 88%, white 12%);
+    border: 1px solid color-mix(in srgb, var(--or3-border) 80%, white 20%);
+}
+.or3-detail-row--full {
+    width: 100%;
+}
+
+.or3-detail-row__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--or3-green-soft) 60%, white 40%);
+    color: var(--or3-green-dark);
+    flex-shrink: 0;
+}
+
+.or3-detail-row__label {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--or3-text-muted);
+}
+.or3-detail-row__value {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.9rem;
+    color: var(--or3-text);
+    font-weight: 500;
+}
+.or3-detail-row__value--mono {
+    font-size: 0.82rem;
+}
+
+.or3-icon-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 12px;
+    background: white;
+    border: 1px solid var(--or3-border);
+    color: var(--or3-text);
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+    flex-shrink: 0;
+}
+.or3-icon-button:hover {
+    background: color-mix(in srgb, var(--or3-surface-soft) 70%, white 30%);
+    border-color: color-mix(in srgb, var(--or3-green) 30%, var(--or3-border) 70%);
+}
+
+.or3-pair-button {
+    margin-top: 0.85rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.7rem 1rem;
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--or3-green-soft) 70%, white 30%);
+    border: 1px solid color-mix(in srgb, var(--or3-green) 28%, white 72%);
+    color: var(--or3-green-dark);
+    font-weight: 600;
+    text-decoration: none;
+    transition: background 0.15s ease, transform 0.15s ease;
+}
+.or3-pair-button:hover {
+    background: color-mix(in srgb, var(--or3-green-soft) 50%, white 50%);
+}
+.or3-pair-button:active {
+    transform: scale(0.99);
+}
+
+.or3-activity-empty {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.85rem 1rem;
+    border-radius: 14px;
+    border: 1px dashed var(--or3-border);
+    background: color-mix(in srgb, var(--or3-surface) 80%, white 20%);
+    color: var(--or3-text-muted);
+    font-size: 0.85rem;
+}
+
+.or3-activity-row {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.7rem 0.85rem;
+    border-radius: 14px;
+    background: var(--or3-surface);
+    border: 1px solid var(--or3-border);
+    box-shadow: var(--or3-shadow-soft);
+}
+
+.or3-activity-row__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--or3-surface-soft) 70%, white 30%);
+    border: 1px solid var(--or3-border);
+    color: var(--or3-text);
+    flex-shrink: 0;
+}
+
+.or3-activity-row__text {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.85rem;
+    color: var(--or3-text);
+    min-width: 0;
+    flex: 1;
+    display: flex;
+    gap: 0.35rem;
+    align-items: baseline;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.or3-activity-row__label {
+    font-weight: 600;
+}
+.or3-activity-row__detail {
+    color: var(--or3-text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.or3-activity-row__time {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.75rem;
+    color: var(--or3-text-muted);
+    white-space: nowrap;
+}
+
+.or3-activity-row__dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 9999px;
+    background: var(--or3-green);
+    flex-shrink: 0;
+}
+.or3-activity-row__dot[data-tone='amber'] {
+    background: var(--or3-amber);
+}
+.or3-activity-row__dot[data-tone='danger'] {
+    background: var(--or3-danger);
+}
+.or3-activity-row__dot[data-tone='neutral'] {
+    background: var(--or3-text-muted);
+    opacity: 0.5;
+}
+</style>
