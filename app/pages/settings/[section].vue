@@ -35,7 +35,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, watch } from 'vue'
 import type { ConfigureChange, ConfigureField } from '~/types/or3-api'
 import { useConfigure } from '~/composables/useConfigure'
 
@@ -56,6 +56,7 @@ const {
 const selectedSectionRecord = computed(() => sections.value.find((section) => section.key === sectionKey.value))
 const selectedSectionLabel = computed(() => selectedSectionRecord.value?.label ?? 'Settings category')
 const selectedSectionDescription = computed(() => selectedSectionRecord.value?.description ?? 'Edit this category safely from your phone.')
+const selectedSectionExists = computed(() => !!selectedSectionRecord.value)
 
 function goBack() {
   router.push('/settings')
@@ -94,14 +95,18 @@ async function saveSection(values: Record<string, unknown>) {
   }
 }
 
-onMounted(async () => {
-  await loadSections()
-
-  if (!sections.value.find((section) => section.key === sectionKey.value)) {
-    router.replace('/settings')
-    return
+async function loadCurrentSection() {
+  if (!sections.value.length) {
+    await loadSections()
   }
-
   await loadFields(sectionKey.value).catch(() => null)
+}
+
+watch(sectionKey, () => {
+  void loadCurrentSection()
+})
+
+onMounted(async () => {
+  await loadCurrentSection()
 })
 </script>
