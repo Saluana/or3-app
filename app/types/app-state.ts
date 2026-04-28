@@ -3,6 +3,8 @@ export interface Or3HostProfile {
   name: string
   baseUrl: string
   token?: string
+  pairedToken?: string
+  sessionToken?: string
   role?: 'operator' | 'admin' | string
   deviceId?: string
   lastSeenAt?: string
@@ -95,6 +97,11 @@ export interface Or3AppState {
 export type Or3AppErrorCode =
   | 'host_unreachable'
   | 'auth_required'
+  | 'session_required'
+  | 'session_expired'
+  | 'passkey_required'
+  | 'step_up_required'
+  | 'auth_unsupported'
   | 'forbidden'
   | 'rate_limited'
   | 'validation_failed'
@@ -111,5 +118,7 @@ export interface Or3AppError {
   message: string
   status?: number
   retryAfterMs?: number
+  retryAfterSeconds?: number
+  authChallengeCode?: string
   cause?: unknown
 }

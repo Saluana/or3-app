@@ -75,6 +75,7 @@ export function usePairing() {
       name: pairingHost.value.displayName || 'My Computer',
       baseUrl,
       token: exchanged.token,
+      pairedToken: exchanged.token,
       role: exchanged.role,
       deviceId: exchanged.device_id,
       status: 'online',

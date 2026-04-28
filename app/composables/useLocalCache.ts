@@ -1,8 +1,8 @@
 import { ref } from 'vue'
 import type { Or3AppState, Or3HostProfile } from '~/types/app-state'
+import { useSecureHostTokens, withResolvedHostTokens } from './useSecureHostTokens'
 
 const STORAGE_KEY = 'or3-app:v1:state'
-const SESSION_TOKEN_KEY = 'or3-app:v1:host-tokens'
 
 const defaultState = (): Or3AppState => ({
   activeHostId: null,
@@ -21,50 +21,45 @@ let loaded = false
 function serializableState() {
   return {
     ...state.value,
-    hosts: state.value.hosts.map(({ token: _token, ...host }) => host),
-  }
-}
-
-function readSessionTokens() {
-  if (!import.meta.client) return {} as Record<string, string>
-  const raw = sessionStorage.getItem(SESSION_TOKEN_KEY)
-  if (!raw) return {} as Record<string, string>
-  try {
-    return JSON.parse(raw) as Record<string, string>
-  } catch {
-    sessionStorage.removeItem(SESSION_TOKEN_KEY)
-    return {} as Record<string, string>
+    hosts: state.value.hosts.map(({ token: _token, pairedToken: _pairedToken, sessionToken: _sessionToken, ...host }) => host),
   }
 }
 
 function persistSessionTokens() {
-  if (!import.meta.client) return
-  const tokens = Object.fromEntries(
-    state.value.hosts
-      .filter((host) => typeof host.token === 'string' && host.token.trim().length > 0)
-      .map((host) => [host.id, host.token!.trim()])
-  )
-  if (!Object.keys(tokens).length) {
-    sessionStorage.removeItem(SESSION_TOKEN_KEY)
-    return
-  }
-  sessionStorage.setItem(SESSION_TOKEN_KEY, JSON.stringify(tokens))
+  useSecureHostTokens().replaceTokens(state.value.hosts)
 }
 
 function load() {
   if (loaded || !import.meta.client) return
   loaded = true
+  const tokenStore = useSecureHostTokens()
   const raw = localStorage.getItem(STORAGE_KEY)
   if (!raw) return
 
   try {
     const parsed = { ...defaultState(), ...JSON.parse(raw) } as Or3AppState
-    const tokens = readSessionTokens()
+    const tokens = tokenStore.loadAllTokens()
     state.value = {
       ...parsed,
-      hosts: (parsed.hosts ?? []).map((host) => ({ ...host, token: tokens[host.id] || undefined })),
+      hosts: (parsed.hosts ?? []).map((host) => withResolvedHostTokens({
+        ...host,
+        pairedToken: tokens[host.id]?.pairedToken,
+        sessionToken: tokens[host.id]?.sessionToken,
+      })),
     }
     persist()
+    void tokenStore.hydrateTokens().then((nativeTokens) => {
+		if (!Object.keys(nativeTokens).length) return
+		state.value = {
+			...state.value,
+			hosts: state.value.hosts.map((host) => withResolvedHostTokens({
+				...host,
+				pairedToken: nativeTokens[host.id]?.pairedToken ?? host.pairedToken,
+				sessionToken: nativeTokens[host.id]?.sessionToken ?? host.sessionToken,
+			})),
+		}
+		persist()
+	})
   } catch {
     state.value = defaultState()
   }
@@ -80,10 +75,11 @@ export function useLocalCache() {
   load()
 
   function updateHost(host: Or3HostProfile) {
+    const normalizedHost = withResolvedHostTokens(host)
     const existing = state.value.hosts.findIndex((item) => item.id === host.id)
-    if (existing >= 0) state.value.hosts.splice(existing, 1, host)
-    else state.value.hosts.push(host)
-    state.value.activeHostId = host.id
+    if (existing >= 0) state.value.hosts.splice(existing, 1, normalizedHost)
+    else state.value.hosts.push(normalizedHost)
+    state.value.activeHostId = normalizedHost.id
     persist()
   }
 
@@ -112,8 +108,8 @@ export function useLocalCache() {
     state.value = defaultState()
     if (import.meta.client) {
       localStorage.removeItem(STORAGE_KEY)
-      sessionStorage.removeItem(SESSION_TOKEN_KEY)
     }
+    useSecureHostTokens().replaceTokens([])
   }
 
   return {

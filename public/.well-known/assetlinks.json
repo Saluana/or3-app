@@ -1,0 +1,16 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls",
+      "delegate_permission/common.get_login_creds"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.or3.app",
+      "sha256_cert_fingerprints": [
+        "DEBUG_CERT_SHA256_PLACEHOLDER",
+        "RELEASE_CERT_SHA256_PLACEHOLDER"
+      ]
+    }
+  }
+]

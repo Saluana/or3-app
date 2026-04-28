@@ -18,6 +18,48 @@
         <span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded-md border border-(--or3-border) bg-white px-1.5 py-0.5 font-mono text-[11px] text-(--or3-text-muted)">⌘K</span>
       </div>
 
+      <SurfaceCard class-name="space-y-3">
+        <p class="or3-command text-[11px] uppercase tracking-[0.2em] text-(--or3-green-dark)">Settings groups</p>
+        <div class="grid gap-3 sm:grid-cols-2">
+          <button
+            v-for="group in groups"
+            :key="group.key"
+            type="button"
+            class="or3-focus-ring flex items-start gap-3 rounded-2xl border p-4 text-left transition"
+            :class="activeFilter === group.key
+              ? 'border-(--or3-green) bg-(--or3-green-soft)'
+              : 'border-(--or3-border) bg-white/70 hover:bg-(--or3-green-soft)'"
+            @click="activeFilter = group.key"
+          >
+            <RetroIcon :name="group.icon" size="sm" />
+            <div class="min-w-0 flex-1">
+              <p class="font-mono text-sm font-semibold text-(--or3-text)">{{ group.label }}</p>
+              <p class="mt-1 text-xs leading-5 text-(--or3-text-muted)">{{ group.description }}</p>
+            </div>
+          </button>
+        </div>
+      </SurfaceCard>
+
+      <SurfaceCard class-name="space-y-3">
+        <p class="or3-command text-[11px] uppercase tracking-[0.2em] text-(--or3-green-dark)">Popular destinations</p>
+        <div class="grid gap-3 sm:grid-cols-2">
+          <NuxtLink
+            v-for="link in destinationLinks"
+            :key="link.to"
+            :to="link.to"
+            class="rounded-2xl border border-(--or3-border) bg-white/70 p-4 transition hover:bg-(--or3-green-soft)"
+          >
+            <div class="flex items-start gap-3">
+              <RetroIcon :name="link.icon" size="sm" />
+              <div class="min-w-0 flex-1">
+                <p class="font-mono text-sm font-semibold text-(--or3-text)">{{ link.label }}</p>
+                <p class="mt-1 text-xs leading-5 text-(--or3-text-muted)">{{ link.description }}</p>
+              </div>
+            </div>
+          </NuxtLink>
+        </div>
+      </SurfaceCard>
+
       <!-- Filter chips -->
       <div class="-mx-4 overflow-x-auto px-4 pb-1">
         <div class="flex w-max items-center gap-2">
@@ -76,7 +118,7 @@
 
       <!-- Quick Settings grid -->
       <SurfaceCard v-if="quickSections.length" class-name="space-y-3">
-        <p class="or3-command text-[11px] uppercase tracking-[0.2em] text-(--or3-green-dark)">Quick settings</p>
+        <p class="or3-command text-[11px] uppercase tracking-[0.2em] text-(--or3-green-dark)">{{ activeFilterLabel }} highlights</p>
         <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <button
             v-for="section in quickSections"
@@ -128,21 +170,19 @@
         <p v-else>No settings available for this filter.</p>
       </SurfaceCard>
 
-      <!-- Advanced callout -->
-      <button
-        type="button"
+      <NuxtLink
+        to="/settings/service"
         class="or3-focus-ring flex w-full items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50/70 p-4 text-left transition hover:bg-amber-100/80"
-        @click="activeFilter = 'advanced'"
       >
         <Icon name="i-lucide-triangle-alert" class="mt-0.5 size-5 shrink-0 text-(--or3-amber)" />
         <div class="min-w-0 flex-1">
-          <p class="font-mono text-sm font-semibold text-amber-900">Advanced area</p>
+          <p class="font-mono text-sm font-semibold text-amber-900">Advanced editor</p>
           <p class="mt-0.5 text-xs leading-5 text-amber-800/80">
-            Most people only need a couple categories.<br />Change these settings with care.
+            The classic section editor is still here under Advanced when you need direct access to low-level host settings.
           </p>
         </div>
         <Icon name="i-lucide-chevron-right" class="mt-1 size-5 shrink-0 text-amber-700/70" />
-      </button>
+      </NuxtLink>
 
       <p v-if="configureError" class="text-sm text-(--or3-danger)">{{ configureError }}</p>
 
@@ -160,29 +200,54 @@ const route = useRoute()
 const router = useRouter()
 const searchTerm = ref('')
 
-type FilterKey = 'essentials' | 'devices' | 'ai' | 'security' | 'advanced'
-const activeFilter = ref<FilterKey>('essentials')
+type FilterKey = 'connection' | 'security' | 'safety' | 'agent-behavior' | 'knowledge' | 'advanced'
+const activeFilter = ref<FilterKey>('connection')
 
 const { sections, configureError, loadSections } = useConfigure()
 const { activeHost } = useActiveHost()
 
 const filters: Array<{ key: FilterKey; label: string }> = [
-  { key: 'essentials', label: 'Essentials' },
-  { key: 'devices', label: 'Devices' },
-  { key: 'ai', label: 'AI' },
+  { key: 'connection', label: 'Connection' },
   { key: 'security', label: 'Security' },
+  { key: 'safety', label: 'Safety' },
+  { key: 'agent-behavior', label: 'Agent behavior' },
+  { key: 'knowledge', label: 'Knowledge' },
   { key: 'advanced', label: 'Advanced' },
 ]
 
+const groups = [
+	{ key: 'connection', label: 'Connection', description: 'Pair devices, review the current computer, and jump back into device trust.', icon: 'i-lucide-link' },
+	{ key: 'security', label: 'Security', description: 'Manage passkeys, signed-in sessions, and owner verification state.', icon: 'i-lucide-shield-check' },
+	{ key: 'safety', label: 'Safety', description: 'Control hardening, session posture, and host protection behavior.', icon: 'i-lucide-shield' },
+	{ key: 'agent-behavior', label: 'Agent Behavior', description: 'Tune providers, runtime behavior, tools, skills, and automation.', icon: 'i-lucide-bot' },
+	{ key: 'knowledge', label: 'Knowledge', description: 'Adjust workspace, storage, indexing, and context-related settings.', icon: 'i-lucide-book-open' },
+	{ key: 'advanced', label: 'Advanced', description: 'Open the low-level section editor when you need direct host controls.', icon: 'i-lucide-settings-2' },
+] satisfies Array<{ key: FilterKey; label: string; description: string; icon: string }>
+
+const destinationLinks = [
+	{ to: '/settings/pair', label: 'Connection & pairing', description: 'Enroll this device and review trusted phones or tablets.', icon: 'i-lucide-smartphone' },
+	{ to: '/settings/security', label: 'Security dashboard', description: 'See passkey status, session policy, and recovery readiness at a glance.', icon: 'i-lucide-shield-check' },
+	{ to: '/settings/passkeys', label: 'Passkeys', description: 'Register, rename, and remove passkeys from one dedicated screen.', icon: 'i-lucide-key-round' },
+	{ to: '/settings/service', label: 'Advanced editor', description: 'Keep the current section-based editor available for detailed service tuning.', icon: 'i-lucide-sliders-horizontal' },
+]
+
 // Sections promoted to the "Quick settings" grid (shown only on Essentials).
-const QUICK_KEYS = ['provider', 'workspace', 'storage', 'security', 'channels', 'automation']
+const QUICK_KEYS: Record<FilterKey, string[]> = {
+  connection: ['workspace', 'storage', 'service'],
+  security: ['security', 'session', 'service'],
+  safety: ['security', 'hardening', 'session'],
+  'agent-behavior': ['provider', 'runtime', 'skills', 'automation'],
+  knowledge: ['workspace', 'storage', 'docindex', 'context'],
+  advanced: ['service', 'hardening', 'tools'],
+}
 
 // Filter membership for chips. `null` means all sections.
 const FILTER_MAP: Record<FilterKey, string[] | null> = {
-  essentials: null,
-  devices: ['workspace', 'storage', 'service', 'session'],
-  ai: ['provider', 'runtime', 'context', 'skills', 'docindex'],
-  security: ['security', 'hardening', 'session', 'service'],
+  connection: ['workspace', 'storage', 'service', 'session'],
+  security: ['security', 'session', 'service'],
+  safety: ['security', 'hardening', 'session', 'service'],
+  'agent-behavior': ['provider', 'runtime', 'context', 'skills', 'docindex', 'tools', 'automation', 'channels'],
+  knowledge: ['workspace', 'storage', 'docindex', 'context'],
   advanced: ['hardening', 'context', 'docindex', 'tools', 'service'],
 }
 
@@ -223,9 +288,11 @@ const filteredSections = computed(() => {
 })
 
 const quickSections = computed(() => {
-  if (activeFilter.value !== 'essentials' || searchTerm.value.trim()) return []
-  return filteredSections.value.filter((section) => QUICK_KEYS.includes(section.key))
+  if (searchTerm.value.trim()) return []
+  return filteredSections.value.filter((section) => QUICK_KEYS[activeFilter.value]?.includes(section.key))
 })
+
+const activeFilterLabel = computed(() => filters.find((filter) => filter.key === activeFilter.value)?.label ?? 'Selected')
 
 const listSections = computed(() => {
   const quickKeys = new Set(quickSections.value.map((section) => section.key))

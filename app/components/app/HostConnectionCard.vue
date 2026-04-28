@@ -5,13 +5,13 @@
       <div class="min-w-0 flex-1">
         <p class="font-mono text-base font-semibold text-(--or3-text)">Connect to your computer</p>
         <p class="mt-1 text-sm leading-6 text-(--or3-text-muted)">
-          Pair this app with the or3-intern app running on your computer at home or at work, so you can chat and run tasks remotely.
+          Pairing enrolls this phone or tablet as a trusted device. Passkeys are a separate owner check that you can add later for sensitive changes.
         </p>
       </div>
     </div>
 
     <DangerCallout tone="info" title="One-time setup">
-      You'll get a short code below. On your computer, approve that code once. This app will finish connecting by itself.
+      You'll get a short code below. On your computer, approve that code once to trust this device. After pairing, you can add passkeys to confirm the owner during sensitive actions.
     </DangerCallout>
 
     <DangerCallout v-if="activeHost?.token" tone="tip" title="Connected">

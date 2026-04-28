@@ -4,6 +4,65 @@
 
 OR3 should keep pairing as the device enrollment layer and add passkeys as the owner-presence layer. The current paired-device bearer token proves that a device was once approved; it does not prove that the owner is present now. The new model adds server-verified WebAuthn ceremonies, opaque short-lived sessions, and recent step-up checks for sensitive operations.
 
+## Phase 1 Decisions
+
+### Production RP ID and domain strategy
+
+- Canonical production RP ID: `or3.chat`.
+- Primary production web origins: `https://or3.chat` and `https://app.or3.chat`.
+- Optional dedicated auth UI origin: `https://auth.or3.chat`, still using RP ID `or3.chat`.
+- Native mobile association assets are hosted under `https://or3.chat/.well-known/` so iOS and Android can share one authoritative relying-party domain.
+
+Deployment behavior:
+
+| Mode | RP ID | Allowed origins | Notes |
+| --- | --- | --- | --- |
+| Production cloud | `or3.chat` | `https://or3.chat`, `https://app.or3.chat`, `https://auth.or3.chat` | HTTPS only, no wildcard origins |
+| Local development | `localhost` | `http://localhost:*`, `https://localhost:*` | Separate credentials from production |
+| HTTPS tunnel | explicit configured domain | exact configured HTTPS tunnel origin | Used for real-device testing |
+| LAN / raw IP | unsupported for passkeys | none | Pairing-only unless operator provides a real HTTPS domain |
+| Self-hosted | explicit operator-controlled registrable domain | exact configured HTTPS origins on that domain | Mobile passkeys require association assets on the chosen domain |
+
+Related origins are only used when a controlled domain truly needs multiple narrow web origins. The allowlist stays explicit and small; no wildcard origin support is allowed.
+
+### Recovery model
+
+- Primary recovery path: local admin bootstrap via OR3 Intern CLI or local admin console access.
+- Secondary recovery path: an already-paired admin device may approve recovery and re-enrollment when the instance policy allows it.
+- Recovery codes are optional future support, but not the mandatory first rollout mechanism.
+- The last passkey cannot be removed unless one of these recovery conditions is present:
+  - local bootstrap is available, or
+  - another active passkey exists, or
+  - an active paired admin device is available for recovery.
+
+If none of those conditions are true, the backend blocks removal of the final passkey.
+
+### Native mobile passkey implementation path
+
+- Phase 1 implementation path: standards-based WebAuthn in the secure web layer first.
+- Native bridge shape is added behind a small app abstraction so iOS/Android can later swap to a first-party Capacitor plugin if WebView support proves insufficient on specific OS versions.
+- Current assumption: no maintained Capacitor passkey plugin is relied on for core security.
+- Secure token storage is abstracted now so native secure storage can be integrated without changing calling code.
+
+### Route sensitivity matrix
+
+The initial sensitivity policy is enforced by route family, with method-specific upgrades where needed.
+
+| Route family | Classification | Notes |
+| --- | --- | --- |
+| `/internal/v1/health`, `/readiness`, `/capabilities`, `/auth/capabilities` | low-risk session | allowed with paired token in compatibility modes |
+| `/internal/v1/pairing/requests`, `/pairing/exchange` | public pairing | pairing bootstrap path remains additive |
+| `/internal/v1/auth/passkeys/login/*`, `/auth/session`, `/auth/session/revoke` | low-risk session | session establishment/refresh/logout |
+| `/internal/v1/auth/passkeys/registration/*`, `/auth/passkeys*`, `/auth/step-up/*` | sensitive step-up | registration and passkey management require an authenticated owner path |
+| `/internal/v1/devices`, `/devices/:id/rotate`, `/devices/:id/revoke` | sensitive step-up | listing is session-level; rotate/revoke require step-up |
+| `/internal/v1/configure/*` | sensitive step-up | especially `security`, `service`, `workspace`, `tools`, `hardening`, and new `auth` settings |
+| `/internal/v1/files` GET/search | low-risk session | read-only file browsing |
+| `/internal/v1/files` write/upload/delete/move | sensitive step-up | file mutation requires recent verification |
+| `/internal/v1/terminal/sessions*` | sensitive step-up | create/input/resize/close all require recent verification |
+| `/internal/v1/approvals*` | sensitive step-up | existing broker still runs after auth succeeds |
+| `/internal/v1/turns`, `/subagents`, `/jobs/*` | low-risk session | step-up only when payload requests sensitive capabilities later |
+| future secret or capability-escalation routes | admin/recovery | always require session plus step-up, and may require admin role |
+
 This design is intentionally additive:
 
 - Existing pairing and device APIs remain the bootstrap path.
@@ -614,9 +673,4 @@ Start with `off` default and expose guided setup.
 
 ## Open Questions
 
-1. What final RP ID should OR3 use: `or3.chat`, `auth.or3.chat`, or another controlled domain?
-2. Should self-hosted users be required to bring an HTTPS domain for passkeys, or should passkeys remain production-cloud/mobile-only initially?
-3. Should recovery be local CLI/admin bootstrap, one-time recovery codes, or paired-admin-device approval?
-4. Which native Capacitor passkey bridge should be selected, given current checked Capawesome passkey URLs returned 404?
-5. Should OR3 App use WebView WebAuthn first, native passkey bridge first, or a phased browser-first approach?
-6. How should multi-user OR3 Intern instances map owners/users/roles in the first implementation?
+1. Multi-user OR3 Intern ownership is still a follow-up design question; the first implementation assumes a single local owner record with role-scoped sessions.

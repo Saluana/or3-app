@@ -5,7 +5,7 @@
         <RetroIcon name="i-lucide-smartphone" />
         <div>
           <p class="font-mono text-base font-semibold text-(--or3-text)">Phones &amp; tablets</p>
-          <p class="mt-1 text-sm text-(--or3-text-muted)">Devices that are allowed to control this computer.</p>
+          <p class="mt-1 text-sm text-(--or3-text-muted)">Devices that are allowed to control this computer. Passkeys are managed separately and verify the owner, not the device.</p>
         </div>
       </div>
       <UButton icon="i-lucide-refresh-cw" color="neutral" variant="ghost" aria-label="Refresh devices" @click="refresh" />

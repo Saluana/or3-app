@@ -1,15 +1,18 @@
 import type { Or3AppError } from '~/types/app-state'
+import type { AuthChallengeCode, AuthChallengeError } from '~/types/auth'
 import type { Or3SseEvent } from '~/types/or3-api'
 import { readSseStream } from '~/utils/or3/sse'
 import { useActiveHost } from './useActiveHost'
+import { resolvePreferredHostToken } from './useSecureHostTokens'
 
 export interface Or3ApiRequestOptions {
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   body?: unknown
   headers?: Record<string, string>
   signal?: AbortSignal
   acceptSse?: boolean
   requireAuth?: boolean
+  onAuthChallenge?: (challenge: AuthChallengeError) => Promise<boolean | void> | boolean | void
 }
 
 interface Or3ApiErrorPayload {
@@ -25,13 +28,54 @@ function normalizeBaseUrl(baseUrl: string) {
   return baseUrl.trim().replace(/\/+$/, '')
 }
 
+function normalizeChallengeCode(code?: string): Or3AppError['code'] | undefined {
+  const normalized = code?.trim().toUpperCase() as AuthChallengeCode | undefined
+  switch (normalized) {
+    case 'SESSION_REQUIRED':
+      return 'session_required'
+    case 'SESSION_EXPIRED':
+      return 'session_expired'
+    case 'PASSKEY_REQUIRED':
+      return 'passkey_required'
+    case 'STEP_UP_REQUIRED':
+      return 'step_up_required'
+    case 'AUTH_UNSUPPORTED':
+      return 'auth_unsupported'
+    default:
+      return undefined
+  }
+}
+
+function toAuthChallenge(payload?: string | Or3ApiErrorPayload, status?: number): AuthChallengeError | null {
+  if (!payload || typeof payload === 'string') return null
+  const code = payload.code?.toString().trim().toUpperCase() as AuthChallengeCode | undefined
+  if (!code || !['SESSION_REQUIRED', 'SESSION_EXPIRED', 'PASSKEY_REQUIRED', 'STEP_UP_REQUIRED', 'AUTH_UNSUPPORTED'].includes(code)) {
+    return null
+  }
+  const retryAfterSeconds = typeof payload.retry_after_seconds === 'number'
+    ? payload.retry_after_seconds
+    : typeof payload.retryAfterSeconds === 'number'
+      ? payload.retryAfterSeconds
+      : undefined
+  return {
+    code,
+    message: payload.message?.toString() || payload.error?.toString() || 'Authentication is required.',
+    status,
+    retryAfterSeconds,
+    retryAfterMs: retryAfterSeconds ? retryAfterSeconds * 1000 : undefined,
+  }
+}
+
 function mapError(status: number, payload?: string | Or3ApiErrorPayload, cause?: unknown): Or3AppError {
   const message = typeof payload === 'string' ? payload : payload?.message || payload?.error
   const payloadCode = typeof payload === 'object' ? payload.code || payload.error : undefined
+  const challengeCode = normalizeChallengeCode(typeof payloadCode === 'string' ? payloadCode : undefined)
   const code = payloadCode === 'approval_required'
     ? 'approval_required'
     : payloadCode === 'terminal_unavailable'
       ? 'terminal_unavailable'
+      : challengeCode
+        ? challengeCode
       : status === 401
     ? 'auth_required'
     : status === 403
@@ -51,6 +95,9 @@ function mapError(status: number, payload?: string | Or3ApiErrorPayload, cause?:
     code,
     status,
     message: message || `Request failed with status ${status}`,
+    retryAfterSeconds: typeof payload === 'object' && typeof payload.retry_after_seconds === 'number' ? payload.retry_after_seconds : undefined,
+    retryAfterMs: typeof payload === 'object' && typeof payload.retry_after_seconds === 'number' ? payload.retry_after_seconds * 1000 : undefined,
+    authChallengeCode: typeof payloadCode === 'string' ? payloadCode : undefined,
     cause,
   }
 }
@@ -77,7 +124,9 @@ export function useOr3Api() {
 
   async function request<T>(path: string, options: Or3ApiRequestOptions = {}): Promise<T> {
     const requiresAuth = options.requireAuth !== false
-    if (requiresAuth && !activeHost.value?.token) {
+    const authToken = resolvePreferredHostToken(activeHost.value)
+    const sessionToken = activeHost.value?.sessionToken?.trim() || undefined
+    if (requiresAuth && !authToken) {
       throw {
         code: 'auth_required',
         status: 401,
@@ -91,7 +140,8 @@ export function useOr3Api() {
     }
 
     if (options.body !== undefined) headers['Content-Type'] = 'application/json'
-    if (activeHost.value?.token && requiresAuth) headers.Authorization = `Bearer ${activeHost.value.token}`
+    if (authToken && requiresAuth) headers.Authorization = `Bearer ${authToken}`
+    if (sessionToken) headers['X-Or3-Session'] = sessionToken
 
     let response: Response
     try {
@@ -105,14 +155,26 @@ export function useOr3Api() {
       throw { code: 'host_unreachable', message: 'Could not reach the selected computer.', cause: error } satisfies Or3AppError
     }
 
-    if (!response.ok) throw mapError(response.status, await readError(response))
+    if (!response.ok) {
+		const payload = await readError(response)
+		const challenge = toAuthChallenge(payload, response.status)
+		if (challenge && options.onAuthChallenge) {
+			const shouldRetry = await options.onAuthChallenge(challenge)
+			if (shouldRetry !== false) {
+				return await request<T>(path, { ...options, onAuthChallenge: undefined })
+			}
+		}
+		throw mapError(response.status, payload)
+	}
     if (response.status === 204) return undefined as T
     return await response.json() as T
   }
 
   async function* stream(path: string, options: Or3ApiRequestOptions = {}): AsyncIterable<Or3SseEvent> {
     const requiresAuth = options.requireAuth !== false
-    if (requiresAuth && !activeHost.value?.token) {
+    const authToken = resolvePreferredHostToken(activeHost.value)
+    const sessionToken = activeHost.value?.sessionToken?.trim() || undefined
+    if (requiresAuth && !authToken) {
       throw {
         code: 'auth_required',
         status: 401,
@@ -126,7 +188,8 @@ export function useOr3Api() {
     }
 
     if (options.body !== undefined) headers['Content-Type'] = 'application/json'
-    if (activeHost.value?.token && requiresAuth) headers.Authorization = `Bearer ${activeHost.value.token}`
+    if (authToken && requiresAuth) headers.Authorization = `Bearer ${authToken}`
+    if (sessionToken) headers['X-Or3-Session'] = sessionToken
 
     let response: Response
     try {
@@ -140,7 +203,18 @@ export function useOr3Api() {
       throw { code: 'host_unreachable', message: 'Could not reach the selected computer.', cause: error } satisfies Or3AppError
     }
 
-    if (!response.ok) throw mapError(response.status, await readError(response))
+    if (!response.ok) {
+    const payload = await readError(response)
+    const challenge = toAuthChallenge(payload, response.status)
+    if (challenge && options.onAuthChallenge) {
+      const shouldRetry = await options.onAuthChallenge(challenge)
+      if (shouldRetry !== false) {
+        yield* stream(path, { ...options, onAuthChallenge: undefined })
+        return
+      }
+    }
+    throw mapError(response.status, payload)
+  }
     if (!response.body) throw { code: 'stream_failed', message: 'The service did not return a stream.' } satisfies Or3AppError
 
     yield* readSseStream(response.body)
