@@ -12,6 +12,7 @@ export interface Or3ApiRequestOptions {
   signal?: AbortSignal
   acceptSse?: boolean
   requireAuth?: boolean
+  preferPairedToken?: boolean
   onAuthChallenge?: (challenge: AuthChallengeError) => Promise<boolean | void> | boolean | void
 }
 
@@ -122,9 +123,14 @@ export function useOr3Api() {
     return `${normalizeBaseUrl(baseUrl)}${normalizedPath}`
   }
 
+  function resolveRequestAuthToken(preferPairedToken?: boolean) {
+    if (!preferPairedToken) return resolvePreferredHostToken(activeHost.value)
+    return activeHost.value?.pairedToken?.trim() || undefined
+  }
+
   async function request<T>(path: string, options: Or3ApiRequestOptions = {}): Promise<T> {
     const requiresAuth = options.requireAuth !== false
-    const authToken = resolvePreferredHostToken(activeHost.value)
+    const authToken = resolveRequestAuthToken(options.preferPairedToken)
     const sessionToken = activeHost.value?.sessionToken?.trim() || undefined
     if (requiresAuth && !authToken) {
       throw {
@@ -172,7 +178,7 @@ export function useOr3Api() {
 
   async function* stream(path: string, options: Or3ApiRequestOptions = {}): AsyncIterable<Or3SseEvent> {
     const requiresAuth = options.requireAuth !== false
-    const authToken = resolvePreferredHostToken(activeHost.value)
+    const authToken = resolveRequestAuthToken(options.preferPairedToken)
     const sessionToken = activeHost.value?.sessionToken?.trim() || undefined
     if (requiresAuth && !authToken) {
       throw {

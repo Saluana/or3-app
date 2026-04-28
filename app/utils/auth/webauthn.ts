@@ -28,31 +28,43 @@ function normalizeDescriptor(descriptor: Record<string, unknown>) {
   }
 }
 
+function unwrapPublicKeyOptions(input: Record<string, unknown>) {
+  const publicKey = input.publicKey
+  if (publicKey && typeof publicKey === 'object') return publicKey as Record<string, unknown>
+  return input
+}
+
+function credentialMediation(input: Record<string, unknown>) {
+  return typeof input.mediation === 'string' ? input.mediation as CredentialMediationRequirement : undefined
+}
+
 export function parseCreationOptions(input: Record<string, unknown>) {
+  const options = unwrapPublicKeyOptions(input)
   return {
-    ...input,
-    challenge: typeof input.challenge === 'string' ? base64UrlToBuffer(input.challenge) : input.challenge,
-    user: input.user && typeof input.user === 'object'
+    ...options,
+    challenge: typeof options.challenge === 'string' ? base64UrlToBuffer(options.challenge) : options.challenge,
+    user: options.user && typeof options.user === 'object'
       ? {
-          ...(input.user as Record<string, unknown>),
-          id: typeof (input.user as Record<string, unknown>).id === 'string'
-            ? base64UrlToBuffer((input.user as Record<string, unknown>).id as string)
-            : (input.user as Record<string, unknown>).id,
+          ...(options.user as Record<string, unknown>),
+          id: typeof (options.user as Record<string, unknown>).id === 'string'
+            ? base64UrlToBuffer((options.user as Record<string, unknown>).id as string)
+            : (options.user as Record<string, unknown>).id,
         }
-      : input.user,
-    excludeCredentials: Array.isArray(input.excludeCredentials)
-      ? input.excludeCredentials.map((descriptor) => normalizeDescriptor(descriptor as Record<string, unknown>))
-      : input.excludeCredentials,
+      : options.user,
+    excludeCredentials: Array.isArray(options.excludeCredentials)
+      ? options.excludeCredentials.map((descriptor) => normalizeDescriptor(descriptor as Record<string, unknown>))
+      : options.excludeCredentials,
   } as PublicKeyCredentialCreationOptions
 }
 
 export function parseRequestOptions(input: Record<string, unknown>) {
+  const options = unwrapPublicKeyOptions(input)
   return {
-    ...input,
-    challenge: typeof input.challenge === 'string' ? base64UrlToBuffer(input.challenge) : input.challenge,
-    allowCredentials: Array.isArray(input.allowCredentials)
-      ? input.allowCredentials.map((descriptor) => normalizeDescriptor(descriptor as Record<string, unknown>))
-      : input.allowCredentials,
+    ...options,
+    challenge: typeof options.challenge === 'string' ? base64UrlToBuffer(options.challenge) : options.challenge,
+    allowCredentials: Array.isArray(options.allowCredentials)
+      ? options.allowCredentials.map((descriptor) => normalizeDescriptor(descriptor as Record<string, unknown>))
+      : options.allowCredentials,
   } as PublicKeyCredentialRequestOptions
 }
 
@@ -82,7 +94,7 @@ export function serializeCredential(credential: PublicKeyCredential) {
 }
 
 export async function isWebAuthnSupported() {
-  return import.meta.client && typeof window !== 'undefined' && typeof window.PublicKeyCredential !== 'undefined'
+  return typeof window !== 'undefined' && typeof window.PublicKeyCredential !== 'undefined'
 }
 
 export async function getWebAuthnCapabilities() {
@@ -112,7 +124,8 @@ export async function createWebAuthnCredential(options: Record<string, unknown>,
 
 export async function getWebAuthnAssertion(options: Record<string, unknown>, signal?: AbortSignal) {
   if (!await isWebAuthnSupported()) throw new Error('WebAuthn is not available on this device.')
-  const credential = await navigator.credentials.get({ publicKey: parseRequestOptions(options), signal })
+  const mediation = credentialMediation(options)
+  const credential = await navigator.credentials.get({ publicKey: parseRequestOptions(options), signal, ...(mediation ? { mediation } : {}) })
   if (!(credential instanceof PublicKeyCredential)) throw new Error('Passkey verification was cancelled.')
   return serializeCredential(credential)
 }

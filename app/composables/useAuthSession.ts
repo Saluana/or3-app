@@ -10,6 +10,7 @@ const capabilities = ref<AuthCapabilities | null>(null)
 const sessionState = ref<AuthSessionState | null>(null)
 const pending = ref(false)
 const lastChallenge = ref<AuthChallengeError | null>(null)
+let capabilitiesHostKey = ''
 let initialized = false
 
 function asAuthChallenge(error: unknown): AuthChallengeError | null {
@@ -48,7 +49,9 @@ export function useAuthSession() {
   }
 
   async function loadCapabilities(force = false) {
-    if (capabilities.value && !force) return capabilities.value
+    const hostKey = `${activeHost.value?.id || ''}:${activeHost.value?.baseUrl || ''}`
+    if (capabilities.value && capabilitiesHostKey === hostKey && !force) return capabilities.value
+    capabilitiesHostKey = hostKey
     capabilities.value = await api.request<AuthCapabilities>('/internal/v1/auth/capabilities', { requireAuth: false })
     return capabilities.value
   }
@@ -78,13 +81,13 @@ export function useAuthSession() {
       const begin = await api.request<WebAuthnCeremonyResponse>('/internal/v1/auth/passkeys/login/begin', {
         method: 'POST',
         body: { reason },
-        requireAuth: false,
+        preferPairedToken: true,
       })
       const credential = await getWebAuthnAssertion(begin.options as Record<string, unknown>)
       const result = await api.request<PasskeyLoginResult>('/internal/v1/auth/passkeys/login/finish', {
         method: 'POST',
         body: { ceremonyId: begin.ceremonyId, credential },
-        requireAuth: false,
+        preferPairedToken: true,
       })
       if (activeHost.value) {
         syncActiveHost({ pairedToken: activeHost.value.pairedToken ?? activeHost.value.token, sessionToken: result.sessionToken }, { role: result.role || result.session.role || activeHost.value.role })
@@ -170,8 +173,13 @@ export function useAuthSession() {
   if (!initialized) {
     initialized = true
     watch(
-      () => `${activeHost.value?.id || ''}:${activeHost.value?.sessionToken || ''}`,
+      () => `${activeHost.value?.id || ''}:${activeHost.value?.baseUrl || ''}:${activeHost.value?.sessionToken || ''}`,
       async () => {
+        const hostKey = `${activeHost.value?.id || ''}:${activeHost.value?.baseUrl || ''}`
+        if (capabilitiesHostKey && capabilitiesHostKey !== hostKey) {
+          capabilities.value = null
+          capabilitiesHostKey = ''
+        }
         if (activeHost.value?.sessionToken) {
           await refreshSession().catch(() => undefined)
         } else {

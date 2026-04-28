@@ -1,4 +1,5 @@
 import { Capacitor } from '@capacitor/core'
+import { NativeBiometric } from '@capgo/capacitor-native-biometric'
 import type { HostTokenRecord } from '~/composables/useSecureHostTokens'
 
 const NATIVE_TOKEN_SERVER = 'or3.app.host-tokens'
@@ -11,13 +12,12 @@ type NativeBiometricPlugin = {
 }
 
 function getNativeBiometricPlugin(): NativeBiometricPlugin | null {
-  if (!import.meta.client || !Capacitor.isNativePlatform()) return null
-  const plugin = ((globalThis as Record<string, unknown>).Capacitor as { Plugins?: Record<string, unknown> } | undefined)?.Plugins?.NativeBiometric as NativeBiometricPlugin | undefined
-  return plugin || ((globalThis as Record<string, unknown>).NativeBiometric as NativeBiometricPlugin | undefined) || null
+  if (typeof window === 'undefined' || !Capacitor.isNativePlatform()) return null
+  return NativeBiometric as NativeBiometricPlugin
 }
 
 export function getNativeSecureStorageMode() {
-  if (!import.meta.client) return 'browser-fallback' as const
+  if (typeof window === 'undefined') return 'browser-fallback' as const
   if (!Capacitor.isNativePlatform()) return 'browser-fallback' as const
   return getNativeBiometricPlugin() ? 'native-secure' as const : 'native-plugin-missing' as const
 }

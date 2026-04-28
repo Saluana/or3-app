@@ -191,88 +191,88 @@
 
 ## 9. Add Backward Compatibility and Rollout Controls
 
-- [ ] 9.1 Add backend capability discovery
+- [x] 9.1 Add backend capability discovery
   - Implement `GET /internal/v1/auth/capabilities` and use it during app startup.
   - Requirements: 1.5, 9.5
 
-- [ ] 9.2 Add enforcement modes
+- [x] 9.2 Add enforcement modes
   - Implement `off`, `warn`, `enforce-sensitive`, and `enforce-session` modes.
   - Requirements: 9.2, 9.3, 9.4
 
-- [ ] 9.3 Keep legacy app behavior working
+- [x] 9.3 Keep legacy app behavior working
   - Confirm older app clients can use paired-device tokens in `off` and `warn` modes.
   - Requirements: 2.4, 9.1, 9.2
 
-- [ ] 9.4 Add upgrade guidance errors
+- [x] 9.4 Add upgrade guidance errors
   - Ensure old clients receive actionable structured errors when enforcement is enabled.
   - Requirements: 9.5
 
-- [ ] 9.5 Add migration safety checks
+- [x] 9.5 Add migration safety checks
   - Ensure auth migrations are additive and do not mutate existing paired devices destructively.
   - Requirements: 9.1
 
 ## 10. Test Backend Security Behavior
 
-- [ ] 10.1 Add WebAuthn unit tests
+- [x] 10.1 Add WebAuthn unit tests
   - Test ceremony expiry, replay prevention, origin/RP mismatch, UV required, unknown credential, and counter updates.
   - Requirements: 3.1, 3.2, 3.3, 10.3
 
-- [ ] 10.2 Add session tests
+- [x] 10.2 Add session tests
   - Test token hashing, idle expiry, absolute expiry, revocation, logout, and device revocation cascades.
   - Requirements: 4.1, 4.3, 4.4, 4.5
 
-- [ ] 10.3 Add step-up policy tests
+- [x] 10.3 Add step-up policy tests
   - Test route sensitivity matrix and warn/enforce behavior.
   - Requirements: 5.1, 5.3, 9.3, 9.4
 
-- [ ] 10.4 Add compatibility tests
+- [x] 10.4 Add compatibility tests
   - Test existing paired-token workflows in disabled/warn modes and structured failures in enforcement mode.
   - Requirements: 2.4, 9.1, 9.5
 
-- [ ] 10.5 Add audit tests
+- [x] 10.5 Add audit tests
   - Confirm sensitive auth events are logged and raw token/credential payloads are not logged.
   - Requirements: 10.1, 10.2
 
 ## 11. Test OR3 App UX and Mobile Behavior
 
-- [ ] 11.1 Add composable unit tests
+- [x] 11.1 Add composable unit tests
   - Test `useAuthSession`, `usePasskeys`, WebAuthn utility error mapping, storage fallback, and API retry-on-step-up.
   - Requirements: 4.2, 5.4, 6.4
 
-- [ ] 11.2 Add settings mapping tests
+- [x] 11.2 Add settings mapping tests
   - Verify simple settings apply expected configure fields and preserve advanced editor behavior.
   - Requirements: 1.2, 1.4, 10.5
 
-- [ ] 11.3 Add browser WebAuthn tests
+- [x] 11.3 Add browser WebAuthn tests
   - Use virtual authenticator support where available to test registration/login/step-up flows.
   - Requirements: 3.1, 3.2, 5.4
 
-- [ ] 11.4 Add iOS validation checklist
+- [x] 11.4 Add iOS validation checklist
   - Validate Associated Domains, `apple-app-site-association`, passkey create/get, secure storage, logout, and revoke cleanup.
   - Requirements: 6.1, 6.3, 10.4
 
-- [ ] 11.5 Add Android validation checklist
+- [x] 11.5 Add Android validation checklist
   - Validate Digital Asset Links, debug/release fingerprints, Credential Manager/WebView behavior, secure storage, logout, and revoke cleanup.
   - Requirements: 6.2, 6.3, 10.4
 
 ## 12. Documentation and Release Preparation
 
-- [ ] 12.1 Document setup for production domains
+- [x] 12.1 Document setup for production domains
   - Include RP ID, associated domains, asset links, HTTPS requirements, and related-origin guidance.
   - Requirements: 7.1, 7.2, 7.5
 
-- [ ] 12.2 Document local development limitations
+- [x] 12.2 Document local development limitations
   - Explain `localhost` credentials, HTTPS tunnel requirements, LAN/IP limitations, and mobile association constraints.
   - Requirements: 7.3, 7.4
 
-- [ ] 12.3 Document recovery and revocation
+- [x] 12.3 Document recovery and revocation
   - Explain how to recover lost passkeys, revoke devices/passkeys, and rotate tokens.
   - Requirements: 8.1, 8.2, 8.3, 8.4
 
-- [ ] 12.4 Document compatibility modes
+- [x] 12.4 Document compatibility modes
   - Explain off/warn/enforce behavior and old-client outcomes.
   - Requirements: 9.1, 9.2, 9.3, 9.4, 9.5
 
-- [ ] 12.5 Prepare phased release notes
+- [x] 12.5 Prepare phased release notes
   - Ship disabled first, then warn mode, then sensitive enforcement, then broader session enforcement.
   - Requirements: 9.1, 9.3, 9.4
