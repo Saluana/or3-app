@@ -62,6 +62,9 @@ function sanitizeAssistantText(text: string) {
     .replace(/<parameter=[^>]*>/gi, '')
     .replace(/<function=[\s\S]*$/i, '')
     .replace(/<parameter=[\s\S]*$/i, '')
+    .replace(/<\s*[|｜]\s*DSML\s*[|｜]\s*tool_calls\s*>[\s\S]*?<\s*\/\s*[|｜]\s*DSML\s*[|｜]\s*tool_calls\s*>/gi, '')
+    .replace(/<\s*[|｜]\s*DSML\s*[|｜]\s*tool_calls[\s\S]*$/i, '')
+    .replace(/<\s*\/?\s*[|｜]\s*DSML\s*[|｜]\s*(?:invoke|parameter)[^>]*>/gi, '')
     .trim()
 }
 

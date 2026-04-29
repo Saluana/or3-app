@@ -15,40 +15,47 @@ function normalizeHostTokens(tokens?: HostTokenRecord | null) {
 }
 
 function readHostTokenMap() {
-  if (getNativeSecureStorageMode() !== 'browser-fallback') return {} as Record<string, HostTokenRecord>
-  if (typeof sessionStorage === 'undefined') return {} as Record<string, HostTokenRecord>
-  const raw = sessionStorage.getItem(HOST_TOKEN_STORAGE_KEY)
+  if (getNativeSecureStorageMode() === 'native-secure') return {} as Record<string, HostTokenRecord>
+  if (typeof localStorage === 'undefined') return {} as Record<string, HostTokenRecord>
+  let raw = localStorage.getItem(HOST_TOKEN_STORAGE_KEY)
+  if (!raw && typeof sessionStorage !== 'undefined') {
+    raw = sessionStorage.getItem(HOST_TOKEN_STORAGE_KEY)
+    if (raw) {
+      localStorage.setItem(HOST_TOKEN_STORAGE_KEY, raw)
+      sessionStorage.removeItem(HOST_TOKEN_STORAGE_KEY)
+    }
+  }
   if (!raw) return {} as Record<string, HostTokenRecord>
   try {
     const parsed = JSON.parse(raw) as Record<string, HostTokenRecord>
     return Object.fromEntries(Object.entries(parsed).map(([hostId, value]) => [hostId, normalizeHostTokens(value)]))
   } catch {
-    sessionStorage.removeItem(HOST_TOKEN_STORAGE_KEY)
+    localStorage.removeItem(HOST_TOKEN_STORAGE_KEY)
     return {} as Record<string, HostTokenRecord>
   }
 }
 
 function writeHostTokenMap(tokens: Record<string, HostTokenRecord>) {
-  if (typeof sessionStorage === 'undefined') return
+  if (typeof localStorage === 'undefined') return
   const entries = Object.entries(tokens)
     .map(([hostId, value]) => [hostId, normalizeHostTokens(value)] as const)
     .filter(([, value]) => Boolean(value.pairedToken || value.sessionToken))
   const normalized = Object.fromEntries(entries) as Record<string, HostTokenRecord>
   const storageMode = getNativeSecureStorageMode()
-  if (storageMode !== 'browser-fallback') {
-    sessionStorage.removeItem(HOST_TOKEN_STORAGE_KEY)
+  if (storageMode === 'native-secure') {
+    localStorage.removeItem(HOST_TOKEN_STORAGE_KEY)
     if (!Object.keys(normalized).length) {
       void deleteHostTokensFromNativeStorage()
-    } else if (storageMode === 'native-secure') {
+    } else {
       void writeHostTokensToNativeStorage(normalized)
     }
     return
   }
   if (!Object.keys(normalized).length) {
-    sessionStorage.removeItem(HOST_TOKEN_STORAGE_KEY)
+    localStorage.removeItem(HOST_TOKEN_STORAGE_KEY)
     return
   }
-  sessionStorage.setItem(HOST_TOKEN_STORAGE_KEY, JSON.stringify(normalized))
+  localStorage.setItem(HOST_TOKEN_STORAGE_KEY, JSON.stringify(normalized))
 }
 
 export function resolvePreferredHostToken(host?: Partial<Or3HostProfile> | null) {
@@ -72,8 +79,8 @@ export function useSecureHostTokens() {
   }
 
   async function hydrateTokens() {
-    if (typeof sessionStorage === 'undefined') return {} as Record<string, HostTokenRecord>
-    if (getNativeSecureStorageMode() !== 'browser-fallback') return await readHostTokensFromNativeStorage()
+    if (typeof localStorage === 'undefined') return {} as Record<string, HostTokenRecord>
+    if (getNativeSecureStorageMode() === 'native-secure') return await readHostTokensFromNativeStorage()
     const current = readHostTokenMap()
     if (Object.keys(current).length) return current
     return current
