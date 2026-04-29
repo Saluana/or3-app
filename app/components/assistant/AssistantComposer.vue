@@ -1,14 +1,14 @@
 <template>
-  <UForm :state="formState" class="sticky bottom-22 z-20 mt-4 rounded-[26px] border border-(--or3-border) bg-(--or3-surface) p-3 shadow-(--or3-shadow)" @submit.prevent="submit">
+  <UForm :state="formState" class="or3-composer rounded-[26px] border border-(--or3-border) bg-(--or3-surface)/95 p-3 shadow-(--or3-shadow) backdrop-blur" @submit.prevent="submit">
     <div v-if="isDragging" class="mb-3 rounded-2xl border border-dashed border-(--or3-green) bg-(--or3-green-soft) p-3 text-center text-sm text-(--or3-green-dark)">
       Drop files to attach them
     </div>
 
-    <div class="rounded-[22px] border border-(--or3-border) bg-white/60 px-3 py-3 transition-colors" :class="isFocused ? 'border-(--or3-green)' : ''" @click="focusEditor">
+    <div class="rounded-[18px] border border-(--or3-border) bg-white/60 px-3 py-2 transition-colors" :class="isFocused ? 'border-(--or3-green)' : ''" @click="focusEditor">
       <EditorContent
         v-if="editor"
         :editor="editor"
-        class="assistant-composer-editor min-h-14 max-h-44 overflow-y-auto text-base leading-6 text-(--or3-text)"
+        class="assistant-composer-editor min-h-6 max-h-40 overflow-y-auto text-[0.9375rem] leading-6 text-(--or3-text)"
         aria-label="Message or3-intern"
       />
     </div>
@@ -415,7 +415,7 @@ onMounted(() => {
     autofocus: false,
     editorProps: {
       attributes: {
-        class: 'min-h-14 outline-none',
+        class: 'min-h-6 outline-none',
       },
       handleKeyDown(_view, event) {
         if (mentionState.open) {
@@ -497,7 +497,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 :deep(.assistant-composer-editor .ProseMirror) {
-  min-height: 3.5rem;
+  min-height: 1.5rem;
   outline: none;
   white-space: pre-wrap;
   word-break: break-word;

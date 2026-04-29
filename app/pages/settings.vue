@@ -5,6 +5,44 @@
     <AppHeader subtitle="SETTINGS" />
 
     <div class="space-y-4">
+      <!-- Connection summary card (moved to top so the most-used action is the most visible) -->
+      <SurfaceCard class-name="space-y-3">
+        <div class="flex items-start gap-3">
+          <BrandMark size="md" />
+          <div class="min-w-0 flex-1">
+            <div class="flex flex-wrap items-center gap-2">
+              <p class="font-mono text-base font-semibold text-(--or3-text)">
+                {{ activeHost?.token ? `Connected to ${activeHost.name || 'My Computer'}` : 'No computer paired' }}
+              </p>
+              <StatusPill
+                v-if="activeHost?.token"
+                label="Connected"
+                tone="green"
+                pulse
+              />
+            </div>
+            <p class="mt-1 text-sm leading-6 text-(--or3-text-muted)">
+              {{ activeHost?.token ? 'Your or3-intern app is connected and ready.' : 'Pair this app to your computer to get started.' }}
+            </p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <code
+            v-if="activeHost?.baseUrl"
+            class="min-w-0 flex-1 truncate rounded-xl border border-(--or3-border) bg-white/70 px-3 py-2 font-mono text-xs text-(--or3-text)"
+          >{{ activeHost.baseUrl }}</code>
+          <UButton
+            label="Pair new computer"
+            icon="i-pixelarticons-link"
+            color="primary"
+            variant="solid"
+            size="sm"
+            class="shrink-0 rounded-full"
+            to="/settings/pair"
+          />
+        </div>
+      </SurfaceCard>
+
       <!-- Search -->
       <div class="relative">
         <Icon name="i-pixelarticons-search" class="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-(--or3-text-muted)" />
@@ -29,13 +67,14 @@
             :class="activeFilter === group.key
               ? 'border-(--or3-green) bg-(--or3-green-soft)'
               : 'border-(--or3-border) bg-white/70 hover:bg-(--or3-green-soft)'"
-            @click="activeFilter = group.key"
+            @click="onGroupClick(group)"
           >
             <RetroIcon :name="group.icon" size="sm" />
             <div class="min-w-0 flex-1">
               <p class="font-mono text-sm font-semibold text-(--or3-text)">{{ group.label }}</p>
               <p class="mt-1 text-xs leading-5 text-(--or3-text-muted)">{{ group.description }}</p>
             </div>
+            <Icon name="i-pixelarticons-chevron-right" class="mt-0.5 size-4 shrink-0 text-(--or3-text-muted)" />
           </button>
         </div>
       </SurfaceCard>
@@ -78,46 +117,10 @@
         </div>
       </div>
 
-      <!-- Connection summary card -->
-      <SurfaceCard class-name="space-y-3">
-        <div class="flex items-start gap-3">
-          <BrandMark size="md" />
-          <div class="min-w-0 flex-1">
-            <div class="flex flex-wrap items-center gap-2">
-              <p class="font-mono text-base font-semibold text-(--or3-text)">
-                {{ activeHost?.token ? `Connected to ${activeHost.name || 'My Computer'}` : 'No computer paired' }}
-              </p>
-              <StatusPill
-                v-if="activeHost?.token"
-                label="Connected"
-                tone="green"
-                pulse
-              />
-            </div>
-            <p class="mt-1 text-sm leading-6 text-(--or3-text-muted)">
-              {{ activeHost?.token ? 'Your or3-intern app is connected and ready.' : 'Pair this app to your computer to get started.' }}
-            </p>
-          </div>
-        </div>
-        <div class="flex items-center gap-2">
-          <code
-            v-if="activeHost?.baseUrl"
-            class="min-w-0 flex-1 truncate rounded-xl border border-(--or3-border) bg-white/70 px-3 py-2 font-mono text-xs text-(--or3-text)"
-          >{{ activeHost.baseUrl }}</code>
-          <UButton
-            label="Pair new computer"
-            icon="i-pixelarticons-link"
-            color="primary"
-            variant="solid"
-            size="sm"
-            class="shrink-0 rounded-full"
-            to="/settings/pair"
-          />
-        </div>
-      </SurfaceCard>
+      <!-- Connection summary card moved to top of page -->
 
       <!-- Quick Settings grid -->
-      <SurfaceCard v-if="quickSections.length" class-name="space-y-3">
+      <SurfaceCard v-if="quickSections.length" id="settings-highlights" class-name="space-y-3">
         <p class="or3-command text-[11px] uppercase tracking-[0.2em] text-(--or3-green-dark)">{{ activeFilterLabel }} highlights</p>
         <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <button
@@ -192,7 +195,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { useConfigure } from '~/composables/useConfigure'
 import { useActiveHost } from '~/composables/useActiveHost'
 
@@ -216,13 +219,13 @@ const filters: Array<{ key: FilterKey; label: string }> = [
 ]
 
 const groups = [
-	{ key: 'connection', label: 'Connection', description: 'Pair devices, review the current computer, and jump back into device trust.', icon: 'i-pixelarticons-link' },
-	{ key: 'security', label: 'Security', description: 'Manage passkeys, signed-in sessions, and owner verification state.', icon: 'i-pixelarticons-shield' },
-	{ key: 'safety', label: 'Safety', description: 'Control hardening, session posture, and host protection behavior.', icon: 'i-pixelarticons-shield' },
-	{ key: 'agent-behavior', label: 'Agent Behavior', description: 'Tune providers, runtime behavior, tools, skills, and automation.', icon: 'i-pixelarticons-robot' },
-	{ key: 'knowledge', label: 'Knowledge', description: 'Adjust workspace, storage, indexing, and context-related settings.', icon: 'i-pixelarticons-book-open' },
-	{ key: 'advanced', label: 'Advanced', description: 'Open the low-level section editor when you need direct host controls.', icon: 'i-pixelarticons-settings-cog-2' },
-] satisfies Array<{ key: FilterKey; label: string; description: string; icon: string }>
+	{ key: 'connection', label: 'Connection', description: 'Pair devices, review the current computer, and jump back into device trust.', icon: 'i-pixelarticons-link', route: '/settings/pair' },
+	{ key: 'security', label: 'Security', description: 'Manage passkeys, signed-in sessions, and owner verification state.', icon: 'i-pixelarticons-shield', route: '/settings/security' },
+	{ key: 'safety', label: 'Safety', description: 'Control hardening, session posture, and host protection behavior.', icon: 'i-pixelarticons-shield', route: null },
+	{ key: 'agent-behavior', label: 'Agent Behavior', description: 'Tune providers, runtime behavior, tools, skills, and automation.', icon: 'i-pixelarticons-robot', route: null },
+	{ key: 'knowledge', label: 'Knowledge', description: 'Adjust workspace, storage, indexing, and context-related settings.', icon: 'i-pixelarticons-book-open', route: null },
+	{ key: 'advanced', label: 'Advanced', description: 'Open the low-level section editor when you need direct host controls.', icon: 'i-pixelarticons-settings-cog-2', route: '/settings/service' },
+] satisfies Array<{ key: FilterKey; label: string; description: string; icon: string; route: string | null }>
 
 const destinationLinks = [
 	{ to: '/settings/pair', label: 'Connection & pairing', description: 'Enroll this device and review trusted phones or tablets.', icon: 'i-pixelarticons-smartphone' },
@@ -303,6 +306,24 @@ const showChildRoute = computed(() => route.path !== '/settings')
 
 function openSection(sectionKey: string) {
   void router.push(`/settings/${encodeURIComponent(sectionKey)}`)
+}
+
+type SettingsGroup = (typeof groups)[number]
+
+function onGroupClick(group: SettingsGroup) {
+  // Always update the active filter so the chips, highlights, and "All settings"
+  // list reflect the user's intent.
+  activeFilter.value = group.key
+  // If this group has a dedicated landing page, navigate there.
+  if (group.route) {
+    void router.push(group.route)
+    return
+  }
+  // Otherwise, scroll the highlights/list into view so it's clear something happened.
+  nextTick(() => {
+    const el = document.getElementById('settings-highlights')
+    el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  })
 }
 
 onMounted(async () => {

@@ -205,3 +205,164 @@ body {
     padding-left: calc(var(--or3-safe-left) + 1.5rem);
   }
 }
+
+/* ===========================================================================
+   Chat shell — full-height, single-scroll layout for the assistant page.
+   =========================================================================== */
+
+.or3-chat-shell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+  height: 100dvh;
+  background: var(--or3-background);
+  color: var(--or3-text);
+  overflow: hidden; /* the inner __body is the only scroller */
+}
+
+.or3-chat-shell__header {
+  flex-shrink: 0;
+  position: relative;
+  z-index: 20;
+  padding:
+    calc(var(--or3-safe-top) + 0.85rem)
+    calc(var(--or3-safe-right) + 1rem)
+    0.75rem
+    calc(var(--or3-safe-left) + 1rem);
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--or3-background) 96%, white 4%) 70%,
+    color-mix(in srgb, var(--or3-background) 80%, transparent)
+  );
+  backdrop-filter: blur(8px);
+}
+
+.or3-chat-shell__header > :first-child {
+  padding-bottom: 0;
+}
+
+.or3-chat-shell__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 calc(var(--or3-safe-right) + 0.75rem) 0 calc(var(--or3-safe-left) + 0.75rem);
+}
+
+.or3-chat-shell__content {
+  width: 100%;
+  max-width: 46rem;
+  margin: 0 auto;
+  /* Reserve room so messages can scroll fully out from under the floating
+     composer + bottom nav (composer ~120px, nav ~88px, gap). */
+  padding: 0.5rem 0 calc(var(--or3-safe-bottom) + 16rem);
+}
+
+.or3-chat-shell__composer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--or3-safe-bottom) + 6rem); /* clearance above bottom nav */
+  z-index: 30;
+  pointer-events: none;
+  padding: 0 calc(var(--or3-safe-right) + 0.75rem) 0 calc(var(--or3-safe-left) + 0.75rem);
+}
+
+.or3-chat-shell__composer-inner {
+  pointer-events: auto;
+  width: 100%;
+  max-width: 46rem;
+  margin: 0 auto;
+}
+
+/* Soft fade above the floating composer so messages elegantly disappear
+   into the background instead of being abruptly clipped. */
+.or3-chat-shell__fade {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--or3-safe-bottom) + 6rem);
+  height: 6.5rem;
+  z-index: 25;
+  pointer-events: none;
+  background: linear-gradient(
+    to top,
+    var(--or3-background) 30%,
+    color-mix(in srgb, var(--or3-background) 70%, transparent) 75%,
+    transparent
+  );
+}
+
+/* Hero empty state ----------------------------------------------------- */
+
+.or3-chat-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 1rem;
+  padding: 4rem 1rem 1.5rem;
+}
+
+.or3-chat-empty__avatar {
+  width: 4rem;
+  height: 4rem;
+  display: grid;
+  place-items: center;
+  border-radius: 1.25rem;
+  background: var(--or3-green-soft);
+  color: var(--or3-green-dark);
+  border: 1px solid color-mix(in srgb, var(--or3-green) 25%, transparent);
+  box-shadow: var(--or3-shadow-soft);
+}
+
+.or3-chat-empty__title {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--or3-text);
+}
+
+.or3-chat-empty__subtitle {
+  max-width: 28rem;
+  font-size: 0.95rem;
+  line-height: 1.55;
+  color: var(--or3-text-muted);
+}
+
+.or3-chat-empty__chips {
+  margin-top: 1rem;
+  width: 100%;
+  max-width: 32rem;
+  justify-content: center !important;
+  flex-wrap: wrap !important;
+  overflow-x: visible !important;
+}
+
+/* Thread ---------------------------------------------------------------- */
+
+.or3-chat-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1rem 0 0;
+  list-style: none;
+  margin: 0;
+}
+
+.or3-chat-thread > li { display: contents; }
+
+@media (min-width: 768px) {
+  .or3-chat-shell__header,
+  .or3-chat-shell__body,
+  .or3-chat-shell__composer,
+  .or3-chat-shell__fade {
+    padding-left: calc(var(--or3-safe-left) + 1.5rem);
+    padding-right: calc(var(--or3-safe-right) + 1.5rem);
+  }
+}
