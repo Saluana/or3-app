@@ -32,7 +32,7 @@ const props = withDefaults(defineProps<{
 })
 
 const runningTools = computed(() => props.toolCalls.filter((tool) => tool.status === 'running'))
-const visible = computed(() => props.pending || !!props.content || props.toolCalls.length > 0)
+const visible = computed(() => props.pending || !!props.content || runningTools.value.length > 0)
 const heading = computed(() => {
   if (props.content) return 'THINKING'
   if (runningTools.value.length) return 'USING TOOLS'

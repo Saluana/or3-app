@@ -115,6 +115,17 @@ export function useAssistantStream() {
       const current = readAssistant()
       updateAssistant({ activityLog: [...(current?.activityLog ?? []), entry].slice(-30) })
     }
+    const updateActivity = (predicate: (entry: ChatActivityEntry) => boolean, patch: Partial<ChatActivityEntry>) => {
+      const current = readAssistant()
+      const activityLog = current?.activityLog
+      if (!activityLog?.length) return
+      updateAssistant({
+        activityLog: activityLog.map((entry) => predicate(entry) ? { ...entry, ...patch } : entry),
+      })
+    }
+    const completeRunningActivity = (types: string[]) => {
+      updateActivity((entry) => types.includes(entry.type) && entry.status === 'running', { status: 'complete' })
+    }
     const addToolCall = (name: string, args?: string) => {
       const current = readAssistant()
       const toolCalls = [...(current?.toolCalls ?? []), createToolCall(name, args)]
@@ -147,6 +158,10 @@ export function useAssistantStream() {
         }
       }
       setToolCalls(toolCalls)
+      updateActivity(
+        (entry) => entry.type === 'tool_call' && entry.status === 'running' && entry.label === `Tool call: ${name}`,
+        { status: error ? 'error' : 'complete' },
+      )
       addActivity(createActivity('tool_result', `Tool result: ${name}`, error || (result ? truncateLogDetail(result) : undefined), error ? 'error' : 'complete'))
     }
 
@@ -217,6 +232,7 @@ export function useAssistantStream() {
         }
 
         if (streamStatus === 'completed') {
+          completeRunningActivity(['queued', 'started', 'tool_call'])
           addActivity(createActivity('completion', 'Completed turn', typeof payload?.final_text === 'string' && payload.final_text.trim() ? undefined : 'No final text was included in the completion event.', 'complete'))
           updateAssistant({ status: 'complete' })
         }
@@ -258,6 +274,7 @@ export function useAssistantStream() {
       if (finalMessage?.status !== 'failed') updateAssistant({ status: 'complete' })
     } catch {
       if (activeController.signal.aborted) {
+        completeRunningActivity(['queued', 'started', 'tool_call'])
         updateAssistant({
           content: readAssistant()?.content || 'Stopped.',
           status: 'complete',
@@ -277,7 +294,9 @@ export function useAssistantStream() {
           error: response.error,
           jobId: response.job_id,
         })
+        completeRunningActivity(['queued', 'started', 'tool_call'])
       } catch (error) {
+        updateActivity((entry) => entry.status === 'running', { status: 'error' })
         updateAssistant({
           content: 'I could not reach or3-intern. Check the selected computer and try again.',
           status: 'failed',

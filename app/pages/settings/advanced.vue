@@ -1,11 +1,22 @@
 <template>
-  <NuxtPage v-if="showChildRoute" />
-
-  <AppShell v-else>
-    <AppHeader subtitle="SETTINGS" />
+  <AppShell>
+    <AppHeader subtitle="ADVANCED SETTINGS" />
 
     <div class="space-y-4">
-      <!-- Connection summary card (moved to top so the most-used action is the most visible) -->
+      <SurfaceCard tone="caution" class-name="space-y-2">
+        <div class="flex items-start gap-3">
+          <Icon name="i-pixelarticons-warning-box" class="mt-0.5 size-5 shrink-0 text-(--or3-amber)" />
+          <div class="min-w-0 flex-1">
+            <p class="font-mono text-sm font-semibold text-amber-900">Advanced Settings</p>
+            <p class="mt-1 text-xs leading-5 text-amber-800/85">
+              Advanced Settings are for debugging, hosting, and custom setups. Most people should use
+              <NuxtLink to="/settings" class="font-semibold underline">Simple Settings</NuxtLink>.
+            </p>
+          </div>
+        </div>
+      </SurfaceCard>
+
+      <!-- Connection summary card -->
       <SurfaceCard class-name="space-y-3">
         <div class="flex items-start gap-3">
           <BrandMark size="md" />
@@ -174,17 +185,17 @@
       </SurfaceCard>
 
       <NuxtLink
-        to="/settings/service"
-        class="or3-focus-ring flex w-full items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50/70 p-4 text-left transition hover:bg-amber-100/80"
+        to="/settings"
+        class="or3-focus-ring flex w-full items-start gap-3 rounded-2xl border border-(--or3-border) bg-white/70 p-4 text-left transition hover:bg-(--or3-green-soft)"
       >
-        <Icon name="i-pixelarticons-warning-box" class="mt-0.5 size-5 shrink-0 text-(--or3-amber)" />
+        <Icon name="i-pixelarticons-arrow-left" class="mt-0.5 size-5 shrink-0 text-(--or3-text-muted)" />
         <div class="min-w-0 flex-1">
-          <p class="font-mono text-sm font-semibold text-amber-900">Advanced editor</p>
-          <p class="mt-0.5 text-xs leading-5 text-amber-800/80">
-            The classic section editor is still here under Advanced when you need direct access to low-level host settings.
+          <p class="font-mono text-sm font-semibold text-(--or3-text)">Back to Simple Settings</p>
+          <p class="mt-0.5 text-xs leading-5 text-(--or3-text-muted)">
+            Friendly summaries, presets, and impact labels for everyday changes.
           </p>
         </div>
-        <Icon name="i-pixelarticons-chevron-right" class="mt-1 size-5 shrink-0 text-amber-700/70" />
+        <Icon name="i-pixelarticons-chevron-right" class="mt-1 size-5 shrink-0 text-(--or3-text-muted)" />
       </NuxtLink>
 
       <p v-if="configureError" class="text-sm text-(--or3-danger)">{{ configureError }}</p>
@@ -199,7 +210,6 @@ import { computed, nextTick, onMounted, ref } from 'vue'
 import { useConfigure } from '~/composables/useConfigure'
 import { useActiveHost } from '~/composables/useActiveHost'
 
-const route = useRoute()
 const router = useRouter()
 const searchTerm = ref('')
 
@@ -301,8 +311,6 @@ const listSections = computed(() => {
   const quickKeys = new Set(quickSections.value.map((section) => section.key))
   return filteredSections.value.filter((section) => !quickKeys.has(section.key))
 })
-
-const showChildRoute = computed(() => route.path !== '/settings')
 
 function openSection(sectionKey: string) {
   void router.push(`/settings/${encodeURIComponent(sectionKey)}`)
