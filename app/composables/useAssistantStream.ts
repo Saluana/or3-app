@@ -17,6 +17,34 @@ function describeRequestError(error: unknown) {
   return 'Request failed'
 }
 
+function describeRequestErrorDetails(error: unknown) {
+  if (!error || typeof error !== 'object') return ''
+  const record = error as Record<string, unknown>
+  const details = [
+    typeof record.code === 'string' ? `Code: ${record.code}` : '',
+    typeof record.status === 'number' ? `HTTP: ${record.status}` : '',
+    typeof record.request_id === 'string' || typeof record.request_id === 'number' ? `Request: ${record.request_id}` : '',
+  ].filter(Boolean)
+
+  if (record.cause instanceof Error && record.cause.message.trim()) {
+    details.push(`Cause: ${record.cause.message}`)
+  }
+
+  return details.join(' · ')
+}
+
+function showFailureToast(toast: ReturnType<typeof useToast>, title: string, error: unknown) {
+  const message = describeRequestError(error)
+  const details = describeRequestErrorDetails(error)
+
+  toast.add({
+    title,
+    description: details ? `${message}\n${details}` : message,
+    color: 'error',
+    icon: 'i-pixelarticons-warning-box',
+  })
+}
+
 function now() {
   return new Date().toISOString()
 }
@@ -75,6 +103,7 @@ function truncateLogDetail(value: string, limit = 500) {
 export function useAssistantStream() {
   const api = useOr3Api()
   const chat = useChatSessions()
+  const toast = useToast()
 
   async function send(message: string | AssistantSendPayload) {
     const payload = normalizePayload(message)
@@ -275,7 +304,7 @@ export function useAssistantStream() {
 
       const finalMessage = chat.messages.value.find((item) => item.id === assistant.id)
       if (finalMessage?.status !== 'failed') updateAssistant({ status: 'complete' })
-    } catch {
+    } catch (streamError) {
       if (activeController.signal.aborted) {
         completeRunningActivity(['queued', 'started', 'tool_call'])
         updateAssistant({
@@ -299,12 +328,16 @@ export function useAssistantStream() {
         })
         completeRunningActivity(['queued', 'started', 'tool_call'])
       } catch (error) {
+        const primaryError = error || streamError
+        const message = describeRequestError(primaryError)
+        const details = describeRequestErrorDetails(primaryError)
         updateActivity((entry) => entry.status === 'running', { status: 'error' })
         updateAssistant({
-          content: 'I could not reach or3-intern. Check the selected computer and try again.',
+          content: details ? `${message}\n\n${details}` : message,
           status: 'failed',
-          error: describeRequestError(error),
+          error: message,
         })
+        showFailureToast(toast, 'or3-intern request failed', primaryError)
       }
     } finally {
       isStreaming.value = false

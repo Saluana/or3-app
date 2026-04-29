@@ -36,6 +36,15 @@
             </section>
 
             <DangerCallout
+                v-if="showConnectingHelp"
+                tone="caution"
+                title="Still checking the connection"
+            >
+                The app has a saved pairing token, but it has not confirmed the computer health yet.
+                Check that the address below is the computer's Tailscale address, not 127.0.0.1.
+            </DangerCallout>
+
+            <DangerCallout
                 v-if="readiness && !readiness.ready"
                 tone="caution"
                 title="Your computer needs attention"
@@ -185,10 +194,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 
 const { activeHost, isConnected } = useActiveHost();
-const { health, readiness, capabilities, refreshStatus } =
+const { health, readiness, capabilities, loadingStatus, refreshStatus } =
     useComputerStatus();
 const { jobs } = useJobs();
 const { approvals: approvalItems, loadApprovals } = useApprovals();
@@ -196,6 +205,7 @@ const { approvals: approvalItems, loadApprovals } = useApprovals();
 const copied = ref(false);
 
 const connected = computed(() => Boolean(isConnected.value));
+const showConnectingHelp = computed(() => connected.value && loadingStatus.value && !health.value);
 const hostName = computed(
     () => activeHost.value?.name || 'My Computer',
 );
@@ -370,6 +380,13 @@ async function copyAddress() {
         /* noop */
     }
 }
+
+watch(
+    () => activeHost.value?.token,
+    (token) => {
+        if (token) void refreshStatus().catch(() => {});
+    },
+);
 
 onMounted(async () => {
     if (activeHost.value?.token) {
