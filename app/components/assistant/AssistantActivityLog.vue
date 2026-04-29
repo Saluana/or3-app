@@ -1,7 +1,7 @@
 <template>
   <details v-if="items.length" class="mt-3 overflow-hidden rounded-2xl border border-(--or3-border) bg-(--or3-surface-soft)">
     <summary class="flex cursor-pointer items-center gap-2 px-3 py-2 text-xs font-medium text-(--or3-text-muted)">
-      <Icon name="i-lucide-list-tree" class="size-3.5" />
+      <Icon name="i-pixelarticons-tree" class="size-3.5" />
       Activity log
     </summary>
     <ol class="space-y-2 border-t border-(--or3-border) px-3 py-2.5">
@@ -22,8 +22,8 @@ import type { ChatActivityEntry } from '~/types/app-state'
 defineProps<{ items: ChatActivityEntry[] }>()
 
 function iconFor(status?: ChatActivityEntry['status']) {
-  if (status === 'error') return 'i-lucide-circle-alert'
-  if (status === 'complete') return 'i-lucide-check'
-  return 'i-lucide-loader-circle'
+  if (status === 'error') return 'i-pixelarticons-alert'
+  if (status === 'complete') return 'i-pixelarticons-check'
+  return 'i-pixelarticons-loader'
 }
 </script>

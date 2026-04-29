@@ -9,7 +9,7 @@
           class="inline-flex items-center gap-1 rounded-full px-2 py-1 text-sm font-medium text-(--or3-green) transition hover:bg-(--or3-green-soft)"
           @click="goBack"
         >
-          <Icon name="i-lucide-chevron-left" class="size-4" />
+          <Icon name="i-pixelarticons-chevron-left" class="size-4" />
           Settings
         </button>
 

@@ -7,8 +7,8 @@
       </div>
       <div class="flex items-center gap-2">
         <UInput ref="uploadInput" type="file" class="hidden" multiple aria-hidden="true" tabindex="-1" @change="handleUpload" />
-        <UButton icon="i-lucide-upload" color="neutral" variant="ghost" aria-label="Upload files" @click="openUploadPicker" />
-        <UButton icon="i-lucide-refresh-cw" color="neutral" variant="ghost" aria-label="Refresh files" @click="refresh" />
+        <UButton icon="i-pixelarticons-upload" color="neutral" variant="ghost" aria-label="Upload files" @click="openUploadPicker" />
+        <UButton icon="i-pixelarticons-reload" color="neutral" variant="ghost" aria-label="Refresh files" @click="refresh" />
       </div>
     </div>
 
@@ -26,10 +26,10 @@
       <p class="font-mono text-sm font-semibold">{{ selectedEntry.name }}</p>
       <p class="mt-1 text-xs text-(--or3-text-muted)">{{ selectedEntry.path }}</p>
       <div class="mt-3 grid grid-cols-2 gap-2">
-        <UButton label="Ask assistant" icon="i-lucide-message-square" color="neutral" variant="soft" @click="askAssistant" />
-        <UButton label="Copy path" icon="i-lucide-copy" color="neutral" variant="soft" @click="copyPath(selectedEntry)" />
-        <UButton label="Upload here" icon="i-lucide-folder-up" color="neutral" variant="soft" @click="openUploadPicker" />
-        <UButton label="Open terminal here" icon="i-lucide-terminal-square" color="neutral" variant="soft" @click="openTerminalHere" />
+        <UButton label="Ask assistant" icon="i-pixelarticons-message-text" color="neutral" variant="soft" @click="askAssistant" />
+        <UButton label="Copy path" icon="i-pixelarticons-copy" color="neutral" variant="soft" @click="copyPath(selectedEntry)" />
+        <UButton label="Upload here" icon="i-pixelarticons-folder-plus" color="neutral" variant="soft" @click="openUploadPicker" />
+        <UButton label="Open terminal here" icon="i-pixelarticons-terminal" color="neutral" variant="soft" @click="openTerminalHere" />
       </div>
     </div>
   </SurfaceCard>

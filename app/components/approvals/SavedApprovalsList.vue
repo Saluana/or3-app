@@ -25,7 +25,7 @@
         </p>
 
         <div v-if="!items.length" class="or3-saved-block__empty">
-            <Icon name="i-lucide-bookmark" class="size-5 text-(--or3-text-muted)" />
+            <Icon name="i-pixelarticons-bookmark" class="size-5 text-(--or3-text-muted)" />
             <p class="mt-2 font-mono text-sm font-semibold text-(--or3-text)">
                 Nothing saved yet
             </p>
@@ -65,7 +65,7 @@
                             Always approve
                         </span>
                         <Icon
-                            name="i-lucide-chevron-right"
+                            name="i-pixelarticons-chevron-right"
                             class="size-4 text-(--or3-text-muted)"
                         />
                     </div>
@@ -102,11 +102,11 @@ defineEmits<{
 function iconFor(item: ApprovalAllowlist): string {
     const domain = (item.domain || '').toLowerCase();
     if (domain.includes('exec') || domain.includes('shell') || domain.includes('command'))
-        return 'i-lucide-terminal';
+        return 'i-pixelarticons-terminal';
     if (domain.includes('file') || domain.includes('write') || domain.includes('doc'))
-        return 'i-lucide-file-text';
-    if (domain.includes('net') || domain.includes('http')) return 'i-lucide-globe';
-    return 'i-lucide-bookmark';
+        return 'i-pixelarticons-file-text';
+    if (domain.includes('net') || domain.includes('http')) return 'i-pixelarticons-globe';
+    return 'i-pixelarticons-bookmark';
 }
 
 function titleFor(item: ApprovalAllowlist): string {

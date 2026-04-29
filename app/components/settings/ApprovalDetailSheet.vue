@@ -8,7 +8,7 @@
             <h2 class="mt-1 font-mono text-lg font-semibold truncate">{{ friendlyKind }}</h2>
             <StatusPill class="mt-2" :label="friendlyStatus" :tone="statusTone" />
           </div>
-          <UButton icon="i-lucide-x" color="neutral" variant="ghost" aria-label="Close" @click="open = false" />
+          <UButton icon="i-pixelarticons-close" color="neutral" variant="ghost" aria-label="Close" @click="open = false" />
         </div>
 
         <div class="mt-4 flex-1 space-y-4 overflow-y-auto">
@@ -30,9 +30,9 @@
         </div>
 
         <div class="mt-4 space-y-2 border-t border-(--or3-border) pt-4">
-          <UButton label="Approve once" icon="i-lucide-check" color="primary" block size="lg" :loading="busy" @click="$emit('approve', false)" />
-          <UButton label="Approve & always allow this" icon="i-lucide-check-check" color="neutral" variant="soft" block :loading="busy" @click="$emit('approve', true)" />
-          <UButton label="Deny" icon="i-lucide-x" color="error" variant="soft" block :loading="busy" @click="$emit('deny')" />
+          <UButton label="Approve once" icon="i-pixelarticons-check" color="primary" block size="lg" :loading="busy" @click="$emit('approve', false)" />
+          <UButton label="Approve & always allow this" icon="i-pixelarticons-check-double" color="neutral" variant="soft" block :loading="busy" @click="$emit('approve', true)" />
+          <UButton label="Deny" icon="i-pixelarticons-close" color="error" variant="soft" block :loading="busy" @click="$emit('deny')" />
           <UButton label="Cancel request" color="neutral" variant="ghost" block :loading="busy" @click="$emit('cancel')" />
         </div>
       </div>

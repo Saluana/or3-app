@@ -4,7 +4,7 @@
     <div class="space-y-4">
       <SurfaceCard class-name="space-y-4">
         <div class="flex items-start gap-3">
-          <RetroIcon name="i-lucide-terminal-square" />
+          <RetroIcon name="i-pixelarticons-terminal" />
           <div>
             <p class="font-mono text-base font-semibold text-(--or3-text)">Run commands on your computer</p>
             <p class="mt-1 text-sm leading-6 text-(--or3-text-muted)">
@@ -48,7 +48,7 @@
         <div class="flex flex-wrap gap-2">
           <UButton
             label="Open terminal"
-            icon="i-lucide-play"
+            icon="i-pixelarticons-play"
             color="primary"
             class="or3-touch-target"
             :loading="starting"
@@ -57,14 +57,14 @@
           />
           <UButton
             label="Refresh areas"
-            icon="i-lucide-refresh-cw"
+            icon="i-pixelarticons-reload"
             color="neutral"
             variant="soft"
             class="or3-touch-target"
             :loading="loadingFiles"
             @click="refreshRoots"
           />
-          <UButton label="See pending approvals" icon="i-lucide-shield-check" to="/approvals" color="neutral" variant="ghost" class="or3-touch-target" />
+          <UButton label="See pending approvals" icon="i-pixelarticons-shield" to="/approvals" color="neutral" variant="ghost" class="or3-touch-target" />
         </div>
 
         <DangerCallout v-if="terminalUnavailable" tone="caution" title="Terminal is turned off">

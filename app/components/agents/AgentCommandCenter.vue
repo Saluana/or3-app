@@ -29,7 +29,7 @@
           :disabled="!formState.task.trim()"
           aria-label="Send task to or3-intern"
         >
-          <Icon name="i-lucide-send" class="size-4 -translate-x-px translate-y-px" />
+          <Icon name="i-pixelarticons-send" class="size-4 -translate-x-px translate-y-px" />
         </button>
       </div>
 
@@ -63,12 +63,12 @@
             aria-label="Set task priority"
           >
             <span class="flex w-full items-center gap-1.5 text-[12px] font-medium text-(--or3-text-muted)">
-              <Icon name="i-lucide-flag" class="size-3.5 shrink-0" />
+              <Icon name="i-pixelarticons-flag" class="size-3.5 shrink-0" />
               <span class="truncate">Priority</span>
             </span>
             <span class="flex w-full items-center justify-between gap-1">
               <span class="truncate text-sm text-(--or3-text)">{{ priorityLabel(formState.priority) }}</span>
-              <Icon name="i-lucide-chevron-down" class="size-3.5 shrink-0 text-(--or3-text-muted)" />
+              <Icon name="i-pixelarticons-chevron-down" class="size-3.5 shrink-0 text-(--or3-text-muted)" />
             </span>
           </button>
         </UDropdownMenu>
@@ -81,12 +81,12 @@
             aria-label="Set notification preference"
           >
             <span class="flex w-full items-center gap-1.5 text-[12px] font-medium text-(--or3-text-muted)">
-              <Icon name="i-lucide-bell" class="size-3.5 shrink-0" />
+              <Icon name="i-pixelarticons-bell" class="size-3.5 shrink-0" />
               <span class="truncate">Notify me</span>
             </span>
             <span class="flex w-full items-center justify-between gap-1">
               <span class="truncate text-sm text-(--or3-text)">{{ notifyLabel(formState.notify) }}</span>
-              <Icon name="i-lucide-chevron-down" class="size-3.5 shrink-0 text-(--or3-text-muted)" />
+              <Icon name="i-pixelarticons-chevron-down" class="size-3.5 shrink-0 text-(--or3-text-muted)" />
             </span>
           </button>
         </UDropdownMenu>
@@ -100,7 +100,7 @@
           aria-label="Toggle auto-approve safe actions"
         >
           <span class="flex w-full items-center gap-1.5 text-[12px] font-medium text-(--or3-text-muted)">
-            <Icon name="i-lucide-shield-check" class="size-3.5 shrink-0" />
+            <Icon name="i-pixelarticons-shield" class="size-3.5 shrink-0" />
             <span class="truncate">Auto-approve</span>
           </span>
           <span class="flex w-full items-center justify-between gap-2">
@@ -151,10 +151,10 @@ const formState = reactive({
 })
 
 const categories: Array<{ id: AgentCategory; label: string; icon: string; template: string }> = [
-  { id: 'research', label: 'Research', icon: 'i-lucide-search', template: 'Research the latest on ' },
-  { id: 'monitor', label: 'Monitor', icon: 'i-lucide-activity', template: 'Monitor and alert me about ' },
-  { id: 'draft', label: 'Draft', icon: 'i-lucide-pen-line', template: 'Draft a ' },
-  { id: 'organize', label: 'Organize', icon: 'i-lucide-folder', template: 'Organize and summarize ' },
+  { id: 'research', label: 'Research', icon: 'i-pixelarticons-search', template: 'Research the latest on ' },
+  { id: 'monitor', label: 'Monitor', icon: 'i-pixelarticons-analytics', template: 'Monitor and alert me about ' },
+  { id: 'draft', label: 'Draft', icon: 'i-pixelarticons-edit', template: 'Draft a ' },
+  { id: 'organize', label: 'Organize', icon: 'i-pixelarticons-folder', template: 'Organize and summarize ' },
 ]
 
 const priorityItems: Array<{ label: string; value: AgentPriority }> = [
@@ -172,7 +172,7 @@ const notifyItems: Array<{ label: string; value: AgentNotify }> = [
 const priorityMenuItems = computed(() =>
   priorityItems.map((item) => ({
     label: item.label,
-    icon: formState.priority === item.value ? 'i-lucide-check' : undefined,
+    icon: formState.priority === item.value ? 'i-pixelarticons-check' : undefined,
     onSelect: () => {
       formState.priority = item.value
     },
@@ -182,7 +182,7 @@ const priorityMenuItems = computed(() =>
 const notifyMenuItems = computed(() =>
   notifyItems.map((item) => ({
     label: item.label,
-    icon: formState.notify === item.value ? 'i-lucide-check' : undefined,
+    icon: formState.notify === item.value ? 'i-pixelarticons-check' : undefined,
     onSelect: () => {
       formState.notify = item.value
     },

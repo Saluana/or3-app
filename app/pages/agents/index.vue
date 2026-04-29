@@ -15,7 +15,7 @@
               class="or3-focus-ring flex items-center gap-1 font-mono text-xs font-semibold text-(--or3-green-dark)"
             >
               View all
-              <Icon name="i-lucide-chevron-right" class="size-3.5" />
+              <Icon name="i-pixelarticons-chevron-right" class="size-3.5" />
             </NuxtLink>
             <StatusPill
               v-else
@@ -35,7 +35,7 @@
         </div>
         <EmptyState
           v-else
-          icon="i-lucide-bot"
+          icon="i-pixelarticons-robot"
           title="Nothing running yet"
           description="Hand off a task above and it'll appear here. You can keep using the app while or3-intern works."
         />
@@ -50,7 +50,7 @@
               class="or3-focus-ring flex items-center gap-1 font-mono text-xs font-semibold text-(--or3-green-dark)"
             >
               View all
-              <Icon name="i-lucide-chevron-right" class="size-3.5" />
+              <Icon name="i-pixelarticons-chevron-right" class="size-3.5" />
             </NuxtLink>
           </template>
         </SectionHeader>

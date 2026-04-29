@@ -2,13 +2,13 @@
   <SurfaceCard class-name="space-y-4">
     <div class="flex items-center justify-between gap-3">
       <div class="flex items-start gap-3">
-        <RetroIcon name="i-lucide-smartphone" />
+        <RetroIcon name="i-pixelarticons-smartphone" />
         <div>
           <p class="font-mono text-base font-semibold text-(--or3-text)">Phones &amp; tablets</p>
           <p class="mt-1 text-sm text-(--or3-text-muted)">Devices that are allowed to control this computer. Passkeys are managed separately and verify the owner, not the device.</p>
         </div>
       </div>
-      <UButton icon="i-lucide-refresh-cw" color="neutral" variant="ghost" aria-label="Refresh devices" @click="refresh" />
+      <UButton icon="i-pixelarticons-reload" color="neutral" variant="ghost" aria-label="Refresh devices" @click="refresh" />
     </div>
 
     <div v-if="!devices.length" class="rounded-2xl border border-dashed border-(--or3-border) bg-white/60 px-4 py-6 text-center text-sm text-(--or3-text-muted)">
@@ -18,14 +18,14 @@
     <div v-else class="divide-y divide-(--or3-border) overflow-hidden rounded-2xl border border-(--or3-border) bg-white/70">
       <div v-for="device in devices" :key="device.device_id" class="flex items-center gap-3 p-3">
         <div class="grid size-10 place-items-center rounded-xl bg-(--or3-green-soft) text-(--or3-green)">
-          <Icon name="i-lucide-smartphone" class="size-5" />
+          <Icon name="i-pixelarticons-smartphone" class="size-5" />
         </div>
         <div class="min-w-0 flex-1">
           <p class="truncate font-mono text-sm font-semibold">{{ device.display_name || device.device_id }}</p>
           <p class="text-xs text-(--or3-text-muted)">{{ friendlyRole(device.role) }} · {{ friendlyStatus(device.status) }}</p>
         </div>
         <UButton
-          icon="i-lucide-x"
+          icon="i-pixelarticons-close"
           color="error"
           variant="soft"
           size="sm"

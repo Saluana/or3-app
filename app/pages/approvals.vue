@@ -8,7 +8,7 @@
                 <div class="flex items-start gap-3 sm:gap-4">
                     <span class="or3-approval-hero__badge">
                         <Icon
-                            name="i-lucide-shield-check"
+                            name="i-pixelarticons-shield"
                             class="size-6 text-(--or3-green-dark)"
                         />
                     </span>
@@ -82,7 +82,7 @@
 
                 <EmptyState
                     v-else-if="!approvals.length"
-                    icon="i-lucide-check-circle-2"
+                    icon="i-pixelarticons-checkbox-on"
                     :title="
                         selectedFilter === 'pending'
                             ? 'Nothing needs you right now'
@@ -120,7 +120,7 @@
                 >
                     <span class="or3-approval-hero__badge">
                         <Icon
-                            name="i-lucide-shield-check"
+                            name="i-pixelarticons-shield"
                             class="size-6 text-(--or3-green-dark)"
                         />
                     </span>
@@ -167,7 +167,7 @@ const filters = [
     { label: 'Waiting', value: 'pending', icon: '' },
     { label: 'Approved', value: 'approved', icon: '' },
     { label: 'Denied', value: 'denied', icon: '' },
-    { label: 'Saved Rules', value: 'saved', icon: 'i-lucide-bookmark' },
+    { label: 'Saved Rules', value: 'saved', icon: 'i-pixelarticons-bookmark' },
 ];
 
 const selectedFilter = ref('pending');

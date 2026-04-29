@@ -3,7 +3,7 @@
     <SurfaceCard class-name="space-y-3">
       <div class="flex items-center justify-between gap-2">
         <p class="flex items-center gap-1.5 font-mono text-sm font-semibold text-(--or3-text)">
-          <Icon name="i-lucide-hourglass" class="size-4 text-(--or3-text-muted)" />
+          <Icon name="i-pixelarticons-hourglass" class="size-4 text-(--or3-text-muted)" />
           Pending
         </p>
         <span class="rounded-full bg-stone-100 px-2 py-0.5 text-xs font-semibold text-(--or3-text-muted)">
@@ -29,7 +29,7 @@
     <SurfaceCard class-name="space-y-3">
       <div class="flex items-center justify-between gap-2">
         <p class="flex items-center gap-1.5 font-mono text-sm font-semibold text-(--or3-text)">
-          <Icon name="i-lucide-check-circle-2" class="size-4 text-(--or3-green)" />
+          <Icon name="i-pixelarticons-checkbox-on" class="size-4 text-(--or3-green)" />
           Completed
         </p>
         <span class="rounded-full bg-(--or3-green-soft) px-2 py-0.5 text-xs font-semibold text-(--or3-green-dark)">
@@ -44,7 +44,7 @@
         >
           <span class="min-w-0 truncate text-(--or3-text)">{{ titleFor(job) }}</span>
           <span class="flex shrink-0 items-center gap-1 text-(--or3-green-dark)">
-            <Icon name="i-lucide-check" class="size-3" />
+            <Icon name="i-pixelarticons-check" class="size-3" />
             Done
           </span>
         </li>

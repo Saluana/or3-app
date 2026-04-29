@@ -20,7 +20,7 @@
     <div v-else class="grid min-h-90 place-items-center px-6 text-center">
       <div>
         <div class="mx-auto mb-4 grid size-16 place-items-center rounded-3xl bg-(--or3-green-soft) text-(--or3-green)">
-          <Icon name="i-lucide-terminal-square" class="size-8" />
+          <Icon name="i-pixelarticons-terminal" class="size-8" />
         </div>
         <h2 class="font-mono text-xl font-semibold text-(--or3-text)">Ask or3-intern anything</h2>
         <p class="mt-2 text-sm leading-6 text-(--or3-text-muted)">Chat, run agents, inspect files, and control your trusted computer.</p>

@@ -66,11 +66,11 @@ const category = computed(() => categoryFromKind(props.job.kind))
 
 const iconName = computed(() => {
   switch (category.value) {
-    case 'research': return 'i-lucide-file-text'
-    case 'monitor': return 'i-lucide-line-chart'
-    case 'draft': return 'i-lucide-pen-line'
-    case 'organize': return 'i-lucide-folder'
-    default: return 'i-lucide-bot'
+    case 'research': return 'i-pixelarticons-file-text'
+    case 'monitor': return 'i-pixelarticons-chart'
+    case 'draft': return 'i-pixelarticons-edit'
+    case 'organize': return 'i-pixelarticons-folder'
+    default: return 'i-pixelarticons-robot'
   }
 })
 

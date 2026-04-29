@@ -54,7 +54,7 @@
                         <div class="or3-detail-row">
                             <span class="or3-detail-row__icon">
                                 <Icon
-                                    name="i-lucide-monitor"
+                                    name="i-pixelarticons-monitor"
                                     class="size-4"
                                 />
                             </span>
@@ -68,7 +68,7 @@
                         <div class="or3-detail-row">
                             <span class="or3-detail-row__icon">
                                 <Icon
-                                    name="i-lucide-shield-check"
+                                    name="i-pixelarticons-shield"
                                     class="size-4"
                                 />
                             </span>
@@ -85,7 +85,7 @@
 
                     <div class="mt-3 or3-detail-row or3-detail-row--full">
                         <span class="or3-detail-row__icon">
-                            <Icon name="i-lucide-globe" class="size-4" />
+                            <Icon name="i-pixelarticons-globe" class="size-4" />
                         </span>
                         <div class="min-w-0 flex-1">
                             <p class="or3-detail-row__label">Address</p>
@@ -107,8 +107,8 @@
                             <Icon
                                 :name="
                                     copied
-                                        ? 'i-lucide-check'
-                                        : 'i-lucide-copy'
+                                        ? 'i-pixelarticons-check'
+                                        : 'i-pixelarticons-copy'
                                 "
                                 class="size-4"
                             />
@@ -116,7 +116,7 @@
                     </div>
 
                     <NuxtLink to="/settings" class="or3-pair-button">
-                        <Icon name="i-lucide-link" class="size-4" />
+                        <Icon name="i-pixelarticons-link" class="size-4" />
                         <span>{{
                             connected
                                 ? 'Manage or Pair Computer'
@@ -136,7 +136,7 @@
                     >
                         <span>View all</span>
                         <Icon
-                            name="i-lucide-chevron-right"
+                            name="i-pixelarticons-chevron-right"
                             class="size-4"
                         />
                     </NuxtLink>
@@ -148,7 +148,7 @@
                         class="or3-activity-empty"
                     >
                         <Icon
-                            name="i-lucide-history"
+                            name="i-pixelarticons-timeline"
                             class="size-4 text-(--or3-text-muted)"
                         />
                         <span>No activity yet. Try a command or browse files.</span>
@@ -215,25 +215,25 @@ const actions = [
     {
         label: 'Browse Files',
         description: 'Explore and manage files on your computer.',
-        icon: 'i-lucide-folder',
+        icon: 'i-pixelarticons-folder',
         to: '/computer/files',
     },
     {
         label: 'Run Terminal',
         description: 'Open a terminal and run commands securely.',
-        icon: 'i-lucide-terminal',
+        icon: 'i-pixelarticons-terminal',
         to: '/computer/terminal',
     },
     {
         label: 'Review Approvals',
         description: 'See what or3-intern wants to do.',
-        icon: 'i-lucide-shield-check',
+        icon: 'i-pixelarticons-shield',
         to: '/approvals',
     },
     {
         label: 'Adjust Preferences',
         description: 'Tune how or3-intern behaves.',
-        icon: 'i-lucide-settings',
+        icon: 'i-pixelarticons-settings-cog',
         to: '/settings',
     },
 ];
@@ -271,7 +271,7 @@ const activity = computed<ActivityEntry[]>(() => {
             id: `appr:${approval.id}`,
             label: 'Approval requested:',
             detail: approvalDetail(approval),
-            icon: 'i-lucide-shield-check',
+            icon: 'i-pixelarticons-shield',
             time: formatTime(approval.created_at),
             tone:
                 approval.status === 'pending'
@@ -298,11 +298,11 @@ function jobLabel(kind?: string): string {
 }
 
 function jobIcon(kind?: string): string {
-    if (kind === 'exec' || kind === 'terminal') return 'i-lucide-terminal';
+    if (kind === 'exec' || kind === 'terminal') return 'i-pixelarticons-terminal';
     if (kind === 'file_list' || kind === 'file_write')
-        return 'i-lucide-folder';
-    if (kind === 'turn' || kind === 'subagent') return 'i-lucide-bot';
-    return 'i-lucide-activity';
+        return 'i-pixelarticons-folder';
+    if (kind === 'turn' || kind === 'subagent') return 'i-pixelarticons-robot';
+    return 'i-pixelarticons-analytics';
 }
 
 function approvalDetail(a: { type?: string; subject?: unknown }): string {

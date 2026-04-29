@@ -56,7 +56,7 @@
     <div class="flex justify-end">
       <UButton
         label="Save changes"
-        icon="i-lucide-save"
+        icon="i-pixelarticons-save"
         color="primary"
         size="lg"
         :loading="saving"

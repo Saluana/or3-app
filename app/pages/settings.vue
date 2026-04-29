@@ -7,7 +7,7 @@
     <div class="space-y-4">
       <!-- Search -->
       <div class="relative">
-        <Icon name="i-lucide-search" class="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-(--or3-text-muted)" />
+        <Icon name="i-pixelarticons-search" class="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-(--or3-text-muted)" />
         <input
           v-model="searchTerm"
           type="search"
@@ -106,7 +106,7 @@
           >{{ activeHost.baseUrl }}</code>
           <UButton
             label="Pair new computer"
-            icon="i-lucide-link"
+            icon="i-pixelarticons-link"
             color="primary"
             variant="solid"
             size="sm"
@@ -129,7 +129,7 @@
           >
             <div class="flex items-start justify-between">
               <RetroIcon :name="iconFor(section.key)" size="sm" />
-              <Icon name="i-lucide-chevron-right" class="size-4 text-(--or3-text-muted)" />
+              <Icon name="i-pixelarticons-chevron-right" class="size-4 text-(--or3-text-muted)" />
             </div>
             <div class="min-w-0">
               <p class="font-mono text-sm font-semibold text-(--or3-text)">{{ section.label }}</p>
@@ -156,7 +156,7 @@
               <p class="font-mono text-sm font-semibold text-(--or3-text)">{{ section.label }}</p>
               <p class="mt-0.5 truncate text-xs text-(--or3-text-muted)">{{ section.description }}</p>
             </div>
-            <Icon name="i-lucide-chevron-right" class="size-5 shrink-0 text-(--or3-text-muted)" />
+            <Icon name="i-pixelarticons-chevron-right" class="size-5 shrink-0 text-(--or3-text-muted)" />
           </button>
         </div>
       </SurfaceCard>
@@ -174,14 +174,14 @@
         to="/settings/service"
         class="or3-focus-ring flex w-full items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50/70 p-4 text-left transition hover:bg-amber-100/80"
       >
-        <Icon name="i-lucide-triangle-alert" class="mt-0.5 size-5 shrink-0 text-(--or3-amber)" />
+        <Icon name="i-pixelarticons-warning-box" class="mt-0.5 size-5 shrink-0 text-(--or3-amber)" />
         <div class="min-w-0 flex-1">
           <p class="font-mono text-sm font-semibold text-amber-900">Advanced editor</p>
           <p class="mt-0.5 text-xs leading-5 text-amber-800/80">
             The classic section editor is still here under Advanced when you need direct access to low-level host settings.
           </p>
         </div>
-        <Icon name="i-lucide-chevron-right" class="mt-1 size-5 shrink-0 text-amber-700/70" />
+        <Icon name="i-pixelarticons-chevron-right" class="mt-1 size-5 shrink-0 text-amber-700/70" />
       </NuxtLink>
 
       <p v-if="configureError" class="text-sm text-(--or3-danger)">{{ configureError }}</p>
@@ -216,19 +216,19 @@ const filters: Array<{ key: FilterKey; label: string }> = [
 ]
 
 const groups = [
-	{ key: 'connection', label: 'Connection', description: 'Pair devices, review the current computer, and jump back into device trust.', icon: 'i-lucide-link' },
-	{ key: 'security', label: 'Security', description: 'Manage passkeys, signed-in sessions, and owner verification state.', icon: 'i-lucide-shield-check' },
-	{ key: 'safety', label: 'Safety', description: 'Control hardening, session posture, and host protection behavior.', icon: 'i-lucide-shield' },
-	{ key: 'agent-behavior', label: 'Agent Behavior', description: 'Tune providers, runtime behavior, tools, skills, and automation.', icon: 'i-lucide-bot' },
-	{ key: 'knowledge', label: 'Knowledge', description: 'Adjust workspace, storage, indexing, and context-related settings.', icon: 'i-lucide-book-open' },
-	{ key: 'advanced', label: 'Advanced', description: 'Open the low-level section editor when you need direct host controls.', icon: 'i-lucide-settings-2' },
+	{ key: 'connection', label: 'Connection', description: 'Pair devices, review the current computer, and jump back into device trust.', icon: 'i-pixelarticons-link' },
+	{ key: 'security', label: 'Security', description: 'Manage passkeys, signed-in sessions, and owner verification state.', icon: 'i-pixelarticons-shield' },
+	{ key: 'safety', label: 'Safety', description: 'Control hardening, session posture, and host protection behavior.', icon: 'i-pixelarticons-shield' },
+	{ key: 'agent-behavior', label: 'Agent Behavior', description: 'Tune providers, runtime behavior, tools, skills, and automation.', icon: 'i-pixelarticons-robot' },
+	{ key: 'knowledge', label: 'Knowledge', description: 'Adjust workspace, storage, indexing, and context-related settings.', icon: 'i-pixelarticons-book-open' },
+	{ key: 'advanced', label: 'Advanced', description: 'Open the low-level section editor when you need direct host controls.', icon: 'i-pixelarticons-settings-cog-2' },
 ] satisfies Array<{ key: FilterKey; label: string; description: string; icon: string }>
 
 const destinationLinks = [
-	{ to: '/settings/pair', label: 'Connection & pairing', description: 'Enroll this device and review trusted phones or tablets.', icon: 'i-lucide-smartphone' },
-	{ to: '/settings/security', label: 'Security dashboard', description: 'See passkey status, session policy, and recovery readiness at a glance.', icon: 'i-lucide-shield-check' },
-	{ to: '/settings/passkeys', label: 'Passkeys', description: 'Register, rename, and remove passkeys from one dedicated screen.', icon: 'i-lucide-key-round' },
-	{ to: '/settings/service', label: 'Advanced editor', description: 'Keep the current section-based editor available for detailed service tuning.', icon: 'i-lucide-sliders-horizontal' },
+	{ to: '/settings/pair', label: 'Connection & pairing', description: 'Enroll this device and review trusted phones or tablets.', icon: 'i-pixelarticons-smartphone' },
+	{ to: '/settings/security', label: 'Security dashboard', description: 'See passkey status, session policy, and recovery readiness at a glance.', icon: 'i-pixelarticons-shield' },
+	{ to: '/settings/passkeys', label: 'Passkeys', description: 'Register, rename, and remove passkeys from one dedicated screen.', icon: 'i-pixelarticons-lock' },
+	{ to: '/settings/service', label: 'Advanced editor', description: 'Keep the current section-based editor available for detailed service tuning.', icon: 'i-pixelarticons-sliders' },
 ]
 
 // Sections promoted to the "Quick settings" grid (shown only on Essentials).
@@ -253,24 +253,24 @@ const FILTER_MAP: Record<FilterKey, string[] | null> = {
 
 // Retro-style icons for each known section key.
 const ICON_MAP: Record<string, string> = {
-  provider: 'i-lucide-cpu',
-  workspace: 'i-lucide-folder',
-  storage: 'i-lucide-database',
-  security: 'i-lucide-shield',
-  channels: 'i-lucide-message-square',
-  automation: 'i-lucide-zap',
-  runtime: 'i-lucide-activity',
-  tools: 'i-lucide-wrench',
-  docindex: 'i-lucide-book-open',
-  skills: 'i-lucide-star',
-  session: 'i-lucide-users',
-  service: 'i-lucide-monitor',
-  context: 'i-lucide-layers',
-  hardening: 'i-lucide-lock',
+  provider: 'i-pixelarticons-cpu',
+  workspace: 'i-pixelarticons-folder',
+  storage: 'i-pixelarticons-database',
+  security: 'i-pixelarticons-shield',
+  channels: 'i-pixelarticons-message-text',
+  automation: 'i-pixelarticons-zap',
+  runtime: 'i-pixelarticons-analytics',
+  tools: 'i-pixelarticons-tool-case',
+  docindex: 'i-pixelarticons-book-open',
+  skills: 'i-pixelarticons-sparkle',
+  session: 'i-pixelarticons-users',
+  service: 'i-pixelarticons-monitor',
+  context: 'i-pixelarticons-card-stack',
+  hardening: 'i-pixelarticons-lock',
 }
 
 function iconFor(key: string) {
-  return ICON_MAP[key] ?? 'i-lucide-settings-2'
+  return ICON_MAP[key] ?? 'i-pixelarticons-settings-cog-2'
 }
 
 function matchesSearch(text: string | undefined | null) {

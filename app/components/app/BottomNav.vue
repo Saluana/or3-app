@@ -35,11 +35,11 @@
 const route = useRoute();
 
 const items = [
-  { label: 'Chat', to: '/', icon: 'i-lucide-message-circle' },
-  { label: 'Agents', to: '/agents', icon: 'i-lucide-bot' },
-  { label: 'Add', to: '/add', icon: 'i-lucide-plus', center: true },
-  { label: 'Computer', to: '/computer', icon: 'i-lucide-monitor' },
-  { label: 'Settings', to: '/settings', icon: 'i-lucide-settings' },
+  { label: 'Chat', to: '/', icon: 'i-pixelarticons-message' },
+  { label: 'Agents', to: '/agents', icon: 'i-pixelarticons-robot' },
+  { label: 'Add', to: '/add', icon: 'i-pixelarticons-plus', center: true },
+  { label: 'Computer', to: '/computer', icon: 'i-pixelarticons-monitor' },
+  { label: 'Settings', to: '/settings', icon: 'i-pixelarticons-settings-cog' },
 ];
 
 function isActive(to: string) {

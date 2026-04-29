@@ -8,13 +8,13 @@
         class="or3-focus-ring inline-flex items-center gap-2 rounded-full border border-(--or3-border) bg-(--or3-surface) px-3 py-1.5 font-mono text-xs font-semibold uppercase tracking-wide text-(--or3-text)"
         @click="goBack"
       >
-        <Icon name="i-lucide-chevron-left" class="size-4" />
+        <Icon name="i-pixelarticons-chevron-left" class="size-4" />
         Security
       </button>
 
       <SurfaceCard class-name="space-y-3">
         <div class="flex items-start gap-3">
-          <RetroIcon name="i-lucide-key-round" />
+          <RetroIcon name="i-pixelarticons-lock" />
           <div class="min-w-0 flex-1">
             <p class="font-mono text-base font-semibold text-(--or3-text)">Passkeys protect the owner</p>
             <p class="mt-1 text-sm leading-6 text-(--or3-text-muted)">
@@ -31,7 +31,7 @@
           <UFormField label="New passkey label" name="nickname" description="Helpful names make it easier to spot the right laptop, phone, or security key later.">
             <UInput v-model="registerForm.nickname" placeholder="Brendon's iPhone passkey" class="w-full" />
           </UFormField>
-          <UButton label="Add passkey" icon="i-lucide-plus" color="primary" :loading="loading" @click="register" />
+          <UButton label="Add passkey" icon="i-pixelarticons-plus" color="primary" :loading="loading" @click="register" />
         </div>
       </SurfaceCard>
 
@@ -41,7 +41,7 @@
             <p class="font-mono text-base font-semibold text-(--or3-text)">Registered passkeys</p>
             <p class="mt-1 text-sm text-(--or3-text-muted)">Use a recent passkey check before renaming or revoking a credential.</p>
           </div>
-          <UButton label="Refresh" icon="i-lucide-refresh-cw" color="neutral" variant="ghost" :loading="loading" @click="refresh" />
+          <UButton label="Refresh" icon="i-pixelarticons-reload" color="neutral" variant="ghost" :loading="loading" @click="refresh" />
         </div>
 
         <div v-if="!passkeyItems.length" class="rounded-2xl border border-dashed border-(--or3-border) bg-white/60 px-4 py-6 text-center text-sm text-(--or3-text-muted)">

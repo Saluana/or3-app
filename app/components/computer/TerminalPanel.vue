@@ -27,7 +27,7 @@
       <div class="flex items-stretch gap-2 sm:flex-col">
         <UButton
           label="Send"
-          icon="i-lucide-arrow-up"
+          icon="i-pixelarticons-arrow-up"
           color="primary"
           class="or3-touch-target justify-center"
           :loading="busy"
@@ -36,7 +36,7 @@
         />
         <UButton
           label="Close"
-          icon="i-lucide-square"
+          icon="i-pixelarticons-square"
           color="neutral"
           variant="soft"
           class="or3-touch-target justify-center"

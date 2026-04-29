@@ -40,11 +40,11 @@
             class="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs text-(--or3-text-muted)"
         >
             <span class="inline-flex items-center gap-1.5">
-                <Icon name="i-lucide-user-round" class="size-3.5" />
+                <Icon name="i-pixelarticons-user" class="size-3.5" />
                 <span>Source: {{ sourceLabel }}</span>
             </span>
             <span class="inline-flex items-center gap-1.5">
-                <Icon name="i-lucide-clock" class="size-3.5" />
+                <Icon name="i-pixelarticons-clock" class="size-3.5" />
                 <span>{{ timeLabel }}</span>
             </span>
         </div>
@@ -60,7 +60,7 @@
                 :disabled="busy"
                 @click="$emit('approve', false)"
             >
-                <Icon name="i-lucide-check" class="size-4" />
+                <Icon name="i-pixelarticons-check" class="size-4" />
                 <span>Approve</span>
             </button>
             <button
@@ -69,7 +69,7 @@
                 :disabled="busy"
                 @click="$emit('deny')"
             >
-                <Icon name="i-lucide-x" class="size-4" />
+                <Icon name="i-pixelarticons-close" class="size-4" />
                 <span>Deny</span>
             </button>
             <button
@@ -78,7 +78,7 @@
                 :disabled="busy"
                 @click="$emit('approve', true)"
             >
-                <Icon name="i-lucide-bookmark" class="size-4" />
+                <Icon name="i-pixelarticons-bookmark" class="size-4" />
                 <span class="text-center leading-tight">
                     Approve &amp;<br />remember
                 </span>
@@ -97,7 +97,7 @@
                 @click="$emit('details')"
             >
                 Details
-                <Icon name="i-lucide-chevron-right" class="size-4" />
+                <Icon name="i-pixelarticons-chevron-right" class="size-4" />
             </button>
         </div>
     </article>
@@ -132,10 +132,10 @@ const kindLabel = computed(() => {
 
 const kindIcon = computed(() => {
     const t = kind.value;
-    if (t === 'exec') return 'i-lucide-terminal';
-    if (t === 'file_write') return 'i-lucide-file-text';
-    if (t === 'network') return 'i-lucide-globe';
-    return 'i-lucide-shield-check';
+    if (t === 'exec') return 'i-pixelarticons-terminal';
+    if (t === 'file_write') return 'i-pixelarticons-file-text';
+    if (t === 'network') return 'i-pixelarticons-globe';
+    return 'i-pixelarticons-shield';
 });
 
 const description = computed(() => {
@@ -180,18 +180,18 @@ const risk = computed(() => {
         return {
             label: 'High risk',
             tone: 'danger' as const,
-            icon: 'i-lucide-shield-alert',
+            icon: 'i-pixelarticons-shield-off',
         };
     if (level === 'medium')
         return {
             label: 'Medium risk',
             tone: 'amber' as const,
-            icon: 'i-lucide-shield-alert',
+            icon: 'i-pixelarticons-shield-off',
         };
     return {
         label: 'Low risk',
         tone: 'green' as const,
-        icon: 'i-lucide-shield-check',
+        icon: 'i-pixelarticons-shield',
     };
 });
 

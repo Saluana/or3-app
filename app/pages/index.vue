@@ -4,7 +4,7 @@
 
     <div class="space-y-4">
       <SurfaceCard class-name="flex items-start gap-4">
-        <RetroIcon name="i-lucide-sparkles" size="lg" />
+        <RetroIcon name="i-pixelarticons-sparkles" size="lg" />
         <div class="min-w-0 flex-1">
           <h2 class="font-mono text-lg font-semibold text-(--or3-text)">Hi, I'm or3-intern.</h2>
           <p class="mt-1 text-sm leading-6 text-(--or3-text-muted)">

@@ -43,9 +43,9 @@ import type { ChatToolCall } from '~/types/app-state'
 defineProps<{ toolCalls: ChatToolCall[] }>()
 
 function iconFor(status: ChatToolCall['status']) {
-  if (status === 'running') return 'i-lucide-loader-circle'
-  if (status === 'error') return 'i-lucide-circle-alert'
-  return 'i-lucide-check'
+  if (status === 'running') return 'i-pixelarticons-loader'
+  if (status === 'error') return 'i-pixelarticons-alert'
+  return 'i-pixelarticons-check'
 }
 
 function labelFor(status: ChatToolCall['status']) {

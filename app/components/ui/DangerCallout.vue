@@ -78,10 +78,10 @@ const bodyColor = computed(
 const iconName = computed(
   () =>
     ({
-      info: 'i-lucide-info',
-      tip: 'i-lucide-sparkles',
-      caution: 'i-lucide-alert-triangle',
-      danger: 'i-lucide-shield-alert',
+      info: 'i-pixelarticons-info-box',
+      tip: 'i-pixelarticons-sparkles',
+      caution: 'i-pixelarticons-warning-box',
+      danger: 'i-pixelarticons-shield-off',
     })[props.tone],
 );
 </script>

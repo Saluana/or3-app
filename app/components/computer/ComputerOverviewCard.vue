@@ -43,7 +43,7 @@
                     'or3-overview__tab--active': tab.to === activeTab,
                 }"
             >
-                <Icon :name="tab.icon" class="size-5" />
+                <img :src="tab.iconSrc" alt="" :class="['or3-overview__tab-icon', tab.iconClass]" />
                 <span>{{ tab.label }}</span>
             </NuxtLink>
         </nav>
@@ -74,10 +74,10 @@ const props = withDefaults(
 );
 
 const tabs = [
-    { label: 'Files', icon: 'i-lucide-folder', to: '/computer/files' },
-    { label: 'Terminal', icon: 'i-lucide-terminal', to: '/computer/terminal' },
-    { label: 'Approvals', icon: 'i-lucide-shield-check', to: '/approvals' },
-    { label: 'Preferences', icon: 'i-lucide-settings', to: '/settings' },
+    { label: 'Files', iconSrc: '/computer-icons/folder.png', to: '/computer/files' },
+    { label: 'Terminal', iconSrc: '/computer-icons/terminal.png', to: '/computer/terminal' },
+    { label: 'Approvals', iconSrc: '/computer-icons/security.png', iconClass: 'or3-overview__tab-icon--approvals', to: '/approvals' },
+    { label: 'Preferences', iconSrc: '/computer-icons/settings.png', to: '/settings' },
 ];
 
 const online = computed(
@@ -152,8 +152,17 @@ const statusMessage = computed(() => {
         transform 0.15s ease;
     text-decoration: none;
 }
-.or3-overview__tab :deep(svg) {
-    color: var(--or3-text);
+.or3-overview__tab-icon {
+    display: block;
+    width: auto;
+    height: 24px;
+    max-width: 30px;
+    object-fit: contain;
+    image-rendering: pixelated;
+}
+.or3-overview__tab-icon--approvals {
+    height: 27px;
+    max-width: 28px;
 }
 .or3-overview__tab:hover {
     background: white;
@@ -166,8 +175,5 @@ const statusMessage = computed(() => {
     color: var(--or3-green-dark);
     border: 1px solid color-mix(in srgb, var(--or3-green) 30%, white 70%);
     box-shadow: var(--or3-shadow-soft);
-}
-.or3-overview__tab--active :deep(svg) {
-    color: var(--or3-green-dark);
 }
 </style>

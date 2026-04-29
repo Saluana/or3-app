@@ -18,7 +18,7 @@
       class="mt-2 overflow-hidden rounded-2xl border border-(--or3-border) bg-(--or3-surface) shadow-(--or3-shadow-soft)"
     >
       <div class="flex items-center gap-2 border-b border-(--or3-border) px-3 py-2 text-xs text-(--or3-text-muted)">
-        <Icon name="i-lucide-file-search" class="size-3.5 text-(--or3-green-dark)" />
+        <Icon name="i-pixelarticons-file" class="size-3.5 text-(--or3-green-dark)" />
         <span class="font-mono uppercase tracking-[0.16em]">Mention file</span>
         <span v-if="mentionState.loading" class="ml-auto">Searching…</span>
       </div>
@@ -31,7 +31,7 @@
           :class="index === mentionState.selectedIndex ? 'bg-(--or3-green-soft) text-(--or3-green-dark)' : 'text-(--or3-text) hover:bg-(--or3-surface-soft)'"
           @mousedown.prevent="selectMention(item)"
         >
-          <Icon name="i-lucide-file" class="mt-0.5 size-4 shrink-0" />
+          <Icon name="i-pixelarticons-file" class="mt-0.5 size-4 shrink-0" />
           <span class="min-w-0 flex-1">
             <span class="block truncate font-medium">{{ item.name }}</span>
             <span class="block truncate text-xs text-(--or3-text-muted)">{{ item.root_label }} / {{ item.path }}</span>
@@ -51,25 +51,25 @@
         class="inline-flex max-w-full items-center gap-2 rounded-2xl border border-(--or3-border) bg-(--or3-surface-soft) px-3 py-2 text-left text-xs text-(--or3-text)"
         @click="removeAttachment(attachment.id)"
       >
-        <Icon :name="attachment.kind === 'text' ? 'i-lucide-notebook-text' : 'i-lucide-paperclip'" class="size-3.5 shrink-0 text-(--or3-green-dark)" />
+        <Icon :name="attachment.kind === 'text' ? 'i-pixelarticons-notebook' : 'i-pixelarticons-paperclip'" class="size-3.5 shrink-0 text-(--or3-green-dark)" />
         <span class="min-w-0 flex-1 truncate">
           <span class="block font-medium text-(--or3-text)">{{ attachment.name }}</span>
           <span v-if="attachment.preview" class="block truncate text-(--or3-text-muted)">{{ attachment.preview }}</span>
         </span>
-        <Icon name="i-lucide-x" class="size-3.5 shrink-0 text-(--or3-text-muted)" />
+        <Icon name="i-pixelarticons-close" class="size-3.5 shrink-0 text-(--or3-text-muted)" />
       </button>
     </div>
 
     <div class="mt-2 flex items-center gap-2">
-      <UButton icon="i-lucide-paperclip" color="neutral" variant="ghost" class="or3-touch-target" aria-label="Attach file" type="button" @click="fileInput?.click()" />
+      <UButton icon="i-pixelarticons-paperclip" color="neutral" variant="ghost" class="or3-touch-target" aria-label="Attach file" type="button" @click="fileInput?.click()" />
       <input ref="fileInput" type="file" multiple class="hidden" accept="image/*,application/pdf,text/plain,.md,.txt,.json" aria-hidden="true" tabindex="-1" @change="handleFiles" />
 
       <div class="flex flex-1 gap-1 overflow-x-auto pb-1">
         <UButton v-for="entry in actions" :key="entry.action.id" size="xs" color="neutral" variant="soft" :icon="entry.action.icon" :label="entry.action.label" :disabled="entry.disabled" type="button" @click="entry.action.handler(actionContext)" />
       </div>
 
-      <UButton v-if="!streaming" icon="i-lucide-send" class="or3-touch-target bg-(--or3-green) text-white hover:bg-(--or3-green-dark)" aria-label="Send message" type="submit" :disabled="!canSend" />
-      <UButton v-else icon="i-lucide-square" color="error" variant="soft" class="or3-touch-target" aria-label="Stop generation" type="button" @click="emit('stop')" />
+      <UButton v-if="!streaming" icon="i-pixelarticons-send" class="or3-touch-target bg-(--or3-green) text-white hover:bg-(--or3-green-dark)" aria-label="Send message" type="submit" :disabled="!canSend" />
+      <UButton v-else icon="i-pixelarticons-square" color="error" variant="soft" class="or3-touch-target" aria-label="Stop generation" type="button" @click="emit('stop')" />
     </div>
   </UForm>
 </template>

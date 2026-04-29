@@ -4,7 +4,7 @@
       <div class="space-y-4 p-5">
         <div class="flex items-start gap-3">
           <div class="grid size-11 shrink-0 place-items-center rounded-2xl bg-(--or3-green-soft) text-(--or3-green)">
-            <Icon name="i-lucide-shield-check" class="size-5" />
+            <Icon name="i-pixelarticons-shield" class="size-5" />
           </div>
           <div class="min-w-0 flex-1">
             <p class="font-mono text-base font-semibold text-(--or3-text)">{{ title || 'Verify with your passkey' }}</p>

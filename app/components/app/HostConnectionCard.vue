@@ -1,7 +1,7 @@
 <template>
   <SurfaceCard class-name="space-y-4">
     <div class="flex items-start gap-3">
-      <RetroIcon name="i-lucide-link" />
+      <RetroIcon name="i-pixelarticons-link" />
       <div class="min-w-0 flex-1">
         <p class="font-mono text-base font-semibold text-(--or3-text)">Connect to your computer</p>
         <p class="mt-1 text-sm leading-6 text-(--or3-text-muted)">
@@ -55,7 +55,7 @@
 
       <UButton
         label="Get pairing code"
-        icon="i-lucide-key-round"
+        icon="i-pixelarticons-lock"
         type="submit"
         size="lg"
         block
@@ -79,7 +79,7 @@
         <span class="or3-live-dot" />
         Waiting for approval...
       </div>
-      <UButton label="Try now" icon="i-lucide-check" color="primary" variant="soft" class="mt-3" block :loading="loading" @click="exchange" />
+      <UButton label="Try now" icon="i-pixelarticons-check" color="primary" variant="soft" class="mt-3" block :loading="loading" @click="exchange" />
     </div>
 
     <p v-if="pairingError" class="text-sm text-(--or3-danger)">{{ pairingError }}</p>
