@@ -17,6 +17,12 @@ interface BackendFieldEntry {
     field: ConfigureField
 }
 
+interface BackendFieldRef {
+    section: string
+    field: string
+    channel?: string
+}
+
 const fieldCache = ref<BackendFieldEntry[]>([])
 const loadedSections = ref<Set<string>>(new Set())
 const loadingSections = ref<Set<string>>(new Set())
@@ -29,8 +35,69 @@ function refKey(section: string, field: string, channel?: string): string {
     return channel ? `${section}::${channel}::${field}` : `${section}::${field}`
 }
 
+const FIELD_ALIASES: Record<string, BackendFieldRef> = {
+    [refKey('provider', 'kind')]: { section: 'provider', field: 'provider_preset' },
+    [refKey('provider', 'apiBase')]: { section: 'provider', field: 'provider_api_base' },
+    [refKey('provider', 'apiKey')]: { section: 'provider', field: 'provider_api_key' },
+    [refKey('provider', 'model')]: { section: 'provider', field: 'provider_model' },
+    [refKey('provider', 'embedModel')]: { section: 'provider', field: 'provider_embed' },
+    [refKey('provider', 'temperature')]: { section: 'provider', field: 'provider_temperature' },
+    [refKey('provider', 'enableVision')]: { section: 'provider', field: 'provider_vision' },
+    [refKey('provider', 'timeoutSeconds')]: { section: 'provider', field: 'provider_timeout' },
+
+    [refKey('context', 'historyMaxMessages')]: { section: 'runtime', field: 'runtime_history_max' },
+    [refKey('context', 'memoryRetrieveLimit')]: { section: 'runtime', field: 'runtime_memory_retrieve' },
+    [refKey('context', 'maxInputTokens')]: { section: 'context', field: 'context_max_input_tokens' },
+    [refKey('context', 'outputReserveTokens')]: { section: 'context', field: 'context_output_reserve' },
+    [refKey('context', 'safetyMarginTokens')]: { section: 'context', field: 'context_safety_margin' },
+    [refKey('memory', 'vectorSearchK')]: { section: 'runtime', field: 'runtime_vector_k' },
+    [refKey('memory', 'ftsSearchK')]: { section: 'runtime', field: 'runtime_fts_k' },
+    [refKey('memory', 'vectorScanLimit')]: { section: 'runtime', field: 'runtime_vector_scan_limit' },
+    [refKey('memory', 'consolidationEnabled')]: { section: 'runtime', field: 'runtime_consolidation_enabled' },
+    [refKey('memory', 'consolidationCharLimit')]: { section: 'runtime', field: 'runtime_consolidation_max_input_chars' },
+
+    [refKey('workspace', 'workspaceDir')]: { section: 'workspace', field: 'workspace_dir' },
+    [refKey('workspace', 'allowedDir')]: { section: 'workspace', field: 'workspace_allowed_dir' },
+    [refKey('tools', 'restrictToWorkspace')]: { section: 'workspace', field: 'workspace_restrict' },
+    [refKey('docindex', 'enabled')]: { section: 'docindex', field: 'docindex_enabled' },
+    [refKey('docindex', 'maxFiles')]: { section: 'docindex', field: 'docindex_max_files' },
+    [refKey('docindex', 'maxChunks')]: { section: 'docindex', field: 'docindex_max_chunks' },
+    [refKey('docindex', 'maxFileBytes')]: { section: 'docindex', field: 'docindex_max_file_bytes' },
+    [refKey('docindex', 'embedMaxBytes')]: { section: 'docindex', field: 'docindex_embed_max_bytes' },
+    [refKey('docindex', 'refreshSeconds')]: { section: 'docindex', field: 'docindex_refresh_seconds' },
+
+    [refKey('subagents', 'enabled')]: { section: 'runtime', field: 'runtime_subagents_enabled' },
+    [refKey('subagents', 'maxConcurrent')]: { section: 'runtime', field: 'runtime_subagents_max_concurrent' },
+    [refKey('subagents', 'maxQueued')]: { section: 'runtime', field: 'runtime_subagents_max_queued' },
+    [refKey('subagents', 'taskTimeoutSeconds')]: { section: 'runtime', field: 'runtime_subagents_timeout' },
+    [refKey('cron', 'enabled')]: { section: 'automation', field: 'automation_cron_enabled' },
+    [refKey('cron', 'storePath')]: { section: 'automation', field: 'automation_cron_store_path' },
+    [refKey('heartbeat', 'enabled')]: { section: 'automation', field: 'automation_heartbeat_enabled' },
+    [refKey('heartbeat', 'intervalSeconds')]: { section: 'automation', field: 'automation_heartbeat_interval' },
+    [refKey('triggers', 'fileWatch.enabled')]: { section: 'automation', field: 'automation_filewatch_enabled' },
+    [refKey('triggers', 'fileWatch.debounceMs')]: { section: 'automation', field: 'automation_filewatch_debounce' },
+    [refKey('triggers', 'fileWatch.pollIntervalMs')]: { section: 'automation', field: 'automation_filewatch_poll_seconds' },
+    [refKey('triggers', 'webhook.enabled')]: { section: 'automation', field: 'automation_webhook_enabled' },
+    [refKey('triggers', 'webhook.bind')]: { section: 'automation', field: 'automation_webhook_addr' },
+    [refKey('triggers', 'webhook.secret')]: { section: 'automation', field: 'automation_webhook_secret' },
+
+    [refKey('runtimeProfile', 'value')]: { section: 'runtime', field: 'runtime_profile' },
+    [refKey('hardening', 'enableExecShell')]: { section: 'hardening', field: 'hardening_exec_shell' },
+    [refKey('hardening', 'execAllowedPrograms')]: { section: 'hardening', field: 'hardening_exec_allowed_programs' },
+    [refKey('hardening', 'enableNetwork')]: { section: 'hardening', field: 'hardening_sandbox_allow_network' },
+    [refKey('security', 'audit.enabled')]: { section: 'security', field: 'security_audit_enabled' },
+    [refKey('security', 'audit.keyFile')]: { section: 'security', field: 'security_audit_key_file' },
+    [refKey('security', 'secretStore.enabled')]: { section: 'security', field: 'security_secret_store_enabled' },
+    [refKey('security', 'secretStore.keyFile')]: { section: 'security', field: 'security_secret_store_key_file' },
+}
+
+function resolveFieldRef(section: string, field: string, channel?: string): BackendFieldRef {
+    return FIELD_ALIASES[refKey(section, field, channel)] ?? { section, field, channel }
+}
+
 function findField(section: string, field: string, channel?: string): ConfigureField | undefined {
-    const key = refKey(section, field, channel)
+    const resolved = resolveFieldRef(section, field, channel)
+    const key = refKey(resolved.section, resolved.field, resolved.channel)
     return fieldCache.value.find((entry) => refKey(entry.section, entry.field.key, entry.channel) === key)?.field
 }
 
@@ -59,6 +126,15 @@ function buildValueIndex(): Record<string, unknown> {
         out[key] = entry.field.value
         // Also expose the bare `section.field` key for compatibility.
         out[`${entry.section}.${entry.field.key}`] = entry.field.value
+        for (const [aliasKey, target] of Object.entries(FIELD_ALIASES)) {
+            if (refKey(entry.section, entry.field.key, entry.channel) !== refKey(target.section, target.field, target.channel)) continue
+            const [section, maybeChannelOrField, maybeField] = aliasKey.split('::')
+            if (!section || !maybeChannelOrField) continue
+            const friendlyKey = maybeField
+                ? `channels.${maybeChannelOrField}.${maybeField}`
+                : `${section}.${maybeChannelOrField}`
+            out[friendlyKey] = entry.field.value
+        }
     }
     return out
 }
@@ -119,6 +195,8 @@ export function useSimpleSettings() {
             for (const c of s.controls) {
                 for (const ref of c.fieldRefs) {
                     pairs.add(ref.channel ? `${ref.section}::${ref.channel}` : ref.section)
+                    const resolved = resolveFieldRef(ref.section, ref.field, ref.channel)
+                    pairs.add(resolved.channel ? `${resolved.section}::${resolved.channel}` : resolved.section)
                 }
             }
         }
@@ -207,7 +285,15 @@ export function useSimpleSettings() {
         isControlAvailable,
         lastError,
         applyChanges: async (changes: SimpleSettingChange[]) => {
-            const wire: ConfigureChange[] = changes.map(toConfigureChange)
+            const wire: ConfigureChange[] = changes.map((change) => {
+                const resolved = resolveFieldRef(change.section, change.field, change.channel)
+                return toConfigureChange({
+                    ...change,
+                    section: resolved.section,
+                    field: resolved.field,
+                    channel: resolved.channel,
+                })
+            })
             return configure.applyChanges(wire)
         },
     }

@@ -173,7 +173,7 @@ export function useSettingsHealth() {
 
             // 7. Terminal access matches safety.
             const execEnabled = Boolean(v['hardening.enableExecShell'])
-            const profile = String(v['runtimeProfile'] ?? '')
+            const profile = String(v['runtimeProfile.value'] ?? '')
             if (execEnabled && profile.startsWith('hosted-no-exec')) {
                 next.push({
                     id: 'safety-mismatch',
