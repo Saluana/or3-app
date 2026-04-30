@@ -448,11 +448,7 @@ async function denyApproval() {
 
 .or3-msg__action:focus-visible {
     outline: none;
-    border-color: color-mix(
-        in srgb,
-        var(--or3-green) 32%,
-        transparent
-    );
+    border-color: color-mix(in srgb, var(--or3-green) 32%, transparent);
 }
 
 .or3-msg__action--approve {
