@@ -19,7 +19,7 @@
           v-model="formState.task"
           :rows="3"
           class="w-full"
-          :ui="{ base: 'rounded-2xl border border-(--or3-border) bg-(--or3-surface) pr-14 text-sm leading-6 placeholder:text-(--or3-text-muted)/70' }"
+          :ui="{ base: 'rounded-2xl border border-(--or3-border) bg-(--or3-surface) pr-14 text-base leading-6 placeholder:text-(--or3-text-muted)/70 sm:text-sm' }"
           placeholder="What should or3-intern do?"
           aria-label="Task for or3-intern"
         />

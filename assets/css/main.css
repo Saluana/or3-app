@@ -1,10 +1,441 @@
 @import "tailwindcss";
+@import "or3-scroll/style.css";
+@import "streamdown-vue/style.css";
+
+:root {
+  --or3-background: #f7f3ea;
+  --or3-surface: #fffcf5;
+  --or3-surface-soft: #f1eadf;
+  --or3-border: #ddd4c7;
+  --or3-border-strong: #c9beaf;
+  --or3-text: #24241f;
+  --or3-text-muted: #6f6a60;
+  --or3-green: #3f8f58;
+  --or3-green-soft: #e1efe4;
+  --or3-green-dark: #28623b;
+  --or3-amber: #c89232;
+  --or3-amber-soft: #f7ecd0;
+  --or3-danger: #c75c5c;
+  --or3-danger-soft: #fbe0e0;
+  --or3-shadow: 0 8px 30px rgba(42, 35, 25, 0.08);
+  --or3-shadow-soft: 0 2px 10px rgba(42, 35, 25, 0.05);
+  --or3-shadow-strong: 0 14px 40px rgba(42, 35, 25, 0.12);
+  --or3-radius-card: 22px;
+  --or3-radius-control: 18px;
+  --or3-safe-top: env(safe-area-inset-top, 0px);
+  --or3-safe-right: env(safe-area-inset-right, 0px);
+  --or3-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --or3-safe-left: env(safe-area-inset-left, 0px);
+  --or3-keyboard-height: 0px;
+}
 
 html {
+  width: 100%;
+  min-height: 100%;
   font-family: "Inter", sans-serif;
-  background: #0a0a0a;
+  background: var(--or3-background);
+  color: var(--or3-text);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  accent-color: var(--or3-green);
 }
 
 body {
+  width: 100%;
   min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0;
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0) 42%),
+    var(--or3-background);
+  color: var(--or3-text);
+}
+
+#__nuxt {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+html:has(.or3-chat-shell),
+body:has(.or3-chat-shell),
+#__nuxt:has(.or3-chat-shell) {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+::selection {
+  background: rgba(63, 143, 88, 0.18);
+  color: var(--or3-text);
+}
+
+@layer base {
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+
+  @media (min-width: 640px) {
+    input,
+    textarea,
+    select {
+      font-size: inherit;
+    }
+  }
+}
+
+.or3-app-shell {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--or3-background);
+  color: var(--or3-text);
+}
+
+.or3-surface {
+  background: color-mix(in srgb, var(--or3-surface) 92%, white 8%);
+  border: 1px solid var(--or3-border);
+  border-radius: var(--or3-radius-card);
+  box-shadow: var(--or3-shadow-soft);
+}
+
+.or3-surface-soft {
+  background: var(--or3-surface-soft);
+  border: 1px solid color-mix(in srgb, var(--or3-border) 82%, white 18%);
+  border-radius: var(--or3-radius-card);
+}
+
+.or3-label {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--or3-green);
+}
+
+.or3-command {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  color: var(--or3-text-muted);
+}
+
+.or3-safe-top {
+  padding-top: calc(var(--or3-safe-top) + 1rem);
+}
+
+.or3-safe-bottom {
+  padding-bottom: calc(var(--or3-safe-bottom) + 1rem);
+}
+
+.or3-safe-x {
+  padding-left: calc(var(--or3-safe-left) + 1rem);
+  padding-right: calc(var(--or3-safe-right) + 1rem);
+}
+
+.or3-mobile-screen {
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding-top: calc(var(--or3-safe-top) + 1rem);
+  padding-right: calc(var(--or3-safe-right) + 1rem);
+  padding-bottom: calc(var(--or3-safe-bottom) + 5.5rem);
+  padding-left: calc(var(--or3-safe-left) + 1rem);
+}
+
+.or3-bottom-nav-safe {
+  padding-bottom: calc(var(--or3-safe-bottom) + 0.75rem);
+}
+
+.or3-bottom-nav {
+  transform: translateY(0);
+  opacity: 1;
+  transition:
+    transform 180ms ease,
+    opacity 140ms ease;
+  will-change: transform, opacity;
+}
+
+.or3-bottom-nav--keyboard-open {
+  transform: translate3d(0, calc(100% + var(--or3-safe-bottom) + 1rem), 0);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+html.or3-keyboard-open .or3-mobile-screen {
+  padding-bottom: calc(var(--or3-safe-bottom) + 1rem);
+}
+
+@media (max-width: 767px) {
+  body:has(input:focus, textarea:focus, select:focus, [contenteditable="true"]:focus, .ProseMirror:focus) .or3-bottom-nav {
+    transform: translate3d(0, calc(100% + var(--or3-safe-bottom) + 1rem), 0);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  body:has(input:focus, textarea:focus, select:focus, [contenteditable="true"]:focus, .ProseMirror:focus) .or3-mobile-screen {
+    padding-bottom: calc(var(--or3-safe-bottom) + 1rem);
+  }
+}
+
+.or3-touch-target {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.or3-icon-frame {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+  border: 1px solid var(--or3-border);
+  background: rgba(255, 252, 245, 0.88);
+  box-shadow: var(--or3-shadow-soft);
+}
+
+.or3-icon-frame--accent {
+  background: var(--or3-green-soft);
+  border-color: color-mix(in srgb, var(--or3-green) 28%, white 72%);
+  color: var(--or3-green-dark);
+}
+
+.or3-hairline {
+  border-color: color-mix(in srgb, var(--or3-border) 80%, white 20%);
+}
+
+/* Friendly chip used for quick actions and filter selectors. */
+.or3-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid var(--or3-border);
+  background: var(--or3-surface);
+  color: var(--or3-text);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+  box-shadow: var(--or3-shadow-soft);
+}
+.or3-chip:hover { background: color-mix(in srgb, var(--or3-surface) 80%, var(--or3-green-soft) 20%); }
+.or3-chip:active { transform: scale(0.97); }
+.or3-chip[aria-pressed="true"], .or3-chip.is-active {
+  background: var(--or3-green-soft);
+  border-color: color-mix(in srgb, var(--or3-green) 35%, white 65%);
+  color: var(--or3-green-dark);
+}
+
+/* Subtle "press" animation for tap-friendly cards. */
+.or3-pressable {
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.or3-pressable:hover { box-shadow: var(--or3-shadow); }
+.or3-pressable:active { transform: scale(0.99); }
+
+/* Live indicator dot used in headers/status pills. */
+.or3-live-dot {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  background: var(--or3-green);
+  box-shadow: 0 0 0 0 rgba(63, 143, 88, 0.45);
+  animation: or3-pulse 2.4s ease-out infinite;
+}
+@keyframes or3-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(63, 143, 88, 0.45); }
+  70%  { box-shadow: 0 0 0 10px rgba(63, 143, 88, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(63, 143, 88, 0); }
+}
+
+/* Soft focus ring for any custom focusable element. */
+.or3-focus-ring:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--or3-green) 35%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .or3-live-dot { animation: none; }
+  .or3-pressable, .or3-chip { transition: none; }
+}
+
+@media (min-width: 768px) {
+  .or3-mobile-screen {
+    padding-right: calc(var(--or3-safe-right) + 1.5rem);
+    padding-left: calc(var(--or3-safe-left) + 1.5rem);
+  }
+}
+
+/* ===========================================================================
+   Chat shell — full-height, single-scroll layout for the assistant page.
+   =========================================================================== */
+
+.or3-chat-shell {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  background: var(--or3-background);
+  color: var(--or3-text);
+  overflow: hidden; /* the inner __body is the only scroller */
+  overscroll-behavior: none;
+  touch-action: pan-y;
+}
+
+.or3-chat-shell__header {
+  flex-shrink: 0;
+  position: relative;
+  z-index: 20;
+  padding:
+    calc(var(--or3-safe-top) + 0.85rem)
+    calc(var(--or3-safe-right) + 1rem)
+    0.75rem
+    calc(var(--or3-safe-left) + 1rem);
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--or3-background) 96%, white 4%) 70%,
+    color-mix(in srgb, var(--or3-background) 80%, transparent)
+  );
+  backdrop-filter: blur(8px);
+}
+
+.or3-chat-shell__header > :first-child {
+  padding-bottom: 0;
+}
+
+.or3-chat-shell__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 calc(var(--or3-safe-right) + 0.75rem) 0 calc(var(--or3-safe-left) + 0.75rem);
+}
+
+.or3-chat-shell__content {
+  width: 100%;
+  max-width: 46rem;
+  margin: 0 auto;
+  /* Reserve room so messages can scroll fully out from under the floating
+     composer + bottom nav (composer ~120px, nav ~88px, gap). */
+  padding: 0.5rem 0 calc(var(--or3-safe-bottom) + 16rem);
+}
+
+html.or3-keyboard-open .or3-chat-shell__content {
+  padding-bottom: calc(var(--or3-safe-bottom) + 7rem);
+}
+
+@media (max-width: 767px) {
+  body:has(input:focus, textarea:focus, select:focus, [contenteditable="true"]:focus, .ProseMirror:focus) .or3-chat-shell__content {
+    padding-bottom: calc(var(--or3-safe-bottom) + 7rem);
+  }
+}
+
+.or3-chat-shell__composer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--or3-safe-bottom) + 6rem); /* clearance above bottom nav */
+  z-index: 30;
+  pointer-events: none;
+  padding: 0 calc(var(--or3-safe-right) + 0.75rem) 0 calc(var(--or3-safe-left) + 0.75rem);
+  transition: bottom 180ms ease;
+}
+
+html.or3-keyboard-open .or3-chat-shell__composer {
+  bottom: max(0.5rem, var(--or3-safe-bottom));
+}
+
+@media (max-width: 767px) {
+  body:has(input:focus, textarea:focus, select:focus, [contenteditable="true"]:focus, .ProseMirror:focus) .or3-chat-shell__composer {
+    bottom: max(0.5rem, var(--or3-safe-bottom));
+  }
+}
+
+.or3-chat-shell__composer-inner {
+  pointer-events: auto;
+  width: 100%;
+  max-width: 46rem;
+  margin: 0 auto;
+}
+
+/* Keep the message list clean while the composer floats independently. */
+.or3-chat-shell__fade {
+  display: none;
+}
+
+/* Hero empty state ----------------------------------------------------- */
+
+.or3-chat-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 1rem;
+  padding: 4rem 1rem 1.5rem;
+}
+
+.or3-chat-empty__avatar {
+  width: 4rem;
+  height: 4rem;
+  display: grid;
+  place-items: center;
+  border-radius: 1.25rem;
+  background: var(--or3-green-soft);
+  color: var(--or3-green-dark);
+  border: 1px solid color-mix(in srgb, var(--or3-green) 25%, transparent);
+  box-shadow: var(--or3-shadow-soft);
+}
+
+.or3-chat-empty__title {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--or3-text);
+}
+
+.or3-chat-empty__subtitle {
+  max-width: 28rem;
+  font-size: 0.95rem;
+  line-height: 1.55;
+  color: var(--or3-text-muted);
+}
+
+.or3-chat-empty__chips {
+  margin-top: 1rem;
+  width: 100%;
+  max-width: 32rem;
+  justify-content: center !important;
+  flex-wrap: wrap !important;
+  overflow-x: visible !important;
+}
+
+/* Thread ---------------------------------------------------------------- */
+
+.or3-chat-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1rem 0 0;
+  list-style: none;
+  margin: 0;
+}
+
+.or3-chat-thread > li { display: contents; }
+
+@media (min-width: 768px) {
+  .or3-chat-shell__header,
+  .or3-chat-shell__body,
+  .or3-chat-shell__composer,
+  .or3-chat-shell__fade {
+    padding-left: calc(var(--or3-safe-left) + 1.5rem);
+    padding-right: calc(var(--or3-safe-right) + 1.5rem);
+  }
 }

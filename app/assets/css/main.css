@@ -26,9 +26,12 @@
   --or3-safe-right: env(safe-area-inset-right, 0px);
   --or3-safe-bottom: env(safe-area-inset-bottom, 0px);
   --or3-safe-left: env(safe-area-inset-left, 0px);
+  --or3-keyboard-height: 0px;
 }
 
 html {
+  width: 100%;
+  min-height: 100%;
   font-family: "Inter", sans-serif;
   background: var(--or3-background);
   color: var(--or3-text);
@@ -39,6 +42,7 @@ html {
 }
 
 body {
+  width: 100%;
   min-height: 100vh;
   min-height: 100dvh;
   margin: 0;
@@ -53,9 +57,33 @@ body {
   min-height: 100dvh;
 }
 
+html:has(.or3-chat-shell),
+body:has(.or3-chat-shell),
+#__nuxt:has(.or3-chat-shell) {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
 ::selection {
   background: rgba(63, 143, 88, 0.18);
   color: var(--or3-text);
+}
+
+@layer base {
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+
+  @media (min-width: 640px) {
+    input,
+    textarea,
+    select {
+      font-size: inherit;
+    }
+  }
 }
 
 .or3-app-shell {
@@ -114,6 +142,39 @@ body {
 
 .or3-bottom-nav-safe {
   padding-bottom: calc(var(--or3-safe-bottom) + 0.75rem);
+}
+
+.or3-bottom-nav {
+  transform: translateY(0);
+  opacity: 1;
+  transition:
+    transform 180ms ease,
+    opacity 140ms ease;
+  will-change: transform, opacity;
+}
+
+.or3-bottom-nav--keyboard-open {
+  transform: translate3d(0, calc(100% + var(--or3-safe-bottom) + 1rem), 0);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+html.or3-keyboard-open .or3-mobile-screen {
+  padding-bottom: calc(var(--or3-safe-bottom) + 1rem);
+}
+
+@media (max-width: 767px) {
+  body:has(input:focus, textarea:focus, select:focus, [contenteditable="true"]:focus, .ProseMirror:focus) .or3-bottom-nav {
+    transform: translate3d(0, calc(100% + var(--or3-safe-bottom) + 1rem), 0);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  body:has(input:focus, textarea:focus, select:focus, [contenteditable="true"]:focus, .ProseMirror:focus) .or3-mobile-screen {
+    padding-bottom: calc(var(--or3-safe-bottom) + 1rem);
+  }
 }
 
 .or3-touch-target {
@@ -211,15 +272,18 @@ body {
    =========================================================================== */
 
 .or3-chat-shell {
-  position: relative;
+  position: fixed;
+  inset: 0;
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
-  min-height: 100dvh;
+  width: 100%;
+  height: 100vh;
   height: 100dvh;
   background: var(--or3-background);
   color: var(--or3-text);
   overflow: hidden; /* the inner __body is the only scroller */
+  overscroll-behavior: none;
+  touch-action: pan-y;
 }
 
 .or3-chat-shell__header {
@@ -248,6 +312,7 @@ body {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  overscroll-behavior: contain;
   scrollbar-gutter: stable;
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
@@ -263,6 +328,16 @@ body {
   padding: 0.5rem 0 calc(var(--or3-safe-bottom) + 16rem);
 }
 
+html.or3-keyboard-open .or3-chat-shell__content {
+  padding-bottom: calc(var(--or3-safe-bottom) + 7rem);
+}
+
+@media (max-width: 767px) {
+  body:has(input:focus, textarea:focus, select:focus, [contenteditable="true"]:focus, .ProseMirror:focus) .or3-chat-shell__content {
+    padding-bottom: calc(var(--or3-safe-bottom) + 7rem);
+  }
+}
+
 .or3-chat-shell__composer {
   position: fixed;
   left: 0;
@@ -271,6 +346,17 @@ body {
   z-index: 30;
   pointer-events: none;
   padding: 0 calc(var(--or3-safe-right) + 0.75rem) 0 calc(var(--or3-safe-left) + 0.75rem);
+  transition: bottom 180ms ease;
+}
+
+html.or3-keyboard-open .or3-chat-shell__composer {
+  bottom: max(0.5rem, var(--or3-safe-bottom));
+}
+
+@media (max-width: 767px) {
+  body:has(input:focus, textarea:focus, select:focus, [contenteditable="true"]:focus, .ProseMirror:focus) .or3-chat-shell__composer {
+    bottom: max(0.5rem, var(--or3-safe-bottom));
+  }
 }
 
 .or3-chat-shell__composer-inner {
@@ -280,22 +366,9 @@ body {
   margin: 0 auto;
 }
 
-/* Soft fade above the floating composer so messages elegantly disappear
-   into the background instead of being abruptly clipped. */
+/* Keep the message list clean while the composer floats independently. */
 .or3-chat-shell__fade {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: calc(var(--or3-safe-bottom) + 6rem);
-  height: 6.5rem;
-  z-index: 25;
-  pointer-events: none;
-  background: linear-gradient(
-    to top,
-    var(--or3-background) 30%,
-    color-mix(in srgb, var(--or3-background) 70%, transparent) 75%,
-    transparent
-  );
+  display: none;
 }
 
 /* Hero empty state ----------------------------------------------------- */

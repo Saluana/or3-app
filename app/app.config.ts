@@ -35,11 +35,13 @@ export default defineAppConfig({
     },
 
     // Inputs sit on the cream background, so we add a clear border + cream-white fill.
+    // Keep form controls at 16px+ on mobile. iOS Safari zooms the whole page when
+    // focused inputs render below 16px, even if the rest of the UI looks perfect.
     input: {
       slots: {
         base: [
           'rounded-2xl bg-[var(--or3-surface)] border border-[var(--or3-border)]',
-          'shadow-[var(--or3-shadow-soft)] text-[var(--or3-text)] placeholder:text-[var(--or3-text-muted)]',
+          'shadow-[var(--or3-shadow-soft)] text-base sm:text-sm text-[var(--or3-text)] placeholder:text-[var(--or3-text-muted)]',
           'focus:border-[var(--or3-green)] focus-visible:ring-2 focus-visible:ring-[var(--or3-green)]/30',
         ],
       },
@@ -54,7 +56,7 @@ export default defineAppConfig({
       slots: {
         base: [
           'rounded-2xl bg-[var(--or3-surface)] border border-[var(--or3-border)]',
-          'shadow-[var(--or3-shadow-soft)] text-[var(--or3-text)] placeholder:text-[var(--or3-text-muted)]',
+          'shadow-[var(--or3-shadow-soft)] text-base sm:text-sm text-[var(--or3-text)] placeholder:text-[var(--or3-text-muted)]',
           'focus:border-[var(--or3-green)] focus-visible:ring-2 focus-visible:ring-[var(--or3-green)]/30',
         ],
       },
@@ -69,7 +71,7 @@ export default defineAppConfig({
       slots: {
         base: [
           'rounded-2xl bg-[var(--or3-surface)] border border-[var(--or3-border)]',
-          'text-[var(--or3-text)] placeholder:text-[var(--or3-text-muted)]',
+          'text-base sm:text-sm text-[var(--or3-text)] placeholder:text-[var(--or3-text-muted)]',
           'focus-visible:ring-2 focus-visible:ring-[var(--or3-green)]/30',
         ],
         content: [
@@ -98,7 +100,7 @@ export default defineAppConfig({
       slots: {
         base: [
           'rounded-2xl bg-[var(--or3-surface)] border border-[var(--or3-border)]',
-          'text-[var(--or3-text)] placeholder:text-[var(--or3-text-muted)]',
+          'text-base sm:text-sm text-[var(--or3-text)] placeholder:text-[var(--or3-text-muted)]',
           'focus-visible:ring-2 focus-visible:ring-[var(--or3-green)]/30',
         ],
         content: [

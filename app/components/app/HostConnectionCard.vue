@@ -272,8 +272,12 @@ function stopAutoFinish() {
 
 onMounted(() => {
     const suggested = suggestedBaseUrl.value;
-    if (!suggested || formState.baseUrl !== 'http://127.0.0.1:9100') return;
-    formState.baseUrl = suggested;
+    if (!suggested) return;
+    let host = formState.baseUrl;
+    try { host = new URL(formState.baseUrl).hostname; } catch {}
+    if (isLoopbackHost(host) || !formState.baseUrl) {
+        formState.baseUrl = suggested;
+    }
 });
 
 onBeforeUnmount(stopAutoFinish);

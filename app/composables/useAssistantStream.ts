@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import type { JobSnapshot, TurnResponse } from '~/types/or3-api'
+import type { JobEvent, JobSnapshot, TurnResponse } from '~/types/or3-api'
 import type { AssistantSendPayload, ChatActivityEntry, ChatToolCall } from '~/types/app-state'
 import { useChatSessions } from './useChatSessions'
 import { useOr3Api } from './useOr3Api'
@@ -100,6 +100,30 @@ function truncateLogDetail(value: string, limit = 500) {
   return value.length > limit ? `${value.slice(0, limit)}\n...` : value
 }
 
+function eventPayload(event: JobEvent | { event?: string, json?: unknown }) {
+  const json = 'json' in event ? event.json : undefined
+  const data = 'data' in event ? event.data : undefined
+  if (json && typeof json === 'object') return json as Record<string, unknown>
+  if (data && typeof data === 'object') return data as Record<string, unknown>
+  return undefined
+}
+
+function eventName(event: JobEvent | { event?: string, json?: unknown }) {
+  const payload = eventPayload(event)
+  return String(('event' in event ? event.event : '') || ('type' in event ? event.type : '') || payload?.type || '')
+}
+
+function eventSequence(event: JobEvent | { event?: string, json?: unknown }) {
+  if ('sequence' in event && typeof event.sequence === 'number') return event.sequence
+  const payload = eventPayload(event)
+  return typeof payload?.sequence === 'number' ? payload.sequence : undefined
+}
+
+function eventJobId(event: JobEvent | { event?: string, json?: unknown }) {
+  const payload = eventPayload(event)
+  return typeof payload?.job_id === 'string' ? payload.job_id : undefined
+}
+
 export function useAssistantStream() {
   const api = useOr3Api()
   const chat = useChatSessions()
@@ -131,6 +155,9 @@ export function useAssistantStream() {
     const activeController = new AbortController()
     controller = activeController
     let rawAssistantContent = ''
+    let sawVisibleOutput = false
+    const appliedEventSequenceKeys = new Set<string>()
+    const streamedEventPayloadKeys = new Set<string>()
 
     const readAssistant = () => chat.messages.value.find((item) => item.id === assistant.id)
     const updateAssistant = (patch: Parameters<typeof chat.updateMessage>[1]) => chat.updateMessage(assistant.id, patch)
@@ -160,6 +187,8 @@ export function useAssistantStream() {
     }
     const addToolCall = (name: string, args?: string) => {
       const current = readAssistant()
+      const existing = current?.toolCalls?.find((call) => call.name === name && call.status === 'running' && (args === undefined || call.arguments === args))
+      if (existing) return
       const toolCalls = [...(current?.toolCalls ?? []), createToolCall(name, args)]
       setToolCalls(toolCalls)
       addActivity(createActivity('tool_call', `Tool call: ${name}`, args ? truncateLogDetail(args) : undefined, 'running'))
@@ -170,6 +199,8 @@ export function useAssistantStream() {
       const targetIndex = [...toolCalls].reverse().findIndex((call) => call.name === name && call.status === 'running')
       const resolvedIndex = targetIndex === -1 ? -1 : toolCalls.length - 1 - targetIndex
       if (resolvedIndex === -1) {
+        const existingCompletedIndex = [...toolCalls].reverse().findIndex((call) => call.name === name && call.status !== 'running' && call.result === result && call.error === error)
+        if (existingCompletedIndex !== -1) return
         toolCalls.push({
           ...createToolCall(name),
           status: error ? 'error' : 'complete',
@@ -196,10 +227,103 @@ export function useAssistantStream() {
       )
       addActivity(createActivity('tool_result', `Tool result: ${name}`, error || (result ? truncateLogDetail(result) : undefined), error ? 'error' : 'complete'))
     }
+    const applyEvent = (event: JobEvent | { event?: string, json?: unknown }, source: 'stream' | 'snapshot' = 'stream') => {
+      const payload = eventPayload(event)
+      const type = eventName(event)
+      if (!type) return { failed: false, completed: false }
+
+      const seq = eventSequence(event)
+      const seqKey = seq !== undefined ? `seq:${seq}` : ''
+      const payloadKey = `${type}:${JSON.stringify(payload ?? {})}`
+      if (seqKey && appliedEventSequenceKeys.has(seqKey)) return { failed: false, completed: false }
+      if (source === 'snapshot' && streamedEventPayloadKeys.has(payloadKey)) return { failed: false, completed: false }
+      if (seqKey) appliedEventSequenceKeys.add(seqKey)
+      if (source === 'stream') streamedEventPayloadKeys.add(payloadKey)
+
+      const delta = String(payload?.delta ?? payload?.text ?? payload?.content ?? '')
+      if (type === 'queued' || type === 'started') {
+        addActivity(createActivity(type, type === 'queued' ? 'Queued turn' : 'Started turn'))
+      }
+      if (type === 'text_delta' && delta) {
+        appendAssistantContent(delta)
+        sawVisibleOutput = sawVisibleOutput || !!sanitizeAssistantText(rawAssistantContent)
+      }
+      const finalText = payload?.final_text
+      const assistantContent = typeof payload?.content === 'string' ? payload.content : ''
+      const assistantText = typeof finalText === 'string' && finalText.trim()
+        ? finalText
+        : type === 'assistant'
+          ? assistantContent
+          : ''
+      if (assistantText.trim()) {
+        replaceAssistantContent(assistantText)
+        sawVisibleOutput = sawVisibleOutput || !!sanitizeAssistantText(assistantText)
+      }
+      if (type === 'tool_call') {
+        addToolCall(String(payload?.name || 'tool'), typeof payload?.arguments === 'string' ? payload.arguments : undefined)
+      }
+      if (type === 'tool_result') {
+        resolveToolCall(
+          String(payload?.name || 'tool'),
+          typeof payload?.result === 'string' ? payload.result : undefined,
+          typeof payload?.error === 'string' ? payload.error : undefined,
+        )
+      }
+      if (type === 'reasoning_delta' && typeof payload?.content === 'string') {
+        updateAssistant({ reasoningText: `${readAssistant()?.reasoningText || ''}${payload.content}` })
+      }
+      if (type === 'runtime_error') {
+        addActivity(createActivity('runtime_error', 'Runtime error', String(payload?.message || 'Unknown runtime error'), 'error'))
+      }
+
+      const streamError = String(payload?.error ?? payload?.message ?? '').trim()
+      const streamStatus = String(payload?.status ?? '').trim()
+      if (streamError || streamStatus === 'failed' || streamStatus === 'aborted') {
+        const failureText = streamError || sanitizeAssistantText(rawAssistantContent) || readAssistant()?.content || 'or3-intern could not finish this request.'
+        updateAssistant({
+          content: failureText,
+          status: 'failed',
+          error: streamError || `Turn ${streamStatus || 'failed'}`,
+          jobId: eventJobId(event) ?? undefined,
+        })
+        return { failed: true, completed: false }
+      }
+
+      if (streamStatus === 'completed') {
+        completeRunningActivity(['queued', 'started', 'tool_call'])
+        addActivity(createActivity('completion', 'Completed turn', typeof payload?.final_text === 'string' && payload.final_text.trim() ? undefined : 'No final text was included in the completion event.', 'complete'))
+        updateAssistant({ status: 'complete' })
+        return { failed: false, completed: true }
+      }
+
+      return { failed: false, completed: false }
+    }
+    const applyJobSnapshot = (snapshot: JobSnapshot) => {
+      activeJobId.value = snapshot.job_id
+      updateAssistant({ jobId: snapshot.job_id })
+      for (const event of snapshot.events ?? []) applyEvent(event, 'snapshot')
+      const snapshotText = snapshot.final_text?.trim() || snapshot.error?.trim() || ''
+      if (snapshotText && !sawVisibleOutput) {
+        replaceAssistantContent(snapshotText)
+        sawVisibleOutput = sawVisibleOutput || !!sanitizeAssistantText(snapshotText)
+      }
+      updateAssistant({
+        status: snapshot.error || snapshot.status === 'failed' || snapshot.status === 'aborted' ? 'failed' : 'complete',
+        error: snapshot.error,
+        jobId: snapshot.job_id,
+      })
+    }
+    const fetchAndApplyJobSnapshot = async (jobId?: string | null) => {
+      if (!jobId) return null
+      const snapshot = await api.request<JobSnapshot>(`/internal/v1/jobs/${encodeURIComponent(jobId)}`, {
+        signal: activeController.signal,
+      })
+      applyJobSnapshot(snapshot)
+      return snapshot
+    }
 
     try {
       let sawStreamEvent = false
-      let sawVisibleOutput = false
       let streamEndedWithFailure = false
       let streamedJobId: string | null = null
 
@@ -208,89 +332,25 @@ export function useAssistantStream() {
         signal: activeController.signal,
       })) {
         sawStreamEvent = true
-        const payload = event.json as Record<string, unknown> | undefined
-        const eventType = String(event.event || payload?.type || '')
-        const delta = String(payload?.delta ?? payload?.text ?? payload?.content ?? '')
-        if (eventType === 'queued' || eventType === 'started') {
-          addActivity(createActivity(eventType, eventType === 'queued' ? 'Queued turn' : 'Started turn'))
+        const jobId = eventJobId(event)
+        if (jobId) {
+          streamedJobId = jobId
+          activeJobId.value = jobId
+          updateAssistant({ jobId })
         }
-        if (eventType === 'text_delta' && delta) {
-          appendAssistantContent(delta)
-          sawVisibleOutput = sawVisibleOutput || !!sanitizeAssistantText(rawAssistantContent)
-        }
-        const finalText = payload?.final_text
-        const assistantContent = typeof payload?.content === 'string' ? payload.content : ''
-        const assistantText = typeof finalText === 'string' && finalText.trim()
-          ? finalText
-          : eventType === 'assistant'
-            ? assistantContent
-            : ''
-        if (assistantText.trim()) {
-          replaceAssistantContent(assistantText)
-          sawVisibleOutput = sawVisibleOutput || !!sanitizeAssistantText(assistantText)
-        }
-        if (eventType === 'tool_call') {
-          addToolCall(String(payload?.name || 'tool'), typeof payload?.arguments === 'string' ? payload.arguments : undefined)
-        }
-        if (eventType === 'tool_result') {
-          resolveToolCall(
-            String(payload?.name || 'tool'),
-            typeof payload?.result === 'string' ? payload.result : undefined,
-            typeof payload?.error === 'string' ? payload.error : undefined,
-          )
-        }
-        if (eventType === 'reasoning_delta' && typeof payload?.content === 'string') {
-          updateAssistant({ reasoningText: `${readAssistant()?.reasoningText || ''}${payload.content}` })
-        }
-        if (eventType === 'runtime_error') {
-          addActivity(createActivity('runtime_error', 'Runtime error', String(payload?.message || 'Unknown runtime error'), 'error'))
-        }
-        if (typeof payload?.job_id === 'string') {
-          streamedJobId = payload.job_id
-          activeJobId.value = payload.job_id
-        }
+        const result = applyEvent(event)
+        streamEndedWithFailure = streamEndedWithFailure || result.failed
+      }
 
-        const streamError = String(payload?.error ?? payload?.message ?? '').trim()
-        const streamStatus = String(payload?.status ?? '').trim()
-        if (streamError || streamStatus === 'failed' || streamStatus === 'aborted') {
-          streamEndedWithFailure = true
-          const failureText = streamError || sanitizeAssistantText(rawAssistantContent) || readAssistant()?.content || 'or3-intern could not finish this request.'
-          updateAssistant({
-            content: failureText,
-            status: 'failed',
-            error: streamError || `Turn ${streamStatus || 'failed'}`,
-            jobId: streamedJobId ?? undefined,
-          })
-        }
-
-        if (streamStatus === 'completed') {
-          completeRunningActivity(['queued', 'started', 'tool_call'])
-          addActivity(createActivity('completion', 'Completed turn', typeof payload?.final_text === 'string' && payload.final_text.trim() ? undefined : 'No final text was included in the completion event.', 'complete'))
-          updateAssistant({ status: 'complete' })
+      if (streamedJobId) {
+        try {
+          await fetchAndApplyJobSnapshot(streamedJobId)
+        } catch {
+          // Streaming already gave us the best available live state.
         }
       }
 
       if (streamEndedWithFailure) return
-
-      if (!sawVisibleOutput && streamedJobId) {
-        try {
-          const snapshot = await api.request<JobSnapshot>(`/internal/v1/jobs/${encodeURIComponent(streamedJobId)}`, {
-            signal: activeController.signal,
-          })
-          const snapshotText = snapshot.final_text?.trim() || snapshot.error?.trim() || ''
-          if (snapshotText) {
-            replaceAssistantContent(snapshotText)
-            updateAssistant({
-              status: snapshot.error || snapshot.status === 'failed' || snapshot.status === 'aborted' ? 'failed' : 'complete',
-              error: snapshot.error,
-              jobId: snapshot.job_id,
-            })
-            sawVisibleOutput = sawVisibleOutput || !!sanitizeAssistantText(snapshotText)
-          }
-        } catch {
-          // Fall through to the visible empty-result message below.
-        }
-      }
 
       if (!sawVisibleOutput) {
         updateAssistant({
@@ -320,12 +380,25 @@ export function useAssistantStream() {
           signal: activeController.signal,
         })
         activeJobId.value = response.job_id
-        replaceAssistantContent(response.final_text || response.error || 'The turn completed without text.')
-        updateAssistant({
-          status: response.error ? 'failed' : 'complete',
-          error: response.error,
-          jobId: response.job_id,
-        })
+        if (response.job_id) {
+          try {
+            await fetchAndApplyJobSnapshot(response.job_id)
+          } catch {
+            replaceAssistantContent(response.final_text || response.error || 'The turn completed without text.')
+            updateAssistant({
+              status: response.error ? 'failed' : 'complete',
+              error: response.error,
+              jobId: response.job_id,
+            })
+          }
+        } else {
+          replaceAssistantContent(response.final_text || response.error || 'The turn completed without text.')
+          updateAssistant({
+            status: response.error ? 'failed' : 'complete',
+            error: response.error,
+            jobId: response.job_id,
+          })
+        }
         completeRunningActivity(['queued', 'started', 'tool_call'])
       } catch (error) {
         const primaryError = error || streamError

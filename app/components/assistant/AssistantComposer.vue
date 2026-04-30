@@ -19,7 +19,7 @@
             <EditorContent
                 v-if="editor"
                 :editor="editor"
-                class="assistant-composer-editor min-h-6 max-h-40 overflow-y-auto text-[0.9375rem] leading-6 text-(--or3-text)"
+                class="assistant-composer-editor min-h-6 max-h-40 overflow-y-auto text-base leading-6 text-(--or3-text) sm:text-[0.9375rem]"
                 aria-label="Message or3-intern"
             />
         </div>
@@ -686,10 +686,17 @@ onBeforeUnmount(() => {
 
 <style scoped>
 :deep(.assistant-composer-editor .ProseMirror) {
+    font-size: 16px;
     min-height: 1.5rem;
     outline: none;
     white-space: pre-wrap;
     word-break: break-word;
+}
+
+@media (min-width: 640px) {
+    :deep(.assistant-composer-editor .ProseMirror) {
+        font-size: 0.9375rem;
+    }
 }
 
 :deep(
