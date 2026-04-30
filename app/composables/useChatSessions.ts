@@ -1,99 +1,135 @@
-import { computed } from 'vue'
-import type { ChatMessage, ChatSession } from '~/types/app-state'
-import { useActiveHost } from './useActiveHost'
-import { useLocalCache } from './useLocalCache'
+import { computed } from 'vue';
+import type { ChatMessage, ChatSession } from '~/types/app-state';
+import { useActiveHost } from './useActiveHost';
+import { useLocalCache } from './useLocalCache';
 
 function now() {
-  return new Date().toISOString()
+    return new Date().toISOString();
 }
 
 function createId(prefix: string) {
-  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
+    return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 export function useChatSessions() {
-  const cache = useLocalCache()
-  const { activeHost } = useActiveHost()
+    const cache = useLocalCache();
+    const { activeHost } = useActiveHost();
 
-  const sessions = computed(() => cache.state.value.sessions.filter((session) => session.hostId === activeHost.value?.id))
-  const activeSession = computed(() => sessions.value[0] ?? null)
-  const messages = computed(() => cache.state.value.messages.filter((message) => message.sessionId === activeSession.value?.id))
-  const draftKey = computed(() => `${activeHost.value?.id ?? 'none'}:${activeSession.value?.id ?? 'new'}`)
-  const draft = computed({
-    get: () => cache.state.value.drafts[draftKey.value] ?? '',
-    set: (value: string) => cache.setDraft(draftKey.value, value),
-  })
+    const sessions = computed(() =>
+        cache.state.value.sessions.filter(
+            (session) => session.hostId === activeHost.value?.id,
+        ),
+    );
+    const activeSession = computed(() => sessions.value[0] ?? null);
+    const messages = computed(() =>
+        cache.state.value.messages.filter(
+            (message) => message.sessionId === activeSession.value?.id,
+        ),
+    );
+    const draftKey = computed(
+        () =>
+            `${activeHost.value?.id ?? 'none'}:${activeSession.value?.id ?? 'new'}`,
+    );
+    const draft = computed({
+        get: () => cache.state.value.drafts[draftKey.value] ?? '',
+        set: (value: string) => cache.setDraft(draftKey.value, value),
+    });
 
-  function ensureSession() {
-    if (activeSession.value) return activeSession.value
-    const hostId = activeHost.value?.id ?? 'local'
-    const timestamp = now()
-    const session: ChatSession = {
-      id: createId('session'),
-      hostId,
-      sessionKey: `or3-app:${hostId}:${Date.now().toString(36)}`,
-      title: 'New conversation',
-      createdAt: timestamp,
-      updatedAt: timestamp,
+    function ensureSession() {
+        if (activeSession.value) return activeSession.value;
+        const hostId = activeHost.value?.id ?? 'local';
+        const timestamp = now();
+        const session: ChatSession = {
+            id: createId('session'),
+            hostId,
+            sessionKey: `or3-app:${hostId}:${Date.now().toString(36)}`,
+            title: 'New conversation',
+            createdAt: timestamp,
+            updatedAt: timestamp,
+        };
+        cache.state.value.sessions.unshift(session);
+        cache.persist();
+        return session;
     }
-    cache.state.value.sessions.unshift(session)
-    cache.persist()
-    return session
-  }
 
-  function touchSession(sessionId: string, fallbackTitle?: string) {
-    const session = cache.state.value.sessions.find((item) => item.id === sessionId)
-    if (!session) return
-    session.updatedAt = now()
-    if ((!session.title || session.title === 'New conversation') && fallbackTitle?.trim()) {
-      session.title = fallbackTitle.trim().slice(0, 48)
+    function touchSession(sessionId: string, fallbackTitle?: string) {
+        const session = cache.state.value.sessions.find(
+            (item) => item.id === sessionId,
+        );
+        if (!session) return;
+        session.updatedAt = now();
+        if (
+            (!session.title || session.title === 'New conversation') &&
+            fallbackTitle?.trim()
+        ) {
+            session.title = fallbackTitle.trim().slice(0, 48);
+        }
     }
-  }
 
-  function addMessage(message: Omit<ChatMessage, 'id' | 'createdAt'> & Partial<Pick<ChatMessage, 'id' | 'createdAt'>>) {
-    const complete: ChatMessage = {
-      id: message.id ?? createId('msg'),
-      createdAt: message.createdAt ?? now(),
-      ...message,
+    function addMessage(
+        message: Omit<ChatMessage, 'id' | 'createdAt'> &
+            Partial<Pick<ChatMessage, 'id' | 'createdAt'>>,
+    ) {
+        const complete: ChatMessage = {
+            id: message.id ?? createId('msg'),
+            createdAt: message.createdAt ?? now(),
+            ...message,
+        };
+        cache.state.value.messages.push(complete);
+        touchSession(
+            complete.sessionId,
+            complete.role === 'user' ? complete.content : undefined,
+        );
+        cache.persist();
+        return complete;
     }
-    cache.state.value.messages.push(complete)
-    touchSession(complete.sessionId, complete.role === 'user' ? complete.content : undefined)
-    cache.persist()
-    return complete
-  }
 
-  function updateMessage(id: string, patch: Partial<ChatMessage>) {
-    const message = cache.state.value.messages.find((item) => item.id === id)
-    if (!message) return
-    Object.assign(message, patch)
-    touchSession(message.sessionId)
-    cache.persist()
-  }
-
-  function newSession(title = 'New conversation') {
-    const hostId = activeHost.value?.id ?? 'local'
-    const timestamp = now()
-    const session: ChatSession = {
-      id: createId('session'),
-      hostId,
-      sessionKey: `or3-app:${hostId}:${Date.now().toString(36)}`,
-      title,
-      createdAt: timestamp,
-      updatedAt: timestamp,
+    function updateMessage(id: string, patch: Partial<ChatMessage>) {
+        const message = cache.state.value.messages.find(
+            (item) => item.id === id,
+        );
+        if (!message) return;
+        Object.assign(message, patch);
+        touchSession(message.sessionId);
+        cache.persist();
     }
-    cache.state.value.sessions.unshift(session)
-    cache.persist()
-    return session
-  }
 
-  return {
-    sessions,
-    activeSession,
-    messages,
-    draft,
-    ensureSession,
-    newSession,
-    addMessage,
-    updateMessage,
-  }
+    function toggleMessagePin(id: string) {
+        const message = cache.state.value.messages.find(
+            (item) => item.id === id,
+        );
+        if (!message) return false;
+        message.pinned = !message.pinned;
+        touchSession(message.sessionId);
+        cache.persist();
+        return message.pinned;
+    }
+
+    function newSession(title = 'New conversation') {
+        const hostId = activeHost.value?.id ?? 'local';
+        const timestamp = now();
+        const session: ChatSession = {
+            id: createId('session'),
+            hostId,
+            sessionKey: `or3-app:${hostId}:${Date.now().toString(36)}`,
+            title,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+        };
+        cache.state.value.sessions.unshift(session);
+        cache.persist();
+        return session;
+    }
+
+    return {
+        sessions,
+        activeSession,
+        messages,
+        draft,
+        ensureSession,
+        newSession,
+        addMessage,
+        updateMessage,
+        toggleMessagePin,
+    };
 }

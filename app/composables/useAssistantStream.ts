@@ -4,6 +4,7 @@ import type {
     AssistantSendPayload,
     ChatActivityEntry,
     ChatToolCall,
+    Or3AppErrorCode,
 } from '~/types/app-state';
 import { useChatSessions } from './useChatSessions';
 import { useOr3Api } from './useOr3Api';
@@ -40,6 +41,57 @@ function describeRequestErrorDetails(error: unknown) {
     }
 
     return details.join(' · ');
+}
+
+const knownErrorCodes = new Set<Or3AppErrorCode>([
+    'host_unreachable',
+    'auth_required',
+    'session_required',
+    'session_expired',
+    'passkey_required',
+    'step_up_required',
+    'auth_unsupported',
+    'forbidden',
+    'rate_limited',
+    'validation_failed',
+    'capability_unavailable',
+    'approval_required',
+    'stream_failed',
+    'file_not_found',
+    'path_forbidden',
+    'terminal_unavailable',
+    'unknown',
+]);
+
+function extractErrorCode(error: unknown): Or3AppErrorCode | undefined {
+    if (!error || typeof error !== 'object') return undefined;
+    const record = error as Record<string, unknown>;
+    if (
+        typeof record.code === 'string' &&
+        knownErrorCodes.has(record.code as Or3AppErrorCode)
+    ) {
+        return record.code as Or3AppErrorCode;
+    }
+    if (record.cause && typeof record.cause === 'object') {
+        const nestedCode: Or3AppErrorCode | undefined = extractErrorCode(
+            record.cause,
+        );
+        if (nestedCode) return nestedCode;
+    }
+    return undefined;
+}
+
+function extractApprovalRequestId(error: unknown): string | number | undefined {
+    if (!error || typeof error !== 'object') return undefined;
+    const record = error as Record<string, unknown>;
+    const directId = record.request_id ?? record.approval_id;
+    if (typeof directId === 'string' || typeof directId === 'number') {
+        return directId;
+    }
+    if (record.cause && typeof record.cause === 'object') {
+        return extractApprovalRequestId(record.cause);
+    }
+    return undefined;
 }
 
 function showFailureToast(
@@ -186,6 +238,7 @@ export function useAssistantStream() {
             role: 'assistant',
             content: '',
             status: 'streaming',
+            retryPayload: payload,
             reasoningText: '',
             toolCalls: [],
             activityLog: [],
@@ -442,6 +495,11 @@ export function useAssistantStream() {
                     content: failureText,
                     status: 'failed',
                     error: streamError || `Turn ${streamStatus || 'failed'}`,
+                    errorCode: extractErrorCode(payload),
+                    approvalRequestId: extractApprovalRequestId(payload),
+                    approvalState: extractApprovalRequestId(payload)
+                        ? 'pending'
+                        : undefined,
                     jobId: eventJobId(event) ?? undefined,
                 });
                 return { failed: true, completed: false };
@@ -578,6 +636,7 @@ export function useAssistantStream() {
                         updateAssistant({
                             status: response.error ? 'failed' : 'complete',
                             error: response.error,
+                            errorCode: response.error ? 'unknown' : undefined,
                             jobId: response.job_id,
                         });
                     }
@@ -590,6 +649,7 @@ export function useAssistantStream() {
                     updateAssistant({
                         status: response.error ? 'failed' : 'complete',
                         error: response.error,
+                        errorCode: response.error ? 'unknown' : undefined,
                         jobId: response.job_id,
                     });
                 }
@@ -598,6 +658,8 @@ export function useAssistantStream() {
                 const primaryError = error || streamError;
                 const message = describeRequestError(primaryError);
                 const details = describeRequestErrorDetails(primaryError);
+                const approvalRequestId =
+                    extractApprovalRequestId(primaryError);
                 updateActivity((entry) => entry.status === 'running', {
                     status: 'error',
                 });
@@ -605,6 +667,9 @@ export function useAssistantStream() {
                     content: details ? `${message}\n\n${details}` : message,
                     status: 'failed',
                     error: message,
+                    errorCode: extractErrorCode(primaryError),
+                    approvalRequestId,
+                    approvalState: approvalRequestId ? 'pending' : undefined,
                 });
                 showFailureToast(
                     toast,

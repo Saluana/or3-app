@@ -1,32 +1,111 @@
 <template>
     <UForm
         :state="formState"
-        class="or3-composer rounded-[26px] border border-(--or3-border) bg-(--or3-surface)/95 p-3 shadow-(--or3-shadow) backdrop-blur"
+        class="or3-composer border border-(--or3-border) bg-(--or3-surface)/95 shadow-(--or3-shadow) backdrop-blur"
+        :class="isFocused ? 'or3-composer--focused' : ''"
         @submit.prevent="submit"
     >
         <div
             v-if="isDragging"
-            class="mb-3 rounded-2xl border border-dashed border-(--or3-green) bg-(--or3-green-soft) p-3 text-center text-sm text-(--or3-green-dark)"
+            class="mx-3 mt-3 rounded-2xl border border-dashed border-(--or3-green) bg-(--or3-green-soft) p-3 text-center text-sm text-(--or3-green-dark)"
         >
             Drop files to attach them
         </div>
 
-        <div
-            class="rounded-[18px] border border-(--or3-border) bg-white/60 px-3 py-2 transition-colors"
-            :class="isFocused ? 'border-(--or3-green)' : ''"
-            @click="focusEditor"
-        >
-            <EditorContent
-                v-if="editor"
-                :editor="editor"
-                class="assistant-composer-editor min-h-6 max-h-40 overflow-y-auto text-base leading-6 text-(--or3-text) sm:text-[0.9375rem]"
-                aria-label="Message or3-intern"
+        <div v-if="attachments.length" class="or3-composer__attachments">
+            <button
+                v-for="attachment in attachments"
+                :key="attachment.id"
+                type="button"
+                class="or3-composer__attachment"
+                @click="removeAttachment(attachment.id)"
+            >
+                <img
+                    v-if="attachment.thumbnailUrl"
+                    :src="attachment.thumbnailUrl"
+                    :alt="attachment.name"
+                    class="or3-composer__attachment-thumb"
+                />
+                <Icon
+                    v-else
+                    :name="
+                        attachment.kind === 'text'
+                            ? 'i-pixelarticons-notebook'
+                            : 'i-pixelarticons-paperclip'
+                    "
+                    class="size-4 shrink-0 text-(--or3-green-dark)"
+                />
+                <span class="min-w-0 flex-1 text-left">
+                    <span
+                        class="block truncate font-medium text-(--or3-text)"
+                        >{{ attachment.name }}</span
+                    >
+                    <span
+                        v-if="attachment.preview"
+                        class="block truncate text-[0.75rem] text-(--or3-text-muted)"
+                        >{{ attachment.preview }}</span
+                    >
+                </span>
+                <Icon
+                    name="i-pixelarticons-close"
+                    class="size-4 shrink-0 text-(--or3-text-muted)"
+                />
+            </button>
+        </div>
+
+        <div class="or3-composer__row">
+            <UButton
+                icon="i-pixelarticons-paperclip"
+                color="neutral"
+                variant="ghost"
+                class="or3-composer__icon or3-touch-target"
+                aria-label="Attach file"
+                type="button"
+                @click="fileInput?.click()"
+            />
+            <input
+                ref="fileInput"
+                type="file"
+                multiple
+                class="hidden"
+                accept="image/*,application/pdf,text/plain,.md,.txt,.json"
+                aria-hidden="true"
+                tabindex="-1"
+                @change="handleFiles"
+            />
+
+            <div class="or3-composer__editor-wrap" @click="focusEditor">
+                <EditorContent
+                    v-if="editor"
+                    :editor="editor"
+                    class="assistant-composer-editor min-h-6 max-h-40 overflow-y-auto text-base leading-6 text-(--or3-text) sm:text-[0.9375rem]"
+                    aria-label="Message or3-intern"
+                />
+            </div>
+
+            <UButton
+                v-if="!streaming"
+                icon="i-pixelarticons-send"
+                class="or3-composer__send or3-touch-target flex items-center justify-center bg-(--or3-green) text-white hover:bg-(--or3-green-dark)"
+                aria-label="Send message"
+                type="submit"
+                :disabled="!canSend"
+            />
+            <UButton
+                v-else
+                icon="i-pixelarticons-square"
+                color="error"
+                variant="soft"
+                class="or3-composer__send or3-touch-target flex items-center justify-center"
+                aria-label="Stop generation"
+                type="button"
+                @click="emit('stop')"
             />
         </div>
 
         <div
             v-if="mentionState.open"
-            class="mt-2 overflow-hidden rounded-2xl border border-(--or3-border) bg-(--or3-surface) shadow-(--or3-shadow-soft)"
+            class="mx-3 mb-3 overflow-hidden rounded-2xl border border-(--or3-border) bg-(--or3-surface) shadow-(--or3-shadow-soft)"
         >
             <div
                 class="flex items-center gap-2 border-b border-(--or3-border) px-3 py-2 text-xs text-(--or3-text-muted)"
@@ -81,95 +160,6 @@
                 }}
             </p>
         </div>
-
-        <div v-if="attachments.length" class="mt-3 flex flex-wrap gap-2">
-            <button
-                v-for="attachment in attachments"
-                :key="attachment.id"
-                type="button"
-                class="inline-flex max-w-full items-center gap-2 rounded-2xl border border-(--or3-border) bg-(--or3-surface-soft) px-3 py-2 text-left text-xs text-(--or3-text)"
-                @click="removeAttachment(attachment.id)"
-            >
-                <Icon
-                    :name="
-                        attachment.kind === 'text'
-                            ? 'i-pixelarticons-notebook'
-                            : 'i-pixelarticons-paperclip'
-                    "
-                    class="size-3.5 shrink-0 text-(--or3-green-dark)"
-                />
-                <span class="min-w-0 flex-1 truncate">
-                    <span class="block font-medium text-(--or3-text)">{{
-                        attachment.name
-                    }}</span>
-                    <span
-                        v-if="attachment.preview"
-                        class="block truncate text-(--or3-text-muted)"
-                        >{{ attachment.preview }}</span
-                    >
-                </span>
-                <Icon
-                    name="i-pixelarticons-close"
-                    class="size-3.5 shrink-0 text-(--or3-text-muted)"
-                />
-            </button>
-        </div>
-
-        <div class="mt-2 flex items-center gap-2">
-            <UButton
-                icon="i-pixelarticons-paperclip"
-                color="neutral"
-                variant="ghost"
-                class="or3-touch-target"
-                aria-label="Attach file"
-                type="button"
-                @click="fileInput?.click()"
-            />
-            <input
-                ref="fileInput"
-                type="file"
-                multiple
-                class="hidden"
-                accept="image/*,application/pdf,text/plain,.md,.txt,.json"
-                aria-hidden="true"
-                tabindex="-1"
-                @change="handleFiles"
-            />
-
-            <div class="flex flex-1 gap-1 overflow-x-auto pb-1">
-                <UButton
-                    v-for="entry in actions"
-                    :key="entry.action.id"
-                    size="xs"
-                    color="neutral"
-                    variant="soft"
-                    :icon="entry.action.icon"
-                    :label="entry.action.label"
-                    :disabled="entry.disabled"
-                    type="button"
-                    @click="entry.action.handler(actionContext)"
-                />
-            </div>
-
-            <UButton
-                v-if="!streaming"
-                icon="i-pixelarticons-send"
-                class="or3-touch-target bg-(--or3-green) text-white hover:bg-(--or3-green-dark) flex items-center justify-center"
-                aria-label="Send message"
-                type="submit"
-                :disabled="!canSend"
-            />
-            <UButton
-                v-else
-                icon="i-pixelarticons-square"
-                color="error"
-                variant="soft"
-                class="or3-touch-target flex items-center justify-center"
-                aria-label="Stop generation"
-                type="button"
-                @click="emit('stop')"
-            />
-        </div>
     </UForm>
 </template>
 
@@ -191,7 +181,6 @@ import {
     registerPaneInput,
     unregisterPaneInput,
 } from '../../composables/useChatInputBridge';
-import { useComposerActions } from '../../composables/useComposerActions';
 import { useComputerFiles } from '../../composables/useComputerFiles';
 import type {
     AssistantSendPayload,
@@ -220,6 +209,8 @@ const emit = defineEmits<{
 
 interface DraftAttachment extends ChatAttachment {
     content?: string;
+    thumbnailUrl?: string;
+    objectUrl?: string;
 }
 
 interface MentionEditorState {
@@ -245,6 +236,7 @@ const isDragging = ref(false);
 const isFocused = ref(false);
 const dragDepth = ref(0);
 const attachments = ref<DraftAttachment[]>([]);
+const enterCreatesNewLine = ref(false);
 const { searchWorkspaceFiles } = useComputerFiles();
 const formState = reactive({
     text: props.modelValue,
@@ -267,6 +259,7 @@ const mentionState = reactive<{
     items: [],
 });
 let mentionSearchTimer: ReturnType<typeof setTimeout> | null = null;
+let viewportChangeCleanup: (() => void) | null = null;
 
 watch(
     () => props.modelValue,
@@ -288,18 +281,6 @@ watch(
         if (props.modelValue !== value) emit('update:modelValue', value);
     },
 );
-
-const actionContext = computed(() => ({
-    text: formState.text,
-    isStreaming: props.streaming,
-    setText: (value: string) => {
-        updateEditorText(value);
-        nextTick(() => focusEditor());
-    },
-    send: submit,
-}));
-
-const actions = useComposerActions(() => actionContext.value);
 const canSend = computed(
     () => !!formState.text.trim() || attachments.value.length > 0,
 );
@@ -325,10 +306,21 @@ function focusEditor() {
     editor.value?.commands.focus('end');
 }
 
+function revokeAttachmentPreview(attachment: DraftAttachment) {
+    if (attachment.objectUrl) URL.revokeObjectURL(attachment.objectUrl);
+}
+
 function removeAttachment(id: string) {
-    attachments.value = attachments.value.filter(
-        (attachment) => attachment.id !== id,
-    );
+    const attachment = attachments.value.find((item) => item.id === id);
+    if (attachment) revokeAttachmentPreview(attachment);
+    attachments.value = attachments.value.filter((item) => item.id !== id);
+}
+
+function clearAttachments() {
+    for (const attachment of attachments.value) {
+        revokeAttachmentPreview(attachment);
+    }
+    attachments.value = [];
 }
 
 function closeMention() {
@@ -402,20 +394,29 @@ function submit() {
         text: visiblePayloadText(),
         transportText: buildTransportText(),
         attachments: attachments.value.map(
-            ({ content: _content, ...attachment }) => attachment,
+            ({
+                content: _content,
+                thumbnailUrl: _thumbnailUrl,
+                objectUrl: _objectUrl,
+                ...attachment
+            }) => attachment,
         ),
     };
     emit('send', payload);
-    attachments.value = [];
+    clearAttachments();
     updateEditorText('');
 }
 
 function addFiles(files: File[]) {
     for (const file of files) {
+        const isImage = file.type.startsWith('image/');
+        const objectUrl = isImage ? URL.createObjectURL(file) : undefined;
         attachments.value.push({
             id: attachmentId(),
             kind: 'file',
             name: file.name,
+            thumbnailUrl: objectUrl,
+            objectUrl,
             preview: file.type
                 ? file.type.replace(/\/.+$/, '').toUpperCase()
                 : 'FILE',
@@ -572,7 +573,30 @@ function onDrop(event: DragEvent) {
     addFiles(Array.from(event.dataTransfer?.files ?? []));
 }
 
+function syncViewportEnterBehavior() {
+    if (typeof window === 'undefined') return;
+
+    const media = window.matchMedia('(max-width: 767px)');
+    const update = () => {
+        enterCreatesNewLine.value = media.matches;
+    };
+
+    update();
+
+    if (typeof media.addEventListener === 'function') {
+        media.addEventListener('change', update);
+        viewportChangeCleanup = () =>
+            media.removeEventListener('change', update);
+        return;
+    }
+
+    media.addListener(update);
+    viewportChangeCleanup = () => media.removeListener(update);
+}
+
 onMounted(() => {
+    syncViewportEnterBehavior();
+
     editor.value = new Editor({
         content: props.modelValue || '',
         extensions: [
@@ -626,11 +650,17 @@ onMounted(() => {
                     }
                 }
 
-                if (
-                    event.key === 'Enter' &&
-                    !event.shiftKey &&
-                    !event.isComposing
-                ) {
+                if (event.key === 'Enter' && !event.isComposing) {
+                    if (enterCreatesNewLine.value) {
+                        if (event.metaKey || event.ctrlKey) {
+                            event.preventDefault();
+                            submit();
+                            return true;
+                        }
+                        return false;
+                    }
+
+                    if (event.shiftKey) return false;
                     event.preventDefault();
                     submit();
                     return true;
@@ -675,6 +705,8 @@ onMounted(() => {
 onBeforeUnmount(() => {
     unregisterPaneInput(props.paneId);
     if (mentionSearchTimer) clearTimeout(mentionSearchTimer);
+    viewportChangeCleanup?.();
+    clearAttachments();
     const dom = editor.value?.view.dom;
     dom?.removeEventListener('dragenter', onDragEnter);
     dom?.removeEventListener('dragover', onDragOver);
@@ -685,6 +717,80 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.or3-composer {
+    border-radius: 2rem;
+    overflow: hidden;
+    transition:
+        border-color 0.18s ease,
+        box-shadow 0.18s ease,
+        transform 0.18s ease;
+}
+
+.or3-composer--focused {
+    border-color: color-mix(in srgb, var(--or3-green) 42%, white 58%);
+    box-shadow:
+        var(--or3-shadow),
+        0 0 0 1px color-mix(in srgb, var(--or3-green) 22%, transparent);
+}
+
+.or3-composer__attachments {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 0.9rem 0.9rem 0;
+}
+
+.or3-composer__attachment {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.625rem;
+    max-width: 100%;
+    min-height: 3.5rem;
+    border-radius: 1.25rem;
+    border: 1px solid var(--or3-border);
+    background: color-mix(in srgb, white 88%, var(--or3-surface-soft) 12%);
+    padding: 0.75rem 0.875rem;
+    font-size: 0.8125rem;
+}
+
+.or3-composer__attachment-thumb {
+    width: 2.75rem;
+    height: 2.75rem;
+    flex-shrink: 0;
+    border-radius: 0.9rem;
+    object-fit: cover;
+    border: 1px solid color-mix(in srgb, var(--or3-border) 88%, transparent);
+    background: color-mix(in srgb, white 70%, var(--or3-surface-soft) 30%);
+}
+
+.or3-composer__row {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.35rem;
+    padding: 0.65rem 0.75rem;
+}
+
+.or3-composer__editor-wrap {
+    flex: 1 1 auto;
+    min-width: 0;
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+    padding: 0.4rem 0.35rem 0.4rem 0.15rem;
+}
+
+.or3-composer__icon,
+.or3-composer__send {
+    width: 2.8rem;
+    min-width: 2.8rem;
+    height: 2.8rem;
+    border-radius: 9999px;
+}
+
+.or3-composer__icon {
+    align-self: flex-end;
+}
+
 :deep(.assistant-composer-editor .ProseMirror) {
     font-size: 16px;
     min-height: 1.5rem;
