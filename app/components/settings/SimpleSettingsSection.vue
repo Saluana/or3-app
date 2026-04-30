@@ -30,10 +30,15 @@
             @change="onChange"
         />
 
+        <!--
+          Sticky pending-changes bar. Bottom offset has to clear the fixed
+          BottomNav (~5.5rem) plus the iOS safe-area inset, otherwise the
+          bar gets covered until the user scrolls all the way down.
+        -->
         <SurfaceCard
             v-if="pendingChanges.length"
             tone="tip"
-            class-name="space-y-3 sticky bottom-4"
+            class-name="space-y-3 sticky z-30 bottom-[calc(var(--or3-safe-bottom)+5.75rem)]"
         >
             <p class="font-mono text-sm font-semibold text-(--or3-text)">{{ pendingChanges.length }} pending change{{ pendingChanges.length === 1 ? '' : 's' }}</p>
             <p class="text-xs leading-5 text-(--or3-text-muted)">Review the plain-language summary before saving.</p>

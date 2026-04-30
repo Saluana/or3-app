@@ -9,8 +9,19 @@
                     {{ control.description }}
                 </p>
             </div>
+            <!--
+              Toggle controls render their switch in the header so the
+              affordance is always visible next to the label, instead of
+              hiding it down below where users miss it.
+            -->
+            <USwitch
+                v-if="control.kind === 'toggle'"
+                :model-value="toggleValue"
+                class="shrink-0 mt-0.5"
+                @update:model-value="onToggle"
+            />
             <span
-                v-if="control.kind === 'secret'"
+                v-else-if="control.kind === 'secret'"
                 class="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800"
                 >secret</span
             >
@@ -27,8 +38,8 @@
             {{ control.recommended.label ?? String(control.recommended.value) }}
         </p>
 
-        <!-- Body -->
-        <div>
+        <!-- Body (toggle is rendered in the header above) -->
+        <div v-if="control.kind !== 'toggle'">
             <PresetSlider
                 v-if="control.kind === 'preset-slider'"
                 :label="control.label"
@@ -36,12 +47,6 @@
                 :active-id="activePresetId"
                 @select="onPresetSelect"
                 @custom="onCustom"
-            />
-
-            <USwitch
-                v-else-if="control.kind === 'toggle'"
-                :model-value="Boolean(currentValue)"
-                @update:model-value="onToggle"
             />
 
             <UInput
@@ -164,6 +169,20 @@ const cardClass = computed(() =>
 );
 
 const currentValue = computed(() => simple.readPrimaryValue(props.control));
+
+// Coerce booleans, on/off strings, "true"/"false", and 1/0 into a clean
+// boolean so the header USwitch always reflects the underlying value
+// instead of getting stuck "on" via Boolean('off') === true.
+const toggleValue = computed(() => {
+    const raw = currentValue.value;
+    if (typeof raw === 'boolean') return raw;
+    if (typeof raw === 'number') return raw !== 0;
+    if (typeof raw === 'string') {
+        const n = raw.trim().toLowerCase();
+        return n === 'true' || n === 'on' || n === '1' || n === 'yes';
+    }
+    return Boolean(raw);
+});
 const activePreset = computed<SimpleSettingPreset | null>(() =>
     simple.detectPreset(props.control),
 );
