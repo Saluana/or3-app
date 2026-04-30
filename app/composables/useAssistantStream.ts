@@ -169,6 +169,7 @@ export function useAssistantStream() {
       rawAssistantContent = value
       updateAssistant({ content: sanitizeAssistantText(rawAssistantContent) })
     }
+    const turnRequest = { session_key: session.sessionKey, message: text, tool_policy: { mode: 'allow_all' as const } }
     const setToolCalls = (toolCalls: ChatToolCall[]) => updateAssistant({ toolCalls })
     const addActivity = (entry: ChatActivityEntry) => {
       const current = readAssistant()
@@ -328,7 +329,7 @@ export function useAssistantStream() {
       let streamedJobId: string | null = null
 
       for await (const event of api.stream('/internal/v1/turns', {
-        body: { session_key: session.sessionKey, message: text },
+        body: turnRequest,
         signal: activeController.signal,
       })) {
         sawStreamEvent = true
@@ -376,7 +377,7 @@ export function useAssistantStream() {
 
       try {
         const response = await api.request<TurnResponse>('/internal/v1/turns', {
-          body: { session_key: session.sessionKey, message: text },
+          body: turnRequest,
           signal: activeController.signal,
         })
         activeJobId.value = response.job_id
