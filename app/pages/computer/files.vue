@@ -1,6 +1,6 @@
 <template>
   <AppShell>
-    <AppHeader subtitle="FILES" />
+    <AppHeader subtitle="MEMORIES & FILES" />
     <FileBrowser />
   </AppShell>
 </template>
