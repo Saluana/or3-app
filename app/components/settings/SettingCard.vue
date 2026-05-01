@@ -15,7 +15,7 @@
               hiding it down below where users miss it.
             -->
             <USwitch
-                v-if="control.kind === 'toggle'"
+                v-if="isToggleControl"
                 :model-value="toggleValue"
                 class="shrink-0 mt-0.5"
                 @update:model-value="onToggle"
@@ -39,7 +39,7 @@
         </p>
 
         <!-- Body (toggle is rendered in the header above) -->
-        <div v-if="control.kind !== 'toggle'">
+        <div v-if="!isToggleControl">
             <PresetSlider
                 v-if="control.kind === 'preset-slider'"
                 :label="control.label"
@@ -136,6 +136,7 @@ import { useSimpleSettings } from '../../composables/settings/useSimpleSettings'
 const props = defineProps<{
     control: SimpleSettingControl;
     valueIndex: Record<string, unknown>;
+    pendingChanges?: SimpleSettingChange[];
     /** Control key currently focused via deep link. */
     focusKey?: string | null;
 }>();
@@ -168,7 +169,25 @@ const cardClass = computed(() =>
         : 'space-y-3 transition-shadow',
 );
 
-const currentValue = computed(() => simple.readPrimaryValue(props.control));
+const currentValue = computed(() =>
+    simple.readPrimaryValue(props.control, props.pendingChanges ?? []),
+);
+
+const primaryBackendField = computed(() => {
+    const ref = props.control.fieldRefs[0];
+    if (!ref) return undefined;
+    return simple.findField(ref.section, ref.field, ref.channel);
+});
+
+const isToggleControl = computed(() => {
+    const kind = String(primaryBackendField.value?.kind ?? '').toLowerCase();
+    return (
+        props.control.kind === 'toggle' ||
+        Boolean(props.control.toggle) ||
+        ['toggle', 'boolean', 'bool', 'switch', 'checkbox'].includes(kind) ||
+        typeof currentValue.value === 'boolean'
+    );
+});
 
 // Coerce booleans, on/off strings, "true"/"false", and 1/0 into a clean
 // boolean so the header USwitch always reflects the underlying value
@@ -184,7 +203,7 @@ const toggleValue = computed(() => {
     return Boolean(raw);
 });
 const activePreset = computed<SimpleSettingPreset | null>(() =>
-    simple.detectPreset(props.control),
+    simple.detectPreset(props.control, props.pendingChanges ?? []),
 );
 const activePresetId = computed<string | null>(
     () => activePreset.value?.id ?? null,
@@ -195,7 +214,12 @@ function rawValueAt(ref: {
     field: string;
     channel?: string;
 }): unknown {
-    return simple.findField(ref.section, ref.field, ref.channel)?.value;
+    return simple.readFieldValue(
+        ref.section,
+        ref.field,
+        ref.channel,
+        props.pendingChanges ?? [],
+    );
 }
 
 function coerceNumberLike(v: string): unknown {
@@ -228,7 +252,14 @@ function onCustom() {
 }
 
 function onToggle(value: boolean) {
-    if (!props.control.toggle) return;
+    if (!props.control.toggle) {
+        const ref = props.control.fieldRefs[0];
+        if (!ref) return;
+        emit('change', [
+            { section: ref.section, field: ref.field, channel: ref.channel, value },
+        ]);
+        return;
+    }
     emit('change', [
         value ? props.control.toggle.on : props.control.toggle.off,
     ]);

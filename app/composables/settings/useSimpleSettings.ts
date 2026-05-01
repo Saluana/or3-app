@@ -151,15 +151,40 @@ function valuesEqual(a: unknown, b: unknown): boolean {
     return String(a) === String(b)
 }
 
+function buildOverrideMap(changes: readonly SimpleSettingChange[] = []): Map<string, unknown> {
+    const map = new Map<string, unknown>()
+    for (const change of changes) {
+        const resolved = resolveFieldRef(change.section, change.field, change.channel)
+        map.set(refKey(resolved.section, resolved.field, resolved.channel), change.value)
+    }
+    return map
+}
+
+function readFieldValue(
+    section: string,
+    field: string,
+    channel?: string,
+    overrides: readonly SimpleSettingChange[] = [],
+): unknown {
+    const resolved = resolveFieldRef(section, field, channel)
+    const overrideMap = buildOverrideMap(overrides)
+    const key = refKey(resolved.section, resolved.field, resolved.channel)
+    if (overrideMap.has(key)) return overrideMap.get(key)
+    return findField(resolved.section, resolved.field, resolved.channel)?.value
+}
+
 /**
  * Detect which preset (if any) the current backend values match for a
  * preset-slider control.
  */
-function detectPreset(control: SimpleSettingControl): SimpleSettingPreset | null {
+function detectPreset(
+    control: SimpleSettingControl,
+    overrides: readonly SimpleSettingChange[] = [],
+): SimpleSettingPreset | null {
     if (!control.presets) return null
     for (const preset of control.presets) {
         const matches = preset.changes.every((change) => {
-            const current = findField(change.section, change.field, change.channel)?.value
+            const current = readFieldValue(change.section, change.field, change.channel, overrides)
             return valuesEqual(current, change.value)
         })
         if (matches) return preset
@@ -279,8 +304,13 @@ export function useSimpleSettings() {
         availableSections,
         valueIndex,
         summaryFor,
-        readPrimaryValue,
+        readPrimaryValue: (control: SimpleSettingControl, overrides: readonly SimpleSettingChange[] = []) => {
+            const ref = control.fieldRefs[0]
+            if (!ref) return undefined
+            return readFieldValue(ref.section, ref.field, ref.channel, overrides)
+        },
         detectPreset,
+        readFieldValue,
         findField,
         isControlAvailable,
         lastError,

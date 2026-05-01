@@ -26,6 +26,7 @@
             :key="control.key"
             :control="control"
             :value-index="valueIndex"
+            :pending-changes="pendingChanges"
             :focus-key="focusKey"
             @change="onChange"
         />

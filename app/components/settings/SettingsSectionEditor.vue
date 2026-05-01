@@ -11,10 +11,6 @@
 
     <div v-else class="space-y-3">
       <div v-for="field in fields" :key="field.key" class="rounded-2xl border border-(--or3-border) bg-white/70 p-3">
-        <!--
-          Header row: label + (for toggles) the USwitch on the right so it
-          is impossible to miss. Other field kinds still render below.
-        -->
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0 flex-1">
             <p class="font-mono text-sm font-semibold">{{ field.label }}</p>
@@ -23,7 +19,7 @@
           <USwitch
             v-if="isToggle(field)"
             :model-value="toggleValue(field)"
-            class="shrink-0 mt-0.5"
+            class="shrink-0"
             @update:model-value="(value: boolean) => updateValue(field.key, value)"
           />
           <span v-else-if="field.kind === 'secret'" class="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
@@ -119,10 +115,9 @@ function selectedChoice(field: ConfigureField) {
   return choiceItems(field).find((choice) => choice.value === String(localValues[field.key] ?? ''))
 }
 
-// Treat both `toggle` (canonical from the Go service) and the legacy
-// `boolean` alias as switch-style fields. Anything else falls through.
 function isToggle(field: ConfigureField) {
-  return field.kind === 'toggle' || field.kind === 'boolean'
+  const kind = String(field.kind ?? '').toLowerCase()
+  return ['toggle', 'boolean', 'bool', 'switch', 'checkbox'].includes(kind) || typeof field.value === 'boolean'
 }
 
 // Backend may emit either a real boolean (current contract) or the legacy
