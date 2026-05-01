@@ -30,8 +30,9 @@
         <div v-if="!isToggle(field)" class="mt-2">
           <USelectMenu
             v-if="field.kind === 'choice'"
+            value-key="value"
             :items="choiceItems(field)"
-            :model-value="selectedChoice(field)"
+            :model-value="String(localValues[field.key] ?? '')"
             @update:model-value="(value: any) => updateValue(field.key, value?.value ?? value)"
           />
 
@@ -109,10 +110,6 @@ function choiceItems(field: ConfigureField) {
     if (typeof choice === 'string') return { label: choice, value: choice }
     return { label: choice.label ?? choice.value, value: choice.value }
   })
-}
-
-function selectedChoice(field: ConfigureField) {
-  return choiceItems(field).find((choice) => choice.value === String(localValues[field.key] ?? ''))
 }
 
 function isToggle(field: ConfigureField) {

@@ -66,8 +66,9 @@
 
             <USelectMenu
                 v-else-if="control.kind === 'choice'"
+                value-key="value"
                 :items="choiceItems"
-                :model-value="selectedChoice"
+                :model-value="selectedChoiceValue"
                 @update:model-value="onChoice"
             />
 
@@ -239,9 +240,7 @@ const choiceItems = computed(() => {
     );
 }) as unknown as import('vue').ComputedRef<{ label: string; value: string }[]>;
 
-const selectedChoice = computed(() =>
-    choiceItems.value.find((c) => c.value === String(currentValue.value ?? '')),
-);
+const selectedChoiceValue = computed(() => String(currentValue.value ?? ''));
 
 function onPresetSelect(preset: SimpleSettingPreset) {
     emit('change', preset.changes);
@@ -277,6 +276,7 @@ function onChoice(value: { value: string } | string | null) {
     const ref = props.control.fieldRefs[0];
     if (!ref) return;
     const v = typeof value === 'string' ? value : (value?.value ?? '');
+    if (!v) return;
     emit('change', [
         {
             section: ref.section,

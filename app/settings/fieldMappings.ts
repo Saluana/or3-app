@@ -10,7 +10,6 @@
 
 import {
     CONVERSATION_DETAIL_PRESETS,
-    CREATIVITY_PRESETS,
     FILE_SEARCH_SIZE_PRESETS,
     MEMORY_SEARCH_PRESETS,
     SAFETY_MODE_PRESETS,
@@ -32,9 +31,7 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
         summaryTemplate: (v) => {
             const provider = get(v, 'provider.kind', 'OpenRouter')
             const model = get(v, 'provider.model', 'default model')
-            const temp = Number(get(v, 'provider.temperature', 0.7))
-            const creativity = temp <= 0.3 ? 'low creativity' : temp <= 0.8 ? 'standard creativity' : 'high creativity'
-            return `${provider}, ${model}, ${creativity}.`
+            return `${provider}, ${model}.`
         },
         controls: [
             {
@@ -61,15 +58,6 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 kind: 'choice',
                 fieldRefs: [{ section: 'provider', field: 'model' }],
                 advancedKeys: ['provider.model'],
-            },
-            {
-                key: 'ai-creativity',
-                label: 'Creativity',
-                description: 'How varied the AI’s replies are.',
-                kind: 'preset-slider',
-                fieldRefs: [{ section: 'provider', field: 'temperature' }],
-                presets: CREATIVITY_PRESETS,
-                advancedKeys: ['provider.temperature'],
             },
             {
                 key: 'ai-vision',
