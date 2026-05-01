@@ -86,6 +86,18 @@ export interface RecentJobSummary {
     updated_at: string;
     final_text?: string;
     error?: string;
+    task?: string;
+    category?: string;
+    priority?: string;
+    notify?: string;
+    autoApprove?: boolean;
+    child_session_key?: string;
+    parent_session_key?: string;
+    created_at?: string;
+    started_at?: string;
+    finished_at?: string;
+    artifact_id?: string;
+    source?: 'local' | 'persisted' | 'live';
 }
 
 export interface Or3AppState {

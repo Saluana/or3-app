@@ -9,7 +9,7 @@
     "cap:sync": "bun run build:web && bunx cap sync",
     "cap:open:android": "bunx cap open android",
     "cap:open:ios": "bunx cap open ios",
-    "dev": "nuxt dev",
+    "dev": "nuxt dev --host 0.0.0.0 --port 3060",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",

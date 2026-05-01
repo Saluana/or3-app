@@ -132,6 +132,35 @@
                                 : 'Pair Computer'
                         }}</span>
                     </NuxtLink>
+
+                    <button
+                        type="button"
+                        class="or3-pair-button or3-pair-button--secondary"
+                        :disabled="!restartButtonEnabled"
+                        @click="handleRestartService"
+                    >
+                        <Icon
+                            :name="restartingService ? 'i-pixelarticons-loader' : 'i-pixelarticons-reload'"
+                            :class="['size-4', restartingService ? 'animate-spin' : '']"
+                        />
+                        <span>{{ restartingService ? 'Restarting…' : 'Restart or3-intern' }}</span>
+                    </button>
+
+                    <p class="mt-2 text-xs leading-5 text-(--or3-text-muted)">
+                        {{ restartHelperText }}
+                    </p>
+                    <p
+                        v-if="restartPendingApprovalId"
+                        class="mt-1 text-xs leading-5 text-(--or3-green-dark)"
+                    >
+                        Approve request #{{ restartPendingApprovalId }} on the Approvals screen, then try again.
+                    </p>
+                    <p
+                        v-if="restartError"
+                        class="mt-1 text-xs leading-5 text-(--or3-danger)"
+                    >
+                        {{ restartError }}
+                    </p>
                 </div>
             </section>
 
@@ -201,6 +230,13 @@ const { health, readiness, capabilities, loadingStatus, refreshStatus } =
     useComputerStatus();
 const { jobs } = useJobs();
 const { approvals: approvalItems, loadApprovals } = useApprovals();
+const {
+    restartService,
+    restartingService,
+    restartError,
+    restartPendingApprovalId,
+} = useServiceRestart();
+const toast = useToast();
 
 const copied = ref(false);
 
@@ -219,6 +255,21 @@ const approvalsLabel = computed(() => {
     if (!connected.value) return 'off';
     if (health.value?.approvalBrokerAvailable === false) return 'off';
     return 'on';
+});
+
+const restartButtonEnabled = computed(() => {
+    if (!connected.value || restartingService.value) return false;
+    return capabilities.value?.shellModeAvailable !== false;
+});
+
+const restartHelperText = computed(() => {
+    if (!connected.value) {
+        return 'Pair a computer first, then you can bounce the local or3-intern service from here.';
+    }
+    if (capabilities.value?.shellModeAvailable === false) {
+        return 'Shell mode is turned off on this computer, so restart has to happen locally for now.';
+    }
+    return 'First pass: this opens a bounded shell session, runs scripts/restart-service.sh, then waits for the computer to reconnect.';
 });
 
 const actions = [
@@ -378,6 +429,62 @@ async function copyAddress() {
         setTimeout(() => (copied.value = false), 1500);
     } catch {
         /* noop */
+    }
+}
+
+function delay(ms: number) {
+    return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function waitForServiceRecovery() {
+    const deadline = Date.now() + 30000;
+    while (Date.now() < deadline) {
+        try {
+            await refreshStatus();
+            if (health.value?.status === 'ok' || health.value?.status === 'healthy') {
+                return true;
+            }
+        } catch {
+            // Ignore transient disconnects while the service restarts.
+        }
+        await delay(1500);
+    }
+    return false;
+}
+
+async function handleRestartService() {
+    if (!restartButtonEnabled.value) return;
+
+    try {
+        const result = await restartService();
+        toast.add({
+            title: 'Restart started',
+            description: `Using ${result.root.label}. Waiting for your computer to come back online…`,
+            color: 'neutral',
+        });
+
+        const recovered = await waitForServiceRecovery();
+        if (recovered) {
+            toast.add({
+                title: 'or3-intern restarted',
+                description: 'The computer is responding again.',
+                color: 'success',
+            });
+            return;
+        }
+
+        toast.add({
+            title: 'Restart sent',
+            description: 'The service may still be coming back. Refresh if it stays offline.',
+            color: 'warning',
+        });
+    } catch (error: any) {
+        await refreshStatus().catch(() => {});
+        toast.add({
+            title: 'Could not restart or3-intern',
+            description: restartError.value || error?.message || 'The restart command could not be sent.',
+            color: 'error',
+        });
     }
 }
 
@@ -541,12 +648,24 @@ onMounted(async () => {
     text-decoration: none;
     transition: background 0.15s ease, transform 0.15s ease;
 }
+.or3-pair-button--secondary {
+    width: 100%;
+    background: color-mix(in srgb, var(--or3-surface-soft) 70%, white 30%);
+    border: 1px solid var(--or3-border);
+    color: var(--or3-text);
+}
+.or3-pair-button--secondary:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
 .or3-pair-button:hover {
     background: color-mix(in srgb, var(--or3-green-soft) 50%, white 50%);
 }
 .or3-pair-button:active {
     transform: scale(0.99);
 }
+
 
 .or3-activity-empty {
     display: flex;

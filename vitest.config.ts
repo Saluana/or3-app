@@ -11,5 +11,6 @@ export default defineConfig({
     environment: 'happy-dom',
     globals: true,
     include: ['tests/**/*.test.ts'],
+    setupFiles: ['tests/setup/storage.ts'],
   },
 })

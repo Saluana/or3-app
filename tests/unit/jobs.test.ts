@@ -1,10 +1,14 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useJobs } from '../../app/composables/useJobs'
 import { useLocalCache } from '../../app/composables/useLocalCache'
 
 describe('useJobs', () => {
   beforeEach(() => {
     useLocalCache().clearAll()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
     vi.unstubAllGlobals()
   })
 
@@ -43,5 +47,51 @@ describe('useJobs', () => {
     expect(jobs.value.map((job) => job.job_id)).toEqual(['job-beta-new'])
     expect(cache.state.value.recentJobs.beta?.map((job) => job.job_id)).toEqual(['job-beta-new'])
     expect(cache.state.value.recentJobs.alpha).toBeUndefined()
+  })
+
+  it('keeps polling after the stream endpoint fails', async () => {
+    vi.useFakeTimers()
+    const cache = useLocalCache()
+    cache.updateHost({ id: 'alpha', name: 'Alpha', baseUrl: 'http://alpha.test', token: 'alpha-token' })
+    cache.setActiveHost('alpha')
+    cache.state.value.recentJobs.alpha = [
+      {
+        job_id: 'job-1',
+        kind: 'subagent',
+        status: 'running',
+        title: 'subagent',
+        updated_at: '2026-01-01T00:00:00.000Z',
+      },
+    ]
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = input.toString()
+      if (url.endsWith('/internal/v1/jobs/job-1/stream')) {
+        return new Response(JSON.stringify({ error: 'stream failed' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+      if (url.endsWith('/internal/v1/jobs/job-1')) {
+        return new Response(JSON.stringify({
+          job_id: 'job-1',
+          kind: 'subagent',
+          status: 'completed',
+          created_at: '2026-01-01T00:00:00.000Z',
+          updated_at: '2026-01-01T00:00:06.000Z',
+          final_text: 'done',
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      throw new Error(`unexpected fetch ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { jobs, subscribeJob } = useJobs()
+    await subscribeJob('job-1')
+    await vi.advanceTimersByTimeAsync(6_000)
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(jobs.value[0]?.status).toBe('completed')
+    expect(jobs.value[0]?.final_text).toBe('done')
   })
 })
