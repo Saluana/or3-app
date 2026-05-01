@@ -10,6 +10,7 @@ import { computed, ref } from 'vue'
 import type { CapabilitiesResponse, ReadinessResponse } from '~/types/or3-api'
 import { useOr3Api } from '~/composables/useOr3Api'
 import { useActiveHost } from '~/composables/useActiveHost'
+import { coerceReadinessPayload, formatReadinessDetail } from '~/utils/or3/readiness'
 import { useSimpleSettings } from './useSimpleSettings'
 
 export type HealthStatus = 'ok' | 'warning' | 'error' | 'unknown'
@@ -35,7 +36,10 @@ export function useSettingsHealth() {
     async function safeRequest<T>(path: string): Promise<T | null> {
         try {
             return await api.request<T>(path)
-        } catch {
+        } catch (error) {
+            if (path === '/internal/v1/readiness') {
+                return coerceReadinessPayload(error) as T | null
+            }
             return null
         }
     }
@@ -69,22 +73,7 @@ export function useSettingsHealth() {
             if (readiness) {
                 const status = String(readiness.status ?? '').toLowerCase()
                 const hasWarnings = status.includes('warning')
-                let detail: string
-                if (typeof readiness.summary === 'string' && readiness.summary && !readiness.summary.trim().startsWith('{')) {
-                    detail = readiness.summary
-                } else if (Array.isArray(readiness.findings) && readiness.findings.length) {
-                    const counts = readiness.findings.reduce<Record<string, number>>((acc, f) => {
-                        const k = String(f.severity ?? 'info').toLowerCase()
-                        acc[k] = (acc[k] ?? 0) + 1
-                        return acc
-                    }, {})
-                    const parts = Object.entries(counts).map(([k, n]) => `${n} ${k}`)
-                    detail = parts.length ? parts.join(', ') : (readiness.ready ? 'All systems go.' : 'Service reports it is not fully ready.')
-                } else {
-                    detail = readiness.ready
-                        ? hasWarnings ? 'Ready with warnings.' : 'All systems go.'
-                        : 'Service reports it is not fully ready.'
-                }
+                const detail = formatReadinessDetail(readiness)
                 next.push({
                     id: 'readiness',
                     label: 'OR3 service is ready',

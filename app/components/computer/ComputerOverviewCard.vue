@@ -52,13 +52,14 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import type { CapabilitiesResponse, HealthResponse } from '~/types/or3-api';
+import type { CapabilitiesResponse, HealthResponse, ReadinessResponse } from '~/types/or3-api';
 
 const props = withDefaults(
     defineProps<{
         hostName?: string;
         baseUrl?: string;
         health?: HealthResponse | null;
+        readiness?: ReadinessResponse | null;
         capabilities?: CapabilitiesResponse | null;
         connected?: boolean;
         activeTab?: string;
@@ -67,6 +68,7 @@ const props = withDefaults(
         hostName: 'No computer paired',
         baseUrl: '',
         health: null,
+        readiness: null,
         capabilities: null,
         connected: false,
         activeTab: '/computer/files',
@@ -87,8 +89,13 @@ const online = computed(
             props.health?.status === 'healthy'),
 );
 
+const needsAttention = computed(
+    () => props.connected && online.value && props.readiness?.ready === false,
+);
+
 const statusLabel = computed(() => {
     if (!props.connected) return 'not paired';
+    if (needsAttention.value) return 'needs attention';
     if (online.value) return 'Online';
     if (props.health) return 'check connection';
     return 'connecting…';
@@ -96,6 +103,7 @@ const statusLabel = computed(() => {
 
 const statusTone = computed<'green' | 'amber' | 'neutral'>(() => {
     if (!props.connected) return 'neutral';
+    if (needsAttention.value) return 'amber';
     if (online.value) return 'green';
     return 'amber';
 });
@@ -103,6 +111,8 @@ const statusTone = computed<'green' | 'amber' | 'neutral'>(() => {
 const statusMessage = computed(() => {
     if (!props.connected)
         return 'Pair a computer in Settings to connect or3-intern to your machine.';
+    if (needsAttention.value)
+        return 'or3-intern is reachable, but its readiness checks found something that needs attention.';
     if (online.value)
         return "Everything looks good. You're connected and ready to go.";
     if (props.health)

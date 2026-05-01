@@ -7,6 +7,7 @@
                 :host-name="hostName"
                 :base-url="baseUrl"
                 :health="health"
+                :readiness="readiness"
                 :capabilities="capabilities"
                 :connected="connected"
                 active-tab="/computer"
@@ -50,10 +51,7 @@
                 tone="caution"
                 title="Your computer needs attention"
             >
-                {{
-                    readiness.summary ||
-                    'or3-intern noticed something during startup. Open Settings on your computer to take a look.'
-                }}
+                {{ readinessMessage }}
             </DangerCallout>
 
             <!-- Connection details -->
@@ -235,6 +233,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
+import { formatReadinessDetail } from '~/utils/or3/readiness';
 
 const { activeHost, isConnected } = useActiveHost();
 const { health, readiness, capabilities, loadingStatus, refreshStatus } =
@@ -257,6 +256,7 @@ const showConnectingHelp = computed(
 );
 const hostName = computed(() => activeHost.value?.name || 'My Computer');
 const baseUrl = computed(() => activeHost.value?.baseUrl || '');
+const readinessMessage = computed(() => formatReadinessDetail(readiness.value));
 
 const runtimeProfile = computed(
     () =>

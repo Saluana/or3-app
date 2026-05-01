@@ -88,7 +88,7 @@
                 <input
                     v-model="searchTerm"
                     type="search"
-                    placeholder="Search settings..."
+                    placeholder="Search settings, fields, or keys…"
                     class="or3-focus-ring h-12 w-full rounded-2xl border border-(--or3-border) bg-(--or3-surface) pl-11 pr-16 text-base text-(--or3-text) placeholder:text-(--or3-text-muted) sm:text-sm"
                     aria-label="Search settings"
                 />
@@ -98,6 +98,137 @@
                 >
             </div>
 
+            <!-- Categories + highlights (merged) -->
+            <SurfaceCard class-name="space-y-3">
+                <div class="flex items-center justify-between gap-2">
+                    <p
+                        class="or3-command text-[11px] uppercase tracking-[0.2em] text-(--or3-green-dark)"
+                    >
+                        {{ activeFilterLabel }} highlights
+                    </p>
+                    <span
+                        v-if="allFieldsLoading"
+                        class="font-mono text-[11px] text-(--or3-text-muted)"
+                        >Indexing…</span
+                    >
+                </div>
+
+                <!-- Filter chips (categories) -->
+                <div class="-mx-4 overflow-x-auto px-4">
+                    <div class="flex w-max items-center gap-2">
+                        <button
+                            v-for="filter in filters"
+                            :key="filter.key"
+                            type="button"
+                            class="or3-focus-ring rounded-full border px-4 py-2 font-mono text-xs font-semibold uppercase tracking-wide transition"
+                            :class="
+                                activeFilter === filter.key
+                                    ? 'border-(--or3-green) bg-(--or3-green-soft) text-(--or3-green-dark)'
+                                    : 'border-(--or3-border) bg-(--or3-surface) text-(--or3-text)'
+                            "
+                            @click="activeFilter = filter.key"
+                        >
+                            {{ filter.label }}
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Highlight grid (only when not searching) -->
+                <div
+                    v-if="quickSections.length"
+                    id="settings-highlights"
+                    class="grid grid-cols-2 gap-3 sm:grid-cols-3"
+                >
+                    <button
+                        v-for="section in quickSections"
+                        :key="section.key"
+                        type="button"
+                        class="or3-focus-ring group flex flex-col gap-2 rounded-2xl border border-(--or3-border) bg-white/70 p-3 text-left transition hover:bg-(--or3-green-soft)"
+                        @click="openSection(section.key)"
+                    >
+                        <div class="flex items-start justify-between">
+                            <RetroIcon :name="iconFor(section.key)" size="sm" />
+                            <Icon
+                                name="i-pixelarticons-chevron-right"
+                                class="size-4 text-(--or3-text-muted)"
+                            />
+                        </div>
+                        <div class="min-w-0">
+                            <p
+                                class="font-mono text-sm font-semibold text-(--or3-text)"
+                            >
+                                {{ section.label }}
+                            </p>
+                            <p
+                                class="mt-0.5 line-clamp-2 text-xs leading-snug text-(--or3-text-muted)"
+                            >
+                                {{ section.description }}
+                            </p>
+                        </div>
+                    </button>
+                </div>
+            </SurfaceCard>
+
+            <!-- Field-level search results -->
+            <SurfaceCard
+                v-if="searchTerm.trim() && fieldMatches.length"
+                class-name="space-y-3"
+            >
+                <p
+                    class="or3-command text-[11px] uppercase tracking-[0.2em] text-(--or3-green-dark)"
+                >
+                    Matching settings ({{ fieldMatches.length }})
+                </p>
+                <div
+                    class="overflow-hidden rounded-2xl border border-(--or3-border) bg-white/70"
+                >
+                    <button
+                        v-for="(match, index) in fieldMatches"
+                        :key="`${match.sectionKey}.${match.field.key}`"
+                        type="button"
+                        class="or3-focus-ring flex w-full items-start gap-3 px-4 py-3 text-left transition hover:bg-(--or3-green-soft)"
+                        :class="
+                            index < fieldMatches.length - 1
+                                ? 'border-b border-(--or3-border)'
+                                : ''
+                        "
+                        @click="openSection(match.sectionKey)"
+                    >
+                        <RetroIcon
+                            :name="iconFor(match.sectionKey)"
+                            size="sm"
+                        />
+                        <div class="min-w-0 flex-1">
+                            <div
+                                class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5"
+                            >
+                                <p
+                                    class="font-mono text-sm font-semibold text-(--or3-text)"
+                                >
+                                    {{ match.field.label || match.field.key }}
+                                </p>
+                                <code
+                                    class="rounded bg-(--or3-green-soft) px-1.5 py-0.5 font-mono text-[10px] text-(--or3-green-dark)"
+                                    >{{ match.sectionLabel }} ·
+                                    {{ match.field.key }}</code
+                                >
+                            </div>
+                            <p
+                                v-if="match.field.description"
+                                class="mt-0.5 line-clamp-2 text-xs leading-snug text-(--or3-text-muted)"
+                            >
+                                {{ match.field.description }}
+                            </p>
+                        </div>
+                        <Icon
+                            name="i-pixelarticons-chevron-right"
+                            class="mt-1 size-5 shrink-0 text-(--or3-text-muted)"
+                        />
+                    </button>
+                </div>
+            </SurfaceCard>
+
+            <!-- Settings groups -->
             <SurfaceCard class-name="space-y-3">
                 <p
                     class="or3-command text-[11px] uppercase tracking-[0.2em] text-(--or3-green-dark)"
@@ -134,102 +265,6 @@
                             name="i-pixelarticons-chevron-right"
                             class="mt-0.5 size-4 shrink-0 text-(--or3-text-muted)"
                         />
-                    </button>
-                </div>
-            </SurfaceCard>
-
-            <SurfaceCard class-name="space-y-3">
-                <p
-                    class="or3-command text-[11px] uppercase tracking-[0.2em] text-(--or3-green-dark)"
-                >
-                    Popular destinations
-                </p>
-                <div class="grid gap-3 sm:grid-cols-2">
-                    <NuxtLink
-                        v-for="link in destinationLinks"
-                        :key="link.to"
-                        :to="link.to"
-                        class="rounded-2xl border border-(--or3-border) bg-white/70 p-4 transition hover:bg-(--or3-green-soft)"
-                    >
-                        <div class="flex items-start gap-3">
-                            <RetroIcon :name="link.icon" size="sm" />
-                            <div class="min-w-0 flex-1">
-                                <p
-                                    class="font-mono text-sm font-semibold text-(--or3-text)"
-                                >
-                                    {{ link.label }}
-                                </p>
-                                <p
-                                    class="mt-1 text-xs leading-5 text-(--or3-text-muted)"
-                                >
-                                    {{ link.description }}
-                                </p>
-                            </div>
-                        </div>
-                    </NuxtLink>
-                </div>
-            </SurfaceCard>
-
-            <!-- Filter chips -->
-            <div class="-mx-4 overflow-x-auto px-4 pb-1">
-                <div class="flex w-max items-center gap-2">
-                    <button
-                        v-for="filter in filters"
-                        :key="filter.key"
-                        type="button"
-                        class="or3-focus-ring rounded-full border px-4 py-2 font-mono text-xs font-semibold uppercase tracking-wide transition"
-                        :class="
-                            activeFilter === filter.key
-                                ? 'border-(--or3-green) bg-(--or3-green-soft) text-(--or3-green-dark)'
-                                : 'border-(--or3-border) bg-(--or3-surface) text-(--or3-text)'
-                        "
-                        @click="activeFilter = filter.key"
-                    >
-                        {{ filter.label }}
-                    </button>
-                </div>
-            </div>
-
-            <!-- Connection summary card moved to top of page -->
-
-            <!-- Quick Settings grid -->
-            <SurfaceCard
-                v-if="quickSections.length"
-                id="settings-highlights"
-                class-name="space-y-3"
-            >
-                <p
-                    class="or3-command text-[11px] uppercase tracking-[0.2em] text-(--or3-green-dark)"
-                >
-                    {{ activeFilterLabel }} highlights
-                </p>
-                <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                    <button
-                        v-for="section in quickSections"
-                        :key="section.key"
-                        type="button"
-                        class="or3-focus-ring group flex flex-col gap-2 rounded-2xl border border-(--or3-border) bg-white/70 p-3 text-left transition hover:bg-(--or3-green-soft)"
-                        @click="openSection(section.key)"
-                    >
-                        <div class="flex items-start justify-between">
-                            <RetroIcon :name="iconFor(section.key)" size="sm" />
-                            <Icon
-                                name="i-pixelarticons-chevron-right"
-                                class="size-4 text-(--or3-text-muted)"
-                            />
-                        </div>
-                        <div class="min-w-0">
-                            <p
-                                class="font-mono text-sm font-semibold text-(--or3-text)"
-                            >
-                                {{ section.label }}
-                            </p>
-                            <p
-                                class="mt-0.5 line-clamp-2 text-xs leading-snug text-(--or3-text-muted)"
-                            >
-                                {{ section.description }}
-                            </p>
-                        </div>
                     </button>
                 </div>
             </SurfaceCard>
@@ -279,7 +314,11 @@
 
             <!-- Empty state -->
             <SurfaceCard
-                v-if="!quickSections.length && !listSections.length"
+                v-if="
+                    !quickSections.length &&
+                    !listSections.length &&
+                    !fieldMatches.length
+                "
                 class-name="text-center text-sm text-(--or3-text-muted) py-6"
             >
                 <p v-if="searchTerm.trim()">
@@ -340,7 +379,7 @@ type FilterKey =
     | 'advanced';
 const activeFilter = ref<FilterKey>('connection');
 
-const { sections, configureError, loadSections } = useConfigure();
+const { sections, configureError, loadSections, fieldsBySection, allFieldsLoading, loadAllFields } = useConfigure();
 const { activeHost } = useActiveHost();
 
 const filters: Array<{ key: FilterKey; label: string }> = [
@@ -408,36 +447,6 @@ const groups = [
     icon: string;
     route: string | null;
 }>;
-
-const destinationLinks = [
-    {
-        to: '/settings/pair',
-        label: 'Connection & pairing',
-        description: 'Enroll this device and review trusted phones or tablets.',
-        icon: 'i-pixelarticons-smartphone',
-    },
-    {
-        to: '/settings/security',
-        label: 'Security dashboard',
-        description:
-            'See passkey status, session policy, and recovery readiness at a glance.',
-        icon: 'i-pixelarticons-shield',
-    },
-    {
-        to: '/settings/passkeys',
-        label: 'Passkeys',
-        description:
-            'Register, rename, and remove passkeys from one dedicated screen.',
-        icon: 'i-pixelarticons-lock',
-    },
-    {
-        to: '/settings/service',
-        label: 'Advanced editor',
-        description:
-            'Keep the current section-based editor available for detailed service tuning.',
-        icon: 'i-pixelarticons-sliders',
-    },
-];
 
 // Sections promoted to the "Quick settings" grid (shown only on Essentials).
 const QUICK_KEYS: Record<FilterKey, string[]> = {
@@ -530,6 +539,47 @@ const listSections = computed(() => {
     );
 });
 
+// Field-level search across every section. Matches by label, description, or
+// the underlying JSON/code key. Limited to a sane number of results so the
+// list never overwhelms the page.
+const FIELD_MATCH_LIMIT = 25;
+const fieldMatches = computed(() => {
+    const query = searchTerm.value.trim().toLowerCase();
+    if (!query) return [];
+    const sectionLookup = new Map(
+        sections.value.map((section) => [section.key, section]),
+    );
+    const allowedSectionKeys = FILTER_MAP[activeFilter.value];
+    const results: Array<{
+        sectionKey: string;
+        sectionLabel: string;
+        field: (typeof fieldsBySection.value)[string][number];
+    }> = [];
+    for (const [sectionKey, sectionFields] of Object.entries(
+        fieldsBySection.value,
+    )) {
+        if (allowedSectionKeys && !allowedSectionKeys.includes(sectionKey))
+            continue;
+        const sectionLabel = sectionLookup.get(sectionKey)?.label ?? sectionKey;
+        for (const field of sectionFields) {
+            const haystack = [
+                field.label,
+                field.description,
+                field.key,
+                field.placeholder,
+                field.emptyHint,
+            ]
+                .map((value) => String(value ?? '').toLowerCase())
+                .join(' \u0001 ');
+            if (haystack.includes(query)) {
+                results.push({ sectionKey, sectionLabel, field });
+                if (results.length >= FIELD_MATCH_LIMIT) return results;
+            }
+        }
+    }
+    return results;
+});
+
 function openSection(sectionKey: string) {
     void router.push(`/settings/${encodeURIComponent(sectionKey)}`);
 }
@@ -554,5 +604,8 @@ function onGroupClick(group: SettingsGroup) {
 
 onMounted(async () => {
     await loadSections();
+    // Build the searchable field index in the background. Errors here are
+    // non-fatal; section-level search still works without it.
+    void loadAllFields().catch(() => null);
 });
 </script>

@@ -109,8 +109,25 @@ export interface HealthResponse {
 export interface ReadinessResponse {
     status: string;
     ready: boolean;
-    summary?: string;
-    findings?: Array<{ severity?: string; message?: string; details?: string }>;
+    summary?: {
+        status?: string;
+        infoCount?: number;
+        warnCount?: number;
+        errorCount?: number;
+        blockCount?: number;
+        fixableCount?: number;
+    };
+    findings?: Array<{
+        id?: string;
+        area?: string;
+        severity?: string;
+        summary?: string;
+        detail?: string;
+        evidence?: string[];
+        fixMode?: string;
+        fixHint?: string;
+        metadata?: Record<string, string>;
+    }>;
 }
 
 export interface CapabilitiesResponse {
