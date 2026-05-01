@@ -40,8 +40,9 @@
                 tone="caution"
                 title="Still checking the connection"
             >
-                The app has a saved pairing token, but it has not confirmed the computer health yet.
-                Check that the address below is the computer's Tailscale address, not 127.0.0.1.
+                The app has a saved pairing token, but it has not confirmed the
+                computer health yet. Check that the address below is the
+                computer's Tailscale address, not 127.0.0.1.
             </DangerCallout>
 
             <DangerCallout
@@ -82,9 +83,7 @@
                                 />
                             </span>
                             <div class="min-w-0">
-                                <p class="or3-detail-row__label">
-                                    Approvals
-                                </p>
+                                <p class="or3-detail-row__label">Approvals</p>
                                 <p class="or3-detail-row__value">
                                     {{ approvalsLabel }}
                                 </p>
@@ -140,10 +139,21 @@
                         @click="handleRestartService"
                     >
                         <Icon
-                            :name="restartingService ? 'i-pixelarticons-loader' : 'i-pixelarticons-reload'"
-                            :class="['size-4', restartingService ? 'animate-spin' : '']"
+                            :name="
+                                restartingService
+                                    ? 'i-pixelarticons-loader'
+                                    : 'i-pixelarticons-reload'
+                            "
+                            :class="[
+                                'size-4',
+                                restartingService ? 'animate-spin' : '',
+                            ]"
                         />
-                        <span>{{ restartingService ? 'Restarting…' : 'Restart or3-intern' }}</span>
+                        <span>{{
+                            restartingService
+                                ? 'Restarting…'
+                                : 'Restart or3-intern'
+                        }}</span>
                     </button>
 
                     <p class="mt-2 text-xs leading-5 text-(--or3-text-muted)">
@@ -153,7 +163,8 @@
                         v-if="restartPendingApprovalId"
                         class="mt-1 text-xs leading-5 text-(--or3-green-dark)"
                     >
-                        Approve request #{{ restartPendingApprovalId }} on the Approvals screen, then try again.
+                        Approve request #{{ restartPendingApprovalId }} on the
+                        Approvals screen, then try again.
                     </p>
                     <p
                         v-if="restartError"
@@ -181,15 +192,15 @@
                 </div>
 
                 <div class="mt-3 space-y-2">
-                    <div
-                        v-if="!activity.length"
-                        class="or3-activity-empty"
-                    >
+                    <div v-if="!activity.length" class="or3-activity-empty">
                         <Icon
                             name="i-pixelarticons-timeline"
                             class="size-4 text-(--or3-text-muted)"
                         />
-                        <span>No activity yet. Try a command or browse files.</span>
+                        <span
+                            >No activity yet. Try a command or browse
+                            files.</span
+                        >
                     </div>
 
                     <div
@@ -241,14 +252,16 @@ const toast = useToast();
 const copied = ref(false);
 
 const connected = computed(() => Boolean(isConnected.value));
-const showConnectingHelp = computed(() => connected.value && loadingStatus.value && !health.value);
-const hostName = computed(
-    () => activeHost.value?.name || 'My Computer',
+const showConnectingHelp = computed(
+    () => connected.value && loadingStatus.value && !health.value,
 );
+const hostName = computed(() => activeHost.value?.name || 'My Computer');
 const baseUrl = computed(() => activeHost.value?.baseUrl || '');
 
 const runtimeProfile = computed(
-    () => capabilities.value?.runtimeProfile || (connected.value ? 'local-dev' : 'unknown'),
+    () =>
+        capabilities.value?.runtimeProfile ||
+        (connected.value ? 'local-dev' : 'unknown'),
 );
 
 const approvalsLabel = computed(() => {
@@ -359,7 +372,8 @@ function jobLabel(kind?: string): string {
 }
 
 function jobIcon(kind?: string): string {
-    if (kind === 'exec' || kind === 'terminal') return 'i-pixelarticons-terminal';
+    if (kind === 'exec' || kind === 'terminal')
+        return 'i-pixelarticons-terminal';
     if (kind === 'file_list' || kind === 'file_write')
         return 'i-pixelarticons-folder';
     if (kind === 'turn' || kind === 'subagent') return 'i-pixelarticons-robot';
@@ -441,7 +455,10 @@ async function waitForServiceRecovery() {
     while (Date.now() < deadline) {
         try {
             await refreshStatus();
-            if (health.value?.status === 'ok' || health.value?.status === 'healthy') {
+            if (
+                health.value?.status === 'ok' ||
+                health.value?.status === 'healthy'
+            ) {
                 return true;
             }
         } catch {
@@ -475,14 +492,18 @@ async function handleRestartService() {
 
         toast.add({
             title: 'Restart sent',
-            description: 'The service may still be coming back. Refresh if it stays offline.',
+            description:
+                'The service may still be coming back. Refresh if it stays offline.',
             color: 'warning',
         });
     } catch (error: any) {
         await refreshStatus().catch(() => {});
         toast.add({
             title: 'Could not restart or3-intern',
-            description: restartError.value || error?.message || 'The restart command could not be sent.',
+            description:
+                restartError.value ||
+                error?.message ||
+                'The restart command could not be sent.',
             color: 'error',
         });
     }
@@ -505,7 +526,8 @@ onMounted(async () => {
 
 <style scoped>
 .or3-section-label {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
         'Liberation Mono', 'Courier New', monospace;
     font-size: 0.78rem;
     font-weight: 600;
@@ -532,7 +554,11 @@ onMounted(async () => {
 }
 .or3-action-card:hover {
     box-shadow: var(--or3-shadow);
-    border-color: color-mix(in srgb, var(--or3-green) 25%, var(--or3-border) 75%);
+    border-color: color-mix(
+        in srgb,
+        var(--or3-green) 25%,
+        var(--or3-border) 75%
+    );
 }
 .or3-action-card:active {
     transform: scale(0.99);
@@ -551,7 +577,8 @@ onMounted(async () => {
 }
 
 .or3-action-card__title {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
         'Liberation Mono', 'Courier New', monospace;
     font-size: 0.95rem;
     font-weight: 600;
@@ -598,14 +625,16 @@ onMounted(async () => {
 }
 
 .or3-detail-row__label {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 0.72rem;
     text-transform: uppercase;
     letter-spacing: 0.12em;
     color: var(--or3-text-muted);
 }
 .or3-detail-row__value {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 0.9rem;
     color: var(--or3-text);
     font-weight: 500;
@@ -625,12 +654,18 @@ onMounted(async () => {
     border: 1px solid var(--or3-border);
     color: var(--or3-text);
     cursor: pointer;
-    transition: background 0.15s ease, border-color 0.15s ease;
+    transition:
+        background 0.15s ease,
+        border-color 0.15s ease;
     flex-shrink: 0;
 }
 .or3-icon-button:hover {
     background: color-mix(in srgb, var(--or3-surface-soft) 70%, white 30%);
-    border-color: color-mix(in srgb, var(--or3-green) 30%, var(--or3-border) 70%);
+    border-color: color-mix(
+        in srgb,
+        var(--or3-green) 30%,
+        var(--or3-border) 70%
+    );
 }
 
 .or3-pair-button {
@@ -646,7 +681,9 @@ onMounted(async () => {
     color: var(--or3-green-dark);
     font-weight: 600;
     text-decoration: none;
-    transition: background 0.15s ease, transform 0.15s ease;
+    transition:
+        background 0.15s ease,
+        transform 0.15s ease;
 }
 .or3-pair-button--secondary {
     width: 100%;
@@ -665,7 +702,6 @@ onMounted(async () => {
 .or3-pair-button:active {
     transform: scale(0.99);
 }
-
 
 .or3-activity-empty {
     display: flex;
@@ -704,7 +740,8 @@ onMounted(async () => {
 }
 
 .or3-activity-row__text {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 0.85rem;
     color: var(--or3-text);
     min-width: 0;
@@ -726,7 +763,8 @@ onMounted(async () => {
 }
 
 .or3-activity-row__time {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 0.75rem;
     color: var(--or3-text-muted);
     white-space: nowrap;

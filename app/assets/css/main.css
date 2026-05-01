@@ -255,9 +255,37 @@ html.or3-keyboard-open .or3-mobile-screen {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--or3-green) 35%, transparent);
 }
 
+/* Indeterminate progress bar used for in-flight agent jobs. */
+.or3-indeterminate-bar {
+  position: relative;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--or3-green) 14%, transparent);
+}
+.or3-indeterminate-bar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--or3-green) 70%, transparent) 35%,
+    var(--or3-green) 50%,
+    color-mix(in srgb, var(--or3-green) 70%, transparent) 65%,
+    transparent
+  );
+  animation: or3-indeterminate 1.6s ease-in-out infinite;
+}
+@keyframes or3-indeterminate {
+  0%   { transform: translateX(-110%); }
+  100% { transform: translateX(260%); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .or3-live-dot { animation: none; }
   .or3-pressable, .or3-chip { transition: none; }
+  .or3-indeterminate-bar::before { animation: none; opacity: 0.6; transform: translateX(0); width: 100%; }
 }
 
 @media (min-width: 768px) {

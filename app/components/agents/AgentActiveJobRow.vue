@@ -27,17 +27,30 @@
 
             <div class="mt-2 flex items-center gap-2">
                 <div
-                    class="relative h-1.5 flex-1 overflow-hidden rounded-full bg-stone-200/80"
+                    :class="[
+                        'relative h-1.5 flex-1 overflow-hidden rounded-full',
+                        showIndeterminate
+                            ? 'or3-indeterminate-bar'
+                            : 'bg-stone-200/80',
+                    ]"
+                    role="progressbar"
+                    :aria-valuetext="progressLabel"
+                    :aria-valuenow="
+                        progressValue === null ? undefined : progressValue
+                    "
+                    :aria-valuemin="progressValue === null ? undefined : 0"
+                    :aria-valuemax="progressValue === null ? undefined : 100"
                 >
                     <div
+                        v-if="!showIndeterminate"
                         class="absolute inset-y-0 left-0 rounded-full transition-all duration-700"
                         :class="progressTone"
-                        :style="{ width: `${progress}%` }"
+                        :style="{ width: `${progressValue ?? 0}%` }"
                     />
                 </div>
                 <span
                     class="font-mono text-[11px] tabular-nums text-(--or3-text-muted)"
-                    >{{ progress }}%</span
+                    >{{ progressLabel }}</span
                 >
             </div>
 
@@ -56,7 +69,9 @@
         </div>
 
         <div class="relative shrink-0 text-right pointer-events-none">
-            <p class="font-mono text-sm font-semibold text-(--or3-text)">
+            <p
+                class="font-mono text-sm font-semibold tabular-nums text-(--or3-text)"
+            >
                 {{ elapsed }}
             </p>
             <p class="text-[11px] text-(--or3-text-muted)">elapsed</p>
@@ -103,7 +118,7 @@ const confirming = ref(false);
 let confirmTimer: ReturnType<typeof setTimeout> | null = null;
 
 onMounted(() => {
-    timer = setInterval(() => (now.value = Date.now()), 30_000);
+    timer = setInterval(() => (now.value = Date.now()), 1000);
 });
 onBeforeUnmount(() => {
     if (timer) clearInterval(timer);
@@ -216,36 +231,61 @@ const isLive = computed(
 );
 
 const elapsedMs = computed(() => {
-    const created = props.job.created_at
-        ? new Date(props.job.created_at).getTime()
-        : now.value;
+    const startSource = props.job.started_at ?? props.job.created_at ?? null;
+    if (!startSource) return 0;
+    const start = new Date(startSource).getTime();
+    if (Number.isNaN(start)) return 0;
     const end =
         props.job.status === 'running' || props.job.status === 'queued'
             ? now.value
             : new Date(
-                  props.job.updated_at ?? props.job.created_at ?? now.value,
+                  props.job.finished_at ??
+                      props.job.updated_at ??
+                      props.job.created_at ??
+                      now.value,
               ).getTime();
-    return Math.max(0, end - created);
+    return Math.max(0, end - start);
 });
+
+function pad(n: number) {
+    return n < 10 ? `0${n}` : `${n}`;
+}
 
 const elapsed = computed(() => {
-    const ms = elapsedMs.value;
-    const min = Math.floor(ms / 60_000);
-    if (min < 1) return `${Math.max(1, Math.floor(ms / 1000))}s`;
-    if (min < 60) return `${min}m`;
-    const h = Math.floor(min / 60);
-    return `${h}h ${min % 60}m`;
+    const totalSeconds = Math.floor(elapsedMs.value / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    if (hours > 0) return `${hours}:${pad(minutes)}:${pad(seconds)}`;
+    return `${minutes}:${pad(seconds)}`;
 });
 
-const progress = computed(() => {
+const showIndeterminate = computed(
+    () => props.job.status === 'running' || props.job.status === 'queued',
+);
+
+const progressValue = computed<number | null>(() => {
     if (props.job.status === 'completed') return 100;
     if (props.job.status === 'failed' || props.job.status === 'aborted')
         return 0;
-    if (props.job.status === 'queued') return 5;
-    // Estimate: assume 15 min budget for active jobs
-    const budgetMs = 15 * 60_000;
-    const pct = Math.round((elapsedMs.value / budgetMs) * 100);
-    return Math.max(8, Math.min(95, pct));
+    return null;
+});
+
+const progressLabel = computed(() => {
+    switch (props.job.status) {
+        case 'queued':
+            return 'In line';
+        case 'running':
+            return 'Working\u2026';
+        case 'completed':
+            return 'Done';
+        case 'failed':
+            return 'Failed';
+        case 'aborted':
+            return 'Stopped';
+        default:
+            return '';
+    }
 });
 
 const progressTone = computed(() =>

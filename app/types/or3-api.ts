@@ -70,6 +70,8 @@ export interface JobSnapshot {
     finished_at?: string;
     child_session_key?: string;
     parent_session_key?: string;
+    /** Stored full-result artifact id when the final text exceeds the inline preview cap. */
+    artifact_id?: string;
 }
 
 export interface PairingRequestResponse {
@@ -282,4 +284,14 @@ export interface PersistedSubagentJob {
 
 export interface SubagentListResponse {
     items: PersistedSubagentJob[];
+}
+
+export interface ArtifactResponse {
+    id: string;
+    mime: string;
+    size_bytes: number;
+    offset: number;
+    read_bytes: number;
+    truncated: boolean;
+    content: string;
 }

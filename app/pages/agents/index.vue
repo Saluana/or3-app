@@ -117,6 +117,7 @@ const {
     loadJobs,
     abortJob,
     retryJob,
+    fetchArtifact,
     startActiveJobTracking,
     stopActiveJobTracking,
 } = useJobs();
@@ -333,12 +334,94 @@ function onDetailOpenChange(value: boolean) {
     detailOpen.value = value;
 }
 
+function buildContinuationPrompt(
+    job: JobSnapshot,
+    overrideResult?: string | null,
+): string | null {
+    const resolvedResult =
+        overrideResult && overrideResult.trim().length > 0
+            ? overrideResult
+            : job.final_text;
+    const hasResult = !!resolvedResult;
+    const hasError = !!job.error;
+    const hasTask = !!job.task;
+    if (!hasResult && !hasError && !hasTask) return null;
+
+    const lines: string[] = [];
+    const statusWord =
+        job.status === 'completed'
+            ? 'finished'
+            : job.status === 'failed'
+              ? 'failed'
+              : job.status === 'aborted'
+                ? 'was cancelled'
+                : 'is in progress';
+    lines.push(
+        `I just had my **or3-intern agent** run a background task that ${statusWord}, and I want to keep working on it here in chat with full context.`,
+    );
+    lines.push('');
+    if (hasTask) {
+        lines.push('**Original task I gave the agent:**');
+        lines.push('> ' + (job.task ?? '').replace(/\n/g, '\n> '));
+        lines.push('');
+    }
+    const meta: string[] = [`Status: \`${job.status}\``];
+    if (job.category) meta.push(`Category: \`${job.category}\``);
+    if (job.priority) meta.push(`Priority: \`${job.priority}\``);
+    if (job.job_id) meta.push(`Job: \`${job.job_id}\``);
+    lines.push(meta.join(' · '));
+    lines.push('');
+    if (hasResult) {
+        lines.push("**Agent's result:**");
+        lines.push('');
+        lines.push(resolvedResult!.trim());
+        lines.push('');
+        lines.push(
+            'Please pick up from here — answer follow-up questions, refine or expand the result, or help me decide the next step. Treat the result above as ground truth from the agent run; ask me before re-running the whole task.',
+        );
+    } else if (hasError) {
+        lines.push("**Agent's error:**");
+        lines.push('```');
+        lines.push(job.error!.trim());
+        lines.push('```');
+        lines.push('');
+        lines.push(
+            'Help me understand what went wrong and what to try next. You don\u2019t need to re-run the task yourself — just talk it through with me.',
+        );
+    } else {
+        lines.push(
+            'The task ran but didn\u2019t return any text output. Help me figure out what to try next.',
+        );
+    }
+    return lines.join('\n');
+}
+
 async function continueInChat(job: JobSnapshot) {
-    if (!job.final_text) {
+    let fullResult: string | null = null;
+    if (job.artifact_id) {
+        const sessionKey =
+            job.child_session_key || job.parent_session_key || '';
+        if (sessionKey) {
+            try {
+                const artifact = await fetchArtifact(
+                    job.artifact_id,
+                    sessionKey,
+                    { maxBytes: 1_000_000 },
+                );
+                if (artifact?.content) {
+                    fullResult = artifact.content;
+                }
+            } catch {
+                // Fall back to the inline preview already on the job.
+            }
+        }
+    }
+    const prompt = buildContinuationPrompt(job, fullResult);
+    if (!prompt) {
         toast.add({
-            title: 'No preview to continue from',
+            title: 'Nothing to continue from',
             description:
-                'This task didn\u2019t return text. Try delegating a follow-up task instead.',
+                'This task didn\u2019t leave enough context to seed a chat. Try delegating a follow-up task instead.',
             icon: 'i-pixelarticons-alert',
             color: 'warning',
         });
@@ -347,10 +430,7 @@ async function continueInChat(job: JobSnapshot) {
     try {
         await router.push('/');
         await nextTick();
-        const sent = await programmaticSend(
-            'main',
-            `Pick up where this task left off:\n\n${job.final_text}`,
-        );
+        const sent = await programmaticSend('main', prompt);
         if (!sent) {
             throw new Error('Chat input is not ready.');
         }

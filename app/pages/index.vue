@@ -4,7 +4,11 @@
             <AppHeader subtitle="CHAT" />
         </div>
 
-        <div ref="scrollEl" class="or3-chat-shell__body">
+        <div
+            ref="scrollEl"
+            class="or3-chat-shell__body"
+            @scroll.passive="onChatScroll"
+        >
             <div class="or3-chat-shell__content">
                 <!-- Empty state hero (shown only when there are no messages yet) -->
                 <section v-if="!messages.length" class="or3-chat-empty">
@@ -57,19 +61,41 @@ const { messages, draft } = useChatSessions();
 const { isStreaming, send, stop } = useAssistantStream();
 
 const scrollEl = ref<HTMLElement | null>(null);
+const autoScrollLocked = ref(true);
+let lastScrollTop = 0;
+
+const RELEASE_DISTANCE_PX = 2;
+const RELATCH_DISTANCE_PX = 24;
 
 function onPromptSelect(value: string) {
     draft.value = value;
 }
 
-function isNearBottom(el: HTMLElement, threshold = 120) {
-    return el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+function distanceFromBottom(el: HTMLElement) {
+    return el.scrollHeight - el.scrollTop - el.clientHeight;
+}
+
+function onChatScroll() {
+    const el = scrollEl.value;
+    if (!el) return;
+    const distance = distanceFromBottom(el);
+    const delta = el.scrollTop - lastScrollTop;
+    lastScrollTop = el.scrollTop;
+
+    if (delta < 0 && distance > RELEASE_DISTANCE_PX) {
+        autoScrollLocked.value = false;
+        return;
+    }
+    if (delta > 0 && distance <= RELATCH_DISTANCE_PX) {
+        autoScrollLocked.value = true;
+    }
 }
 
 function scrollToBottom(smooth = true) {
     const el = scrollEl.value;
     if (!el) return;
     el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+    lastScrollTop = el.scrollTop;
 }
 
 // Auto-scroll on new messages and during streaming, but only nudge while the
@@ -77,6 +103,7 @@ function scrollToBottom(smooth = true) {
 watch(
     () => messages.value.length,
     async () => {
+        if (!autoScrollLocked.value) return;
         await nextTick();
         scrollToBottom(true);
     },
@@ -85,9 +112,7 @@ watch(
 watch(
     () => messages.value[messages.value.length - 1]?.content,
     async () => {
-        const el = scrollEl.value;
-        if (!el) return;
-        if (!isNearBottom(el, 200)) return;
+        if (!autoScrollLocked.value) return;
         await nextTick();
         scrollToBottom(false);
     },

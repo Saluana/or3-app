@@ -148,6 +148,7 @@ export function summaryToSnapshot(summary: RecentJobSummary): JobSnapshot {
         finished_at: summary.finished_at,
         child_session_key: summary.child_session_key,
         parent_session_key: summary.parent_session_key,
+        artifact_id: summary.artifact_id,
     };
 }
 

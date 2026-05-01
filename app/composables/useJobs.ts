@@ -1,6 +1,7 @@
 import { computed, ref, shallowRef } from 'vue';
 import type { Or3AppError, RecentJobSummary } from '~/types/app-state';
 import type {
+    ArtifactResponse,
     JobSnapshot,
     Or3SseEvent,
     PersistedSubagentJob,
@@ -77,6 +78,7 @@ function snapshotToSummary(
         created_at: job.created_at ?? base?.created_at,
         final_text: job.final_text ?? base?.final_text,
         error: job.error ?? base?.error,
+        artifact_id: job.artifact_id ?? base?.artifact_id,
         source: 'live',
     };
 }
@@ -148,6 +150,7 @@ export function applySseEventToCache(
     let nextStatus = existing.status;
     let finalText = existing.final_text;
     let errorText = existing.error;
+    let artifactId = existing.artifact_id;
     let terminal = false;
 
     switch (eventType) {
@@ -191,6 +194,9 @@ export function applySseEventToCache(
             } else if (payload && typeof payload.message === 'string') {
                 finalText = payload.message as string;
             }
+            if (payload && typeof payload.artifact_id === 'string') {
+                artifactId = payload.artifact_id as string;
+            }
             break;
         }
         case 'error':
@@ -212,6 +218,7 @@ export function applySseEventToCache(
         status: nextStatus,
         final_text: finalText,
         error: errorText,
+        artifact_id: artifactId,
         updated_at: new Date().toISOString(),
         source: 'live',
     });
@@ -312,6 +319,24 @@ export function useJobs() {
         );
         upsertHostJob(cache, snapshotToSummary(snapshot, findSummary(jobId)));
         return snapshot;
+    }
+
+    async function fetchArtifact(
+        artifactId: string,
+        sessionKey: string,
+        options: { offset?: number; maxBytes?: number } = {},
+    ) {
+        const params = new URLSearchParams();
+        params.set('session_key', sessionKey);
+        if (options.offset && options.offset > 0) {
+            params.set('offset', String(options.offset));
+        }
+        if (options.maxBytes && options.maxBytes > 0) {
+            params.set('max_bytes', String(options.maxBytes));
+        }
+        return await api.request<ArtifactResponse>(
+            `/internal/v1/artifacts/${encodeURIComponent(artifactId)}?${params.toString()}`,
+        );
     }
 
     async function subscribeJob(jobId: string) {
@@ -469,6 +494,7 @@ export function useJobs() {
         queueJob,
         loadJobs,
         fetchJob,
+        fetchArtifact,
         subscribeJob,
         abortJob,
         retryJob,
