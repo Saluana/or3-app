@@ -46,4 +46,12 @@ describe('service restart helpers', () => {
         expect(command).toContain('or3-intern');
         expect(command).toContain('scripts/restart-service.sh restart');
     });
+
+    it('falls back to the running service binary directory', () => {
+        const command = buildServiceRestartCommand();
+
+        expect(command).toContain('pgrep -f');
+        expect(command).toContain('ps -ww -p "$pid" -o comm=');
+        expect(command).toContain('try_restart_from_dir "$(dirname "$bin")"');
+    });
 });

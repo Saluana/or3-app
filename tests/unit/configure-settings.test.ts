@@ -2,10 +2,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useConfigure } from '../../app/composables/useConfigure'
 import { useLocalCache } from '../../app/composables/useLocalCache'
 import { useSimpleSettings } from '../../app/composables/settings/useSimpleSettings'
+import { useSkills } from '../../app/composables/useSkills'
 
 describe('settings configure mappings', () => {
   afterEach(() => {
     useSimpleSettings().reset()
+    useSkills().resetSkills()
     useLocalCache().clearAll()
     sessionStorage.clear()
     localStorage.clear()
@@ -84,5 +86,38 @@ describe('settings configure mappings', () => {
     expect(simple.findField('provider', 'apiKey')?.key).toBe('provider_api_key')
 
     await expect(simple.applyChanges([{ section: 'provider', field: 'model', value: 'openai/gpt-4.1' }])).resolves.toMatchObject({ ok: true })
+  })
+
+  it('loads and updates agent skills through the skills API', async () => {
+    useLocalCache().updateHost({ id: 'host-1', name: 'Host', baseUrl: 'http://127.0.0.1:9100', token: 'paired-token', pairedToken: 'paired-token' })
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      const url = String(_url)
+      if (url.endsWith('/internal/v1/skills') && init?.method === 'GET') {
+        return new Response(JSON.stringify({
+          global_dir: '/Users/brendon/.agents/skills',
+          global_skills_enabled: true,
+          items: [{ name: 'demo', key: 'demo', source: 'global', location: '/Users/brendon/.agents/skills/demo', eligible: true, disabled: false, hidden: false, status: 'eligible', permission_state: 'approved', user_invocable: true }],
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (url.endsWith('/internal/v1/skills/demo/settings')) {
+        expect(init?.method).toBe('POST')
+        expect(JSON.parse(init?.body as string)).toEqual({ enabled: false, apiKey: 'secret' })
+        return new Response(JSON.stringify({
+          ok: true,
+          skill: { name: 'demo', key: 'demo', source: 'global', location: '/Users/brendon/.agents/skills/demo', eligible: false, disabled: true, hidden: false, status: 'disabled', permission_state: 'approved', user_invocable: true },
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      return new Response('{}', { status: 404, headers: { 'Content-Type': 'application/json' } })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const skillApi = useSkills()
+    await skillApi.loadSkills()
+
+    expect(skillApi.globalSkillsDir.value).toBe('/Users/brendon/.agents/skills')
+    expect(skillApi.skills.value[0]?.source).toBe('global')
+
+    await expect(skillApi.updateSkill('demo', { enabled: false, apiKey: 'secret' })).resolves.toMatchObject({ ok: true })
+    expect(skillApi.skills.value[0]?.disabled).toBe(true)
   })
 })

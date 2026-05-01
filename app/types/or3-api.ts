@@ -250,6 +250,50 @@ export interface ConfigureChange {
     value?: unknown;
 }
 
+export interface SkillItem {
+    name: string;
+    key: string;
+    description?: string;
+    summary?: string;
+    homepage?: string;
+    source: string;
+    location: string;
+    eligible: boolean;
+    disabled: boolean;
+    hidden: boolean;
+    status: string;
+    permission_state: string;
+    permission_notes?: string[];
+    missing?: string[];
+    unsupported?: string[];
+    parse_error?: string;
+    user_invocable: boolean;
+    primary_env?: string;
+    required_env?: string[];
+    config_fields?: string[];
+    api_key_configured?: boolean;
+}
+
+export interface SkillRoot {
+    path: string;
+    source: string;
+    enabled: boolean;
+}
+
+export interface SkillsResponse {
+    items: SkillItem[];
+    roots?: SkillRoot[];
+    global_dir?: string;
+    global_skills_enabled?: boolean;
+}
+
+export interface SkillSettingsRequest {
+    enabled?: boolean;
+    apiKey?: string;
+    env?: Record<string, string>;
+    config?: Record<string, unknown>;
+}
+
 export interface Or3SseEvent {
     event?: string;
     data: string;

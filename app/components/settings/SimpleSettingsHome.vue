@@ -53,6 +53,13 @@
                     <p class="font-mono font-semibold text-(--or3-text)">What OR3 can access</p>
                     <p class="mt-0.5 text-xs text-(--or3-text-muted)">Permissions receipt in plain text.</p>
                 </NuxtLink>
+                <NuxtLink
+                    to="/settings/skills"
+                    class="or3-focus-ring rounded-xl border border-(--or3-border) bg-white/70 p-3 text-sm hover:bg-(--or3-green-soft)"
+                >
+                    <p class="font-mono font-semibold text-(--or3-text)">Skills</p>
+                    <p class="mt-0.5 text-xs text-(--or3-text-muted)">Toggle and configure agent skills.</p>
+                </NuxtLink>
             </div>
         </SurfaceCard>
 

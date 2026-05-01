@@ -1,6 +1,6 @@
 <template>
     <div
-        class="fixed inset-0 z-50 flex items-end justify-center bg-(--or3-text)/40 p-4 sm:items-center"
+        class="fixed inset-0 z-[60] flex items-end justify-center bg-(--or3-text)/40 p-4 sm:items-center"
         role="dialog"
         aria-modal="true"
         @click.self="$emit('cancel')"
