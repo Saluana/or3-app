@@ -13,9 +13,22 @@
                     message.role === 'user'
                         ? 'or3-msg__bubble--user'
                         : 'or3-msg__bubble--assistant',
+                    message.approvalState === 'pending'
+                        ? 'or3-msg__bubble--attention'
+                        : '',
                 ]"
             >
                 <template v-if="message.role !== 'user'">
+                    <div
+                        v-if="message.approvalState === 'pending'"
+                        class="or3-msg__notice or3-msg__notice--attention"
+                    >
+                        <Icon name="i-pixelarticons-shield" class="size-4" />
+                        <span>
+                            Waiting for approval. Review the requested action
+                            below, then approve or deny it.
+                        </span>
+                    </div>
                     <AssistantReasoningPanel
                         :content="message.reasoningText"
                         :pending="
@@ -287,7 +300,10 @@ async function approveApproval() {
     approvalBusy.value = true;
     try {
         const approval = await approve(props.message.approvalRequestId);
-        updateMessage(props.message.id, { approvalState: 'approved' });
+        updateMessage(props.message.id, {
+            approvalState: 'approved',
+            error: undefined,
+        });
         if (approval.token && props.message.retryPayload && !isStreaming.value) {
             await send({
                 ...props.message.retryPayload,
@@ -323,7 +339,11 @@ async function denyApproval() {
     approvalBusy.value = true;
     try {
         await deny(props.message.approvalRequestId);
-        updateMessage(props.message.id, { approvalState: 'denied' });
+        updateMessage(props.message.id, {
+            approvalState: 'denied',
+            status: 'complete',
+            error: undefined,
+        });
         toast.add({
             title: 'Approval denied',
             description: 'The request was denied.',
@@ -390,6 +410,13 @@ async function denyApproval() {
     width: 100%;
 }
 
+.or3-msg__bubble--attention {
+    border-color: color-mix(in srgb, #f59e0b 35%, var(--or3-border) 65%);
+    box-shadow:
+        var(--or3-shadow-soft),
+        0 0 0 1px color-mix(in srgb, #f59e0b 12%, transparent);
+}
+
 .or3-msg__bubble--user {
     background: var(--or3-green-soft);
     border-color: color-mix(in srgb, var(--or3-green) 28%, white 72%);
@@ -416,6 +443,22 @@ async function denyApproval() {
     gap: 0.15rem;
     margin-top: 0.55rem;
     margin-right: -0.35rem;
+}
+
+.or3-msg__notice {
+    display: inline-flex;
+    align-items: flex-start;
+    gap: 0.45rem;
+    margin-bottom: 0.8rem;
+    padding: 0.65rem 0.8rem;
+    border-radius: 0.9rem;
+    font-size: 0.78rem;
+    line-height: 1.45;
+}
+
+.or3-msg__notice--attention {
+    background: color-mix(in srgb, #fef3c7 75%, white 25%);
+    color: #92400e;
 }
 
 .or3-msg__actions--with-meta {

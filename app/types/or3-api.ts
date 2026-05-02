@@ -15,9 +15,19 @@ export interface TurnRequest {
 export interface TurnResponse {
     job_id: string;
     kind: 'turn';
-    status: 'queued' | 'running' | 'completed' | 'failed' | 'aborted';
+    status:
+        | 'queued'
+        | 'running'
+        | 'completed'
+        | 'failed'
+        | 'aborted'
+        | 'approval_required';
     final_text?: string;
     error?: string;
+    message?: string;
+    code?: string;
+    request_id?: number | string;
+    approval_id?: number | string;
 }
 
 export interface SubagentRequest {
@@ -172,6 +182,9 @@ export interface AppBootstrapResponse {
         session_required?: boolean;
         session_active?: boolean;
         step_up_active?: boolean;
+        kind?: string;
+        role?: string;
+        exec_allowed?: boolean;
         capabilities?: {
             passkeys_supported?: boolean;
             step_up_supported?: boolean;

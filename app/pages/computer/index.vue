@@ -54,6 +54,14 @@
                 {{ readinessMessage }}
             </DangerCallout>
 
+            <DangerCallout
+                v-if="bootstrapWarning"
+                :tone="bootstrapWarningTone"
+                title="Connection warning"
+            >
+                {{ bootstrapWarning.message }}
+            </DangerCallout>
+
             <!-- Connection details -->
             <section>
                 <p class="or3-section-label">CONNECTION DETAILS</p>
@@ -240,6 +248,7 @@ const {
     health,
     readiness,
     capabilities,
+    bootstrap,
     restartAction,
     loadingStatus,
     refreshStatus,
@@ -263,6 +272,15 @@ const showConnectingHelp = computed(
 const hostName = computed(() => activeHost.value?.name || 'My Computer');
 const baseUrl = computed(() => activeHost.value?.baseUrl || '');
 const readinessMessage = computed(() => formatReadinessDetail(readiness.value));
+const bootstrapWarning = computed(
+    () => bootstrap.value?.status?.warnings?.[0] ?? null,
+);
+const bootstrapWarningTone = computed(() => {
+    const severity = bootstrapWarning.value?.severity;
+    if (severity === 'error') return 'danger';
+    if (severity === 'info') return 'info';
+    return 'caution';
+});
 
 const runtimeProfile = computed(
     () =>

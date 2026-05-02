@@ -6,7 +6,7 @@
     </summary>
     <ol class="space-y-2 border-t border-(--or3-border) px-3 py-2.5">
       <li v-for="item in normalizedItems" :key="item.id" class="flex gap-2 text-xs leading-5">
-        <Icon :name="iconFor(item.status)" :class="['mt-0.5 size-3.5 shrink-0', item.status === 'running' && 'animate-spin']" />
+        <Icon :name="iconFor(item.status)" :class="['mt-0.5 size-3.5 shrink-0', item.status === 'running' && 'animate-spin', item.status === 'attention' && 'text-amber-700']" />
         <div class="min-w-0">
           <p class="font-medium text-(--or3-text)">{{ item.label }}</p>
           <p v-if="item.detail" class="whitespace-pre-wrap text-(--or3-text-muted)">{{ item.detail }}</p>
@@ -30,7 +30,16 @@ const normalizedItems = computed(() => {
   for (const item of items) {
     if (item.type !== 'tool_result') continue
     const name = item.label.replace(/^Tool result:\s*/, '').trim()
-    if (name) toolResults.set(name, item.status === 'error' ? 'error' : 'complete')
+    if (name) {
+      toolResults.set(
+        name,
+        item.status === 'error'
+          ? 'error'
+          : item.status === 'attention'
+            ? 'attention'
+            : 'complete',
+      )
+    }
   }
 
   return items.map((item) => {
@@ -48,6 +57,7 @@ const normalizedItems = computed(() => {
 })
 
 function iconFor(status?: ChatActivityEntry['status']) {
+  if (status === 'attention') return 'i-pixelarticons-shield'
   if (status === 'error') return 'i-pixelarticons-alert'
   if (status === 'complete') return 'i-pixelarticons-check'
   return 'i-pixelarticons-loader'

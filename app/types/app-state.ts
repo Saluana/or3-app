@@ -24,7 +24,7 @@ export interface ChatSession {
 export interface ChatToolCall {
     id: string;
     name: string;
-    status: 'running' | 'complete' | 'error';
+    status: 'running' | 'complete' | 'error' | 'attention';
     arguments?: string;
     result?: string;
     error?: string;
@@ -37,7 +37,7 @@ export interface ChatActivityEntry {
     type: string;
     label: string;
     detail?: string;
-    status?: 'running' | 'complete' | 'error';
+    status?: 'running' | 'complete' | 'error' | 'attention';
     createdAt: string;
 }
 
@@ -53,11 +53,19 @@ export interface ChatAttachment {
     rootId?: string;
 }
 
+export interface AssistantReplayToolCall {
+    name: string;
+    arguments?: string;
+}
+
 export interface AssistantSendPayload {
     text: string;
     transportText?: string;
     attachments?: ChatAttachment[];
     approvalToken?: string;
+    replayToolCall?: AssistantReplayToolCall;
+    continueMessageId?: string;
+    suppressUserEcho?: boolean;
 }
 
 export interface ChatMessage {
@@ -65,7 +73,7 @@ export interface ChatMessage {
     sessionId: string;
     role: 'user' | 'assistant' | 'system' | 'tool';
     content: string;
-    status: 'sending' | 'streaming' | 'complete' | 'failed';
+    status: 'sending' | 'streaming' | 'complete' | 'failed' | 'attention';
     createdAt: string;
     pinned?: boolean;
     jobId?: string;
