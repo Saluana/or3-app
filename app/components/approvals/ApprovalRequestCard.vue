@@ -106,6 +106,11 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { ApprovalRequest } from '~/types/or3-api';
+import {
+    approvalStatusLabel,
+    approvalStatusTone,
+    formatApprovalSubjectPreview,
+} from '~/utils/or3/approval-display';
 
 const props = defineProps<{
     approval: ApprovalRequest;
@@ -149,23 +154,7 @@ const description = computed(() => {
 });
 
 const subjectPreview = computed(() => {
-    const subj = props.approval.subject;
-    if (!subj) return '';
-    if (typeof subj === 'string') return subj;
-    if (typeof subj === 'object') {
-        const obj = subj as Record<string, unknown>;
-        const candidate =
-            (obj.command as string) ||
-            (obj.cmd as string) ||
-            (obj.path as string) ||
-            (obj.file as string) ||
-            (obj.url as string) ||
-            (obj.target as string) ||
-            (obj.summary as string) ||
-            '';
-        return typeof candidate === 'string' ? candidate : '';
-    }
-    return '';
+    return formatApprovalSubjectPreview(props.approval);
 });
 
 const risk = computed(() => {
@@ -208,31 +197,11 @@ const sourceLabel = computed(() => {
 const timeLabel = computed(() => relativeTime(props.approval.created_at));
 
 const statusLabel = computed(() => {
-    switch (props.approval.status) {
-        case 'pending':
-            return 'Waiting';
-        case 'approved':
-            return 'Approved';
-        case 'denied':
-            return 'Denied';
-        case 'canceled':
-            return 'Canceled';
-        default:
-            return props.approval.status;
-    }
+    return approvalStatusLabel(props.approval.status);
 });
 
 const statusTone = computed<'green' | 'amber' | 'danger' | 'neutral'>(() => {
-    switch (props.approval.status) {
-        case 'approved':
-            return 'green';
-        case 'pending':
-            return 'amber';
-        case 'denied':
-            return 'danger';
-        default:
-            return 'neutral';
-    }
+    return approvalStatusTone(props.approval.status);
 });
 
 function relativeTime(value?: string): string {

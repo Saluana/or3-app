@@ -80,7 +80,14 @@ export interface ChatMessage {
     error?: string;
     errorCode?: Or3AppErrorCode;
     approvalRequestId?: number | string;
-    approvalState?: 'pending' | 'approved' | 'denied';
+    approvalState?:
+        | 'pending'
+        | 'retrying'
+        | 'approved'
+        | 'denied'
+        | 'canceled'
+        | 'expired'
+        | 'failed';
     retryPayload?: AssistantSendPayload;
     reasoningText?: string;
     toolCalls?: ChatToolCall[];

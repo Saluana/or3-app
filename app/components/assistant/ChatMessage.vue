@@ -13,21 +13,18 @@
                     message.role === 'user'
                         ? 'or3-msg__bubble--user'
                         : 'or3-msg__bubble--assistant',
-                    message.approvalState === 'pending'
+                    approvalNeedsAttention
                         ? 'or3-msg__bubble--attention'
                         : '',
                 ]"
             >
                 <template v-if="message.role !== 'user'">
                     <div
-                        v-if="message.approvalState === 'pending'"
+                        v-if="approvalNotice"
                         class="or3-msg__notice or3-msg__notice--attention"
                     >
-                        <Icon name="i-pixelarticons-shield" class="size-4" />
-                        <span>
-                            Waiting for approval. Review the requested action
-                            below, then approve or deny it.
-                        </span>
+                        <Icon :name="approvalNotice.icon" class="size-4" />
+                        <span>{{ approvalNotice.text }}</span>
                     </div>
                     <AssistantReasoningPanel
                         :content="message.reasoningText"
@@ -88,7 +85,7 @@
                     </div>
                 </template>
                 <p
-                    v-if="message.status === 'failed'"
+                    v-if="message.error"
                     class="mt-2 text-xs text-(--or3-danger)"
                 >
                     {{ message.error || 'Message failed' }}
@@ -182,11 +179,11 @@
                     Saved
                 </span>
                 <span
-                    v-if="message.approvalState === 'pending'"
+                    v-if="approvalMetaLabel"
                     class="or3-msg__meta-pin"
                 >
                     <Icon name="i-pixelarticons-shield" class="size-3" />
-                    Approval needed
+                    {{ approvalMetaLabel }}
                 </span>
                 <span v-if="timestamp">{{ timestamp }}</span>
             </div>
@@ -225,11 +222,72 @@ const showApprovalActions = computed(
         props.message.approvalState === 'pending' &&
         !!props.message.approvalRequestId,
 );
+const approvalNeedsAttention = computed(() =>
+    ['pending', 'retrying', 'failed'].includes(
+        String(props.message.approvalState ?? ''),
+    ),
+);
+const approvalNotice = computed(() => {
+    switch (props.message.approvalState) {
+        case 'pending':
+            return {
+                icon: 'i-pixelarticons-shield',
+                text: 'Waiting for approval. Review the requested action below, then approve or deny it.',
+            };
+        case 'retrying':
+            return {
+                icon: 'i-pixelarticons-clock',
+                text: 'Approved. Retrying the exact tool call now.',
+            };
+        case 'failed':
+            return {
+                icon: 'i-pixelarticons-warning-box',
+                text: 'Approval was handled, but the retry did not finish. The error below has the details.',
+            };
+        case 'denied':
+            return {
+                icon: 'i-pixelarticons-close-box',
+                text: 'Approval denied. The tool call was not run.',
+            };
+        case 'canceled':
+            return {
+                icon: 'i-pixelarticons-close-box',
+                text: 'Approval canceled. The tool call was not run.',
+            };
+        case 'expired':
+            return {
+                icon: 'i-pixelarticons-warning-box',
+                text: 'Approval expired before it was used. Start the request again if it is still needed.',
+            };
+        default:
+            return null;
+    }
+});
+const approvalMetaLabel = computed(() => {
+    switch (props.message.approvalState) {
+        case 'pending':
+            return 'Approval needed';
+        case 'retrying':
+            return 'Retrying approved tool';
+        case 'failed':
+            return 'Approval retry failed';
+        case 'approved':
+            return 'Approved';
+        case 'denied':
+            return 'Denied';
+        case 'canceled':
+            return 'Canceled';
+        case 'expired':
+            return 'Expired';
+        default:
+            return '';
+    }
+});
 const hasMeta = computed(
     () =>
         !!timestamp.value ||
         !!props.message.pinned ||
-        props.message.approvalState === 'pending',
+        !!approvalMetaLabel.value,
 );
 
 const timestamp = computed(() => {
@@ -298,16 +356,31 @@ async function retryMessage() {
 async function approveApproval() {
     if (!props.message.approvalRequestId || approvalBusy.value) return;
     approvalBusy.value = true;
+    let retryStarted = false;
     try {
         const approval = await approve(props.message.approvalRequestId);
-        updateMessage(props.message.id, {
-            approvalState: 'approved',
-            error: undefined,
-        });
         if (approval.token && props.message.retryPayload && !isStreaming.value) {
-            await send({
+            const retryPayload = {
                 ...props.message.retryPayload,
                 approvalToken: approval.token,
+            };
+            retryStarted = true;
+            updateMessage(props.message.id, {
+                approvalState: 'retrying',
+                status: 'attention',
+                retryPayload,
+                error: undefined,
+            });
+            await send(retryPayload);
+            updateMessage(props.message.id, {
+                approvalState: 'approved',
+                error: undefined,
+            });
+        } else {
+            updateMessage(props.message.id, {
+                approvalState: 'approved',
+                status: 'complete',
+                error: undefined,
             });
         }
         toast.add({
@@ -320,12 +393,18 @@ async function approveApproval() {
             icon: 'i-pixelarticons-check',
         });
     } catch (error) {
+        const message =
+            error instanceof Error && error.message
+                ? error.message
+                : 'Could not approve or retry this request.';
+        updateMessage(props.message.id, {
+            approvalState: retryStarted ? 'failed' : 'pending',
+            status: retryStarted ? 'failed' : 'attention',
+            error: message,
+        });
         toast.add({
             title: 'Approval failed',
-            description:
-                error instanceof Error && error.message
-                    ? error.message
-                    : 'Could not approve this request.',
+            description: message,
             color: 'error',
             icon: 'i-pixelarticons-warning-box',
         });
@@ -351,12 +430,18 @@ async function denyApproval() {
             icon: 'i-pixelarticons-close-box',
         });
     } catch (error) {
+        const message =
+            error instanceof Error && error.message
+                ? error.message
+                : 'Could not deny this request.';
+        updateMessage(props.message.id, {
+            approvalState: 'pending',
+            status: 'attention',
+            error: message,
+        });
         toast.add({
             title: 'Deny failed',
-            description:
-                error instanceof Error && error.message
-                    ? error.message
-                    : 'Could not deny this request.',
+            description: message,
             color: 'error',
             icon: 'i-pixelarticons-warning-box',
         });

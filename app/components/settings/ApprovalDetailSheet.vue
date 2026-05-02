@@ -43,6 +43,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { ApprovalRequest } from '~/types/or3-api'
+import {
+  approvalStatusLabel,
+  approvalStatusTone,
+  formatApprovalSubjectPreview,
+} from '~/utils/or3/approval-display'
 
 const open = defineModel<boolean>('open', { default: false })
 
@@ -69,27 +74,22 @@ const friendlyKind = computed(() => {
 })
 
 const friendlyStatus = computed(() => {
-  switch (props.approval?.status) {
-    case 'pending': return 'Waiting for you'
-    case 'approved': return 'Approved'
-    case 'denied': return 'Denied'
-    case 'canceled': return 'Canceled'
-    default: return props.approval?.status ?? 'unknown'
-  }
+  if (props.approval?.status === 'pending') return 'Waiting for you'
+  return approvalStatusLabel(props.approval?.status)
 })
 
 const statusTone = computed(() => {
-  if (props.approval?.status === 'approved') return 'green' as const
-  if (props.approval?.status === 'pending') return 'amber' as const
-  if (props.approval?.status === 'denied') return 'danger' as const
-  return 'neutral' as const
+  return approvalStatusTone(props.approval?.status)
 })
 
 const summary = computed(() => {
   if (!props.approval) return 'Pick an approval to see what it wants to do.'
   if (typeof props.approval.subject === 'string') return props.approval.subject
+  const preview = formatApprovalSubjectPreview(props.approval)
+  if (props.approval.type === 'exec' && preview) return `or3-intern wants to run: ${preview}`
   if (props.approval.type === 'exec') return 'or3-intern wants to run a command on your computer. Open the technical details below to see exactly what it will run.'
   if (props.approval.type === 'file_write') return 'or3-intern wants to write to a file on your computer. The technical details show which file and what content.'
+  if (preview) return preview
   return 'Take a look at the request details below before allowing it.'
 })
 </script>

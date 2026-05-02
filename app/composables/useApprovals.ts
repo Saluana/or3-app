@@ -17,6 +17,24 @@ const approvalsLoading = ref(false);
 const approvalsError = ref<string | null>(null);
 const pendingCount = ref(0);
 let approvalsPollTimer: ReturnType<typeof setInterval> | null = null;
+const approvalActionsInFlight = new Set<string>();
+
+async function withApprovalAction<T>(
+    id: number | string,
+    action: string,
+    fn: () => Promise<T>,
+) {
+    const key = `${action}:${String(id)}`;
+    if (approvalActionsInFlight.has(key)) {
+        throw new Error(`Approval ${action} is already in progress.`);
+    }
+    approvalActionsInFlight.add(key);
+    try {
+        return await fn();
+    } finally {
+        approvalActionsInFlight.delete(key);
+    }
+}
 
 export function useApprovals() {
     const api = useOr3Api();
@@ -84,43 +102,49 @@ export function useApprovals() {
     }
 
     async function approve(id: number | string, allowlist = false, note = '') {
-        const response = await api.request<ApprovalActionResponse>(
-            `/internal/v1/approvals/${id}/approve`,
-            {
-                method: 'POST',
-                body: { allowlist, note },
-            },
-        );
-        await Promise.all([
-            loadApprovals(),
-            loadAllowlists(),
-            loadPendingCount(),
-        ]);
-        return response;
+        return withApprovalAction(id, 'approve', async () => {
+            const response = await api.request<ApprovalActionResponse>(
+                `/internal/v1/approvals/${id}/approve`,
+                {
+                    method: 'POST',
+                    body: { allowlist, note },
+                },
+            );
+            await Promise.all([
+                loadApprovals(),
+                loadAllowlists(),
+                loadPendingCount(),
+            ]);
+            return response;
+        });
     }
 
     async function deny(id: number | string, note = '') {
-        const response = await api.request<ApprovalActionResponse>(
-            `/internal/v1/approvals/${id}/deny`,
-            {
-                method: 'POST',
-                body: { note },
-            },
-        );
-        await Promise.all([loadApprovals(), loadPendingCount()]);
-        return response;
+        return withApprovalAction(id, 'deny', async () => {
+            const response = await api.request<ApprovalActionResponse>(
+                `/internal/v1/approvals/${id}/deny`,
+                {
+                    method: 'POST',
+                    body: { note },
+                },
+            );
+            await Promise.all([loadApprovals(), loadPendingCount()]);
+            return response;
+        });
     }
 
     async function cancel(id: number | string, note = '') {
-        const response = await api.request<ApprovalActionResponse>(
-            `/internal/v1/approvals/${id}/cancel`,
-            {
-                method: 'POST',
-                body: { note },
-            },
-        );
-        await Promise.all([loadApprovals(), loadPendingCount()]);
-        return response;
+        return withApprovalAction(id, 'cancel', async () => {
+            const response = await api.request<ApprovalActionResponse>(
+                `/internal/v1/approvals/${id}/cancel`,
+                {
+                    method: 'POST',
+                    body: { note },
+                },
+            );
+            await Promise.all([loadApprovals(), loadPendingCount()]);
+            return response;
+        });
     }
 
     async function createAllowlist(
