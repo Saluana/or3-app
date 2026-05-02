@@ -88,6 +88,81 @@ describe('settings configure mappings', () => {
     await expect(simple.applyChanges([{ section: 'provider', field: 'model', value: 'openai/gpt-4.1' }])).resolves.toMatchObject({ ok: true })
   })
 
+  it('exposes tools settings and maps them to raw configure fields', async () => {
+    useLocalCache().updateHost({ id: 'host-1', name: 'Host', baseUrl: 'http://127.0.0.1:9100', token: 'paired-token', pairedToken: 'paired-token' })
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      const url = String(_url)
+      if (url.includes('/internal/v1/configure/fields?section=service')) {
+        return new Response(JSON.stringify({
+          section: 'service',
+          fields: [{ key: 'service_max_capability', kind: 'choice', value: 'safe', choices: ['safe', 'guarded', 'privileged'] }],
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (url.includes('/internal/v1/configure/fields?section=tools')) {
+        return new Response(JSON.stringify({
+          section: 'tools',
+          fields: [
+            { key: 'tools_enable_exec', kind: 'toggle', value: false },
+            { key: 'tools_exec_timeout', kind: 'text', value: '60' },
+            { key: 'tools_path_append', kind: 'text', value: '/opt/homebrew/bin' },
+          ],
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (url.includes('/internal/v1/configure/fields?section=skills')) {
+        return new Response(JSON.stringify({ section: 'skills', fields: [{ key: 'skills_enable_exec', kind: 'toggle', value: false }] }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (url.includes('/internal/v1/configure/fields?section=hardening')) {
+        return new Response(JSON.stringify({
+          section: 'hardening',
+          fields: [
+            { key: 'hardening_guarded_tools', kind: 'toggle', value: true },
+            { key: 'hardening_exec_allowed_programs', kind: 'text', value: 'git' },
+            { key: 'hardening_exec_shell', kind: 'toggle', value: false },
+          ],
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (url.includes('/internal/v1/configure/fields?section=security')) {
+        return new Response(JSON.stringify({
+          section: 'security',
+          fields: [
+            { key: 'security_approval_exec_mode', kind: 'choice', value: 'ask', choices: ['deny', 'ask', 'allowlist', 'trusted'] },
+            { key: 'security_approval_skill_mode', kind: 'choice', value: 'ask', choices: ['deny', 'ask', 'allowlist', 'trusted'] },
+          ],
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (url.endsWith('/internal/v1/configure/apply')) {
+        expect(init?.method).toBe('POST')
+        expect(JSON.parse(init?.body as string)).toEqual({
+          changes: [
+            { section: 'tools', field: 'tools_enable_exec', op: 'set', value: true },
+            { section: 'service', field: 'service_max_capability', op: 'set', value: 'guarded' },
+            { section: 'hardening', field: 'hardening_exec_allowed_programs', op: 'set', value: 'git,gws' },
+          ],
+        })
+        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      return new Response(JSON.stringify({ section: 'empty', fields: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const simple = useSimpleSettings()
+    await simple.ensureLoaded('tools')
+    const section = simple.getSection('tools')
+
+    expect(section?.label).toBe('Tools & Skills')
+    expect(section?.controls.map((control) => control.key)).toContain('tools-enable-exec')
+    expect(simple.valueIndex.value['tools.enableExec']).toBe(false)
+    expect(simple.valueIndex.value['service.maxCapability']).toBe('safe')
+    expect(simple.summaryFor(section!)).toContain('Local exec is off')
+    expect(simple.findField('tools', 'enableExec')?.key).toBe('tools_enable_exec')
+
+    await expect(simple.applyChanges([
+      { section: 'tools', field: 'enableExec', value: true },
+      { section: 'service', field: 'maxCapability', value: 'guarded' },
+      { section: 'hardening', field: 'execAllowedPrograms', value: 'git,gws' },
+    ])).resolves.toMatchObject({ ok: true })
+  })
+
   it('loads and updates agent skills through the skills API', async () => {
     useLocalCache().updateHost({ id: 'host-1', name: 'Host', baseUrl: 'http://127.0.0.1:9100', token: 'paired-token', pairedToken: 'paired-token' })
     const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {

@@ -86,6 +86,7 @@ function readPersistedState() {
             baseUrl: replaceLoopbackServiceBaseUrl(host.baseUrl),
             pairedToken: tokens[host.id]?.pairedToken,
             sessionToken: tokens[host.id]?.sessionToken,
+            tokenOrigin: tokens[host.id]?.origin,
         }),
     );
     const activeHostId = hosts.some((host) => host.id === parsed.activeHostId)
@@ -143,6 +144,9 @@ function load() {
                         sessionToken:
                             nativeTokens[host.id]?.sessionToken ??
                             host.sessionToken,
+                        tokenOrigin:
+                            nativeTokens[host.id]?.origin ??
+                            host.tokenOrigin,
                     }),
                 ),
             };

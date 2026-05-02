@@ -1,5 +1,9 @@
 import { computed, ref } from 'vue';
-import type { ApprovalAllowlist, ApprovalRequest } from '~/types/or3-api';
+import type {
+    ApprovalActionResponse,
+    ApprovalAllowlist,
+    ApprovalRequest,
+} from '~/types/or3-api';
 import {
     normalizeApprovalAllowlist,
     normalizeApprovalRequest,
@@ -80,39 +84,43 @@ export function useApprovals() {
     }
 
     async function approve(id: number | string, allowlist = false, note = '') {
-        await api.request(`/internal/v1/approvals/${id}/approve`, {
-            method: 'POST',
-            body: { allowlist, note },
-        });
+        const response = await api.request<ApprovalActionResponse>(
+            `/internal/v1/approvals/${id}/approve`,
+            {
+                method: 'POST',
+                body: { allowlist, note },
+            },
+        );
         await Promise.all([
             loadApprovals(),
             loadAllowlists(),
             loadPendingCount(),
         ]);
+        return response;
     }
 
     async function deny(id: number | string, note = '') {
-        await api.request(`/internal/v1/approvals/${id}/deny`, {
-            method: 'POST',
-            body: { note },
-        });
+        const response = await api.request<ApprovalActionResponse>(
+            `/internal/v1/approvals/${id}/deny`,
+            {
+                method: 'POST',
+                body: { note },
+            },
+        );
         await Promise.all([loadApprovals(), loadPendingCount()]);
+        return response;
     }
 
     async function cancel(id: number | string, note = '') {
-        await api.request(`/internal/v1/approvals/${id}/cancel`, {
-            method: 'POST',
-            body: { note },
-        });
+        const response = await api.request<ApprovalActionResponse>(
+            `/internal/v1/approvals/${id}/cancel`,
+            {
+                method: 'POST',
+                body: { note },
+            },
+        );
         await Promise.all([loadApprovals(), loadPendingCount()]);
-    }
-
-    async function expirePending() {
-        await api.request('/internal/v1/approvals/expire', {
-            method: 'POST',
-            body: {},
-        });
-        await Promise.all([loadApprovals(), loadPendingCount()]);
+        return response;
     }
 
     async function createAllowlist(
@@ -126,6 +134,14 @@ export function useApprovals() {
             body: { domain, scope, matcher, expires_at },
         });
         await loadAllowlists();
+    }
+
+    async function expirePending() {
+        await api.request('/internal/v1/approvals/expire', {
+            method: 'POST',
+            body: {},
+        });
+        await Promise.all([loadApprovals(), loadPendingCount()]);
     }
 
     async function removeAllowlist(id: number | string) {

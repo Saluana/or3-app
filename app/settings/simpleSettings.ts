@@ -18,6 +18,7 @@ export type SimpleSettingSectionKey =
     | 'ai'
     | 'memory'
     | 'workspace'
+    | 'tools'
     | 'connections'
     | 'automation'
     | 'safety'

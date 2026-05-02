@@ -15,13 +15,19 @@ export function useFileMentionSuggestions() {
 
   let requestId = 0
   let timer: ReturnType<typeof setTimeout> | null = null
+  let pendingResolve: ((items: FileMentionSuggestionItem[]) => void) | null = null
 
   async function search(query: string, limit = 12) {
     const trimmed = query.trim()
     requestId += 1
     const activeRequestId = requestId
 
-    if (timer) clearTimeout(timer)
+    if (timer) {
+      clearTimeout(timer)
+      timer = null
+    }
+    pendingResolve?.([])
+    pendingResolve = null
 
     if (!trimmed) {
       results.value = []
@@ -31,7 +37,10 @@ export function useFileMentionSuggestions() {
     }
 
     return await new Promise<FileMentionSuggestionItem[]>((resolve) => {
+      pendingResolve = resolve
       timer = setTimeout(async () => {
+        timer = null
+        pendingResolve = null
         loading.value = true
         error.value = null
         try {
@@ -63,7 +72,13 @@ export function useFileMentionSuggestions() {
   }
 
   function reset() {
-    if (timer) clearTimeout(timer)
+    requestId += 1
+    if (timer) {
+      clearTimeout(timer)
+      timer = null
+    }
+    pendingResolve?.([])
+    pendingResolve = null
     loading.value = false
     error.value = null
     results.value = []

@@ -104,9 +104,7 @@ export function useComputerTextFiles() {
       }
     } catch (error: any) {
       const normalized = normalizeFileError(error)
-      const canFallback = normalized.code === 'file_not_found'
-        ? false
-        : normalized.status === 404 || normalized.status === 405 || normalized.status === 501
+      const canFallback = normalized.status === 404 || normalized.status === 405 || normalized.status === 501
 
       if (!canFallback) throw normalized
 

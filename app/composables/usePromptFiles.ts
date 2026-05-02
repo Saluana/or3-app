@@ -112,6 +112,9 @@ export function usePromptFiles() {
     if (!workspaceRoot) {
       throw new Error('This computer does not expose a writable workspace root for prompts.')
     }
+    if (!workspaceRoot.writable) {
+      throw new Error('The workspace root is read-only, so OR3 cannot create or update prompt files there.')
+    }
     return workspaceRoot
   }
 

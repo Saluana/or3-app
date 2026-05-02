@@ -2,7 +2,7 @@ import { computed, ref } from 'vue'
 import type { FileEntry, FileListResponse, FileRoot, FileSearchItem, FileSearchResponse } from '~/types/or3-api'
 import { useOr3Api } from './useOr3Api'
 import { useActiveHost } from './useActiveHost'
-import { resolvePreferredHostToken } from './useSecureHostTokens'
+import { resolveHostAuthTokens } from './useSecureHostTokens'
 import { useAuthSession } from './useAuthSession'
 
 interface FileStatResponse {
@@ -72,9 +72,8 @@ export function useComputerFiles() {
 
   function activeRequestHeaders(extra: Record<string, string> = {}) {
     const headers: Record<string, string> = { ...extra }
-    const token = resolvePreferredHostToken(activeHost.value)
-    const sessionToken = activeHost.value?.sessionToken?.trim() || undefined
-    if (token) headers.Authorization = `Bearer ${token}`
+    const { authToken, sessionToken } = resolveHostAuthTokens(activeHost.value)
+    if (authToken) headers.Authorization = `Bearer ${authToken}`
     if (sessionToken) headers['X-Or3-Session'] = sessionToken
     return headers
   }

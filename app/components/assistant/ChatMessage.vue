@@ -286,11 +286,20 @@ async function approveApproval() {
     if (!props.message.approvalRequestId || approvalBusy.value) return;
     approvalBusy.value = true;
     try {
-        await approve(props.message.approvalRequestId);
+        const approval = await approve(props.message.approvalRequestId);
         updateMessage(props.message.id, { approvalState: 'approved' });
+        if (approval.token && props.message.retryPayload && !isStreaming.value) {
+            await send({
+                ...props.message.retryPayload,
+                approvalToken: approval.token,
+            });
+        }
         toast.add({
             title: 'Approval granted',
-            description: 'The request was approved.',
+            description:
+                approval.token && props.message.retryPayload
+                    ? 'The request was approved and retried.'
+                    : 'The request was approved.',
             color: 'success',
             icon: 'i-pixelarticons-check',
         });

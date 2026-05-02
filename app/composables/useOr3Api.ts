@@ -3,7 +3,7 @@ import type { AuthChallengeCode, AuthChallengeError } from '~/types/auth'
 import type { Or3SseEvent } from '~/types/or3-api'
 import { readSseStream } from '~/utils/or3/sse'
 import { useActiveHost } from './useActiveHost'
-import { resolvePreferredHostToken } from './useSecureHostTokens'
+import { resolveHostAuthTokens } from './useSecureHostTokens'
 
 export interface Or3ApiRequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
@@ -124,14 +124,19 @@ export function useOr3Api() {
   }
 
   function resolveRequestAuthToken(preferPairedToken?: boolean) {
-    if (!preferPairedToken) return resolvePreferredHostToken(activeHost.value)
-    return activeHost.value?.pairedToken?.trim() || undefined
+    const tokens = resolveHostAuthTokens(activeHost.value)
+    if (!preferPairedToken) return tokens.authToken
+    return activeHost.value?.tokenOrigin && !tokens.authToken ? undefined : activeHost.value?.pairedToken?.trim() || undefined
+  }
+
+  function resolveRequestSessionToken() {
+    return resolveHostAuthTokens(activeHost.value).sessionToken
   }
 
   async function request<T>(path: string, options: Or3ApiRequestOptions = {}): Promise<T> {
     const requiresAuth = options.requireAuth !== false
     const authToken = resolveRequestAuthToken(options.preferPairedToken)
-    const sessionToken = activeHost.value?.sessionToken?.trim() || undefined
+    const sessionToken = resolveRequestSessionToken()
     if (requiresAuth && !authToken) {
       throw {
         code: 'auth_required',
@@ -179,7 +184,7 @@ export function useOr3Api() {
   async function* stream(path: string, options: Or3ApiRequestOptions = {}): AsyncIterable<Or3SseEvent> {
     const requiresAuth = options.requireAuth !== false
     const authToken = resolveRequestAuthToken(options.preferPairedToken)
-    const sessionToken = activeHost.value?.sessionToken?.trim() || undefined
+    const sessionToken = resolveRequestSessionToken()
     if (requiresAuth && !authToken) {
       throw {
         code: 'auth_required',

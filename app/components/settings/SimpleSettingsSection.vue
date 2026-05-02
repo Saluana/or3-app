@@ -31,6 +31,11 @@
             @change="onChange"
         />
 
+        <SurfaceCard v-if="saveError" tone="danger" class-name="space-y-2">
+            <p class="font-mono text-sm font-semibold text-rose-900">Could not save settings</p>
+            <p class="text-xs leading-5 text-rose-800">{{ saveError }}</p>
+        </SurfaceCard>
+
         <!--
           Sticky pending-changes bar. Bottom offset has to clear the fixed
           BottomNav (~5.5rem) plus the iOS safe-area inset, otherwise the
@@ -91,10 +96,12 @@ const focusKey = computed(() => {
 const pendingChanges = ref<SimpleSettingChange[]>([])
 const reviewing = ref(false)
 const saving = ref(false)
+const saveError = ref<string | null>(null)
 
 const valueIndex = computed(() => simple.valueIndex.value)
 
 function onChange(changes: SimpleSettingChange[]) {
+    saveError.value = null
     // Merge with existing pending: latest write wins per (section,channel,field).
     const map = new Map<string, SimpleSettingChange>()
     for (const c of pendingChanges.value) {
@@ -108,6 +115,7 @@ function onChange(changes: SimpleSettingChange[]) {
 
 async function onConfirmSave() {
     saving.value = true
+    saveError.value = null
     try {
         // Capture inverse from current cached values.
         const inverse: SimpleSettingChange[] = pendingChanges.value.map((c) => ({
@@ -124,7 +132,7 @@ async function onConfirmSave() {
         simple.reset()
         await simple.ensureLoaded()
     } catch (err: any) {
-        console.error('[settings] apply failed', err)
+        saveError.value = err?.message ?? 'Unable to save settings.'
     } finally {
         saving.value = false
     }

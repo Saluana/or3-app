@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import type { ConfigureChange, ConfigureField, ConfigureFieldsResponse, ConfigureSectionSummary } from '~/types/or3-api'
+import { useAuthSession } from './useAuthSession'
 import { useOr3Api } from './useOr3Api'
 
 const sections = ref<ConfigureSectionSummary[]>([])
@@ -17,6 +18,7 @@ const allFieldsLoaded = ref(false)
 
 export function useConfigure() {
   const api = useOr3Api()
+  const authSession = useAuthSession()
 
   async function loadSections() {
     configureLoading.value = true
@@ -52,10 +54,14 @@ export function useConfigure() {
     configureSaving.value = true
     configureError.value = null
     try {
-      return await api.request<{ ok: boolean; config_path?: string }>('/internal/v1/configure/apply', {
-        method: 'POST',
-        body: { changes },
-      })
+      return await authSession.retryWithAuth(
+        (onAuthChallenge) => api.request<{ ok: boolean; config_path?: string }>('/internal/v1/configure/apply', {
+          method: 'POST',
+          body: { changes },
+          onAuthChallenge,
+        }),
+        'settings-change',
+      )
     } catch (error: any) {
       configureError.value = error?.message ?? 'Unable to save settings.'
       throw error

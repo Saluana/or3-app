@@ -5,6 +5,7 @@ export interface Or3HostProfile {
     token?: string;
     pairedToken?: string;
     sessionToken?: string;
+    tokenOrigin?: string;
     role?: 'operator' | 'admin' | string;
     deviceId?: string;
     lastSeenAt?: string;
@@ -56,6 +57,7 @@ export interface AssistantSendPayload {
     text: string;
     transportText?: string;
     attachments?: ChatAttachment[];
+    approvalToken?: string;
 }
 
 export interface ChatMessage {

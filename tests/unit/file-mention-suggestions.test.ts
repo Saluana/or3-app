@@ -84,6 +84,39 @@ describe('useFileMentionSuggestions', () => {
     expect(suggestions.results.value[0]?.path).toBe('docs/second.md')
   })
 
+  it('resolves canceled debounce searches without calling the API', async () => {
+    const suggestions = useFileMentionSuggestions()
+
+    const first = suggestions.search('first')
+    const second = suggestions.search('second')
+    await vi.advanceTimersByTimeAsync(120)
+    resolvers.get('second')?.([])
+
+    await expect(first).resolves.toEqual([])
+    await expect(second).resolves.toEqual([])
+    expect(searchWorkspaceFiles).toHaveBeenCalledTimes(1)
+    expect(searchWorkspaceFiles).toHaveBeenCalledWith('second', 12)
+  })
+
+  it('does not repopulate results from an in-flight search after reset', async () => {
+    const suggestions = useFileMentionSuggestions()
+
+    const pending = suggestions.search('drafts')
+    await vi.advanceTimersByTimeAsync(120)
+    suggestions.reset()
+    resolvers.get('drafts')?.([
+      {
+        root_id: 'workspace',
+        root_label: 'Workspace',
+        path: 'docs/drafts.md',
+        name: 'drafts.md',
+      },
+    ])
+
+    await expect(pending).resolves.toEqual([])
+    expect(suggestions.results.value).toEqual([])
+  })
+
   it('resets state immediately', async () => {
     const suggestions = useFileMentionSuggestions()
     void suggestions.search('drafts')

@@ -72,4 +72,31 @@ describe('useOr3Api', () => {
     expect(onAuthChallenge).toHaveBeenCalledWith(expect.objectContaining({ code: 'SESSION_REQUIRED', retryAfterSeconds: 5 }))
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
+
+  it('does not attach auth headers when stored tokens are bound to a different origin', async () => {
+    const cache = useLocalCache()
+    cache.clearAll()
+    cache.updateHost({
+      id: 'test',
+      name: 'Test Mac',
+      baseUrl: 'http://evil.example',
+      pairedToken: 'paired-token',
+      sessionToken: 'session-token',
+      token: 'session-token',
+      tokenOrigin: 'http://127.0.0.1:9100',
+    })
+
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      expect(String(_url)).toBe('http://evil.example/internal/v1/health')
+      expect(init?.headers).not.toMatchObject({
+        Authorization: expect.any(String),
+        'X-Or3-Session': expect.any(String),
+      })
+      return new Response(JSON.stringify({ status: 'ok' }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const api = useOr3Api()
+    await expect(api.request('/internal/v1/health', { requireAuth: false })).resolves.toEqual({ status: 'ok' })
+  })
 })

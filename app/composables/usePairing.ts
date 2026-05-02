@@ -1,5 +1,6 @@
 import { computed, ref } from 'vue';
 import type {
+    AppBootstrapResponse,
     DeviceInfo,
     HealthResponse,
     PairingExchangeResponse,
@@ -307,7 +308,20 @@ export function usePairing() {
     }
 
     async function verifyActiveHost() {
-        const health = await api.request<HealthResponse>('/internal/v1/health');
+        let health: HealthResponse;
+        try {
+            const bootstrap = await api.request<AppBootstrapResponse>(
+                '/internal/v1/app/bootstrap',
+            );
+            health =
+                bootstrap.status?.health ??
+                ((await api.request<HealthResponse>('/internal/v1/health')) as HealthResponse);
+        } catch (error: any) {
+            if (![404, 405].includes(error?.status) && error?.code !== 'capability_unavailable') {
+                throw error;
+            }
+            health = await api.request<HealthResponse>('/internal/v1/health');
+        }
         const activeHostId = cache.state.value.activeHostId;
         const activeHost = cache.state.value.hosts.find(
             (host) => host.id === activeHostId,

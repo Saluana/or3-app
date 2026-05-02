@@ -74,7 +74,7 @@ feature: tiptap-commands-markdown-prompts
   - `/compact` and `/prune`: create a compact summary without deleting backend history in the first pass.
   - Requirements: 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.10
 
-- [ ] 3.5 Add command tests
+- [x] 3.5 Add command tests
   - Test filtering, aliases, unknown command fallback, command side effects, and destructive confirmations.
   - Requirements: 7.1
 
@@ -114,7 +114,7 @@ feature: tiptap-commands-markdown-prompts
   - Preserve return path to the file browser.
   - Requirements: 3.1, 3.2
 
-- [ ] 5.3 Add text file tests
+- [x] 5.3 Add text file tests
   - Test read fallback, write payload, conflict mapping, and editable extension detection.
   - Requirements: 7.3
 
@@ -177,7 +177,7 @@ feature: tiptap-commands-markdown-prompts
   - Prefer filling the draft first so users can edit before sending.
   - Requirements: 4.6
 
-- [ ] 7.5 Add prompt tests
+- [x] 7.5 Add prompt tests
   - Test `.prompts` creation, file listing, title extraction, search, safe filename creation, and draft insertion.
   - Requirements: 7.3
 

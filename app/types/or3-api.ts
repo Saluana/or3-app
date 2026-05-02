@@ -141,6 +141,71 @@ export interface CapabilitiesResponse {
     [key: string]: unknown;
 }
 
+export interface AppBootstrapWarning {
+    code: string;
+    message: string;
+    severity: 'info' | 'warning' | 'error' | string;
+}
+
+export interface AppActionDescriptor {
+    id: string;
+    title: string;
+    available: boolean;
+    disabled_reason?: string;
+    session_required?: boolean;
+    step_up_required?: boolean;
+    approval_likely?: boolean;
+}
+
+export interface AppBootstrapResponse {
+    host?: {
+        id?: string;
+        display_name?: string;
+        version?: string;
+    };
+    pairing?: {
+        paired?: boolean;
+        device_id?: string;
+        role?: string;
+    };
+    auth?: {
+        session_required?: boolean;
+        session_active?: boolean;
+        step_up_active?: boolean;
+        capabilities?: {
+            passkeys_supported?: boolean;
+            step_up_supported?: boolean;
+        };
+    };
+    status?: {
+        health?: HealthResponse | null;
+        readiness?: ReadinessResponse | null;
+        capabilities?: CapabilitiesResponse | null;
+        summary?: string;
+        warnings?: AppBootstrapWarning[];
+    };
+    counts?: {
+        pending_approvals?: number;
+        active_jobs?: number;
+        active_terminals?: number;
+    };
+    actions?: AppActionDescriptor[];
+    features?: {
+        app_bootstrap?: boolean;
+        app_events?: boolean;
+        app_actions?: boolean;
+        file_metadata_v2?: boolean;
+    };
+}
+
+export interface AppActionResponse {
+    action_id: string;
+    status: 'accepted' | 'completed' | 'approval_required' | 'unsupported' | string;
+    message?: string;
+    approval_id?: number;
+    operation_id?: string;
+}
+
 export interface ApprovalRequest {
     id: number | string;
     status: string;
@@ -149,6 +214,13 @@ export interface ApprovalRequest {
     subject?: unknown;
     created_at?: string;
     expires_at?: string;
+}
+
+export interface ApprovalActionResponse {
+    request_id: number | string;
+    token?: string;
+    allowlist_id?: number | string;
+    status?: string;
 }
 
 export interface ApprovalAllowlist {

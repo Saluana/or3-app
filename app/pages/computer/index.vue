@@ -236,8 +236,14 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { formatReadinessDetail } from '~/utils/or3/readiness';
 
 const { activeHost, isConnected } = useActiveHost();
-const { health, readiness, capabilities, loadingStatus, refreshStatus } =
-    useComputerStatus();
+const {
+    health,
+    readiness,
+    capabilities,
+    restartAction,
+    loadingStatus,
+    refreshStatus,
+} = useComputerStatus();
 const { jobs } = useJobs();
 const { approvals: approvalItems, loadApprovals } = useApprovals();
 const {
@@ -272,6 +278,7 @@ const approvalsLabel = computed(() => {
 
 const restartButtonEnabled = computed(() => {
     if (!connected.value || restartingService.value) return false;
+    if (restartAction.value) return restartAction.value.available;
     return capabilities.value?.shellModeAvailable !== false;
 });
 
@@ -279,10 +286,16 @@ const restartHelperText = computed(() => {
     if (!connected.value) {
         return 'Pair a computer first, then you can bounce the local or3-intern service from here.';
     }
+    if (restartAction.value && !restartAction.value.available) {
+        return (
+            restartAction.value.disabled_reason ||
+            'Restart is not available on this computer right now.'
+        );
+    }
     if (capabilities.value?.shellModeAvailable === false) {
         return 'Shell mode is turned off on this computer, so restart has to happen locally for now.';
     }
-    return 'First pass: this opens a bounded shell session, runs scripts/restart-service.sh, then waits for the computer to reconnect.';
+    return 'Request a restart from the host and wait for the computer to reconnect.';
 });
 
 const actions = [
@@ -476,7 +489,10 @@ async function handleRestartService() {
         const result = await restartService();
         toast.add({
             title: 'Restart started',
-            description: `Using ${result.root.label}. Waiting for your computer to come back online…`,
+            description:
+                result.mode === 'terminal'
+                    ? `Using ${result.root.label}. Waiting for your computer to come back online…`
+                    : 'Waiting for your computer to come back online…',
             color: 'neutral',
         });
 

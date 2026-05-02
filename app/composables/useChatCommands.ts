@@ -2,6 +2,7 @@ import { computed } from 'vue'
 import { useActiveHost } from './useActiveHost'
 import { useChatSessions } from './useChatSessions'
 import { useComputerStatus } from './useComputerStatus'
+import { useJobs } from './useJobs'
 
 export interface ChatCommandDefinition {
   id: string
@@ -24,11 +25,12 @@ export function useChatCommands() {
   const { activeHost } = useActiveHost()
   const chat = useChatSessions()
   const status = useComputerStatus()
+  const jobs = useJobs()
 
   const commands = computed<ChatCommandDefinition[]>(() => [
     { id: 'help', name: 'help', aliases: ['commands'], description: 'Show the available local chat commands.', icon: 'i-pixelarticons-info-box' },
     { id: 'clear', name: 'clear', aliases: ['cls'], description: 'Clear only the visible local messages in this chat.', icon: 'i-pixelarticons-trash', destructive: true },
-    { id: 'new', name: 'new', aliases: ['session'], description: 'Start a fresh local chat session on this host.', icon: 'i-pixelarticons-plus' },
+    { id: 'new', name: 'new', aliases: ['fresh'], description: 'Start a fresh local chat session on this host.', icon: 'i-pixelarticons-plus' },
     { id: 'session', name: 'session', description: 'Show session details for the current local chat.', icon: 'i-pixelarticons-notebook' },
     { id: 'status', name: 'status', description: 'Fetch a concise health, readiness, and capability summary.', icon: 'i-pixelarticons-monitor' },
     { id: 'compact', name: 'compact', description: 'Append a compact summary of the recent conversation.', icon: 'i-pixelarticons-collapse' },
@@ -62,8 +64,9 @@ export function useChatCommands() {
         return { handled: true }
       }
       case 'clear': {
-        if (import.meta.client && !window.confirm('Clear the visible local chat messages from this session?')) {
-          return { handled: false, cancelled: true }
+        const count = chat.messageCount(session.id)
+        if (count > 0 && typeof window !== 'undefined' && !window.confirm('Clear the visible local chat messages from this session?')) {
+          return { handled: true, cancelled: true }
         }
         const removed = chat.clearSessionMessages(session.id)
         chat.appendSystemMessage(`Cleared ${removed} visible message${removed === 1 ? '' : 's'} from this session.`, session.id)
@@ -76,12 +79,17 @@ export function useChatCommands() {
       }
       case 'session': {
         const hostName = activeHost.value?.name || 'Current host'
+        const activeJob = jobs.activeJobs.value[0]
+        const activeJobState = activeJob
+          ? `${activeJob.status}: ${activeJob.title || activeJob.task || activeJob.job_id}`
+          : 'none'
         chat.appendSystemMessage(
           [
             `Session: ${session.title}`,
             `Host: ${hostName}`,
             `Session key: ${session.sessionKey}`,
             `Messages: ${chat.messageCount(session.id)}`,
+            `Active job: ${activeJobState}`,
             `Created: ${new Date(session.createdAt).toLocaleString()}`,
           ].join('\n'),
           session.id,

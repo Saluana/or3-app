@@ -84,7 +84,8 @@ function extractErrorCode(error: unknown): Or3AppErrorCode | undefined {
 function extractApprovalRequestId(error: unknown): string | number | undefined {
     if (!error || typeof error !== 'object') return undefined;
     const record = error as Record<string, unknown>;
-    const directId = record.request_id ?? record.approval_id;
+    const directId =
+        record.request_id ?? record.approval_id ?? record.approval_request_id;
     if (typeof directId === 'string' || typeof directId === 'number') {
         return directId;
     }
@@ -153,6 +154,7 @@ function normalizePayload(
         text: input.text.trim(),
         transportText: (input.transportText || input.text).trim(),
         attachments: input.attachments ?? [],
+        approvalToken: input.approvalToken,
     };
 }
 
@@ -272,6 +274,9 @@ export function useAssistantStream() {
             session_key: session.sessionKey,
             message: text,
             tool_policy: { mode: 'allow_all' as const },
+            ...(payload.approvalToken
+                ? { approval_token: payload.approvalToken }
+                : {}),
         };
         const setToolCalls = (toolCalls: ChatToolCall[]) =>
             updateAssistant({ toolCalls });
@@ -457,6 +462,18 @@ export function useAssistantStream() {
                         ? payload.error
                         : undefined,
                 );
+                const approvalRequestId = extractApprovalRequestId(payload);
+                if (approvalRequestId) {
+                    sawVisibleOutput = true;
+                    updateAssistant({
+                        approvalRequestId,
+                        approvalState: 'pending',
+                        errorCode: 'approval_required',
+                        content:
+                            readAssistant()?.content ||
+                            'Approval is needed before or3-intern can run this tool.',
+                    });
+                }
             }
             if (
                 type === 'reasoning_delta' &&

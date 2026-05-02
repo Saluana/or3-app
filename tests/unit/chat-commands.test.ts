@@ -11,6 +11,13 @@ const ensureSession = vi.fn(() => ({
 }))
 const newSession = vi.fn(() => ({ id: 'session-2' }))
 const refreshStatus = vi.fn(async () => undefined)
+const activeJobs = ref([
+  {
+    job_id: 'job-1',
+    status: 'running',
+    title: 'Review docs',
+  },
+])
 
 const messages = ref([
   { role: 'user', content: 'Hello there' },
@@ -52,6 +59,12 @@ vi.mock('../../app/composables/useComputerStatus', () => ({
   }),
 }))
 
+vi.mock('../../app/composables/useJobs', () => ({
+  useJobs: () => ({
+    activeJobs,
+  }),
+}))
+
 import { useChatCommands } from '../../app/composables/useChatCommands'
 
 describe('useChatCommands', () => {
@@ -65,6 +78,13 @@ describe('useChatCommands', () => {
       shellModeAvailable: false,
       sandboxAvailable: true,
     }
+    activeJobs.value = [
+      {
+        job_id: 'job-1',
+        status: 'running',
+        title: 'Review docs',
+      },
+    ]
   })
 
   it('filters commands by name, alias, and description', () => {
@@ -73,6 +93,12 @@ describe('useChatCommands', () => {
     expect(filterCommands('stat').map((item) => item.name)).toContain('status')
     expect(filterCommands('commands').map((item) => item.name)).toContain('help')
     expect(filterCommands('fresh local chat').map((item) => item.name)).toContain('new')
+  })
+
+  it('leaves unknown commands unhandled so they can send as normal chat text', () => {
+    const { findCommand } = useChatCommands()
+
+    expect(findCommand('does-not-exist')).toBeUndefined()
   })
 
   it('runs the status command and appends a concise summary', async () => {
@@ -102,5 +128,29 @@ describe('useChatCommands', () => {
 
     expect(newSession).toHaveBeenCalledTimes(1)
     expect(draft.value).toBe('')
+  })
+
+  it('keeps /session distinct from /new and reports active job state', async () => {
+    const { findCommand, runCommand } = useChatCommands()
+    const command = findCommand('session')
+
+    expect(command?.id).toBe('session')
+    await runCommand(command!)
+
+    expect(newSession).not.toHaveBeenCalled()
+    expect(appendSystemMessage).toHaveBeenCalledWith(
+      expect.stringContaining('Active job: running: Review docs'),
+      'session-1',
+    )
+  })
+
+  it('consumes cancelled destructive commands instead of sending them as chat text', async () => {
+    vi.stubGlobal('confirm', vi.fn(() => false))
+    const { findCommand, runCommand } = useChatCommands()
+
+    const result = await runCommand(findCommand('clear')!)
+
+    expect(result).toMatchObject({ handled: true, cancelled: true })
+    expect(clearSessionMessages).not.toHaveBeenCalled()
   })
 })

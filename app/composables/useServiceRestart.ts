@@ -1,5 +1,5 @@
 import { ref } from 'vue';
-import type { FileRoot, TerminalSessionSnapshot } from '~/types/or3-api';
+import type { AppActionResponse, FileRoot, TerminalSessionSnapshot } from '~/types/or3-api';
 import {
     buildServiceRestartCommand,
     selectServiceRestartRoot,
@@ -27,13 +27,30 @@ function approvalIdFromError(error: any) {
 function describeRestartError(error: any) {
     const approvalId = approvalIdFromError(error);
     if (error?.status === 503) {
-        return 'Shell access is turned off on this computer. Turn it on in or3-intern settings first.';
+        if (
+            typeof error?.message === 'string' &&
+            error.message.toLowerCase().includes('terminal mode is not enabled')
+        ) {
+            return 'Shell access is turned off on this computer. Turn it on in or3-intern settings first.';
+        }
+        return (
+            error?.message ||
+            'Restart is not available on this computer right now.'
+        );
     }
     if (error?.status === 409 && approvalId) {
-        return `or3-intern is waiting for approval request #${approvalId} before it can run the restart script.`;
+        return `or3-intern is waiting for approval request #${approvalId} before it can restart the service.`;
     }
     return (
         error?.message || 'Could not send the restart command to this computer.'
+    );
+}
+
+function shouldFallbackToTerminalRestart(error: any) {
+    return (
+        error?.status === 404 ||
+        error?.status === 405 ||
+        error?.code === 'capability_unavailable'
     );
 }
 
@@ -78,12 +95,34 @@ export function useServiceRestart() {
         );
     }
 
+    async function requestRestartAction() {
+        return await authSession.retryWithAuth(
+            (onAuthChallenge) =>
+                api.request<AppActionResponse>(
+                    '/internal/v1/actions/restart-service',
+                    {
+                        method: 'POST',
+                        body: {},
+                        onAuthChallenge,
+                    },
+                ),
+            'service-restart',
+        );
+    }
+
     async function restartService() {
         restartingService.value = true;
         restartError.value = null;
         restartPendingApprovalId.value = null;
 
         try {
+            try {
+                const response = await requestRestartAction();
+                return { mode: 'action' as const, actionId: response.action_id };
+            } catch (error: any) {
+                if (!shouldFallbackToTerminalRestart(error)) throw error;
+            }
+
             const roots = await loadRoots();
             const root = selectServiceRestartRoot(roots);
             if (!root) {
@@ -94,7 +133,11 @@ export function useServiceRestart() {
 
             const session = await createTerminalSession(root);
             await sendRestartCommand(session.session_id);
-            return { root, sessionId: session.session_id };
+            return {
+                mode: 'terminal' as const,
+                root,
+                sessionId: session.session_id,
+            };
         } catch (error: any) {
             restartPendingApprovalId.value = approvalIdFromError(error);
             restartError.value = describeRestartError(error);
