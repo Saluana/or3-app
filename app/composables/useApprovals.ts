@@ -141,7 +141,10 @@ export function useApprovals() {
                 },
             );
             if (response.token) {
-                rememberIssuedApprovalToken(response.request_id ?? id, response.token);
+                rememberIssuedApprovalToken(
+                    response.request_id ?? id,
+                    response.token,
+                );
             }
             await Promise.all([
                 loadApprovals(),

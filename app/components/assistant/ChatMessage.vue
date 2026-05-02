@@ -13,9 +13,7 @@
                     message.role === 'user'
                         ? 'or3-msg__bubble--user'
                         : 'or3-msg__bubble--assistant',
-                    approvalNeedsAttention
-                        ? 'or3-msg__bubble--attention'
-                        : '',
+                    approvalNeedsAttention ? 'or3-msg__bubble--attention' : '',
                 ]"
             >
                 <template v-if="message.role !== 'user'">
@@ -178,10 +176,7 @@
                     <Icon name="i-pixelarticons-bookmark" class="size-3" />
                     Saved
                 </span>
-                <span
-                    v-if="approvalMetaLabel"
-                    class="or3-msg__meta-pin"
-                >
+                <span v-if="approvalMetaLabel" class="or3-msg__meta-pin">
                     <Icon name="i-pixelarticons-shield" class="size-3" />
                     {{ approvalMetaLabel }}
                 </span>
@@ -430,12 +425,11 @@ async function approveApproval() {
             latest.approvalState === 'pending' && !!latest.approvalRequestId;
         toast.add({
             title: 'Approval granted',
-            description:
-                waitingAgain
-                    ? 'The request was approved. Another approval is needed to continue.'
-                    : retried
-                    ? 'The request was approved and retried.'
-                    : 'The request was approved.',
+            description: waitingAgain
+                ? 'The request was approved. Another approval is needed to continue.'
+                : retried
+                  ? 'The request was approved and retried.'
+                  : 'The request was approved.',
             color: 'success',
             icon: 'i-pixelarticons-check',
         });
