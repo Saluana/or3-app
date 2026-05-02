@@ -6,6 +6,7 @@ import { useLocalCache } from '../../app/composables/useLocalCache'
 describe('useApprovals', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
+    useApprovals().clearIssuedApprovalTokens()
     useLocalCache().clearAll()
   })
 
@@ -54,5 +55,43 @@ describe('useApprovals', () => {
     releaseApprove?.()
     await expect(first).resolves.toMatchObject({ request_id: 42 })
     expect(approveRequests).toBe(1)
+  })
+
+  it('stores and consumes approval tokens for later chat retries', async () => {
+    useLocalCache().updateHost({
+      id: 'test',
+      name: 'Test Mac',
+      baseUrl: 'http://127.0.0.1:9100/',
+      token: 'secret',
+    })
+
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      const path = String(url)
+      if (path.endsWith('/internal/v1/approvals/42/approve')) {
+        return new Response(JSON.stringify({ request_id: 42, token: 'tok-42' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+      if (path.includes('/internal/v1/approvals/allowlists')) {
+        return new Response(JSON.stringify({ items: [] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+      if (path.includes('/internal/v1/approvals')) {
+        return new Response(JSON.stringify({ items: [] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+      throw new Error(`unexpected request: ${path}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { approve, consumeIssuedApprovalToken } = useApprovals()
+    await expect(approve(42)).resolves.toMatchObject({ request_id: 42, token: 'tok-42' })
+    expect(consumeIssuedApprovalToken(42)).toBe('tok-42')
+    expect(consumeIssuedApprovalToken(42)).toBeUndefined()
   })
 })

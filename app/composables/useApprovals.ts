@@ -18,6 +18,36 @@ const approvalsError = ref<string | null>(null);
 const pendingCount = ref(0);
 let approvalsPollTimer: ReturnType<typeof setInterval> | null = null;
 const approvalActionsInFlight = new Set<string>();
+const issuedApprovalTokens = ref<Record<string, string>>({});
+
+function approvalTokenKey(id: number | string) {
+    return String(id).trim();
+}
+
+function rememberIssuedApprovalToken(id: number | string, token: string) {
+    const key = approvalTokenKey(id);
+    const trimmed = token.trim();
+    if (!key || !trimmed) return;
+    issuedApprovalTokens.value = {
+        ...issuedApprovalTokens.value,
+        [key]: trimmed,
+    };
+}
+
+function consumeIssuedApprovalToken(id: number | string) {
+    const key = approvalTokenKey(id);
+    if (!key) return undefined;
+    const token = issuedApprovalTokens.value[key];
+    if (!token) return undefined;
+    const next = { ...issuedApprovalTokens.value };
+    delete next[key];
+    issuedApprovalTokens.value = next;
+    return token;
+}
+
+function clearIssuedApprovalTokens() {
+    issuedApprovalTokens.value = {};
+}
 
 async function withApprovalAction<T>(
     id: number | string,
@@ -110,6 +140,9 @@ export function useApprovals() {
                     body: { allowlist, note },
                 },
             );
+            if (response.token) {
+                rememberIssuedApprovalToken(response.request_id ?? id, response.token);
+            }
             await Promise.all([
                 loadApprovals(),
                 loadAllowlists(),
@@ -128,6 +161,7 @@ export function useApprovals() {
                     body: { note },
                 },
             );
+            consumeIssuedApprovalToken(response.request_id ?? id);
             await Promise.all([loadApprovals(), loadPendingCount()]);
             return response;
         });
@@ -142,6 +176,7 @@ export function useApprovals() {
                     body: { note },
                 },
             );
+            consumeIssuedApprovalToken(response.request_id ?? id);
             await Promise.all([loadApprovals(), loadPendingCount()]);
             return response;
         });
@@ -204,6 +239,8 @@ export function useApprovals() {
         approve,
         deny,
         cancel,
+        consumeIssuedApprovalToken,
+        clearIssuedApprovalTokens,
         expirePending,
         createAllowlist,
         removeAllowlist,

@@ -192,7 +192,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useToast } from '@nuxt/ui/composables';
 import { useApprovals } from '../../composables/useApprovals';
 import { useAssistantStream } from '../../composables/useAssistantStream';
@@ -201,12 +201,19 @@ import type { ChatMessage } from '../../types/app-state';
 
 const props = defineProps<{ message: ChatMessage }>();
 const toast = useToast();
-const { toggleMessagePin, updateMessage } = useChatSessions();
+const { messages, toggleMessagePin, updateMessage } = useChatSessions();
 const { isStreaming, send } = useAssistantStream();
-const { approve, deny } = useApprovals();
+const { approve, deny, consumeIssuedApprovalToken } = useApprovals();
 const copied = ref(false);
 const approvalBusy = ref(false);
 let copiedTimer: ReturnType<typeof setTimeout> | null = null;
+
+function currentMessage(): ChatMessage {
+    return (
+        messages.value.find((item) => item.id === props.message.id) ??
+        props.message
+    );
+}
 
 const copyText = computed(() => props.message.content.trim());
 const canCopy = computed(() => Boolean(copyText.value));
@@ -353,53 +360,90 @@ async function retryMessage() {
     await send(props.message.retryPayload);
 }
 
+async function retryApprovedRequest(explicitToken?: string) {
+    const message = currentMessage();
+    if (!message.retryPayload || isStreaming.value || approvalBusy.value) {
+        return false;
+    }
+    const requestId = message.approvalRequestId;
+    const token =
+        explicitToken ??
+        (requestId ? consumeIssuedApprovalToken(requestId) : undefined);
+    if (!token) return false;
+
+    const retryPayload = {
+        ...message.retryPayload,
+        approvalToken: token,
+    };
+    updateMessage(message.id, {
+        approvalState: 'retrying',
+        status: 'attention',
+        retryPayload,
+        error: undefined,
+    });
+
+    await send(retryPayload);
+
+    const latest = currentMessage();
+    const waitingAgain =
+        latest.approvalState === 'pending' && !!latest.approvalRequestId;
+    const retryFailed =
+        latest.approvalState === 'failed' || latest.status === 'failed';
+    if (!waitingAgain && !retryFailed) {
+        updateMessage(message.id, {
+            approvalState: 'approved',
+            error: undefined,
+        });
+    }
+    return true;
+}
+
+function approvalErrorMessage(error: unknown) {
+    return error instanceof Error && error.message
+        ? error.message
+        : 'Could not approve or retry this request.';
+}
+
 async function approveApproval() {
-    if (!props.message.approvalRequestId || approvalBusy.value) return;
+    const message = currentMessage();
+    if (!message.approvalRequestId || approvalBusy.value) return;
     approvalBusy.value = true;
-    let retryStarted = false;
+    let retryAttempted = false;
     try {
-        const approval = await approve(props.message.approvalRequestId);
-        if (approval.token && props.message.retryPayload && !isStreaming.value) {
-            const retryPayload = {
-                ...props.message.retryPayload,
-                approvalToken: approval.token,
-            };
-            retryStarted = true;
-            updateMessage(props.message.id, {
-                approvalState: 'retrying',
-                status: 'attention',
-                retryPayload,
-                error: undefined,
-            });
-            await send(retryPayload);
-            updateMessage(props.message.id, {
-                approvalState: 'approved',
-                error: undefined,
-            });
-        } else {
-            updateMessage(props.message.id, {
+        const approval = await approve(message.approvalRequestId);
+        const approvalToken =
+            consumeIssuedApprovalToken(message.approvalRequestId) ??
+            approval.token;
+        retryAttempted = Boolean(approvalToken);
+        const retried = approvalToken
+            ? await retryApprovedRequest(approvalToken)
+            : false;
+        if (!retried) {
+            updateMessage(message.id, {
                 approvalState: 'approved',
                 status: 'complete',
                 error: undefined,
             });
         }
+        const latest = currentMessage();
+        const waitingAgain =
+            latest.approvalState === 'pending' && !!latest.approvalRequestId;
         toast.add({
             title: 'Approval granted',
             description:
-                approval.token && props.message.retryPayload
+                waitingAgain
+                    ? 'The request was approved. Another approval is needed to continue.'
+                    : retried
                     ? 'The request was approved and retried.'
                     : 'The request was approved.',
             color: 'success',
             icon: 'i-pixelarticons-check',
         });
     } catch (error) {
-        const message =
-            error instanceof Error && error.message
-                ? error.message
-                : 'Could not approve or retry this request.';
-        updateMessage(props.message.id, {
-            approvalState: retryStarted ? 'failed' : 'pending',
-            status: retryStarted ? 'failed' : 'attention',
+        const message = approvalErrorMessage(error);
+        updateMessage(currentMessage().id, {
+            approvalState: retryAttempted ? 'failed' : 'pending',
+            status: retryAttempted ? 'failed' : 'attention',
             error: message,
         });
         toast.add({
@@ -412,6 +456,35 @@ async function approveApproval() {
         approvalBusy.value = false;
     }
 }
+
+watch(
+    () => [
+        props.message.approvalRequestId,
+        props.message.approvalState,
+        props.message.retryPayload,
+        isStreaming.value,
+    ],
+    () => {
+        const message = currentMessage();
+        if (
+            message.approvalState !== 'pending' ||
+            !message.approvalRequestId ||
+            !message.retryPayload ||
+            approvalBusy.value ||
+            isStreaming.value
+        ) {
+            return;
+        }
+        void retryApprovedRequest().catch((error) => {
+            updateMessage(currentMessage().id, {
+                approvalState: 'failed',
+                status: 'failed',
+                error: approvalErrorMessage(error),
+            });
+        });
+    },
+    { immediate: true },
+);
 
 async function denyApproval() {
     if (!props.message.approvalRequestId || approvalBusy.value) return;
