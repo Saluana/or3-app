@@ -8,7 +8,7 @@
         :key="action.label"
         interactive
         class-name="min-h-32 text-center"
-        @click="runAction(action.prompt)"
+        @click="runAction(action)"
       >
         <RetroIcon :name="action.icon" size="lg" />
         <p class="mt-3 font-mono text-sm font-semibold">{{ action.label }}</p>
@@ -29,9 +29,16 @@ const actions = [
   { label: 'Ask a question', icon: 'i-pixelarticons-message-text', description: 'Just chat. No special formatting.', prompt: '' },
   { label: 'Hand off a task', icon: 'i-pixelarticons-robot', description: 'Send work to an agent that runs in the background.', prompt: 'Please work on this in the background: ' },
   { label: 'Scan later', icon: 'i-pixelarticons-ai-scan', description: 'Set a reminder to scan a paper document later.', prompt: 'Remind me to scan a document.' },
+  { label: 'Prompt library', icon: 'i-pixelarticons-book', description: 'Open saved workspace prompts and edit them as Markdown.', route: '/prompts' },
 ]
 
-async function runAction(prompt: string) {
+async function runAction(action: { prompt?: string; route?: string }) {
+  if (action.route) {
+    await router.push(action.route)
+    return
+  }
+
+  const prompt = action.prompt || ''
   await router.push('/')
   await nextTick()
   void programmaticSend('main', prompt)

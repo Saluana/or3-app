@@ -24,6 +24,24 @@
                         class="or3-chat-empty__chips"
                         @select="onPromptSelect"
                     />
+                    <div class="or3-chat-empty__actions">
+                        <UButton
+                            icon="i-pixelarticons-book"
+                            color="neutral"
+                            variant="soft"
+                            @click="openPromptGallery"
+                        >
+                            Open prompt library
+                        </UButton>
+                        <UButton
+                            icon="i-pixelarticons-edit-box"
+                            color="neutral"
+                            variant="ghost"
+                            @click="openFileEditor"
+                        >
+                            Edit workspace files
+                        </UButton>
+                    </div>
                 </section>
 
                 <!-- Conversation thread -->
@@ -59,6 +77,7 @@ import { nextTick, onMounted, ref, watch } from 'vue';
 
 const { messages, draft } = useChatSessions();
 const { isStreaming, send, stop } = useAssistantStream();
+const router = useRouter();
 
 const scrollEl = ref<HTMLElement | null>(null);
 const autoScrollLocked = ref(true);
@@ -69,6 +88,14 @@ const RELATCH_DISTANCE_PX = 24;
 
 function onPromptSelect(value: string) {
     draft.value = value;
+}
+
+function openPromptGallery() {
+    void router.push('/prompts');
+}
+
+function openFileEditor() {
+    void router.push('/computer');
 }
 
 function distanceFromBottom(el: HTMLElement) {
@@ -123,3 +150,13 @@ onMounted(() => {
     nextTick(() => scrollToBottom(false));
 });
 </script>
+
+<style scoped>
+.or3-chat-empty__actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.75rem;
+    margin-top: 1rem;
+}
+</style>

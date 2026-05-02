@@ -12,9 +12,9 @@
             Drop files to attach them
         </div>
 
-        <div v-if="attachments.length" class="or3-composer__attachments">
+        <div v-if="displayedAttachments.length" class="or3-composer__attachments">
             <button
-                v-for="attachment in attachments"
+                v-for="attachment in displayedAttachments"
                 :key="attachment.id"
                 type="button"
                 class="or3-composer__attachment"
@@ -28,23 +28,17 @@
                 />
                 <Icon
                     v-else
-                    :name="
-                        attachment.kind === 'text'
-                            ? 'i-pixelarticons-notebook'
-                            : 'i-pixelarticons-paperclip'
-                    "
+                    :name="attachment.kind === 'text' ? 'i-pixelarticons-notebook' : attachment.source === 'workspace' ? 'i-pixelarticons-file' : 'i-pixelarticons-paperclip'"
                     class="size-4 shrink-0 text-(--or3-green-dark)"
                 />
                 <span class="min-w-0 flex-1 text-left">
-                    <span
-                        class="block truncate font-medium text-(--or3-text)"
-                        >{{ attachment.name }}</span
-                    >
+                    <span class="block truncate font-medium text-(--or3-text)">{{ attachment.name }}</span>
                     <span
                         v-if="attachment.preview"
                         class="block truncate text-[0.75rem] text-(--or3-text-muted)"
-                        >{{ attachment.preview }}</span
                     >
+                        {{ attachment.preview }}
+                    </span>
                 </span>
                 <Icon
                     name="i-pixelarticons-close"
@@ -103,62 +97,21 @@
             />
         </div>
 
-        <div
-            v-if="mentionState.open"
-            class="mx-3 mb-3 overflow-hidden rounded-2xl border border-(--or3-border) bg-(--or3-surface) shadow-(--or3-shadow-soft)"
-        >
-            <div
-                class="flex items-center gap-2 border-b border-(--or3-border) px-3 py-2 text-xs text-(--or3-text-muted)"
-            >
-                <Icon
-                    name="i-pixelarticons-file"
-                    class="size-3.5 text-(--or3-green-dark)"
-                />
-                <span class="font-mono uppercase tracking-[0.16em]"
-                    >Mention file</span
-                >
-                <span v-if="mentionState.loading" class="ml-auto"
-                    >Searching…</span
-                >
-            </div>
-            <div
-                v-if="mentionState.items.length"
-                class="max-h-56 overflow-y-auto p-1"
-            >
-                <button
-                    v-for="(item, index) in mentionState.items"
-                    :key="`${item.root_id}:${item.path}`"
-                    type="button"
-                    class="flex w-full items-start gap-2 rounded-xl px-3 py-2 text-left text-sm"
-                    :class="
-                        index === mentionState.selectedIndex
-                            ? 'bg-(--or3-green-soft) text-(--or3-green-dark)'
-                            : 'text-(--or3-text) hover:bg-(--or3-surface-soft)'
-                    "
-                    @mousedown.prevent="selectMention(item)"
-                >
-                    <Icon
-                        name="i-pixelarticons-file"
-                        class="mt-0.5 size-4 shrink-0"
-                    />
-                    <span class="min-w-0 flex-1">
-                        <span class="block truncate font-medium">{{
-                            item.name
-                        }}</span>
-                        <span
-                            class="block truncate text-xs text-(--or3-text-muted)"
-                            >{{ item.root_label }} / {{ item.path }}</span
-                        >
-                    </span>
-                </button>
-            </div>
-            <p v-else class="px-3 py-3 text-sm text-(--or3-text-muted)">
-                {{
-                    mentionState.loading
-                        ? 'Searching workspace files…'
-                        : 'No files found. Keep typing after @ to search.'
-                }}
-            </p>
+        <div v-if="mentionMenu.open || slashMenu.open" class="mx-3 mb-3">
+            <FileMentionMenu
+                v-if="mentionMenu.open"
+                :items="mentionMenu.items"
+                :loading="mentionLoading"
+                :error="mentionError"
+                :selected-index="mentionMenu.selectedIndex"
+                @select="selectMention"
+            />
+            <SlashCommandMenu
+                v-else-if="slashMenu.open"
+                :items="slashMenu.items"
+                :selected-index="slashMenu.selectedIndex"
+                @select="selectSlashCommand"
+            />
         </div>
     </UForm>
 </template>
@@ -175,18 +128,27 @@ import {
     watch,
 } from 'vue';
 import { Editor, EditorContent } from '@tiptap/vue-3';
+import { Extension, mergeAttributes } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
+import Mention from '@tiptap/extension-mention';
+import Suggestion from '@tiptap/suggestion';
 import {
     registerPaneInput,
     unregisterPaneInput,
 } from '../../composables/useChatInputBridge';
-import { useComputerFiles } from '../../composables/useComputerFiles';
+import {
+    useChatCommands,
+    type ChatCommandDefinition,
+} from '../../composables/useChatCommands';
+import {
+    useFileMentionSuggestions,
+    type FileMentionSuggestionItem,
+} from '../../composables/useFileMentionSuggestions';
 import type {
     AssistantSendPayload,
     ChatAttachment,
 } from '../../types/app-state';
-import type { FileSearchItem } from '../../types/or3-api';
 
 const props = withDefaults(
     defineProps<{
@@ -213,21 +175,16 @@ interface DraftAttachment extends ChatAttachment {
     objectUrl?: string;
 }
 
-interface MentionEditorState {
-    state: {
-        selection: {
-            empty: boolean;
-            from: number;
-        };
-        doc: {
-            textBetween: (
-                from: number,
-                to: number,
-                blockSeparator?: string,
-                leafText?: string,
-            ) => string;
-        };
-    };
+interface SuggestionLifecycleProps<TItem> {
+    editor: any;
+    query: string;
+    range: { from: number; to: number };
+    items: TItem[];
+    command: (item: TItem) => void;
+}
+
+interface SuggestionKeydownProps {
+    event: KeyboardEvent;
 }
 
 const fileInput = ref<HTMLInputElement | null>(null);
@@ -235,31 +192,51 @@ const editor = shallowRef<Editor>();
 const isDragging = ref(false);
 const isFocused = ref(false);
 const dragDepth = ref(0);
-const attachments = ref<DraftAttachment[]>([]);
 const enterCreatesNewLine = ref(false);
-const { searchWorkspaceFiles } = useComputerFiles();
 const formState = reactive({
     text: props.modelValue,
 });
-const mentionState = reactive<{
+const manualAttachments = ref<DraftAttachment[]>([]);
+const workspaceMentionAttachments = ref<DraftAttachment[]>([]);
+const mentionMenu = reactive<{
     open: boolean;
-    query: string;
-    from: number;
-    to: number;
     selectedIndex: number;
-    loading: boolean;
-    items: FileSearchItem[];
+    items: FileMentionSuggestionItem[];
 }>({
     open: false,
-    query: '',
-    from: 0,
-    to: 0,
     selectedIndex: 0,
-    loading: false,
     items: [],
 });
-let mentionSearchTimer: ReturnType<typeof setTimeout> | null = null;
+const slashMenu = reactive<{
+    open: boolean;
+    selectedIndex: number;
+    items: ChatCommandDefinition[];
+}>({
+    open: false,
+    selectedIndex: 0,
+    items: [],
+});
+
 let viewportChangeCleanup: (() => void) | null = null;
+let selectMentionFromSuggestion: ((item: FileMentionSuggestionItem) => void) | null = null;
+let selectSlashFromSuggestion: ((item: ChatCommandDefinition) => void) | null = null;
+
+const {
+    loading: mentionLoading,
+    error: mentionError,
+    search: searchMentionFiles,
+    reset: resetMentionSearch,
+} = useFileMentionSuggestions();
+const { filterCommands, findCommand, runCommand } = useChatCommands();
+
+const displayedAttachments = computed(() => [
+    ...workspaceMentionAttachments.value,
+    ...manualAttachments.value,
+]);
+
+const canSend = computed(
+    () => !!formState.text.trim() || displayedAttachments.value.length > 0,
+);
 
 watch(
     () => props.modelValue,
@@ -281,9 +258,6 @@ watch(
         if (props.modelValue !== value) emit('update:modelValue', value);
     },
 );
-const canSend = computed(
-    () => !!formState.text.trim() || attachments.value.length > 0,
-);
 
 function attachmentId() {
     return `attachment_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -299,6 +273,7 @@ function summarizeText(text: string, maxWords = 12) {
 
 function updateEditorText(value: string) {
     formState.text = value;
+    closeSuggestionMenus();
     editor.value?.commands.setContent(value || '', false);
 }
 
@@ -310,25 +285,109 @@ function revokeAttachmentPreview(attachment: DraftAttachment) {
     if (attachment.objectUrl) URL.revokeObjectURL(attachment.objectUrl);
 }
 
-function removeAttachment(id: string) {
-    const attachment = attachments.value.find((item) => item.id === id);
-    if (attachment) revokeAttachmentPreview(attachment);
-    attachments.value = attachments.value.filter((item) => item.id !== id);
-}
-
-function clearAttachments() {
-    for (const attachment of attachments.value) {
+function clearManualAttachments() {
+    for (const attachment of manualAttachments.value) {
         revokeAttachmentPreview(attachment);
     }
-    attachments.value = [];
+    manualAttachments.value = [];
 }
 
-function closeMention() {
-    mentionState.open = false;
-    mentionState.query = '';
-    mentionState.items = [];
-    mentionState.selectedIndex = 0;
-    mentionState.loading = false;
+function closeMentionMenu() {
+    mentionMenu.open = false;
+    mentionMenu.selectedIndex = 0;
+    mentionMenu.items = [];
+    selectMentionFromSuggestion = null;
+    resetMentionSearch();
+}
+
+function closeSlashMenu() {
+    slashMenu.open = false;
+    slashMenu.selectedIndex = 0;
+    slashMenu.items = [];
+    selectSlashFromSuggestion = null;
+}
+
+function closeSuggestionMenus() {
+    closeMentionMenu();
+    closeSlashMenu();
+}
+
+function syncWorkspaceMentionAttachments(instance?: Editor) {
+    if (!instance) {
+        workspaceMentionAttachments.value = [];
+        return;
+    }
+
+    const nextAttachments = new Map<string, DraftAttachment>();
+    instance.state.doc.descendants((node) => {
+        if (node.type.name !== 'fileMention') return;
+        const id = String(
+            node.attrs.id || `${node.attrs.rootId || 'workspace'}:${node.attrs.path || node.attrs.name || 'file'}`,
+        );
+        if (nextAttachments.has(id)) return;
+        nextAttachments.set(id, {
+            id,
+            kind: 'file',
+            source: 'workspace',
+            name: node.attrs.name || node.attrs.label || node.attrs.path || 'Workspace file',
+            preview: node.attrs.path || undefined,
+            mimeType: node.attrs.mimeType || undefined,
+            size: typeof node.attrs.size === 'number' ? node.attrs.size : undefined,
+            path: node.attrs.path || undefined,
+            rootId: node.attrs.rootId || undefined,
+        });
+    });
+    workspaceMentionAttachments.value = Array.from(nextAttachments.values());
+}
+
+function removeWorkspaceMention(id: string) {
+    const instance = editor.value;
+    if (!instance) return;
+
+    const ranges: Array<{ from: number; to: number }> = [];
+    instance.state.doc.descendants((node, pos) => {
+        if (node.type.name !== 'fileMention') return;
+        const nodeId = String(
+            node.attrs.id || `${node.attrs.rootId || 'workspace'}:${node.attrs.path || node.attrs.name || 'file'}`,
+        );
+        if (nodeId !== id) return;
+
+        const trailing = instance.state.doc.textBetween(
+            pos + node.nodeSize,
+            pos + node.nodeSize + 1,
+            '',
+            '',
+        );
+        ranges.push({
+            from: pos,
+            to: trailing === ' ' ? pos + node.nodeSize + 1 : pos + node.nodeSize,
+        });
+    });
+
+    if (!ranges.length) return;
+
+    let chain = instance.chain().focus();
+    for (const range of ranges.reverse()) {
+        chain = chain.deleteRange(range);
+    }
+    chain.run();
+    syncWorkspaceMentionAttachments(instance);
+}
+
+function removeAttachment(id: string) {
+    const workspaceAttachment = workspaceMentionAttachments.value.find(
+        (attachment) => attachment.id === id,
+    );
+    if (workspaceAttachment) {
+        removeWorkspaceMention(id);
+        return;
+    }
+
+    const attachment = manualAttachments.value.find((item) => item.id === id);
+    if (attachment) revokeAttachmentPreview(attachment);
+    manualAttachments.value = manualAttachments.value.filter(
+        (item) => item.id !== id,
+    );
 }
 
 function buildTransportText() {
@@ -336,7 +395,7 @@ function buildTransportText() {
     const promptText = formState.text.trim();
     if (promptText) sections.push(promptText);
 
-    const textAttachments = attachments.value.filter(
+    const textAttachments = manualAttachments.value.filter(
         (attachment) => attachment.kind === 'text' && attachment.content,
     );
     if (textAttachments.length) {
@@ -351,15 +410,11 @@ function buildTransportText() {
         );
     }
 
-    const workspaceFiles = attachments.value.filter(
-        (attachment) =>
-            attachment.kind === 'file' && attachment.source === 'workspace',
-    );
-    if (workspaceFiles.length) {
+    if (workspaceMentionAttachments.value.length) {
         sections.push(
             [
                 'Workspace files mentioned by the user:',
-                ...workspaceFiles.map(
+                ...workspaceMentionAttachments.value.map(
                     (attachment) =>
                         `- ${attachment.rootId || 'workspace'}:${attachment.path || attachment.name}`,
                 ),
@@ -367,9 +422,8 @@ function buildTransportText() {
         );
     }
 
-    const localFiles = attachments.value.filter(
-        (attachment) =>
-            attachment.kind === 'file' && attachment.source !== 'workspace',
+    const localFiles = manualAttachments.value.filter(
+        (attachment) => attachment.kind === 'file' && attachment.source !== 'workspace',
     );
     if (localFiles.length) {
         sections.push(
@@ -383,17 +437,33 @@ function buildTransportText() {
 function visiblePayloadText() {
     const promptText = formState.text.trim();
     if (promptText) return promptText;
-    if (attachments.value.length === 1)
-        return `Shared ${attachments.value[0]?.name || 'an attachment'} for context.`;
-    return `Shared ${attachments.value.length} attachments for context.`;
+    if (displayedAttachments.value.length === 1) {
+        return `Shared ${displayedAttachments.value[0]?.name || 'an attachment'} for context.`;
+    }
+    return `Shared ${displayedAttachments.value.length} attachments for context.`;
 }
 
-function submit() {
-    if (!canSend.value || props.streaming) return;
+async function maybeRunSlashCommandFromInput() {
+    if (displayedAttachments.value.length > 0) return false;
+    const match = formState.text.trim().match(/^\/([a-z0-9_-]+)$/i);
+    if (!match) return false;
+    const command = findCommand(match[1] || '');
+    if (!command) return false;
+    const result = await runCommand(command);
+    if (!result.handled) return false;
+    updateEditorText('');
+    return true;
+}
+
+async function submit() {
+    if (props.streaming) return;
+    if (await maybeRunSlashCommandFromInput()) return;
+    if (!canSend.value) return;
+
     const payload: AssistantSendPayload = {
         text: visiblePayloadText(),
         transportText: buildTransportText(),
-        attachments: attachments.value.map(
+        attachments: displayedAttachments.value.map(
             ({
                 content: _content,
                 thumbnailUrl: _thumbnailUrl,
@@ -402,8 +472,9 @@ function submit() {
             }) => attachment,
         ),
     };
+
     emit('send', payload);
-    clearAttachments();
+    clearManualAttachments();
     updateEditorText('');
 }
 
@@ -411,7 +482,7 @@ function addFiles(files: File[]) {
     for (const file of files) {
         const isImage = file.type.startsWith('image/');
         const objectUrl = isImage ? URL.createObjectURL(file) : undefined;
-        attachments.value.push({
+        manualAttachments.value.push({
             id: attachmentId(),
             kind: 'file',
             name: file.name,
@@ -427,87 +498,10 @@ function addFiles(files: File[]) {
     }
 }
 
-function addWorkspaceFileMention(item: FileSearchItem) {
-    const id = `${item.root_id}:${item.path}`;
-    if (attachments.value.some((attachment) => attachment.id === id)) return;
-    attachments.value.push({
-        id,
-        kind: 'file',
-        source: 'workspace',
-        name: item.name,
-        preview: item.path,
-        mimeType: item.mime_type || undefined,
-        size: item.size || undefined,
-        path: item.path,
-        rootId: item.root_id,
-    });
-}
-
-function scheduleMentionSearch(query: string) {
-    if (mentionSearchTimer) clearTimeout(mentionSearchTimer);
-    mentionState.loading = true;
-    mentionSearchTimer = setTimeout(async () => {
-        const activeQuery = query.trim();
-        try {
-            const items = await searchWorkspaceFiles(activeQuery, 12);
-            if (!mentionState.open || mentionState.query !== query) return;
-            mentionState.items = items;
-            mentionState.selectedIndex = 0;
-        } finally {
-            if (mentionState.query === query) mentionState.loading = false;
-        }
-    }, 120);
-}
-
-function updateMentionState(instance: MentionEditorState) {
-    const { selection, doc } = instance.state;
-    if (!selection.empty) {
-        closeMention();
-        return;
-    }
-    const to = selection.from;
-    const from = Math.max(0, to - 96);
-    const textBefore = doc.textBetween(from, to, '\n', '\n');
-    const atIndex = textBefore.lastIndexOf('@');
-    if (atIndex < 0) {
-        closeMention();
-        return;
-    }
-    const previous = atIndex > 0 ? textBefore.charAt(atIndex - 1) : ' ';
-    const query = textBefore.slice(atIndex + 1);
-    if (
-        (previous && !/\s|[(\[{]/.test(previous)) ||
-        /\s/.test(query) ||
-        query.length > 80
-    ) {
-        closeMention();
-        return;
-    }
-    mentionState.open = true;
-    mentionState.query = query;
-    mentionState.from = from + atIndex;
-    mentionState.to = to;
-    scheduleMentionSearch(query);
-}
-
-function selectMention(item = mentionState.items[mentionState.selectedIndex]) {
-    if (!item || !editor.value) return;
-    addWorkspaceFileMention(item);
-    editor.value
-        .chain()
-        .focus()
-        .insertContentAt(
-            { from: mentionState.from, to: mentionState.to },
-            `@${item.path} `,
-        )
-        .run();
-    closeMention();
-}
-
 function addPastedText(text: string) {
     const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
     if (wordCount < 120) return false;
-    attachments.value.push({
+    manualAttachments.value.push({
         id: attachmentId(),
         kind: 'text',
         name: 'Pasted text',
@@ -594,8 +588,225 @@ function syncViewportEnterBehavior() {
     viewportChangeCleanup = () => media.removeListener(update);
 }
 
+function moveSelection(delta: number, length: number, current: number) {
+    if (!length) return 0;
+    return Math.min(length - 1, Math.max(0, current + delta));
+}
+
+function selectMention(item = mentionMenu.items[mentionMenu.selectedIndex]) {
+    if (!item || !selectMentionFromSuggestion) return;
+    selectMentionFromSuggestion(item);
+}
+
+function selectSlashCommand(item = slashMenu.items[slashMenu.selectedIndex]) {
+    if (!item || !selectSlashFromSuggestion) return;
+    selectSlashFromSuggestion(item);
+}
+
+function createMentionRenderHooks() {
+    return {
+        onStart: (props: SuggestionLifecycleProps<FileMentionSuggestionItem>) => {
+            mentionMenu.open = true;
+            mentionMenu.items = props.items;
+            mentionMenu.selectedIndex = 0;
+            selectMentionFromSuggestion = props.command;
+            closeSlashMenu();
+        },
+        onUpdate: (props: SuggestionLifecycleProps<FileMentionSuggestionItem>) => {
+            mentionMenu.open = true;
+            mentionMenu.items = props.items;
+            mentionMenu.selectedIndex = Math.min(
+                mentionMenu.selectedIndex,
+                Math.max(0, props.items.length - 1),
+            );
+            selectMentionFromSuggestion = props.command;
+        },
+        onKeyDown: ({ event }: SuggestionKeydownProps) => {
+            if (!mentionMenu.open) return false;
+            if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                mentionMenu.selectedIndex = moveSelection(
+                    1,
+                    mentionMenu.items.length,
+                    mentionMenu.selectedIndex,
+                );
+                return true;
+            }
+            if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                mentionMenu.selectedIndex = moveSelection(
+                    -1,
+                    mentionMenu.items.length,
+                    mentionMenu.selectedIndex,
+                );
+                return true;
+            }
+            if (
+                (event.key === 'Enter' || event.key === 'Tab') &&
+                mentionMenu.items.length
+            ) {
+                event.preventDefault();
+                selectMention();
+                return true;
+            }
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                closeMentionMenu();
+                return true;
+            }
+            return false;
+        },
+        onExit: () => {
+            closeMentionMenu();
+        },
+    };
+}
+
+function createSlashRenderHooks() {
+    return {
+        onStart: (props: SuggestionLifecycleProps<ChatCommandDefinition>) => {
+            slashMenu.open = true;
+            slashMenu.items = props.items;
+            slashMenu.selectedIndex = 0;
+            selectSlashFromSuggestion = props.command;
+            closeMentionMenu();
+        },
+        onUpdate: (props: SuggestionLifecycleProps<ChatCommandDefinition>) => {
+            slashMenu.open = true;
+            slashMenu.items = props.items;
+            slashMenu.selectedIndex = Math.min(
+                slashMenu.selectedIndex,
+                Math.max(0, props.items.length - 1),
+            );
+            selectSlashFromSuggestion = props.command;
+        },
+        onKeyDown: ({ event }: SuggestionKeydownProps) => {
+            if (!slashMenu.open) return false;
+            if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                slashMenu.selectedIndex = moveSelection(
+                    1,
+                    slashMenu.items.length,
+                    slashMenu.selectedIndex,
+                );
+                return true;
+            }
+            if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                slashMenu.selectedIndex = moveSelection(
+                    -1,
+                    slashMenu.items.length,
+                    slashMenu.selectedIndex,
+                );
+                return true;
+            }
+            if (
+                (event.key === 'Enter' || event.key === 'Tab') &&
+                slashMenu.items.length
+            ) {
+                event.preventDefault();
+                selectSlashCommand();
+                return true;
+            }
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                closeSlashMenu();
+                return true;
+            }
+            return false;
+        },
+        onExit: () => {
+            closeSlashMenu();
+        },
+    };
+}
+
 onMounted(() => {
     syncViewportEnterBehavior();
+
+    const mentionRenderHooks = createMentionRenderHooks();
+    const slashRenderHooks = createSlashRenderHooks();
+
+    const FileMention = Mention.extend({
+        name: 'fileMention',
+        addAttributes() {
+            return {
+                id: { default: null },
+                label: { default: null },
+                name: { default: null },
+                path: { default: null },
+                rootId: { default: null },
+                rootLabel: { default: null },
+                mimeType: { default: null },
+                size: { default: null },
+            };
+        },
+        renderHTML({ HTMLAttributes, node }) {
+            const label = node.attrs.path || node.attrs.label || node.attrs.name || 'file';
+            return [
+                'span',
+                mergeAttributes(HTMLAttributes, {
+                    class: 'or3-file-mention',
+                    'data-file-mention': 'true',
+                }),
+                `@${label}`,
+            ];
+        },
+        renderText({ node }) {
+            const label = node.attrs.path || node.attrs.label || node.attrs.name || 'file';
+            return `@${label}`;
+        },
+    }).configure({
+        deleteTriggerWithBackspace: true,
+        suggestion: {
+            char: '@',
+            items: async ({ query }: { query: string }) =>
+                await searchMentionFiles(query),
+            command: ({ editor: instance, range, props: item }: any) => {
+                instance
+                    .chain()
+                    .focus()
+                    .insertContentAt(range, [
+                        {
+                            type: 'fileMention',
+                            attrs: {
+                                id: item.id,
+                                label: item.label,
+                                name: item.name,
+                                path: item.path,
+                                rootId: item.root_id,
+                                rootLabel: item.root_label,
+                                mimeType: item.mime_type || null,
+                                size: item.size ?? null,
+                            },
+                        },
+                        { type: 'text', text: ' ' },
+                    ])
+                    .run();
+            },
+            render: () => mentionRenderHooks as any,
+        },
+    }) as any;
+
+    const SlashCommand = Extension.create({
+        name: 'slashCommand',
+        addProseMirrorPlugins() {
+            return [
+                Suggestion({
+                    editor: this.editor as any,
+                    char: '/',
+                    startOfLine: true,
+                    allowSpaces: false,
+                    items: ({ query }) => filterCommands(query),
+                    command: ({ editor: instance, range, props: item }: any) => {
+                        instance.chain().focus().deleteRange(range).run();
+                        void runCommand(item);
+                    },
+                    render: () => slashRenderHooks as any,
+                }),
+            ];
+        },
+    }) as any;
 
     editor.value = new Editor({
         content: props.modelValue || '',
@@ -611,6 +822,8 @@ onMounted(() => {
             Placeholder.configure({
                 placeholder: 'Ask or3-intern to help with your computer…',
             }),
+            FileMention as any,
+            SlashCommand as any,
         ],
         autofocus: false,
         editorProps: {
@@ -618,43 +831,17 @@ onMounted(() => {
                 class: 'min-h-6 outline-none',
             },
             handleKeyDown(_view, event) {
-                if (mentionState.open) {
-                    if (event.key === 'ArrowDown') {
-                        event.preventDefault();
-                        mentionState.selectedIndex = Math.min(
-                            mentionState.items.length - 1,
-                            mentionState.selectedIndex + 1,
-                        );
-                        return true;
-                    }
-                    if (event.key === 'ArrowUp') {
-                        event.preventDefault();
-                        mentionState.selectedIndex = Math.max(
-                            0,
-                            mentionState.selectedIndex - 1,
-                        );
-                        return true;
-                    }
-                    if (
-                        (event.key === 'Enter' || event.key === 'Tab') &&
-                        mentionState.items.length
-                    ) {
-                        event.preventDefault();
-                        selectMention();
-                        return true;
-                    }
-                    if (event.key === 'Escape') {
-                        event.preventDefault();
-                        closeMention();
-                        return true;
-                    }
+                if ((mentionMenu.open || slashMenu.open) && event.key === 'Escape') {
+                    event.preventDefault();
+                    closeSuggestionMenus();
+                    return true;
                 }
 
                 if (event.key === 'Enter' && !event.isComposing) {
                     if (enterCreatesNewLine.value) {
                         if (event.metaKey || event.ctrlKey) {
                             event.preventDefault();
-                            submit();
+                            void submit();
                             return true;
                         }
                         return false;
@@ -662,9 +849,10 @@ onMounted(() => {
 
                     if (event.shiftKey) return false;
                     event.preventDefault();
-                    submit();
+                    void submit();
                     return true;
                 }
+
                 return false;
             },
             handlePaste(_view, event) {
@@ -680,12 +868,14 @@ onMounted(() => {
         },
         onUpdate({ editor: instance }) {
             formState.text = instance.getText({ blockSeparator: '\n\n' });
-            updateMentionState(instance);
+            syncWorkspaceMentionAttachments(instance as any);
         },
         onSelectionUpdate({ editor: instance }) {
-            updateMentionState(instance);
+            syncWorkspaceMentionAttachments(instance as any);
         },
     });
+
+    syncWorkspaceMentionAttachments(editor.value);
 
     const dom = editor.value?.view.dom;
     dom?.addEventListener('dragenter', onDragEnter);
@@ -704,9 +894,9 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
     unregisterPaneInput(props.paneId);
-    if (mentionSearchTimer) clearTimeout(mentionSearchTimer);
     viewportChangeCleanup?.();
-    clearAttachments();
+    closeSuggestionMenus();
+    clearManualAttachments();
     const dom = editor.value?.view.dom;
     dom?.removeEventListener('dragenter', onDragEnter);
     dom?.removeEventListener('dragover', onDragOver);
@@ -819,5 +1009,16 @@ onBeforeUnmount(() => {
 
 :deep(.assistant-composer-editor .ProseMirror p) {
     margin: 0;
+}
+
+:deep(.assistant-composer-editor .or3-file-mention) {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--or3-green) 16%, white 84%);
+    color: var(--or3-green-dark);
+    padding: 0.05rem 0.45rem;
+    font-weight: 600;
 }
 </style>

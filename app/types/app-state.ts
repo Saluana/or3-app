@@ -126,6 +126,11 @@ export type Or3AppErrorCode =
     | 'approval_required'
     | 'stream_failed'
     | 'file_not_found'
+    | 'file_conflict'
+    | 'file_read_only'
+    | 'file_unsupported'
+    | 'file_too_large'
+    | 'invalid_file_target'
     | 'path_forbidden'
     | 'terminal_unavailable'
     | 'unknown';

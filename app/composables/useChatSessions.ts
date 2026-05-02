@@ -121,6 +121,44 @@ export function useChatSessions() {
         return session;
     }
 
+    function clearSessionMessages(sessionId = activeSession.value?.id) {
+        if (!sessionId) return 0;
+        const before = cache.state.value.messages.length;
+        cache.state.value.messages = cache.state.value.messages.filter(
+            (message) => message.sessionId !== sessionId,
+        );
+        const removed = before - cache.state.value.messages.length;
+        const session = cache.state.value.sessions.find(
+            (item) => item.id === sessionId,
+        );
+        if (session) {
+            session.updatedAt = now();
+            session.title = 'New conversation';
+        }
+        cache.persist();
+        return removed;
+    }
+
+    function appendSystemMessage(content: string, sessionId = activeSession.value?.id) {
+        const targetSession = sessionId
+            ? cache.state.value.sessions.find((item) => item.id === sessionId)
+            : ensureSession();
+        const resolvedSession = targetSession ?? ensureSession();
+        return addMessage({
+            sessionId: resolvedSession.id,
+            role: 'system',
+            content,
+            status: 'complete',
+        });
+    }
+
+    function messageCount(sessionId = activeSession.value?.id) {
+        if (!sessionId) return 0;
+        return cache.state.value.messages.filter(
+            (message) => message.sessionId === sessionId,
+        ).length;
+    }
+
     return {
         sessions,
         activeSession,
@@ -131,5 +169,8 @@ export function useChatSessions() {
         addMessage,
         updateMessage,
         toggleMessagePin,
+        clearSessionMessages,
+        appendSystemMessage,
+        messageCount,
     };
 }

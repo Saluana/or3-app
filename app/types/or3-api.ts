@@ -194,6 +194,34 @@ export interface FileSearchResponse {
     items: FileSearchItem[];
 }
 
+export interface FileReadResponse {
+    root_id: string;
+    path: string;
+    name: string;
+    mime_type?: string;
+    size?: number;
+    modified_at?: string;
+    revision: string;
+    writable: boolean;
+    content: string;
+}
+
+export interface FileWriteRequest {
+    root_id: string;
+    path: string;
+    content: string;
+    expected_revision?: string;
+    create?: boolean;
+}
+
+export interface FileWriteResponse {
+    root_id: string;
+    path: string;
+    status: 'written' | 'created' | string;
+    modified_at?: string;
+    revision: string;
+}
+
 export interface TerminalSessionSnapshot {
     session_id: string;
     root_id: string;

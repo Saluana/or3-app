@@ -214,6 +214,7 @@
               <div class="mt-4 flex flex-wrap gap-2">
                 <UButton label="Ask assistant" icon="i-pixelarticons-message-text" color="neutral" variant="soft" @click="askAssistant" />
                 <UButton label="Copy path" icon="i-pixelarticons-copy" color="neutral" variant="soft" @click="copySelectedPath" />
+                <UButton v-if="selectedEntry.type === 'file' && canEditFile(selectedEntry)" label="Edit" icon="i-pixelarticons-edit" color="neutral" variant="soft" @click="openSelectedEditor" />
                 <UButton v-if="selectedEntry.type === 'file'" label="Download" icon="i-pixelarticons-file" color="primary" :loading="previewLoading" @click="downloadSelectedFile" />
                 <UButton v-if="selectedEntry.type === 'file'" label="Open in browser" icon="i-pixelarticons-link" color="neutral" variant="soft" :loading="openingFile" @click="openSelectedFile" />
                 <UButton v-if="selectedEntry.type === 'directory'" label="Open folder" icon="i-pixelarticons-folder" color="primary" @click="openSelectedDirectory" />
@@ -288,8 +289,10 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { navigateTo, useRoute, useRouter } from '#app'
 import { useToast } from '@nuxt/ui/composables'
 import type { FileEntry, FileSearchItem } from '~/types/or3-api'
+import { buildComputerEditorRoute } from '~/composables/useComputerEditorRoute'
 import { programmaticSend } from '~/composables/useChatInputBridge'
 import { useComputerFiles } from '~/composables/useComputerFiles'
+import { useComputerTextFiles } from '~/composables/useComputerTextFiles'
 import { useMemoryTrust } from '~/composables/useMemoryTrust'
 
 interface MemoryShortcut {
@@ -305,6 +308,7 @@ type PreviewKind = 'empty' | 'text' | 'image' | 'unavailable'
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
+const { canEditFile } = useComputerTextFiles()
 
 const files = useComputerFiles()
 const selectedEntry = ref<FileEntry | null>(null)
@@ -714,6 +718,16 @@ function openTerminalHere() {
 
 function openTerminalForCurrentFolder() {
   void navigateTo({ path: '/computer/terminal', query: { root: currentRootId.value, path: currentPath.value } })
+}
+
+function openSelectedEditor() {
+  if (!selectedEntry.value || selectedEntry.value.type !== 'file' || !canEditFile(selectedEntry.value)) return
+  void navigateTo(buildComputerEditorRoute({
+    rootId: currentRootId.value,
+    path: selectedEntry.value.path,
+    returnRootId: currentRootId.value,
+    returnPath: currentPath.value,
+  }))
 }
 
 function closeCreateFolder() {
