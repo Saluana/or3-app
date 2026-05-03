@@ -3,20 +3,28 @@
         <div class="or3-overview__hero">
             <div class="or3-overview__mascot-shell">
                 <div class="or3-overview__mascot-glow" aria-hidden="true" />
-                <div class="or3-overview__sparkles" aria-hidden="true">
-                    <span />
-                    <span />
-                    <span />
-                    <span />
-                </div>
+                <svg
+                    class="or3-overview__sparkles"
+                    viewBox="0 0 220 210"
+                    fill="none"
+                    aria-hidden="true"
+                >
+                    <path class="or3-overview__sparkle or3-overview__sparkle--soft" d="M28 54h8m-4-4v8" />
+                    <path class="or3-overview__sparkle or3-overview__sparkle--green" d="M178 38h16m-8-8v16" />
+                    <path class="or3-overview__sparkle" d="M190 116h12m-6-6v12" />
+                    <path class="or3-overview__sparkle or3-overview__sparkle--soft" d="M154 82h8m-4-4v8" />
+                    <path class="or3-overview__sparkle or3-overview__sparkle--green" d="M78 28h10m-5-5v10" />
+                    <circle class="or3-overview__sparkle-dot" cx="38" cy="96" r="2.5" />
+                    <circle class="or3-overview__sparkle-dot or3-overview__sparkle-dot--green" cx="168" cy="148" r="2.5" />
+                </svg>
                 <div class="or3-overview__mascot">
-                <RetroComputerMascot
-                    src="/computer-icons/waving-guy.webp"
-                    :size="184"
-                    :sparkle="online"
-                    class="or3-overview__mascot-img"
-                />
-            </div>
+                    <RetroComputerMascot
+                        src="/computer-icons/waving-guy.webp"
+                        :size="184"
+                        :sparkle="online"
+                        class="or3-overview__mascot-img"
+                    />
+                </div>
             </div>
 
             <div class="or3-overview__copy">
@@ -183,11 +191,26 @@ const statusMessage = computed(() => {
 
 .or3-overview__mascot-glow {
     position: absolute;
-    inset: 8px;
+    inset: -6px -4px 4px;
     border-radius: 999px;
     background:
-        radial-gradient(circle at center, color-mix(in srgb, var(--or3-green-soft) 72%, white 28%) 0%, rgba(239, 247, 229, 0.7) 42%, transparent 72%);
-    filter: blur(1px);
+        radial-gradient(circle at 52% 48%, rgba(220, 249, 184, 0.62) 0%, rgba(206, 239, 192, 0.48) 34%, transparent 68%),
+        radial-gradient(circle at 42% 78%, rgba(238, 255, 197, 0.85) 0%, rgba(201, 235, 176, 0.44) 28%, transparent 52%),
+        radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--or3-green-soft) 72%, white 28%) 0%, transparent 72%);
+    filter: blur(4px);
+    opacity: 0.95;
+}
+
+.or3-overview__mascot-glow::after {
+    content: '';
+    position: absolute;
+    left: 16%;
+    right: 12%;
+    bottom: 14%;
+    height: 22%;
+    border-radius: 999px;
+    background: radial-gradient(ellipse at center, rgba(226, 255, 173, 0.72) 0%, rgba(180, 225, 141, 0.34) 44%, transparent 72%);
+    filter: blur(2px);
 }
 
 .or3-overview__mascot {
@@ -209,21 +232,36 @@ const statusMessage = computed(() => {
     position: absolute;
     inset: 0;
     pointer-events: none;
+    z-index: 2;
+    overflow: visible;
 }
 
-.or3-overview__sparkles span {
-    position: absolute;
-    width: 12px;
-    height: 12px;
-    background: rgba(255, 255, 255, 0.9);
-    clip-path: polygon(50% 0%, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0% 50%, 38% 38%);
-    opacity: 0.7;
+.or3-overview__sparkle {
+    stroke: rgba(255, 255, 255, 0.96);
+    stroke-width: 4;
+    stroke-linecap: square;
+    filter: drop-shadow(0 0 5px rgba(193, 229, 145, 0.72));
+    opacity: 0.92;
 }
 
-.or3-overview__sparkles span:nth-child(1) { top: 26px; left: 22px; }
-.or3-overview__sparkles span:nth-child(2) { top: 60px; right: 30px; width: 16px; height: 16px; }
-.or3-overview__sparkles span:nth-child(3) { bottom: 42px; left: 38px; }
-.or3-overview__sparkles span:nth-child(4) { bottom: 62px; right: 18px; width: 10px; height: 10px; }
+.or3-overview__sparkle--green {
+    stroke: color-mix(in srgb, var(--or3-green) 38%, white 62%);
+    opacity: 0.78;
+}
+
+.or3-overview__sparkle--soft {
+    opacity: 0.58;
+    stroke-width: 3;
+}
+
+.or3-overview__sparkle-dot {
+    fill: rgba(255, 255, 255, 0.88);
+    filter: drop-shadow(0 0 4px rgba(193, 229, 145, 0.62));
+}
+
+.or3-overview__sparkle-dot--green {
+    fill: color-mix(in srgb, var(--or3-green) 42%, white 58%);
+}
 
 .or3-overview__copy {
     min-width: 0;

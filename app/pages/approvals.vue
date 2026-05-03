@@ -28,7 +28,7 @@
                     </div>
                     <RetroComputerMascot
                         :size="68"
-                        class="hidden shrink-0 self-start sm:block"
+                        class="or3-approval-hero__mascot hidden shrink-0 self-start sm:block"
                     />
                 </div>
             </section>
@@ -140,6 +140,7 @@
                     </div>
                     <RetroComputerMascot
                         :size="64"
+                        src="/computer-icons/waving-guy.webp"
                         sparkle
                         class="hidden shrink-0 self-start sm:block"
                     />
@@ -331,6 +332,11 @@ onBeforeUnmount(() => {
     border: 1px solid color-mix(in srgb, var(--or3-green) 30%, white 70%);
     box-shadow: var(--or3-shadow-soft);
     flex-shrink: 0;
+}
+
+.or3-approval-hero__mascot {
+    transform: scaleX(-1);
+    transform-origin: center;
 }
 
 .or3-chip--lg {
