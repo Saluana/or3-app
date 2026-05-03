@@ -16,6 +16,7 @@ const selectedApproval = ref<ApprovalRequest | null>(null);
 const approvalsLoading = ref(false);
 const approvalsError = ref<string | null>(null);
 const pendingCount = ref(0);
+const activeApprovalStatus = ref('');
 let approvalsPollTimer: ReturnType<typeof setInterval> | null = null;
 const approvalActionsInFlight = new Set<string>();
 const issuedApprovalTokens = ref<Record<string, string>>({});
@@ -85,6 +86,7 @@ export function useApprovals() {
     }
 
     async function loadApprovals(status = '') {
+        activeApprovalStatus.value = status;
         approvalsLoading.value = true;
         approvalsError.value = null;
 
@@ -109,6 +111,7 @@ export function useApprovals() {
     }
 
     async function loadAllowlists() {
+        approvalsError.value = null;
         try {
             const response = await api.request<{ items: unknown[] }>(
                 '/internal/v1/approvals/allowlists',
@@ -131,6 +134,10 @@ export function useApprovals() {
         return normalized;
     }
 
+    async function reloadApprovals() {
+        await loadApprovals(activeApprovalStatus.value);
+    }
+
     async function approve(id: number | string, allowlist = false, note = '') {
         return withApprovalAction(id, 'approve', async () => {
             const response = await api.request<ApprovalActionResponse>(
@@ -147,7 +154,7 @@ export function useApprovals() {
                 );
             }
             await Promise.all([
-                loadApprovals(),
+                reloadApprovals(),
                 loadAllowlists(),
                 loadPendingCount(),
             ]);
@@ -165,7 +172,7 @@ export function useApprovals() {
                 },
             );
             consumeIssuedApprovalToken(response.request_id ?? id);
-            await Promise.all([loadApprovals(), loadPendingCount()]);
+            await Promise.all([reloadApprovals(), loadPendingCount()]);
             return response;
         });
     }
@@ -180,7 +187,7 @@ export function useApprovals() {
                 },
             );
             consumeIssuedApprovalToken(response.request_id ?? id);
-            await Promise.all([loadApprovals(), loadPendingCount()]);
+            await Promise.all([reloadApprovals(), loadPendingCount()]);
             return response;
         });
     }
@@ -203,7 +210,7 @@ export function useApprovals() {
             method: 'POST',
             body: {},
         });
-        await Promise.all([loadApprovals(), loadPendingCount()]);
+        await Promise.all([reloadApprovals(), loadPendingCount()]);
     }
 
     async function removeAllowlist(id: number | string) {
@@ -239,6 +246,7 @@ export function useApprovals() {
         loadApprovals,
         loadAllowlists,
         fetchApproval,
+        reloadApprovals,
         approve,
         deny,
         cancel,

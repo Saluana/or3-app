@@ -156,9 +156,24 @@ function normalizePayload(
         transportText: (input.transportText || input.text).trim(),
         attachments: input.attachments ?? [],
         approvalToken: input.approvalToken,
+        followJobId: input.followJobId,
         replayToolCall: input.replayToolCall,
         continueMessageId: input.continueMessageId,
         suppressUserEcho: input.suppressUserEcho,
+    };
+}
+
+function retryPayloadForStorage(
+    payload: AssistantSendPayload,
+): AssistantSendPayload {
+    return {
+        text: payload.text,
+        transportText: payload.transportText,
+        attachments: payload.attachments ?? [],
+        approvalToken: payload.approvalToken,
+        replayToolCall: payload.replayToolCall,
+        continueMessageId: payload.continueMessageId,
+        suppressUserEcho: payload.suppressUserEcho,
     };
 }
 
@@ -284,9 +299,7 @@ export function describeApprovalRequest(toolName: string, argsJson?: string) {
             '**Tool:** `run_skill_script`',
             `**Requested action:** Run ${
                 skillName ? `the skill \`${skillName}\`` : 'a skill script'
-            }${
-                commandName ? ` using \`${commandName}\`` : ''
-            }.`,
+            }${commandName ? ` using \`${commandName}\`` : ''}.`,
             '',
             'Approve if this is the skill action you expected. Deny it if it looks wrong.',
         ].join('\n');
@@ -346,8 +359,11 @@ export function useAssistantStream() {
 
     async function send(message: string | AssistantSendPayload) {
         const payload = normalizePayload(message);
+        const followJobId = payload.followJobId?.trim() || '';
         const text = payload.transportText || payload.text;
-        if (!text || isStreaming.value) return;
+        if ((!text && !followJobId) || isStreaming.value) return;
+
+        const storedRetryPayload = retryPayloadForStorage(payload);
 
         const session = chat.ensureSession();
         if (!payload.suppressUserEcho) {
@@ -374,7 +390,7 @@ export function useAssistantStream() {
                   approvalRequestId: undefined,
                   approvalState: undefined,
                   jobId: undefined,
-                  retryPayload: payload,
+                  retryPayload: storedRetryPayload,
               }),
               existingAssistant)
             : chat.addMessage({
@@ -382,7 +398,7 @@ export function useAssistantStream() {
                   role: 'assistant',
                   content: '',
                   status: 'streaming',
-                  retryPayload: payload,
+                  retryPayload: storedRetryPayload,
                   reasoningText: '',
                   toolCalls: [],
                   activityLog: [],
@@ -412,23 +428,25 @@ export function useAssistantStream() {
                 content: sanitizeAssistantText(rawAssistantContent),
             });
         };
-        const turnRequest = {
-            session_key: session.sessionKey,
-            message: text,
-            tool_policy: { mode: 'allow_all' as const },
-            ...(payload.approvalToken
-                ? { approval_token: payload.approvalToken }
-                : {}),
-            ...(payload.replayToolCall
-                ? {
-                      replay_tool_call: {
-                          name: payload.replayToolCall.name,
-                          arguments_json:
-                              payload.replayToolCall.arguments || '{}',
-                      },
-                  }
-                : {}),
-        };
+        const turnRequest = followJobId
+            ? null
+            : {
+                  session_key: session.sessionKey,
+                  message: text,
+                  tool_policy: { mode: 'allow_all' as const },
+                  ...(payload.approvalToken
+                      ? { approval_token: payload.approvalToken }
+                      : {}),
+                  ...(payload.replayToolCall
+                      ? {
+                            replay_tool_call: {
+                                name: payload.replayToolCall.name,
+                                arguments_json:
+                                    payload.replayToolCall.arguments || '{}',
+                            },
+                        }
+                      : {}),
+              };
         const setToolCalls = (toolCalls: ChatToolCall[]) =>
             updateAssistant({ toolCalls });
         const addActivity = (entry: ChatActivityEntry) => {
@@ -664,9 +682,7 @@ export function useAssistantStream() {
                         retryPayload: baseRetryPayload
                             ? {
                                   ...baseRetryPayload,
-                                  ...(replayToolCall
-                                      ? { replayToolCall }
-                                      : {}),
+                                  ...(replayToolCall ? { replayToolCall } : {}),
                                   continueMessageId: assistant.id,
                                   suppressUserEcho: true,
                               }
@@ -778,9 +794,9 @@ export function useAssistantStream() {
                         ? 'attention'
                         : snapshot.error ||
                             snapshot.status === 'failed' ||
-                              snapshot.status === 'aborted'
-                        ? 'failed'
-                        : 'complete',
+                            snapshot.status === 'aborted'
+                          ? 'failed'
+                          : 'complete',
                 error:
                     snapshot.status === 'approval_required'
                         ? undefined
@@ -811,22 +827,36 @@ export function useAssistantStream() {
         try {
             let sawStreamEvent = false;
             let streamEndedWithFailure = false;
-            let streamedJobId: string | null = null;
+            let streamedJobId: string | null = followJobId || null;
 
-            for await (const event of api.stream('/internal/v1/turns', {
-                body: turnRequest,
-                signal: activeController.signal,
-            })) {
-                sawStreamEvent = true;
-                const jobId = eventJobId(event);
-                if (jobId) {
-                    streamedJobId = jobId;
-                    activeJobId.value = jobId;
-                    updateAssistant({ jobId });
+            if (followJobId) {
+                activeJobId.value = followJobId;
+                updateAssistant({ jobId: followJobId });
+                for await (const event of api.stream(
+                    `/internal/v1/jobs/${encodeURIComponent(followJobId)}/stream`,
+                    { method: 'GET', signal: activeController.signal },
+                )) {
+                    sawStreamEvent = true;
+                    const result = applyEvent(event);
+                    streamEndedWithFailure =
+                        streamEndedWithFailure || result.failed;
                 }
-                const result = applyEvent(event);
-                streamEndedWithFailure =
-                    streamEndedWithFailure || result.failed;
+            } else {
+                for await (const event of api.stream('/internal/v1/turns', {
+                    body: turnRequest,
+                    signal: activeController.signal,
+                })) {
+                    sawStreamEvent = true;
+                    const jobId = eventJobId(event);
+                    if (jobId) {
+                        streamedJobId = jobId;
+                        activeJobId.value = jobId;
+                        updateAssistant({ jobId });
+                    }
+                    const result = applyEvent(event);
+                    streamEndedWithFailure =
+                        streamEndedWithFailure || result.failed;
+                }
             }
 
             if (streamedJobId) {

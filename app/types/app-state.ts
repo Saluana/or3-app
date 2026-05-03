@@ -63,6 +63,7 @@ export interface AssistantSendPayload {
     transportText?: string;
     attachments?: ChatAttachment[];
     approvalToken?: string;
+    followJobId?: string;
     replayToolCall?: AssistantReplayToolCall;
     continueMessageId?: string;
     suppressUserEcho?: boolean;

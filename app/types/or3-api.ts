@@ -213,7 +213,12 @@ export interface AppBootstrapResponse {
 
 export interface AppActionResponse {
     action_id: string;
-    status: 'accepted' | 'completed' | 'approval_required' | 'unsupported' | string;
+    status:
+        | 'accepted'
+        | 'completed'
+        | 'approval_required'
+        | 'unsupported'
+        | string;
     message?: string;
     approval_id?: number;
     operation_id?: string;
@@ -233,6 +238,7 @@ export interface ApprovalActionResponse {
     request_id: number | string;
     token?: string;
     allowlist_id?: number | string;
+    resume_job_id?: string;
     status?: string;
 }
 

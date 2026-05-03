@@ -12,11 +12,19 @@
             <div class="flex items-start gap-3">
                 <RetroIcon :name="section.icon" size="sm" />
                 <div class="min-w-0 flex-1">
-                    <p class="font-mono text-base font-semibold text-(--or3-text)">{{ section.label }}</p>
-                    <p class="mt-1 text-sm leading-6 text-(--or3-text-muted)">{{ section.description }}</p>
+                    <p
+                        class="font-mono text-base font-semibold text-(--or3-text)"
+                    >
+                        {{ section.label }}
+                    </p>
+                    <p class="mt-1 text-sm leading-6 text-(--or3-text-muted)">
+                        {{ section.description }}
+                    </p>
                 </div>
             </div>
-            <p class="rounded-xl border border-(--or3-border) bg-white/70 px-3 py-2 font-mono text-xs leading-5 text-(--or3-text)">
+            <p
+                class="min-w-0 rounded-xl border border-(--or3-border) bg-white/70 px-3 py-2 font-mono text-xs leading-5 text-(--or3-text) wrap-anywhere"
+            >
                 {{ simple.summaryFor(section) }}
             </p>
         </SurfaceCard>
@@ -32,7 +40,9 @@
         />
 
         <SurfaceCard v-if="saveError" tone="danger" class-name="space-y-2">
-            <p class="font-mono text-sm font-semibold text-rose-900">Could not save settings</p>
+            <p class="font-mono text-sm font-semibold text-rose-900">
+                Could not save settings
+            </p>
             <p class="text-xs leading-5 text-rose-800">{{ saveError }}</p>
         </SurfaceCard>
 
@@ -46,8 +56,14 @@
             tone="tip"
             class-name="space-y-3 sticky z-30 bottom-[calc(var(--or3-safe-bottom)+5.75rem)]"
         >
-            <p class="font-mono text-sm font-semibold text-(--or3-text)">{{ pendingChanges.length }} pending change{{ pendingChanges.length === 1 ? '' : 's' }}</p>
-            <p class="text-xs leading-5 text-(--or3-text-muted)">Review the plain-language summary before saving.</p>
+            <p class="font-mono text-sm font-semibold text-(--or3-text)">
+                {{ pendingChanges.length }} pending change{{
+                    pendingChanges.length === 1 ? '' : 's'
+                }}
+            </p>
+            <p class="text-xs leading-5 text-(--or3-text-muted)">
+                Review the plain-language summary before saving.
+            </p>
             <div class="flex items-center justify-end gap-2">
                 <UButton
                     size="sm"
@@ -77,68 +93,79 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import type { SimpleSettingChange, SimpleSettingSection } from '~/settings/simpleSettings'
-import { useSimpleSettings } from '~/composables/settings/useSimpleSettings'
-import { useSettingsSnapshots } from '~/composables/settings/useSettingsSnapshots'
+import { computed, onMounted, ref } from 'vue';
+import type {
+    SimpleSettingChange,
+    SimpleSettingSection,
+} from '~/settings/simpleSettings';
+import { useSimpleSettings } from '~/composables/settings/useSimpleSettings';
+import { useSettingsSnapshots } from '~/composables/settings/useSettingsSnapshots';
 
-const props = defineProps<{ section: SimpleSettingSection }>()
+const props = defineProps<{ section: SimpleSettingSection }>();
 
-const route = useRoute()
-const simple = useSimpleSettings()
-const snapshots = useSettingsSnapshots()
+const route = useRoute();
+const simple = useSimpleSettings();
+const snapshots = useSettingsSnapshots();
 
 const focusKey = computed(() => {
-    const q = route.query.focus
-    return Array.isArray(q) ? (q[0] ?? null) : (q ?? null)
-})
+    const q = route.query.focus;
+    return Array.isArray(q) ? (q[0] ?? null) : (q ?? null);
+});
 
-const pendingChanges = ref<SimpleSettingChange[]>([])
-const reviewing = ref(false)
-const saving = ref(false)
-const saveError = ref<string | null>(null)
+const pendingChanges = ref<SimpleSettingChange[]>([]);
+const reviewing = ref(false);
+const saving = ref(false);
+const saveError = ref<string | null>(null);
 
-const valueIndex = computed(() => simple.valueIndex.value)
+const valueIndex = computed(() => simple.valueIndex.value);
 
 function onChange(changes: SimpleSettingChange[]) {
-    saveError.value = null
+    saveError.value = null;
     // Merge with existing pending: latest write wins per (section,channel,field).
-    const map = new Map<string, SimpleSettingChange>()
+    const map = new Map<string, SimpleSettingChange>();
     for (const c of pendingChanges.value) {
-        map.set(`${c.section}::${c.channel ?? ''}::${c.field}`, c)
+        map.set(`${c.section}::${c.channel ?? ''}::${c.field}`, c);
     }
     for (const c of changes) {
-        map.set(`${c.section}::${c.channel ?? ''}::${c.field}`, c)
+        map.set(`${c.section}::${c.channel ?? ''}::${c.field}`, c);
     }
-    pendingChanges.value = Array.from(map.values())
+    pendingChanges.value = Array.from(map.values());
 }
 
 async function onConfirmSave() {
-    saving.value = true
-    saveError.value = null
+    saving.value = true;
+    saveError.value = null;
     try {
         // Capture inverse from current cached values.
-        const inverse: SimpleSettingChange[] = pendingChanges.value.map((c) => ({
-            section: c.section,
-            channel: c.channel,
-            field: c.field,
-            value: simple.findField(c.section, c.field, c.channel)?.value ?? null,
-        }))
-        await simple.applyChanges(pendingChanges.value)
-        snapshots.record(`${props.section.label} change`, [...pendingChanges.value], inverse)
-        pendingChanges.value = []
-        reviewing.value = false
+        const inverse: SimpleSettingChange[] = pendingChanges.value.map(
+            (c) => ({
+                section: c.section,
+                channel: c.channel,
+                field: c.field,
+                value:
+                    simple.findField(c.section, c.field, c.channel)?.value ??
+                    null,
+            }),
+        );
+        await simple.applyChanges(pendingChanges.value);
+        snapshots.record(
+            `${props.section.label} change`,
+            [...pendingChanges.value],
+            inverse,
+        );
+        pendingChanges.value = [];
+        reviewing.value = false;
         // Reload backend values for this section.
-        simple.reset()
-        await simple.ensureLoaded()
+        simple.reset();
+        await simple.ensureLoaded();
     } catch (err: any) {
-        saveError.value = err?.message ?? 'Unable to save settings.'
+        saveError.value = err?.message ?? 'Unable to save settings.';
     } finally {
-        saving.value = false
+        saving.value = false;
     }
 }
 
 onMounted(async () => {
-    await simple.ensureLoaded(props.section.key)
-})
+    await simple.ensureLoaded(props.section.key);
+});
 </script>

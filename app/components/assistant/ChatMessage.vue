@@ -193,6 +193,10 @@ import { useApprovals } from '../../composables/useApprovals';
 import { useAssistantStream } from '../../composables/useAssistantStream';
 import { useChatSessions } from '../../composables/useChatSessions';
 import type { ChatMessage } from '../../types/app-state';
+import {
+    approvalActionErrorMessage,
+    canContinueApprovedRequest,
+} from '../../utils/assistantApproval';
 
 const props = defineProps<{ message: ChatMessage }>();
 const toast = useToast();
@@ -355,9 +359,19 @@ async function retryMessage() {
     await send(props.message.retryPayload);
 }
 
-async function retryApprovedRequest(explicitToken?: string) {
+async function retryApprovedRequest(
+    explicitToken?: string,
+    options: { allowWhileApprovalBusy?: boolean } = {},
+) {
     const message = currentMessage();
-    if (!message.retryPayload || isStreaming.value || approvalBusy.value) {
+    if (
+        !message.retryPayload ||
+        !canContinueApprovedRequest({
+            isStreaming: isStreaming.value,
+            approvalBusy: approvalBusy.value,
+            allowWhileApprovalBusy: options.allowWhileApprovalBusy,
+        })
+    ) {
         return false;
     }
     const requestId = message.approvalRequestId;
@@ -393,10 +407,51 @@ async function retryApprovedRequest(explicitToken?: string) {
     return true;
 }
 
+async function followApprovedResumeJob(
+    jobId: string,
+    options: { allowWhileApprovalBusy?: boolean } = {},
+) {
+    const message = currentMessage();
+    if (
+        !canContinueApprovedRequest({
+            isStreaming: isStreaming.value,
+            approvalBusy: approvalBusy.value,
+            allowWhileApprovalBusy: options.allowWhileApprovalBusy,
+        })
+    ) {
+        return false;
+    }
+    const retryPayload = {
+        ...(message.retryPayload ?? { text: '', transportText: '' }),
+        followJobId: jobId,
+        continueMessageId: message.id,
+        suppressUserEcho: true,
+    };
+    updateMessage(message.id, {
+        approvalState: 'retrying',
+        status: 'attention',
+        retryPayload: message.retryPayload,
+        error: undefined,
+    });
+
+    await send(retryPayload);
+
+    const latest = currentMessage();
+    const waitingAgain =
+        latest.approvalState === 'pending' && !!latest.approvalRequestId;
+    const retryFailed =
+        latest.approvalState === 'failed' || latest.status === 'failed';
+    if (!waitingAgain && !retryFailed) {
+        updateMessage(message.id, {
+            approvalState: 'approved',
+            error: undefined,
+        });
+    }
+    return true;
+}
+
 function approvalErrorMessage(error: unknown) {
-    return error instanceof Error && error.message
-        ? error.message
-        : 'Could not approve or retry this request.';
+    return approvalActionErrorMessage(error);
 }
 
 async function approveApproval() {
@@ -409,10 +464,16 @@ async function approveApproval() {
         const approvalToken =
             consumeIssuedApprovalToken(message.approvalRequestId) ??
             approval.token;
-        retryAttempted = Boolean(approvalToken);
-        const retried = approvalToken
-            ? await retryApprovedRequest(approvalToken)
-            : false;
+        retryAttempted = Boolean(approval.resume_job_id || approvalToken);
+        const retried = approval.resume_job_id
+            ? await followApprovedResumeJob(approval.resume_job_id, {
+                  allowWhileApprovalBusy: true,
+              })
+            : approvalToken
+              ? await retryApprovedRequest(approvalToken, {
+                    allowWhileApprovalBusy: true,
+                })
+              : false;
         if (!retried) {
             updateMessage(message.id, {
                 approvalState: 'approved',
@@ -427,9 +488,11 @@ async function approveApproval() {
             title: 'Approval granted',
             description: waitingAgain
                 ? 'The request was approved. Another approval is needed to continue.'
-                : retried
-                  ? 'The request was approved and retried.'
-                  : 'The request was approved.',
+                : approval.resume_job_id
+                  ? 'The request was approved and resumed.'
+                  : retried
+                    ? 'The request was approved and retried.'
+                    : 'The request was approved.',
             color: 'success',
             icon: 'i-pixelarticons-check',
         });

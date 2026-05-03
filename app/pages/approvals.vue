@@ -59,9 +59,12 @@
                 </button>
             </div>
 
-            <p v-if="approvalsError" class="text-sm text-rose-600">
+            <div
+                v-if="approvalsError"
+                class="rounded-2xl border border-rose-200 bg-rose-50/90 px-4 py-3 text-sm text-rose-700"
+            >
                 {{ approvalsError }}
-            </p>
+            </div>
 
             <!-- Saved rules tab -->
             <template v-if="selectedFilter === 'saved'">
@@ -86,7 +89,9 @@
                     :title="
                         selectedFilter === 'pending'
                             ? 'Nothing needs you right now'
-                            : 'Nothing to show here'
+                            : selectedFilter === 'expired'
+                              ? 'No expired approvals'
+                              : 'Nothing to show here'
                     "
                     :description="emptyDescription"
                 />
@@ -98,8 +103,7 @@
                         :approval="approval"
                         :busy="busyId === approval.id"
                         @approve="
-                            (remember: boolean) =>
-                                handleQuickApprove(approval, remember)
+                            (remember) => handleQuickApprove(approval, remember)
                         "
                         @deny="handleQuickDeny(approval)"
                         @details="openApproval(approval.id)"
@@ -148,7 +152,8 @@
             </template>
 
             <ApprovalDetailSheet
-                v-model:open="detailOpen"
+                :open="detailOpen"
+                @update:open="detailOpen = $event"
                 :approval="selectedApproval"
                 :busy="approvalActionBusy"
                 @approve="handleApprove"
@@ -161,16 +166,20 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import type { ApprovalRequest } from '~/types/or3-api';
-import { useApprovals } from '~/composables/useApprovals';
+import { useToast } from '@nuxt/ui/composables';
+import type { ApprovalRequest } from '../types/or3-api';
+import { useApprovals } from '../composables/useApprovals';
+import { approvalActionErrorMessage } from '../utils/assistantApproval';
 
 const filters = [
     { label: 'Waiting', value: 'pending', icon: '' },
+    { label: 'Expired', value: 'expired', icon: '' },
     { label: 'Approved', value: 'approved', icon: '' },
     { label: 'Denied', value: 'denied', icon: '' },
     { label: 'Saved Rules', value: 'saved', icon: 'i-pixelarticons-bookmark' },
 ];
 
+const toast = useToast();
 const selectedFilter = ref('pending');
 const detailOpen = ref(false);
 const approvalActionBusy = ref(false);
@@ -183,9 +192,11 @@ const {
     approvalsLoading,
     approvalsError,
     pendingCount,
+    loadPendingCount,
     loadApprovals,
     loadAllowlists,
     fetchApproval,
+    reloadApprovals,
     approve,
     deny,
     cancel,
@@ -199,16 +210,56 @@ void expirePending;
 
 const heroTitle = computed(() => {
     if (selectedFilter.value === 'saved') return 'Saved approval rules';
+    if (selectedFilter.value === 'expired') return 'Expired approval requests';
+    if (selectedFilter.value === 'approved') return 'Approved requests';
+    if (selectedFilter.value === 'denied') return 'Denied requests';
     if (!pendingCount.value) return "You're all caught up";
     if (pendingCount.value === 1) return '1 request needs your approval';
     return `${pendingCount.value} requests need your approval`;
 });
 
-const emptyDescription = computed(() =>
-    selectedFilter.value === 'pending'
-        ? "You're all caught up. New requests will pop up here when or3-intern needs the okay."
-        : 'Try a different filter above.'
-);
+const emptyDescription = computed(() => {
+    switch (selectedFilter.value) {
+        case 'pending':
+            return "You're all caught up. New requests will pop up here when or3-intern needs the okay.";
+        case 'expired':
+            return 'Expired requests move here automatically after they time out.';
+        case 'approved':
+            return 'Approved requests will show up here after you allow them.';
+        case 'denied':
+            return 'Denied requests will show up here after you block them.';
+        default:
+            return 'Try a different filter above.';
+    }
+});
+
+async function refreshApprovalView() {
+    if (selectedFilter.value !== 'saved') {
+        await reloadApprovals();
+    }
+    await loadPendingCount();
+}
+
+async function syncSelectedApproval() {
+    if (!selectedApproval.value) return;
+    try {
+        await fetchApproval(selectedApproval.value.id);
+    } catch {
+        selectedApproval.value = null;
+    }
+}
+
+async function handleApprovalActionFailure(error: unknown, fallback: string) {
+    await Promise.all([refreshApprovalView(), syncSelectedApproval()]);
+    const message = approvalActionErrorMessage(error, fallback);
+    approvalsError.value = message;
+    toast.add({
+        title: 'Approval update failed',
+        description: message,
+        color: 'error',
+        icon: 'i-pixelarticons-warning-box',
+    });
+}
 
 async function changeFilter(filter: string) {
     selectedFilter.value = filter;
@@ -229,6 +280,7 @@ async function handleQuickApprove(
     remember: boolean,
 ) {
     busyId.value = approval.id;
+    approvalsError.value = null;
     try {
         await approve(
             approval.id,
@@ -237,6 +289,11 @@ async function handleQuickApprove(
                 ? 'approved and remembered from mobile'
                 : 'approved from mobile',
         );
+    } catch (error) {
+        await handleApprovalActionFailure(
+            error,
+            'Could not approve this request.',
+        );
     } finally {
         busyId.value = null;
     }
@@ -244,8 +301,14 @@ async function handleQuickApprove(
 
 async function handleQuickDeny(approval: ApprovalRequest) {
     busyId.value = approval.id;
+    approvalsError.value = null;
     try {
         await deny(approval.id, 'denied from mobile');
+    } catch (error) {
+        await handleApprovalActionFailure(
+            error,
+            'Could not deny this request.',
+        );
     } finally {
         busyId.value = null;
     }
@@ -254,6 +317,7 @@ async function handleQuickDeny(approval: ApprovalRequest) {
 async function handleApprove(remember: boolean) {
     if (!selectedApproval.value) return;
     approvalActionBusy.value = true;
+    approvalsError.value = null;
     try {
         await approve(
             selectedApproval.value.id,
@@ -263,6 +327,11 @@ async function handleApprove(remember: boolean) {
                 : 'approved from mobile',
         );
         detailOpen.value = false;
+    } catch (error) {
+        await handleApprovalActionFailure(
+            error,
+            'Could not approve this request.',
+        );
     } finally {
         approvalActionBusy.value = false;
     }
@@ -271,9 +340,15 @@ async function handleApprove(remember: boolean) {
 async function handleDeny() {
     if (!selectedApproval.value) return;
     approvalActionBusy.value = true;
+    approvalsError.value = null;
     try {
         await deny(selectedApproval.value.id, 'denied from mobile');
         detailOpen.value = false;
+    } catch (error) {
+        await handleApprovalActionFailure(
+            error,
+            'Could not deny this request.',
+        );
     } finally {
         approvalActionBusy.value = false;
     }
@@ -282,19 +357,22 @@ async function handleDeny() {
 async function handleCancel() {
     if (!selectedApproval.value) return;
     approvalActionBusy.value = true;
+    approvalsError.value = null;
     try {
         await cancel(selectedApproval.value.id, 'canceled from mobile');
         detailOpen.value = false;
+    } catch (error) {
+        await handleApprovalActionFailure(
+            error,
+            'Could not cancel this request.',
+        );
     } finally {
         approvalActionBusy.value = false;
     }
 }
 
 onMounted(async () => {
-    await Promise.all([
-        loadApprovals(selectedFilter.value),
-        loadAllowlists(),
-    ]);
+    await Promise.all([loadApprovals(selectedFilter.value), loadAllowlists()]);
     startPolling();
 });
 
