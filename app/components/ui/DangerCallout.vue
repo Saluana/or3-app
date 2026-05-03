@@ -6,9 +6,12 @@
       </div>
       <div class="min-w-0 flex-1">
         <p :class="['font-semibold', titleColor]">{{ title }}</p>
-        <p v-if="$slots.default || description" :class="['mt-1', bodyColor]">
+        <div v-if="$slots.default || description" :class="['mt-1', bodyColor]">
           <slot>{{ description }}</slot>
-        </p>
+        </div>
+        <div v-if="$slots.actions" class="mt-3 flex flex-wrap justify-end gap-2">
+          <slot name="actions" />
+        </div>
       </div>
     </div>
   </div>
@@ -78,10 +81,10 @@ const bodyColor = computed(
 const iconName = computed(
   () =>
     ({
-      info: 'i-lucide-info',
-      tip: 'i-lucide-sparkles',
-      caution: 'i-lucide-alert-triangle',
-      danger: 'i-lucide-shield-alert',
+      info: 'i-pixelarticons-info-box',
+      tip: 'i-pixelarticons-sparkles',
+      caution: 'i-pixelarticons-warning-box',
+      danger: 'i-pixelarticons-shield-off',
     })[props.tone],
 );
 </script>

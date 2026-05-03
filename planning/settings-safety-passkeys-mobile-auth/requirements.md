@@ -97,6 +97,13 @@ The scope covers `or3-app` and `or3-intern` integration points discovered during
 4. WHEN tunnel or LAN access is used THEN the plan SHALL require HTTPS origins and explicit configuration instead of trying to use raw IP addresses as RP IDs.
 5. IF related origins are needed THEN OR3 SHALL serve `/.well-known/webauthn` and keep the allowlist narrow.
 
+#### Phase 1 decision
+
+- Canonical RP ID: `or3.chat`.
+- Production origins are exact HTTPS origins under the `or3.chat` registrable domain.
+- `localhost` is the only supported HTTP development exception.
+- Raw IP / LAN origins do not support passkeys by default; operators must provide an HTTPS domain.
+
 ### 8. Recovery, Revocation, and Account Safety
 
 **User Story:** As an OR3 owner, I want a safe recovery path if I lose a passkey or phone, so that I do not permanently lose access to my local agent.
@@ -108,6 +115,11 @@ The scope covers `or3-app` and `or3-intern` integration points discovered during
 3. WHEN all passkeys are lost THEN recovery SHALL require local administrative control, existing paired admin device policy, or explicit bootstrap recovery configuration.
 4. WHEN a recovery action succeeds THEN the system SHALL rotate affected sessions/tokens and audit the event.
 5. IF a passkey mismatch occurs because the provider has a credential missing on the server THEN the app SHOULD signal unknown credential where supported.
+
+#### Phase 1 decision
+
+- First rollout recovery uses local admin bootstrap and optionally an already-paired admin device.
+- Removal of the last passkey is blocked unless one of those recovery paths remains available.
 
 ### 9. Backward Compatibility and Rollout
 

@@ -8,7 +8,7 @@
                 <div class="flex items-start gap-3 sm:gap-4">
                     <span class="or3-approval-hero__badge">
                         <Icon
-                            name="i-lucide-shield-check"
+                            name="i-pixelarticons-shield"
                             class="size-6 text-(--or3-green-dark)"
                         />
                     </span>
@@ -28,7 +28,7 @@
                     </div>
                     <RetroComputerMascot
                         :size="68"
-                        class="hidden shrink-0 self-start sm:block"
+                        class="or3-approval-hero__mascot hidden shrink-0 self-start sm:block"
                     />
                 </div>
             </section>
@@ -82,7 +82,7 @@
 
                 <EmptyState
                     v-else-if="!approvals.length"
-                    icon="i-lucide-check-circle-2"
+                    icon="i-pixelarticons-checkbox-on"
                     :title="
                         selectedFilter === 'pending'
                             ? 'Nothing needs you right now'
@@ -120,7 +120,7 @@
                 >
                     <span class="or3-approval-hero__badge">
                         <Icon
-                            name="i-lucide-shield-check"
+                            name="i-pixelarticons-shield"
                             class="size-6 text-(--or3-green-dark)"
                         />
                     </span>
@@ -140,6 +140,7 @@
                     </div>
                     <RetroComputerMascot
                         :size="64"
+                        src="/computer-icons/waving-guy.webp"
                         sparkle
                         class="hidden shrink-0 self-start sm:block"
                     />
@@ -167,7 +168,7 @@ const filters = [
     { label: 'Waiting', value: 'pending', icon: '' },
     { label: 'Approved', value: 'approved', icon: '' },
     { label: 'Denied', value: 'denied', icon: '' },
-    { label: 'Saved Rules', value: 'saved', icon: 'i-lucide-bookmark' },
+    { label: 'Saved Rules', value: 'saved', icon: 'i-pixelarticons-bookmark' },
 ];
 
 const selectedFilter = ref('pending');
@@ -331,6 +332,11 @@ onBeforeUnmount(() => {
     border: 1px solid color-mix(in srgb, var(--or3-green) 30%, white 70%);
     box-shadow: var(--or3-shadow-soft);
     flex-shrink: 0;
+}
+
+.or3-approval-hero__mascot {
+    transform: scaleX(-1);
+    transform-origin: center;
 }
 
 .or3-chip--lg {

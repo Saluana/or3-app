@@ -1,0 +1,22 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appIDs": [
+          "TEAMID.com.or3.app"
+        ],
+        "components": [
+          {
+            "/": "*"
+          }
+        ]
+      }
+    ]
+  },
+  "webcredentials": {
+    "apps": [
+      "TEAMID.com.or3.app"
+    ]
+  }
+}

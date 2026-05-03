@@ -2,7 +2,7 @@
   <div v-if="visible" class="mb-3 rounded-2xl border border-(--or3-border) bg-(--or3-surface-soft) px-3 py-2.5 text-(--or3-text)">
     <div class="flex items-start gap-2">
       <span class="mt-0.5 inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-(--or3-green-soft) text-(--or3-green-dark)">
-        <Icon :name="content ? 'i-lucide-lightbulb' : 'i-lucide-loader-circle'" :class="content ? 'size-3.5' : 'size-3.5 animate-spin'" />
+        <Icon :name="content ? 'i-pixelarticons-lightbulb' : 'i-pixelarticons-loader'" :class="content ? 'size-3.5' : 'size-3.5 animate-spin'" />
       </span>
       <div class="min-w-0 flex-1">
         <p class="font-mono text-[11px] uppercase tracking-[0.18em] text-(--or3-green-dark)">{{ heading }}</p>
@@ -32,7 +32,7 @@ const props = withDefaults(defineProps<{
 })
 
 const runningTools = computed(() => props.toolCalls.filter((tool) => tool.status === 'running'))
-const visible = computed(() => props.pending || !!props.content || props.toolCalls.length > 0)
+const visible = computed(() => props.pending || !!props.content || runningTools.value.length > 0)
 const heading = computed(() => {
   if (props.content) return 'THINKING'
   if (runningTools.value.length) return 'USING TOOLS'

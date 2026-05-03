@@ -1,4 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli'
+import { KeyboardResize } from '@capacitor/keyboard'
+
+const passkeyDomain = process.env.OR3_PASSKEY_DOMAIN || 'or3.chat'
 
 const config: CapacitorConfig = {
   appId: 'com.or3.app',
@@ -7,7 +10,17 @@ const config: CapacitorConfig = {
   bundledWebRuntime: false,
   server: {
     androidScheme: 'https'
-  }
+  },
+  plugins: {
+    Keyboard: {
+      resize: KeyboardResize.Native,
+      resizeOnFullScreen: true,
+    },
+    Or3Auth: {
+      passkeyDomain,
+      associatedDomains: [`applinks:${passkeyDomain}`, `webcredentials:${passkeyDomain}`],
+    },
+  },
 }
 
 export default config

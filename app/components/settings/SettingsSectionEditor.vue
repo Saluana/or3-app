@@ -11,52 +11,55 @@
 
     <div v-else class="space-y-3">
       <div v-for="field in fields" :key="field.key" class="rounded-2xl border border-(--or3-border) bg-white/70 p-3">
-        <div class="mb-2 flex items-start justify-between gap-2">
-          <div class="min-w-0">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0 flex-1">
             <p class="font-mono text-sm font-semibold">{{ field.label }}</p>
             <p v-if="field.description" class="mt-1 text-xs leading-5 text-(--or3-text-muted)">{{ field.description }}</p>
           </div>
-          <span v-if="field.kind === 'secret'" class="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+          <USwitch
+            v-if="isToggle(field)"
+            :model-value="toggleValue(field)"
+            class="shrink-0"
+            @update:model-value="(value: boolean) => updateValue(field.key, value)"
+          />
+          <span v-else-if="field.kind === 'secret'" class="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
             secret
           </span>
         </div>
 
-        <USwitch
-          v-if="field.kind === 'toggle' || field.kind === 'boolean'"
-          :model-value="Boolean(localValues[field.key])"
-          @update:model-value="(value) => updateValue(field.key, value)"
-        />
+        <div v-if="!isToggle(field)" class="mt-2">
+          <USelectMenu
+            v-if="field.kind === 'choice'"
+            value-key="value"
+            :items="choiceItems(field)"
+            :model-value="String(localValues[field.key] ?? '')"
+            @update:model-value="(value: any) => updateValue(field.key, value?.value ?? value)"
+          />
 
-        <USelectMenu
-          v-else-if="field.kind === 'choice'"
-          :items="choiceItems(field)"
-          :model-value="selectedChoice(field)"
-          @update:model-value="(value) => updateValue(field.key, value?.value ?? value)"
-        />
+          <UTextarea
+            v-else-if="field.kind === 'list'"
+            :model-value="String(localValues[field.key] ?? '')"
+            autoresize
+            :rows="3"
+            placeholder="Separate items with commas"
+            @update:model-value="(value: string) => updateValue(field.key, value)"
+          />
 
-        <UTextarea
-          v-else-if="field.kind === 'list'"
-          :model-value="String(localValues[field.key] ?? '')"
-          autoresize
-          :rows="3"
-          placeholder="Separate items with commas"
-          @update:model-value="(value) => updateValue(field.key, value)"
-        />
-
-        <UInput
-          v-else
-          :type="field.kind === 'secret' ? 'password' : 'text'"
-          :model-value="String(localValues[field.key] ?? '')"
-          :placeholder="field.placeholder || field.emptyHint"
-          @update:model-value="(value) => updateValue(field.key, value)"
-        />
+          <UInput
+            v-else
+            :type="field.kind === 'secret' ? 'password' : 'text'"
+            :model-value="String(localValues[field.key] ?? '')"
+            :placeholder="field.placeholder || field.emptyHint"
+            @update:model-value="(value: string) => updateValue(field.key, value)"
+          />
+        </div>
       </div>
     </div>
 
     <div class="flex justify-end">
       <UButton
         label="Save changes"
-        icon="i-lucide-save"
+        icon="i-pixelarticons-save"
         color="primary"
         size="lg"
         :loading="saving"
@@ -109,8 +112,22 @@ function choiceItems(field: ConfigureField) {
   })
 }
 
-function selectedChoice(field: ConfigureField) {
-  return choiceItems(field).find((choice) => choice.value === String(localValues[field.key] ?? ''))
+function isToggle(field: ConfigureField) {
+  const kind = String(field.kind ?? '').toLowerCase()
+  return ['toggle', 'boolean', 'bool', 'switch', 'checkbox'].includes(kind) || typeof field.value === 'boolean'
+}
+
+// Backend may emit either a real boolean (current contract) or the legacy
+// 'on' / 'off' / 'true' / 'false' string. Normalize to a clean boolean so
+// USwitch can never end up stuck "on" because of `Boolean('off') === true`.
+function toggleValue(field: ConfigureField) {
+  const raw = localValues[field.key]
+  if (typeof raw === 'boolean') return raw
+  if (typeof raw === 'string') {
+    const normalized = raw.trim().toLowerCase()
+    return normalized === 'true' || normalized === 'on' || normalized === '1' || normalized === 'yes'
+  }
+  return Boolean(raw)
 }
 
 function updateValue(key: string, value: unknown) {

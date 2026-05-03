@@ -15,10 +15,10 @@
 
 <script setup lang="ts">
 const prompts = [
-  { label: 'Summarize my computer', text: 'Give me a quick summary of what is on my computer right now.', icon: 'i-lucide-monitor' },
-  { label: 'Find recent notes', text: 'Find my recent project notes and pull out anything important.', icon: 'i-lucide-search' },
-  { label: 'Plan a task', text: 'Help me plan a task for or3-intern to work on in the background.', icon: 'i-lucide-list-checks' },
-  { label: 'Check approvals', text: 'Check what is waiting for my approval.', icon: 'i-lucide-shield-check' },
+  { label: 'Summarize my computer', text: 'Give me a quick summary of what is on my computer right now.', icon: 'i-pixelarticons-monitor' },
+  { label: 'Find recent notes', text: 'Find my recent project notes and pull out anything important.', icon: 'i-pixelarticons-search' },
+  { label: 'Plan a task', text: 'Help me plan a task for or3-intern to work on in the background.', icon: 'i-pixelarticons-checklist' },
+  { label: 'Check approvals', text: 'Check what is waiting for my approval.', icon: 'i-pixelarticons-shield' },
 ]
 
 const emit = defineEmits<{ select: [value: string] }>()

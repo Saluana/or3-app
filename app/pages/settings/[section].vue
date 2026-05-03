@@ -9,7 +9,7 @@
           class="inline-flex items-center gap-1 rounded-full px-2 py-1 text-sm font-medium text-(--or3-green) transition hover:bg-(--or3-green-soft)"
           @click="goBack"
         >
-          <Icon name="i-lucide-chevron-left" class="size-4" />
+          <Icon name="i-pixelarticons-chevron-left" class="size-4" />
           Settings
         </button>
 
@@ -59,7 +59,14 @@ const selectedSectionDescription = computed(() => selectedSectionRecord.value?.d
 const selectedSectionExists = computed(() => !!selectedSectionRecord.value)
 
 function goBack() {
-  router.push('/settings')
+  // Prefer real browser history so users return to wherever they came from
+  // (e.g. /settings/advanced). Fall back to the advanced index when this page
+  // is opened directly with no history entry.
+  if (typeof window !== 'undefined' && window.history.length > 1) {
+    router.back()
+    return
+  }
+  router.push('/settings/advanced')
 }
 
 async function saveSection(values: Record<string, unknown>) {

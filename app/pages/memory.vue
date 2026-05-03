@@ -5,7 +5,7 @@
     <div class="space-y-4">
       <SurfaceCard class-name="space-y-4">
         <div class="flex items-start gap-3">
-          <RetroIcon name="i-lucide-brain" />
+          <RetroIcon name="i-pixelarticons-lightbulb-on" />
           <div>
             <p class="font-mono text-base font-semibold text-(--or3-text)">What or3-intern remembers</p>
             <p class="mt-1 text-sm leading-6 text-(--or3-text-muted)">
@@ -19,9 +19,9 @@
         </DangerCallout>
 
         <div class="flex flex-wrap gap-2">
-          <UButton label="Check status" icon="i-lucide-refresh-cw" color="neutral" variant="soft" class="or3-touch-target" :loading="memoryLoading" @click="handleRefreshEmbeddings" />
-          <UButton label="Re-scan notes" icon="i-lucide-database-zap" color="primary" class="or3-touch-target" :loading="memoryLoading" @click="handleRebuild('memory')" />
-          <UButton label="Re-scan documents" icon="i-lucide-file-stack" color="neutral" variant="soft" class="or3-touch-target" :loading="memoryLoading" @click="handleRebuild('docs')" />
+          <UButton label="Check status" icon="i-pixelarticons-reload" color="neutral" variant="soft" class="or3-touch-target" :loading="memoryLoading" @click="handleRefreshEmbeddings" />
+          <UButton label="Re-scan notes" icon="i-pixelarticons-database" color="primary" class="or3-touch-target" :loading="memoryLoading" @click="handleRebuild('memory')" />
+          <UButton label="Re-scan documents" icon="i-pixelarticons-files" color="neutral" variant="soft" class="or3-touch-target" :loading="memoryLoading" @click="handleRebuild('docs')" />
         </div>
 
         <details class="rounded-2xl border border-(--or3-border) bg-white/70 p-3">
@@ -32,7 +32,7 @@
 
       <SurfaceCard class-name="space-y-4">
         <div class="flex items-start gap-3">
-          <RetroIcon name="i-lucide-shield" />
+          <RetroIcon name="i-pixelarticons-shield" />
           <div>
             <p class="font-mono text-base font-semibold text-(--or3-text)">Trust check</p>
             <p class="mt-1 text-sm leading-6 text-(--or3-text-muted)">
@@ -41,8 +41,8 @@
           </div>
         </div>
         <div class="flex flex-wrap gap-2">
-          <UButton label="Refresh" icon="i-lucide-shield" color="neutral" variant="soft" class="or3-touch-target" :loading="memoryLoading" @click="handleRefreshAudit" />
-          <UButton label="Verify activity log" icon="i-lucide-badge-check" color="primary" class="or3-touch-target" :loading="memoryLoading" @click="handleVerifyAudit" />
+          <UButton label="Refresh" icon="i-pixelarticons-shield" color="neutral" variant="soft" class="or3-touch-target" :loading="memoryLoading" @click="handleRefreshAudit" />
+          <UButton label="Verify activity log" icon="i-pixelarticons-check-double" color="primary" class="or3-touch-target" :loading="memoryLoading" @click="handleVerifyAudit" />
         </div>
         <details class="rounded-2xl border border-(--or3-border) bg-white/70 p-3">
           <summary class="cursor-pointer select-none text-xs font-semibold uppercase tracking-wide text-(--or3-text-muted)">Show technical details</summary>
@@ -52,7 +52,7 @@
 
       <details class="rounded-3xl border border-(--or3-border) bg-(--or3-surface) p-4 shadow-(--or3-shadow-soft)">
         <summary class="flex cursor-pointer items-center gap-2 select-none">
-          <RetroIcon name="i-lucide-wrench" size="sm" />
+          <RetroIcon name="i-pixelarticons-tool-case" size="sm" />
           <span class="font-mono text-sm font-semibold">Advanced: scope tools</span>
           <span class="or3-command ml-auto text-[11px]">developer</span>
         </summary>

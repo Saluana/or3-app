@@ -1,0 +1,33 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Migrate lucide to pixelarticons",
+			"type": "shell",
+			"command": "python3",
+			"args": [
+				"/Users/brendon/Documents/or3-app/scripts/migrate_lucide_to_pixelarticons.py"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Migrate lucide to pixelarticons retry",
+			"type": "shell",
+			"command": "python3",
+			"args": [
+				"/Users/brendon/Documents/or3-app/scripts/migrate_lucide_to_pixelarticons.py"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Remove icon migration script",
+			"type": "shell",
+			"command": "rm",
+			"args": [
+				"-f",
+				"/Users/brendon/Documents/or3-app/scripts/migrate_lucide_to_pixelarticons.py"
+			],
+			"isBackground": false
+		}
+	]
+}

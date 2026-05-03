@@ -54,7 +54,7 @@ export function useComposerActions(context: () => ComposerActionContext = () => 
 if (!listRegisteredComposerActionIds().length) {
   registerComposerAction({
     id: 'or3:note',
-    icon: 'i-lucide-notebook-pen',
+    icon: 'i-pixelarticons-notebook',
     label: 'Note',
     tooltip: 'Start a note',
     order: 10,
@@ -63,7 +63,7 @@ if (!listRegisteredComposerActionIds().length) {
 
   registerComposerAction({
     id: 'or3:agent',
-    icon: 'i-lucide-bot',
+    icon: 'i-pixelarticons-robot',
     label: 'Agent',
     tooltip: 'Ask an agent to work',
     order: 20,

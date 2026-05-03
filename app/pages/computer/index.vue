@@ -7,6 +7,7 @@
                 :host-name="hostName"
                 :base-url="baseUrl"
                 :health="health"
+                :readiness="readiness"
                 :capabilities="capabilities"
                 :connected="connected"
                 active-tab="/computer"
@@ -36,14 +37,66 @@
             </section>
 
             <DangerCallout
+                v-if="showConnectingHelp"
+                tone="caution"
+                title="Still checking the connection"
+            >
+                The app has a saved pairing token, but it has not confirmed the
+                computer health yet. Check that the address below is the
+                computer's Tailscale address, not 127.0.0.1.
+                <template #actions>
+                    <NuxtLink to="/settings/pair" class="or3-callout-link">
+                        Review pairing
+                    </NuxtLink>
+                </template>
+            </DangerCallout>
+
+            <DangerCallout
                 v-if="readiness && !readiness.ready"
                 tone="caution"
                 title="Your computer needs attention"
             >
-                {{
-                    readiness.summary ||
-                    'or3-intern noticed something during startup. Open Settings on your computer to take a look.'
-                }}
+                <p>{{ readinessMessage }}</p>
+                <p
+                    v-if="mergedConnectionWarningMessage"
+                    class="mt-2 text-sm leading-6 text-current/80"
+                >
+                    {{ mergedConnectionWarningMessage }}
+                </p>
+                <template #actions>
+                    <NuxtLink to="/computer/attention" class="or3-callout-link">
+                        Learn more
+                    </NuxtLink>
+                    <NuxtLink
+                        :to="readinessGuidance.action.href"
+                        class="or3-callout-link or3-callout-link--secondary"
+                    >
+                        {{ readinessGuidance.action.label }}
+                    </NuxtLink>
+                </template>
+            </DangerCallout>
+
+            <DangerCallout
+                v-if="showBootstrapWarningCard"
+                :tone="bootstrapWarningTone"
+                title="Connection warning"
+            >
+                {{ bootstrapWarningMessage }}
+                <template #actions>
+                    <NuxtLink
+                        :to="bootstrapGuidance.action.href"
+                        class="or3-callout-link"
+                    >
+                        {{ bootstrapGuidance.action.label }}
+                    </NuxtLink>
+                    <NuxtLink
+                        v-if="bootstrapGuidance.secondaryAction"
+                        :to="bootstrapGuidance.secondaryAction.href"
+                        class="or3-callout-link or3-callout-link--secondary"
+                    >
+                        {{ bootstrapGuidance.secondaryAction.label }}
+                    </NuxtLink>
+                </template>
             </DangerCallout>
 
             <!-- Connection details -->
@@ -54,7 +107,7 @@
                         <div class="or3-detail-row">
                             <span class="or3-detail-row__icon">
                                 <Icon
-                                    name="i-lucide-monitor"
+                                    name="i-pixelarticons-monitor"
                                     class="size-4"
                                 />
                             </span>
@@ -68,14 +121,12 @@
                         <div class="or3-detail-row">
                             <span class="or3-detail-row__icon">
                                 <Icon
-                                    name="i-lucide-shield-check"
+                                    name="i-pixelarticons-shield"
                                     class="size-4"
                                 />
                             </span>
                             <div class="min-w-0">
-                                <p class="or3-detail-row__label">
-                                    Approvals
-                                </p>
+                                <p class="or3-detail-row__label">Approvals</p>
                                 <p class="or3-detail-row__value">
                                     {{ approvalsLabel }}
                                 </p>
@@ -85,7 +136,7 @@
 
                     <div class="mt-3 or3-detail-row or3-detail-row--full">
                         <span class="or3-detail-row__icon">
-                            <Icon name="i-lucide-globe" class="size-4" />
+                            <Icon name="i-pixelarticons-globe" class="size-4" />
                         </span>
                         <div class="min-w-0 flex-1">
                             <p class="or3-detail-row__label">Address</p>
@@ -107,8 +158,8 @@
                             <Icon
                                 :name="
                                     copied
-                                        ? 'i-lucide-check'
-                                        : 'i-lucide-copy'
+                                        ? 'i-pixelarticons-check'
+                                        : 'i-pixelarticons-copy'
                                 "
                                 class="size-4"
                             />
@@ -116,13 +167,54 @@
                     </div>
 
                     <NuxtLink to="/settings" class="or3-pair-button">
-                        <Icon name="i-lucide-link" class="size-4" />
+                        <Icon name="i-pixelarticons-link" class="size-4" />
                         <span>{{
                             connected
                                 ? 'Manage or Pair Computer'
                                 : 'Pair Computer'
                         }}</span>
                     </NuxtLink>
+
+                    <button
+                        type="button"
+                        class="or3-pair-button or3-pair-button--secondary"
+                        :disabled="!restartButtonEnabled"
+                        @click="handleRestartService"
+                    >
+                        <Icon
+                            :name="
+                                restartingService
+                                    ? 'i-pixelarticons-loader'
+                                    : 'i-pixelarticons-reload'
+                            "
+                            :class="[
+                                'size-4',
+                                restartingService ? 'animate-spin' : '',
+                            ]"
+                        />
+                        <span>{{
+                            restartingService
+                                ? 'Restarting…'
+                                : 'Restart or3-intern'
+                        }}</span>
+                    </button>
+
+                    <p class="mt-2 text-xs leading-5 text-(--or3-text-muted)">
+                        {{ restartHelperText }}
+                    </p>
+                    <p
+                        v-if="restartPendingApprovalId"
+                        class="mt-1 text-xs leading-5 text-(--or3-green-dark)"
+                    >
+                        Approve request #{{ restartPendingApprovalId }} on the
+                        Approvals screen, then try again.
+                    </p>
+                    <p
+                        v-if="restartError"
+                        class="mt-1 text-xs leading-5 text-(--or3-danger)"
+                    >
+                        {{ restartError }}
+                    </p>
                 </div>
             </section>
 
@@ -136,22 +228,22 @@
                     >
                         <span>View all</span>
                         <Icon
-                            name="i-lucide-chevron-right"
+                            name="i-pixelarticons-chevron-right"
                             class="size-4"
                         />
                     </NuxtLink>
                 </div>
 
                 <div class="mt-3 space-y-2">
-                    <div
-                        v-if="!activity.length"
-                        class="or3-activity-empty"
-                    >
+                    <div v-if="!activity.length" class="or3-activity-empty">
                         <Icon
-                            name="i-lucide-history"
+                            name="i-pixelarticons-timeline"
                             class="size-4 text-(--or3-text-muted)"
                         />
-                        <span>No activity yet. Try a command or browse files.</span>
+                        <span
+                            >No activity yet. Try a command or browse
+                            files.</span
+                        >
                     </div>
 
                     <div
@@ -185,24 +277,74 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
+import {
+    getBootstrapWarningGuidance,
+    getReadinessGuidance,
+    isDuplicateReadinessWarning,
+} from '~/utils/or3/computerAttention';
+import { formatReadinessDetail } from '~/utils/or3/readiness';
 
 const { activeHost, isConnected } = useActiveHost();
-const { health, readiness, capabilities, refreshStatus } =
-    useComputerStatus();
+const {
+    health,
+    readiness,
+    capabilities,
+    bootstrap,
+    restartAction,
+    loadingStatus,
+    refreshStatus,
+} = useComputerStatus();
 const { jobs } = useJobs();
 const { approvals: approvalItems, loadApprovals } = useApprovals();
+const {
+    restartService,
+    restartingService,
+    restartError,
+    restartPendingApprovalId,
+} = useServiceRestart();
+const toast = useToast();
 
 const copied = ref(false);
 
 const connected = computed(() => Boolean(isConnected.value));
-const hostName = computed(
-    () => activeHost.value?.name || 'My Computer',
+const showConnectingHelp = computed(
+    () => connected.value && loadingStatus.value && !health.value,
 );
+const hostName = computed(() => activeHost.value?.name || 'My Computer');
 const baseUrl = computed(() => activeHost.value?.baseUrl || '');
+const readinessMessage = computed(() => formatReadinessDetail(readiness.value));
+const bootstrapWarning = computed(
+    () => bootstrap.value?.status?.warnings?.[0] ?? null,
+);
+const bootstrapWarningTone = computed(() => {
+    const severity = bootstrapWarning.value?.severity;
+    if (severity === 'error') return 'danger';
+    if (severity === 'info') return 'info';
+    return 'caution';
+});
+const bootstrapWarningMessage = computed(() => bootstrapWarning.value?.message ?? 'The computer reported a connection-related warning.');
+const mergedConnectionWarningMessage = computed(() => {
+    if (!isDuplicateReadinessWarning(bootstrapWarning.value, readiness.value)) {
+        return '';
+    }
+
+    return 'Connection note: the computer is reachable, but it still has readiness issues to resolve before everything is fully available.';
+});
+const showBootstrapWarningCard = computed(
+    () =>
+        Boolean(bootstrapWarning.value) &&
+        !isDuplicateReadinessWarning(bootstrapWarning.value, readiness.value),
+);
+const readinessGuidance = computed(() => getReadinessGuidance(readiness.value));
+const bootstrapGuidance = computed(() =>
+    getBootstrapWarningGuidance(bootstrapWarning.value, readiness.value),
+);
 
 const runtimeProfile = computed(
-    () => capabilities.value?.runtimeProfile || (connected.value ? 'local-dev' : 'unknown'),
+    () =>
+        capabilities.value?.runtimeProfile ||
+        (connected.value ? 'local-dev' : 'unknown'),
 );
 
 const approvalsLabel = computed(() => {
@@ -211,29 +353,51 @@ const approvalsLabel = computed(() => {
     return 'on';
 });
 
+const restartButtonEnabled = computed(() => {
+    if (!connected.value || restartingService.value) return false;
+    if (restartAction.value) return restartAction.value.available;
+    return capabilities.value?.shellModeAvailable !== false;
+});
+
+const restartHelperText = computed(() => {
+    if (!connected.value) {
+        return 'Pair a computer first, then you can bounce the local or3-intern service from here.';
+    }
+    if (restartAction.value && !restartAction.value.available) {
+        return (
+            restartAction.value.disabled_reason ||
+            'Restart is not available on this computer right now.'
+        );
+    }
+    if (capabilities.value?.shellModeAvailable === false) {
+        return 'Shell mode is turned off on this computer, so restart has to happen locally for now.';
+    }
+    return 'Request a restart from the host and wait for the computer to reconnect.';
+});
+
 const actions = [
     {
         label: 'Browse Files',
         description: 'Explore and manage files on your computer.',
-        icon: 'i-lucide-folder',
+        icon: 'i-pixelarticons-folder',
         to: '/computer/files',
     },
     {
         label: 'Run Terminal',
         description: 'Open a terminal and run commands securely.',
-        icon: 'i-lucide-terminal',
+        icon: 'i-pixelarticons-terminal',
         to: '/computer/terminal',
     },
     {
         label: 'Review Approvals',
         description: 'See what or3-intern wants to do.',
-        icon: 'i-lucide-shield-check',
+        icon: 'i-pixelarticons-shield',
         to: '/approvals',
     },
     {
         label: 'Adjust Preferences',
         description: 'Tune how or3-intern behaves.',
-        icon: 'i-lucide-settings',
+        icon: 'i-pixelarticons-settings-cog',
         to: '/settings',
     },
 ];
@@ -271,7 +435,7 @@ const activity = computed<ActivityEntry[]>(() => {
             id: `appr:${approval.id}`,
             label: 'Approval requested:',
             detail: approvalDetail(approval),
-            icon: 'i-lucide-shield-check',
+            icon: 'i-pixelarticons-shield',
             time: formatTime(approval.created_at),
             tone:
                 approval.status === 'pending'
@@ -298,11 +462,12 @@ function jobLabel(kind?: string): string {
 }
 
 function jobIcon(kind?: string): string {
-    if (kind === 'exec' || kind === 'terminal') return 'i-lucide-terminal';
+    if (kind === 'exec' || kind === 'terminal')
+        return 'i-pixelarticons-terminal';
     if (kind === 'file_list' || kind === 'file_write')
-        return 'i-lucide-folder';
-    if (kind === 'turn' || kind === 'subagent') return 'i-lucide-bot';
-    return 'i-lucide-activity';
+        return 'i-pixelarticons-folder';
+    if (kind === 'turn' || kind === 'subagent') return 'i-pixelarticons-robot';
+    return 'i-pixelarticons-analytics';
 }
 
 function approvalDetail(a: { type?: string; subject?: unknown }): string {
@@ -371,6 +536,79 @@ async function copyAddress() {
     }
 }
 
+function delay(ms: number) {
+    return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function waitForServiceRecovery() {
+    const deadline = Date.now() + 30000;
+    while (Date.now() < deadline) {
+        try {
+            await refreshStatus();
+            if (
+                health.value?.status === 'ok' ||
+                health.value?.status === 'healthy'
+            ) {
+                return true;
+            }
+        } catch {
+            // Ignore transient disconnects while the service restarts.
+        }
+        await delay(1500);
+    }
+    return false;
+}
+
+async function handleRestartService() {
+    if (!restartButtonEnabled.value) return;
+
+    try {
+        const result = await restartService();
+        toast.add({
+            title: 'Restart started',
+            description:
+                result.mode === 'terminal'
+                    ? `Using ${result.root.label}. Waiting for your computer to come back online…`
+                    : 'Waiting for your computer to come back online…',
+            color: 'neutral',
+        });
+
+        const recovered = await waitForServiceRecovery();
+        if (recovered) {
+            toast.add({
+                title: 'or3-intern restarted',
+                description: 'The computer is responding again.',
+                color: 'success',
+            });
+            return;
+        }
+
+        toast.add({
+            title: 'Restart sent',
+            description:
+                'The service may still be coming back. Refresh if it stays offline.',
+            color: 'warning',
+        });
+    } catch (error: any) {
+        await refreshStatus().catch(() => {});
+        toast.add({
+            title: 'Could not restart or3-intern',
+            description:
+                restartError.value ||
+                error?.message ||
+                'The restart command could not be sent.',
+            color: 'error',
+        });
+    }
+}
+
+watch(
+    () => activeHost.value?.token,
+    (token) => {
+        if (token) void refreshStatus().catch(() => {});
+    },
+);
+
 onMounted(async () => {
     if (activeHost.value?.token) {
         void refreshStatus().catch(() => {});
@@ -381,7 +619,8 @@ onMounted(async () => {
 
 <style scoped>
 .or3-section-label {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
         'Liberation Mono', 'Courier New', monospace;
     font-size: 0.78rem;
     font-weight: 600;
@@ -408,7 +647,11 @@ onMounted(async () => {
 }
 .or3-action-card:hover {
     box-shadow: var(--or3-shadow);
-    border-color: color-mix(in srgb, var(--or3-green) 25%, var(--or3-border) 75%);
+    border-color: color-mix(
+        in srgb,
+        var(--or3-green) 25%,
+        var(--or3-border) 75%
+    );
 }
 .or3-action-card:active {
     transform: scale(0.99);
@@ -427,7 +670,8 @@ onMounted(async () => {
 }
 
 .or3-action-card__title {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
         'Liberation Mono', 'Courier New', monospace;
     font-size: 0.95rem;
     font-weight: 600;
@@ -474,14 +718,16 @@ onMounted(async () => {
 }
 
 .or3-detail-row__label {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 0.72rem;
     text-transform: uppercase;
     letter-spacing: 0.12em;
     color: var(--or3-text-muted);
 }
 .or3-detail-row__value {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 0.9rem;
     color: var(--or3-text);
     font-weight: 500;
@@ -501,12 +747,18 @@ onMounted(async () => {
     border: 1px solid var(--or3-border);
     color: var(--or3-text);
     cursor: pointer;
-    transition: background 0.15s ease, border-color 0.15s ease;
+    transition:
+        background 0.15s ease,
+        border-color 0.15s ease;
     flex-shrink: 0;
 }
 .or3-icon-button:hover {
     background: color-mix(in srgb, var(--or3-surface-soft) 70%, white 30%);
-    border-color: color-mix(in srgb, var(--or3-green) 30%, var(--or3-border) 70%);
+    border-color: color-mix(
+        in srgb,
+        var(--or3-green) 30%,
+        var(--or3-border) 70%
+    );
 }
 
 .or3-pair-button {
@@ -522,7 +774,20 @@ onMounted(async () => {
     color: var(--or3-green-dark);
     font-weight: 600;
     text-decoration: none;
-    transition: background 0.15s ease, transform 0.15s ease;
+    transition:
+        background 0.15s ease,
+        transform 0.15s ease;
+}
+.or3-pair-button--secondary {
+    width: 100%;
+    background: color-mix(in srgb, var(--or3-surface-soft) 70%, white 30%);
+    border: 1px solid var(--or3-border);
+    color: var(--or3-text);
+}
+.or3-pair-button--secondary:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
 }
 .or3-pair-button:hover {
     background: color-mix(in srgb, var(--or3-green-soft) 50%, white 50%);
@@ -568,7 +833,8 @@ onMounted(async () => {
 }
 
 .or3-activity-row__text {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 0.85rem;
     color: var(--or3-text);
     min-width: 0;
@@ -590,7 +856,8 @@ onMounted(async () => {
 }
 
 .or3-activity-row__time {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 0.75rem;
     color: var(--or3-text-muted);
     white-space: nowrap;
@@ -613,5 +880,35 @@ onMounted(async () => {
 .or3-activity-row__dot[data-tone='neutral'] {
     background: var(--or3-text-muted);
     opacity: 0.5;
+}
+
+.or3-callout-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2rem;
+    padding: 0.35rem 0.75rem;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+    background: rgba(255, 255, 255, 0.6);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    text-decoration: none;
+    transition:
+        transform 0.12s ease,
+        background 0.15s ease,
+        border-color 0.15s ease;
+}
+
+.or3-callout-link:hover {
+    background: rgba(255, 255, 255, 0.86);
+    border-color: color-mix(in srgb, currentColor 24%, transparent);
+    transform: translateY(-1px);
+}
+
+.or3-callout-link--secondary {
+    background: transparent;
 }
 </style>
