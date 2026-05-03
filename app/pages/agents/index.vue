@@ -227,7 +227,7 @@ async function createJob(payload: AgentTaskPayload) {
         await queueJob(
             {
                 parent_session_key: session.sessionKey,
-                task: payload.task,
+                task: payload.transportTask,
                 timeout_seconds:
                     payload.priority === 'high'
                         ? 1800
@@ -239,6 +239,7 @@ async function createJob(payload: AgentTaskPayload) {
                     priority: payload.priority,
                     notify: payload.notify,
                     auto_approve_safe: payload.autoApprove,
+                    attachments: payload.attachments,
                 },
             },
             {

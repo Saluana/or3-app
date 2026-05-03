@@ -44,6 +44,11 @@
                 The app has a saved pairing token, but it has not confirmed the
                 computer health yet. Check that the address below is the
                 computer's Tailscale address, not 127.0.0.1.
+                <template #actions>
+                    <NuxtLink to="/settings/pair" class="or3-callout-link">
+                        Review pairing
+                    </NuxtLink>
+                </template>
             </DangerCallout>
 
             <DangerCallout
@@ -51,15 +56,47 @@
                 tone="caution"
                 title="Your computer needs attention"
             >
-                {{ readinessMessage }}
+                <p>{{ readinessMessage }}</p>
+                <p
+                    v-if="mergedConnectionWarningMessage"
+                    class="mt-2 text-sm leading-6 text-current/80"
+                >
+                    {{ mergedConnectionWarningMessage }}
+                </p>
+                <template #actions>
+                    <NuxtLink to="/computer/attention" class="or3-callout-link">
+                        Learn more
+                    </NuxtLink>
+                    <NuxtLink
+                        :to="readinessGuidance.action.href"
+                        class="or3-callout-link or3-callout-link--secondary"
+                    >
+                        {{ readinessGuidance.action.label }}
+                    </NuxtLink>
+                </template>
             </DangerCallout>
 
             <DangerCallout
-                v-if="bootstrapWarning"
+                v-if="showBootstrapWarningCard"
                 :tone="bootstrapWarningTone"
                 title="Connection warning"
             >
-                {{ bootstrapWarning.message }}
+                {{ bootstrapWarningMessage }}
+                <template #actions>
+                    <NuxtLink
+                        :to="bootstrapGuidance.action.href"
+                        class="or3-callout-link"
+                    >
+                        {{ bootstrapGuidance.action.label }}
+                    </NuxtLink>
+                    <NuxtLink
+                        v-if="bootstrapGuidance.secondaryAction"
+                        :to="bootstrapGuidance.secondaryAction.href"
+                        class="or3-callout-link or3-callout-link--secondary"
+                    >
+                        {{ bootstrapGuidance.secondaryAction.label }}
+                    </NuxtLink>
+                </template>
             </DangerCallout>
 
             <!-- Connection details -->
@@ -241,6 +278,11 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
+import {
+    getBootstrapWarningGuidance,
+    getReadinessGuidance,
+    isDuplicateReadinessWarning,
+} from '~/utils/or3/computerAttention';
 import { formatReadinessDetail } from '~/utils/or3/readiness';
 
 const { activeHost, isConnected } = useActiveHost();
@@ -281,6 +323,23 @@ const bootstrapWarningTone = computed(() => {
     if (severity === 'info') return 'info';
     return 'caution';
 });
+const bootstrapWarningMessage = computed(() => bootstrapWarning.value?.message ?? 'The computer reported a connection-related warning.');
+const mergedConnectionWarningMessage = computed(() => {
+    if (!isDuplicateReadinessWarning(bootstrapWarning.value, readiness.value)) {
+        return '';
+    }
+
+    return 'Connection note: the computer is reachable, but it still has readiness issues to resolve before everything is fully available.';
+});
+const showBootstrapWarningCard = computed(
+    () =>
+        Boolean(bootstrapWarning.value) &&
+        !isDuplicateReadinessWarning(bootstrapWarning.value, readiness.value),
+);
+const readinessGuidance = computed(() => getReadinessGuidance(readiness.value));
+const bootstrapGuidance = computed(() =>
+    getBootstrapWarningGuidance(bootstrapWarning.value, readiness.value),
+);
 
 const runtimeProfile = computed(
     () =>
@@ -821,5 +880,35 @@ onMounted(async () => {
 .or3-activity-row__dot[data-tone='neutral'] {
     background: var(--or3-text-muted);
     opacity: 0.5;
+}
+
+.or3-callout-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2rem;
+    padding: 0.35rem 0.75rem;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+    background: rgba(255, 255, 255, 0.6);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    text-decoration: none;
+    transition:
+        transform 0.12s ease,
+        background 0.15s ease,
+        border-color 0.15s ease;
+}
+
+.or3-callout-link:hover {
+    background: rgba(255, 255, 255, 0.86);
+    border-color: color-mix(in srgb, currentColor 24%, transparent);
+    transform: translateY(-1px);
+}
+
+.or3-callout-link--secondary {
+    background: transparent;
 }
 </style>

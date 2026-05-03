@@ -24,7 +24,7 @@ interface FileErrorPayload {
 
 const roots = ref<FileRoot[]>([])
 const entries = ref<FileEntry[]>([])
-const currentRootId = ref<string>('home')
+const currentRootId = ref<string>('')
 const currentPath = ref<string>('.')
 const loadingFiles = ref(false)
 const searchingFiles = ref(false)
@@ -87,7 +87,7 @@ export function useComputerFiles() {
       const nextRoots = Array.isArray(response) ? response : response.items ?? []
       roots.value = nextRoots
       if (!nextRoots.some((root) => root.id === currentRootId.value)) {
-        currentRootId.value = nextRoots[0]?.id ?? 'home'
+        currentRootId.value = nextRoots[0]?.id ?? ''
       }
       return nextRoots
     } catch (error: any) {
@@ -95,6 +95,15 @@ export function useComputerFiles() {
       fileError.value = error?.message ?? 'Could not load the approved areas on this computer.'
       throw error
     }
+  }
+
+  async function resolveSearchRoot(preferredRootId = currentRootId.value) {
+    let rootId = preferredRootId
+    if (!rootId || !roots.value.some((root) => root.id === rootId)) {
+      const nextRoots = await loadRoots()
+      rootId = nextRoots.find((root) => root.id === preferredRootId)?.id || currentRootId.value || nextRoots[0]?.id || ''
+    }
+    return rootId
   }
 
   async function listDirectory(rootId = currentRootId.value, path = currentPath.value) {
@@ -123,7 +132,9 @@ export function useComputerFiles() {
     searchingFiles.value = true
     fileError.value = null
     try {
-      const params = new URLSearchParams({ q: query.trim(), limit: String(limit), root_id: rootId })
+      const resolvedRootId = await resolveSearchRoot(rootId)
+      const params = new URLSearchParams({ q: query.trim(), limit: String(limit) })
+      if (resolvedRootId) params.set('root_id', resolvedRootId)
       const response = await authSession.retryWithAuth((onAuthChallenge) => api.request<FileSearchResponse>(`/internal/v1/files/search?${params.toString()}`, {
         onAuthChallenge,
       }), 'files-search')

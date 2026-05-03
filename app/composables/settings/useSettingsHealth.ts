@@ -79,7 +79,8 @@ export function useSettingsHealth() {
                     label: 'OR3 service is ready',
                     status: !readiness.ready ? 'error' : hasWarnings ? 'warning' : 'ok',
                     detail,
-                    fixHref: hasWarnings || !readiness.ready ? '/settings/health' : undefined,
+                    fixHref: hasWarnings || !readiness.ready ? '/computer/attention' : undefined,
+                    fixLabel: hasWarnings || !readiness.ready ? 'Learn more' : undefined,
                 })
             } else {
                 next.push({
@@ -169,7 +170,7 @@ export function useSettingsHealth() {
                     label: 'Safety mode matches terminal access',
                     status: 'warning',
                     detail: 'Terminal is allowed but the safety mode forbids exec.',
-                    fixHref: '/settings/section/safety?focus=safety-mode',
+                    fixHref: '/settings/section/safety',
                     fixLabel: 'Review safety',
                 })
             }
@@ -181,6 +182,8 @@ export function useSettingsHealth() {
                     label: 'Terminal can actually run',
                     status: 'warning',
                     detail: 'The host reports exec is unavailable even though you allow it.',
+                    fixHref: '/settings/section/safety',
+                    fixLabel: 'Review safety',
                 })
             }
 
