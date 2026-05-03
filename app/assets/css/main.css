@@ -32,7 +32,7 @@
 html {
   width: 100%;
   min-height: 100%;
-  font-family: "Inter", sans-serif;
+  font-family: "IBM Plex Sans", sans-serif;
   background: var(--or3-background);
   color: var(--or3-text);
   text-rendering: optimizeLegibility;
@@ -466,4 +466,26 @@ html.or3-keyboard-open .or3-chat-shell__composer {
     padding-left: calc(var(--or3-safe-left) + 1.5rem);
     padding-right: calc(var(--or3-safe-right) + 1.5rem);
   }
+}
+
+/* ── Floating slideover sheets (computer/files) ──────────────────────
+   Used by FileDetailsSheet & MemoryToolsSheet. Lifts the sheet visually
+   off the page (which uses --or3-surface) with a brighter surface,
+   accent edge, and strong shadow. */
+.or3-fb-sheet-shell {
+  background: color-mix(in srgb, var(--or3-surface) 35%, #ffffff 65%) !important;
+  border-color: color-mix(in srgb, var(--or3-border) 70%, transparent) !important;
+}
+.or3-fb-sheet-shell--bottom {
+  border-top: 1px solid color-mix(in srgb, var(--or3-green) 22%, transparent) !important;
+  box-shadow:
+    0 -1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 -22px 50px -10px rgba(42, 35, 25, 0.28),
+    0 -8px 18px -4px rgba(42, 35, 25, 0.16) !important;
+}
+.or3-fb-sheet-shell--side {
+  border-left: 1px solid color-mix(in srgb, var(--or3-green) 18%, transparent) !important;
+  box-shadow:
+    -1px 0 0 rgba(255, 255, 255, 0.8) inset,
+    -22px 0 50px -10px rgba(42, 35, 25, 0.22) !important;
 }

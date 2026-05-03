@@ -1,261 +1,163 @@
 <template>
-  <div class="space-y-4">
-    <SurfaceCard class-name="space-y-4">
-      <div class="flex items-start gap-3">
-        <RetroIcon name="i-pixelarticons-database" />
-        <div>
-          <p class="font-mono text-base font-semibold text-(--or3-text)">Memories stay searchable</p>
-          <p class="mt-1 text-sm leading-6 text-(--or3-text-muted)">
-            Check whether OR3's memory index is healthy, re-scan when you've changed a lot of notes, and jump straight into the files it relies on.
+  <div class="or3-fb-root">
+    <FileToolbar
+      :roots="roots"
+      :active-root="activeRoot"
+      :current-path="currentPath"
+      :search-open="searchOpen"
+      :search-query="searchQuery"
+      :search-mode="searchMode"
+      :searching-files="searchingFiles"
+      :is-writable-root="isWritableRoot"
+      @back="goUp"
+      @navigate="navigatePath"
+      @switch-root="handleRootChange"
+      @toggle-search="toggleSearch"
+      @update:search-query="(value) => (searchQuery = value)"
+      @update:search-mode="(mode) => switchMode(mode)"
+      @submit-search="runSearch"
+      @clear-search="clearSearch"
+      @upload="openUploadPicker"
+      @new-folder="newFolderOpen = true"
+      @refresh="refresh"
+      @open-terminal="openTerminalForCurrentFolder"
+      @open-memory-tools="openMemoryTools"
+    />
+
+    <UInput
+      ref="uploadInput"
+      type="file"
+      class="hidden"
+      multiple
+      aria-hidden="true"
+      tabindex="-1"
+      @change="handleUpload"
+    />
+
+    <DangerCallout v-if="fileError" tone="caution" title="File browser needs attention">
+      {{ fileError }}
+    </DangerCallout>
+
+    <!-- Pairing required state -->
+    <SurfaceCard
+      v-if="!roots.length"
+      class-name="text-center"
+    >
+      <div class="grid place-items-center gap-3 py-8">
+        <RetroIcon name="i-pixelarticons-device-laptop" />
+        <p class="font-mono text-sm font-semibold text-(--or3-text)">No paired computer</p>
+        <p class="max-w-sm text-sm leading-6 text-(--or3-text-muted)">
+          Pair this computer and allow file access in OR3 to browse its folders here.
+        </p>
+      </div>
+    </SurfaceCard>
+
+    <template v-else>
+      <!-- Search results panel (only visible when search is active and used) -->
+      <SurfaceCard
+        v-if="showSearchResults"
+        class-name="!p-0 overflow-hidden"
+      >
+        <div class="flex items-center justify-between border-b border-(--or3-border) px-3 py-2">
+          <p class="text-[10px] font-semibold uppercase tracking-[0.18em] text-(--or3-text-muted)">
+            {{ searchMode === 'path' ? 'Path lookup' : 'Search results' }}
+          </p>
+          <p class="text-[10px] text-(--or3-text-muted)">
+            {{ searchResults.length }} match<span v-if="searchResults.length !== 1">es</span>
           </p>
         </div>
-      </div>
-
-      <div class="grid gap-3 lg:grid-cols-2">
-        <div class="rounded-2xl border border-(--or3-border) bg-white/70 p-4">
-          <p class="or3-label text-xs font-semibold">Memory index</p>
-          <p class="mt-2 font-mono text-sm font-semibold text-(--or3-text)">{{ embeddingStatusTitle }}</p>
-          <p class="mt-1 text-sm leading-6 text-(--or3-text-muted)">{{ embeddingStatusDescription }}</p>
-          <div class="mt-3 flex flex-wrap gap-2">
-            <UButton label="Refresh" icon="i-pixelarticons-reload" color="neutral" variant="soft" :loading="memoryLoading" @click="handleRefreshMemory" />
-            <UButton label="Re-scan notes" icon="i-pixelarticons-database" color="primary" :loading="memoryLoading" @click="handleRebuild('memory')" />
-            <UButton label="Re-scan documents" icon="i-pixelarticons-files" color="neutral" variant="soft" :loading="memoryLoading" @click="handleRebuild('docs')" />
-          </div>
-        </div>
-
-        <div class="rounded-2xl border border-(--or3-border) bg-white/70 p-4">
-          <p class="or3-label text-xs font-semibold">Activity log</p>
-          <p class="mt-2 font-mono text-sm font-semibold text-(--or3-text)">{{ auditStatusTitle }}</p>
-          <p class="mt-1 text-sm leading-6 text-(--or3-text-muted)">{{ auditStatusDescription }}</p>
-          <div class="mt-3 flex flex-wrap gap-2">
-            <UButton label="Refresh" icon="i-pixelarticons-shield" color="neutral" variant="soft" :loading="memoryLoading" @click="handleRefreshAudit" />
-            <UButton label="Verify log" icon="i-pixelarticons-check-double" color="primary" :loading="memoryLoading" @click="handleVerifyAudit" />
-            <UButton label="Open memory tools" icon="i-pixelarticons-link" to="/memory" color="neutral" variant="ghost" />
-          </div>
-        </div>
-      </div>
-
-      <div v-if="memoryShortcuts.length" class="space-y-2">
-        <p class="or3-label text-xs font-semibold">Memory shortcuts</p>
-        <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        <div v-if="searchResults.length" class="divide-y divide-(--or3-border) max-h-80 overflow-y-auto">
           <button
-            v-for="shortcut in memoryShortcuts"
-            :key="shortcut.path"
+            v-for="item in searchResults"
+            :key="`${item.root_id}:${item.path}`"
             type="button"
-            class="rounded-2xl border border-(--or3-border) bg-white/70 p-3 text-left transition hover:border-(--or3-green) hover:bg-(--or3-green-soft)"
-            @click="openShortcut(shortcut)"
+            class="block w-full px-3 py-2.5 text-left transition hover:bg-(--or3-green-soft)"
+            @click="revealSearchResult(item)"
           >
-            <p class="font-mono text-sm font-semibold text-(--or3-text)">{{ shortcut.label }}</p>
-            <p class="mt-1 text-xs leading-5 text-(--or3-text-muted)">{{ shortcut.description }}</p>
+            <p class="truncate font-mono text-sm font-semibold text-(--or3-text)" :title="item.name">
+              {{ item.name }}
+            </p>
+            <p class="mt-0.5 truncate text-xs text-(--or3-text-muted)" :title="item.path">{{ item.path }}</p>
           </button>
         </div>
-      </div>
+        <div v-else class="px-4 py-6 text-center text-sm text-(--or3-text-muted)">
+          {{ searchMode === 'path'
+              ? `No file or folder at "${searchQuery}".`
+              : `No matches in ${searchScopeLabel}.` }}
+        </div>
+      </SurfaceCard>
 
-      <DangerCallout v-if="memoryError" tone="caution" title="Memory tools need attention">
-        {{ memoryError }}
-      </DangerCallout>
-
-      <details class="rounded-2xl border border-(--or3-border) bg-white/70 p-3">
-        <summary class="cursor-pointer select-none text-xs font-semibold uppercase tracking-wide text-(--or3-text-muted)">Show technical details</summary>
-        <pre class="mt-2 max-h-64 overflow-auto whitespace-pre-wrap text-xs text-(--or3-text-muted)">{{ memoryDebugDetails }}</pre>
-      </details>
-    </SurfaceCard>
-
-    <SurfaceCard class-name="space-y-4">
-      <div class="flex items-start justify-between gap-3">
-        <div>
-          <p class="font-mono text-base font-semibold text-(--or3-text)">Browse your computer</p>
-          <p class="mt-1 text-sm leading-6 text-(--or3-text-muted)">
-            Open approved folders, preview common file types, and hand anything off to the assistant without guessing paths.
+      <!-- Directory listing -->
+      <SurfaceCard class-name="!p-0 overflow-hidden">
+        <div class="flex items-center justify-between border-b border-(--or3-border) px-3 py-2">
+          <p class="truncate text-[10px] font-semibold uppercase tracking-[0.18em] text-(--or3-text-muted)" :title="entriesPanelTitle">
+            {{ entriesPanelTitle }}
           </p>
-        </div>
-        <UInput ref="uploadInput" type="file" class="hidden" multiple aria-hidden="true" tabindex="-1" @change="handleUpload" />
-      </div>
-
-      <div v-if="!roots.length" class="rounded-2xl border border-dashed border-(--or3-border) bg-white/60 px-4 py-6 text-center text-sm leading-6 text-(--or3-text-muted)">
-        Pair this computer and allow file access in OR3 to browse its folders here.
-      </div>
-
-      <template v-else>
-        <div class="grid gap-3 lg:grid-cols-[minmax(0,15rem)_minmax(0,1fr)]">
-          <UFormField label="Area" name="root" description="Only approved locations show up here.">
-            <USelectMenu
-              :model-value="currentRootId"
-              value-key="id"
-              :items="roots"
-              :disabled="loadingFiles"
-              @update:model-value="handleRootChange"
-            >
-              <template #default>
-                <span>{{ activeRoot?.label || 'Select an area' }}</span>
-              </template>
-            </USelectMenu>
-          </UFormField>
-
-          <UFormField label="Search this area" name="search" description="Find a file by name or path.">
-            <div class="flex gap-2">
-              <UInput v-model="searchQuery" class="flex-1" placeholder="Search files..." @keydown.enter.prevent="runSearch" />
-              <UButton label="Search" icon="i-pixelarticons-search" color="primary" :loading="searchingFiles" @click="runSearch" />
-              <UButton v-if="searchQuery || searchResults.length" label="Clear" color="neutral" variant="ghost" @click="clearSearch" />
-            </div>
-          </UFormField>
+          <span class="shrink-0 rounded-full border border-(--or3-border) bg-(--or3-surface-soft) px-2 py-0.5 text-[10px] text-(--or3-text-muted)">
+            {{ isWritableRoot ? 'Writable' : 'Read only' }}
+          </span>
         </div>
 
-        <div class="flex flex-wrap gap-2">
-          <UButton label="Upload files" icon="i-pixelarticons-upload" color="neutral" variant="soft" :disabled="!isWritableRoot" :loading="loadingFiles" @click="openUploadPicker" />
-          <UButton label="New folder" icon="i-pixelarticons-folder-plus" color="neutral" variant="soft" :disabled="!isWritableRoot" :loading="creatingFolder" @click="newFolderOpen = true" />
-          <UButton label="Refresh" icon="i-pixelarticons-reload" color="neutral" variant="ghost" :loading="loadingFiles" @click="refresh" />
-          <UButton label="Open terminal here" icon="i-pixelarticons-terminal" color="neutral" variant="ghost" @click="openTerminalForCurrentFolder" />
+        <div v-if="loadingFiles" class="space-y-2 p-3">
+          <div v-for="index in 5" :key="index" class="h-14 rounded-2xl bg-(--or3-surface-soft)" />
         </div>
 
-        <div class="rounded-2xl border border-(--or3-border) bg-white/60 px-3 py-2">
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <FileBreadcrumbs :path="currentPath" :root-label="activeRoot?.label || 'Root'" @navigate="navigatePath" />
-            <div class="text-xs text-(--or3-text-muted)">
-              <span>{{ activeRoot?.path || '' }}</span>
-              <span v-if="activeRoot" class="ml-2 rounded-full border border-(--or3-border) px-2 py-0.5">
-                {{ isWritableRoot ? 'Writable' : 'Read only' }}
-              </span>
-            </div>
+        <template v-else-if="entries.length">
+          <FileRow
+            v-for="entry in entries"
+            :key="entry.path"
+            :entry="entry"
+            :selected="selectedEntry?.path === entry.path"
+            :can-edit="entry.type === 'file' && canEditFile(entry)"
+            @open="openEntry"
+            @details="showDetails"
+            @edit="editEntry"
+            @copy-path="copyEntryPath"
+            @download="downloadEntry"
+            @open-in-browser="openEntryInBrowser"
+            @open-terminal="openTerminalAt"
+            @ask="askAboutEntry"
+          />
+        </template>
+
+        <div v-else class="px-4 py-8 text-center">
+          <p class="font-mono text-sm font-semibold text-(--or3-text)">This folder is empty</p>
+          <p class="mt-2 text-sm leading-6 text-(--or3-text-muted)">
+            Upload files here or create a new folder to get started.
+          </p>
+          <div class="mt-4 flex flex-wrap justify-center gap-2">
+            <UButton label="Upload files" icon="i-pixelarticons-upload" color="primary" :disabled="!isWritableRoot" @click="openUploadPicker" />
+            <UButton label="New folder" icon="i-pixelarticons-folder-plus" color="neutral" variant="soft" :disabled="!isWritableRoot" @click="newFolderOpen = true" />
           </div>
         </div>
+      </SurfaceCard>
+    </template>
 
-        <DangerCallout v-if="fileError" tone="caution" title="File browser needs attention">
-          {{ fileError }}
-        </DangerCallout>
+    <!-- File details slideover (bottom on mobile, right on desktop) -->
+    <FileDetailsSheet
+      v-model:open="detailsOpen"
+      :entry="selectedEntry"
+      :preview="preview"
+      :actions="detailActions"
+      :area-label="activeRoot?.label || currentRootId"
+    />
 
-        <div class="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(18rem,1fr)]">
-          <div class="space-y-3">
-            <div v-if="showSearchPanel" class="overflow-hidden rounded-2xl border border-(--or3-border) bg-white/70">
-              <div class="border-b border-(--or3-border) px-3 py-2 text-xs font-semibold uppercase tracking-wide text-(--or3-text-muted)">
-                Search results
-              </div>
-              <div v-if="searchResults.length" class="divide-y divide-(--or3-border)">
-                <button
-                  v-for="item in searchResults"
-                  :key="`${item.root_id}:${item.path}`"
-                  type="button"
-                  class="block w-full px-3 py-3 text-left transition hover:bg-(--or3-green-soft)"
-                  @click="revealSearchResult(item)"
-                >
-                  <p class="truncate font-mono text-sm font-semibold text-(--or3-text)">{{ item.name }}</p>
-                  <p class="mt-1 text-xs text-(--or3-text-muted)">{{ item.path }}</p>
-                </button>
-              </div>
-              <div v-else class="px-4 py-6 text-sm text-(--or3-text-muted)">
-                No matches in {{ activeRoot?.label || 'this area' }}.
-              </div>
-            </div>
+    <!-- Memory tools slideover (extracted from the page) -->
+    <MemoryToolsSheet
+      v-model:open="memoryToolsOpen"
+      :embeddings-status="embeddingsStatus"
+      :audit-status="auditStatus"
+      :memory-loading="memoryLoading"
+      :memory-error="memoryError"
+      :shortcuts="memoryShortcuts"
+      @refresh-memory="handleRefreshMemory"
+      @rebuild="handleRebuild"
+      @refresh-audit="handleRefreshAudit"
+      @verify-audit="handleVerifyAudit"
+      @open-shortcut="openShortcut"
+    />
 
-            <div class="overflow-hidden rounded-2xl border border-(--or3-border) bg-white/70">
-              <div class="border-b border-(--or3-border) px-3 py-2 text-xs font-semibold uppercase tracking-wide text-(--or3-text-muted)">
-                {{ entriesPanelTitle }}
-              </div>
-
-              <div v-if="loadingFiles" class="space-y-2 p-3">
-                <div v-for="index in 5" :key="index" class="h-14 rounded-2xl bg-(--or3-surface-soft)" />
-              </div>
-
-              <template v-else-if="entries.length">
-                <FileRow
-                  v-for="entry in entries"
-                  :key="entry.path"
-                  :entry="entry"
-                  :selected="selectedEntry?.path === entry.path"
-                  @open="openEntry"
-                  @actions="selectEntry"
-                />
-              </template>
-
-              <div v-else class="px-4 py-8 text-center">
-                <p class="font-mono text-sm font-semibold text-(--or3-text)">This folder is empty</p>
-                <p class="mt-2 text-sm leading-6 text-(--or3-text-muted)">
-                  Upload files here or create a new folder to get started.
-                </p>
-                <div class="mt-4 flex flex-wrap justify-center gap-2">
-                  <UButton label="Upload files" icon="i-pixelarticons-upload" color="primary" :disabled="!isWritableRoot" @click="openUploadPicker" />
-                  <UButton label="New folder" icon="i-pixelarticons-folder-plus" color="neutral" variant="soft" :disabled="!isWritableRoot" @click="newFolderOpen = true" />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="rounded-2xl border border-(--or3-border) bg-(--or3-surface-soft) p-4">
-            <template v-if="selectedEntry">
-              <div class="flex items-start gap-3">
-                <div class="grid size-10 place-items-center rounded-2xl bg-white text-(--or3-green)">
-                  <Icon :name="selectedEntry.type === 'directory' ? 'i-pixelarticons-folder' : selectedEntryIcon" class="size-5" />
-                </div>
-                <div class="min-w-0 flex-1">
-                  <p class="truncate font-mono text-sm font-semibold text-(--or3-text)">{{ selectedEntry.name }}</p>
-                  <p class="mt-1 break-all text-xs text-(--or3-text-muted)">{{ selectedEntry.path }}</p>
-                </div>
-              </div>
-
-              <div class="mt-4 grid grid-cols-2 gap-2 text-xs text-(--or3-text-muted)">
-                <div class="rounded-2xl bg-white/80 p-3">
-                  <p class="font-semibold text-(--or3-text)">Type</p>
-                  <p class="mt-1">{{ selectedEntry.type === 'directory' ? 'Folder' : 'File' }}</p>
-                </div>
-                <div class="rounded-2xl bg-white/80 p-3">
-                  <p class="font-semibold text-(--or3-text)">Size</p>
-                  <p class="mt-1">{{ selectedEntry.type === 'directory' ? 'Folder' : formatBytes(selectedEntry.size) || 'Unknown' }}</p>
-                </div>
-                <div class="rounded-2xl bg-white/80 p-3">
-                  <p class="font-semibold text-(--or3-text)">Updated</p>
-                  <p class="mt-1">{{ formatDate(selectedEntry.modified_at) || 'Unknown' }}</p>
-                </div>
-                <div class="rounded-2xl bg-white/80 p-3">
-                  <p class="font-semibold text-(--or3-text)">Area</p>
-                  <p class="mt-1">{{ activeRoot?.label || currentRootId }}</p>
-                </div>
-              </div>
-
-              <div class="mt-4 flex flex-wrap gap-2">
-                <UButton label="Ask assistant" icon="i-pixelarticons-message-text" color="neutral" variant="soft" @click="askAssistant" />
-                <UButton label="Copy path" icon="i-pixelarticons-copy" color="neutral" variant="soft" @click="copySelectedPath" />
-                <UButton v-if="selectedEntry.type === 'file' && canEditFile(selectedEntry)" label="Edit" icon="i-pixelarticons-edit" color="neutral" variant="soft" @click="openSelectedEditor" />
-                <UButton v-if="selectedEntry.type === 'file'" label="Download" icon="i-pixelarticons-file" color="primary" :loading="previewLoading" @click="downloadSelectedFile" />
-                <UButton v-if="selectedEntry.type === 'file'" label="Open in browser" icon="i-pixelarticons-link" color="neutral" variant="soft" :loading="openingFile" @click="openSelectedFile" />
-                <UButton v-if="selectedEntry.type === 'directory'" label="Open folder" icon="i-pixelarticons-folder" color="primary" @click="openSelectedDirectory" />
-                <UButton label="Open terminal here" icon="i-pixelarticons-terminal" color="neutral" variant="ghost" @click="openTerminalHere" />
-              </div>
-
-              <div class="mt-4 rounded-2xl border border-(--or3-border) bg-white/80 p-3">
-                <p class="font-mono text-xs font-semibold uppercase tracking-wide text-(--or3-text-muted)">Preview</p>
-
-                <div v-if="selectedEntry.type === 'directory'" class="mt-3 text-sm leading-6 text-(--or3-text-muted)">
-                  Open this folder to browse inside it, or launch a terminal here if you want to work in it directly.
-                </div>
-
-                <div v-else-if="previewLoading" class="mt-3 h-40 rounded-2xl bg-(--or3-surface-soft)" />
-
-                <div v-else-if="preview.kind === 'image' && preview.url" class="mt-3 overflow-hidden rounded-2xl border border-(--or3-border)">
-                  <img :src="preview.url" :alt="selectedEntry.name" class="max-h-80 w-full object-contain bg-white" />
-                </div>
-
-                <pre v-else-if="preview.kind === 'text'" class="mt-3 max-h-80 overflow-auto whitespace-pre-wrap rounded-2xl bg-(--or3-surface-soft) p-3 text-xs leading-6 text-(--or3-text)">{{ preview.text }}</pre>
-
-                <div v-else class="mt-3 text-sm leading-6 text-(--or3-text-muted)">
-                  {{ preview.message || 'Preview is not available for this file type yet.' }}
-                </div>
-              </div>
-            </template>
-
-            <div v-else class="flex h-full min-h-72 flex-col items-center justify-center text-center">
-              <div class="grid size-12 place-items-center rounded-2xl bg-white text-(--or3-green)">
-                <Icon name="i-pixelarticons-file" class="size-6" />
-              </div>
-              <p class="mt-4 font-mono text-sm font-semibold text-(--or3-text)">Pick a file to inspect it</p>
-              <p class="mt-2 max-w-sm text-sm leading-6 text-(--or3-text-muted)">
-                Tap a row to open a folder. Use the three-dot button to pin a file or folder in this side panel and work from there.
-              </p>
-            </div>
-          </div>
-        </div>
-      </template>
-    </SurfaceCard>
-
+    <!-- New folder modal -->
     <UModal v-model:open="newFolderOpen" :ui="{ content: 'sm:max-w-md' }">
       <template #content>
         <div class="space-y-4 p-5">
@@ -285,24 +187,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { navigateTo, useRoute, useRouter } from '#app'
 import { useToast } from '@nuxt/ui/composables'
 import type { FileEntry, FileSearchItem } from '~/types/or3-api'
+import type { MemoryShortcut } from './MemoryToolsSheet.vue'
 import { buildComputerEditorRoute } from '~/composables/useComputerEditorRoute'
 import { programmaticSend } from '~/composables/useChatInputBridge'
 import { useComputerFiles } from '~/composables/useComputerFiles'
 import { useComputerTextFiles } from '~/composables/useComputerTextFiles'
 import { useMemoryTrust } from '~/composables/useMemoryTrust'
 
-interface MemoryShortcut {
-  label: string
-  description: string
-  path: string
-  type: 'file' | 'directory'
-  rootId: string
-}
-
+type SearchMode = 'folder' | 'path'
 type PreviewKind = 'empty' | 'text' | 'image' | 'unavailable'
 
 const route = useRoute()
@@ -311,25 +207,6 @@ const toast = useToast()
 const { canEditFile } = useComputerTextFiles()
 
 const files = useComputerFiles()
-const selectedEntry = ref<FileEntry | null>(null)
-const uploadInput = ref<{ inputRef?: HTMLInputElement | null } | null>(null)
-const searchQuery = ref('')
-const searchResults = ref<FileSearchItem[]>([])
-const searchTouched = ref(false)
-const newFolderOpen = ref(false)
-const newFolderName = ref('')
-const creatingFolder = ref(false)
-const createFolderError = ref<string | null>(null)
-const previewLoading = ref(false)
-const openingFile = ref(false)
-const memoryShortcuts = ref<MemoryShortcut[]>([])
-const preview = reactive<{ kind: PreviewKind; text: string; url: string; message: string }>({
-  kind: 'empty',
-  text: '',
-  url: '',
-  message: '',
-})
-
 const {
   roots,
   entries,
@@ -360,84 +237,89 @@ const {
   verifyAudit,
 } = useMemoryTrust()
 
+// ── Local UI state ─────────────────────────────────────────────────
+const selectedEntry = ref<FileEntry | null>(null)
+const detailsOpen = ref(false)
+const memoryToolsOpen = ref(false)
+let memoryToolsLoaded = false
+async function openMemoryTools() {
+  memoryToolsOpen.value = true
+  if (memoryToolsLoaded) return
+  memoryToolsLoaded = true
+  await Promise.allSettled([loadAuditStatus().catch(() => undefined), loadMemoryShortcuts().catch(() => undefined)])
+}
+const uploadInput = ref<{ inputRef?: HTMLInputElement | null } | null>(null)
+const searchOpen = ref(false)
+const searchQuery = ref('')
+const searchMode = ref<SearchMode>('folder')
+const searchResults = ref<FileSearchItem[]>([])
+const searchTouched = ref(false)
+const newFolderOpen = ref(false)
+const newFolderName = ref('')
+const creatingFolder = ref(false)
+const createFolderError = ref<string | null>(null)
+const previewLoading = ref(false)
+const openingFile = ref(false)
+const memoryShortcuts = ref<MemoryShortcut[]>([])
+
+const preview = reactive<{ kind: PreviewKind; text: string; url: string; message: string; loading: boolean }>({
+  kind: 'empty',
+  text: '',
+  url: '',
+  message: '',
+  loading: false,
+})
+
+// ── Computed ────────────────────────────────────────────────────────
 const activeRoot = computed(() => roots.value.find((root) => root.id === currentRootId.value) ?? null)
 const isWritableRoot = computed(() => Boolean(activeRoot.value?.writable))
-const showSearchPanel = computed(() => searchTouched.value || searchQuery.value.trim().length > 0)
-const entriesPanelTitle = computed(() => currentPath.value === '.' ? 'Top level' : currentPath.value)
-const selectedEntryIcon = computed(() => fileIcon(selectedEntry.value))
-const memoryDebugDetails = computed(() => JSON.stringify({ embeddings: embeddingsStatus.value, audit: auditStatus.value }, null, 2))
-
-const embeddingStatusTitle = computed(() => {
-  const status = String(embeddingsStatus.value?.status || '').trim().toLowerCase()
-  if (status === 'ok') return 'Memory search looks healthy'
-  if (status === 'mismatch') return 'Memory embeddings need a refresh'
-  if (status === 'legacy-unknown') return 'Memory index is from an older setup'
-  return 'Memory status is unavailable'
+const showSearchResults = computed(() => searchOpen.value && searchTouched.value)
+const entriesPanelTitle = computed(() =>
+  currentPath.value === '.' || !currentPath.value ? `Top of ${activeRoot.value?.label || 'this area'}` : currentPath.value,
+)
+const searchScopeLabel = computed(() => {
+  const area = activeRoot.value?.label || 'this area'
+  if (searchMode.value !== 'folder' || currentPath.value === '.' || !currentPath.value) return area
+  return `${area}/${currentPath.value}`
 })
 
-const embeddingStatusDescription = computed(() => {
-  const status = String(embeddingsStatus.value?.status || '').trim().toLowerCase()
-  const dims = Number(embeddingsStatus.value?.memoryVectorDims || 0)
-  if (status === 'ok') {
-    const docsEnabled = embeddingsStatus.value?.docIndexEnabled ? ' Document search is on.' : ''
-    return dims > 0
-      ? `Your saved memory vectors are ready (${dims} dimensions).${docsEnabled}`
-      : `The index reports as healthy.${docsEnabled}`
+// Detail sheet actions are computed so labels/loading reflect entry type.
+const detailActions = computed(() => {
+  if (!selectedEntry.value) return []
+  const entry = selectedEntry.value
+  const isDir = entry.type === 'directory'
+  const list: Array<{ id: string; label: string; icon: string; loading?: boolean; onSelect: () => void }> = []
+
+  if (isDir) {
+    list.push({ id: 'open', label: 'Open', icon: 'i-pixelarticons-folder', onSelect: () => openSelectedDirectory() })
+  } else {
+    list.push({ id: 'preview', label: 'Open', icon: 'i-pixelarticons-eye', loading: openingFile.value, onSelect: () => openEntryInBrowser(entry) })
+    if (canEditFile(entry)) {
+      list.push({ id: 'edit', label: 'Edit', icon: 'i-pixelarticons-edit', onSelect: () => editEntry(entry) })
+    }
+    list.push({ id: 'download', label: 'Download', icon: 'i-pixelarticons-download', loading: previewLoading.value, onSelect: () => downloadEntry(entry) })
   }
-  if (status === 'mismatch') return 'The embedding model changed since the last build. Re-scan notes and documents so recall stays accurate.'
-  if (status === 'legacy-unknown') return 'OR3 found older vectors without a matching fingerprint. A re-scan will normalize them.'
-  return 'Refresh to see whether memory search and document indexing are ready.'
+
+  list.push(
+    { id: 'copy', label: 'Copy path', icon: 'i-pixelarticons-copy', onSelect: () => copyEntryPath(entry) },
+    { id: 'terminal', label: 'Terminal', icon: 'i-pixelarticons-terminal', onSelect: () => openTerminalAt(entry) },
+    { id: 'ask', label: 'Ask AI', icon: 'i-pixelarticons-message-text', onSelect: () => askAboutEntry(entry) },
+  )
+
+  return list
 })
 
-const auditStatusTitle = computed(() => {
-  const status = String(auditStatus.value?.status || '').trim().toLowerCase()
-  if (auditStatus.value?.verified === true) return 'Activity log verified'
-  if (status === 'ok') return 'Activity log is available'
-  if (status === 'disabled') return 'Activity log is turned off'
-  if (status === 'unavailable') return 'Activity log is unavailable'
-  return 'Activity log status is unavailable'
-})
-
-const auditStatusDescription = computed(() => {
-  const eventCount = Number(auditStatus.value?.eventCount || 0)
-  if (auditStatus.value?.verified === true) return `The integrity check passed across ${eventCount} recorded events.`
-  if (auditStatus.value?.status === 'ok') {
-    return eventCount > 0
-      ? `${eventCount} events are recorded. Run Verify log if you want to confirm nothing was tampered with.`
-      : 'Logging is available, but no events have been recorded yet.'
-  }
-  if (auditStatus.value?.status === 'disabled') return 'Turn audit logging on in OR3 if you want a tamper-checkable activity trail.'
-  if (auditStatus.value?.status === 'unavailable') return 'OR3 could not reach its audit logger. Check the memory tools page for deeper diagnostics.'
-  return 'Refresh to see whether OR3 can read and verify its activity trail.'
-})
-
-function fileIcon(entry?: FileEntry | null) {
-  if (!entry || entry.type === 'directory') return 'i-pixelarticons-folder'
-  const mimeType = entry.mime_type || ''
-  if (mimeType.includes('image')) return 'i-pixelarticons-image'
-  if (isTextLikeFile(entry)) return 'i-pixelarticons-file-text'
-  return 'i-pixelarticons-file'
+// ── Helpers ────────────────────────────────────────────────────────
+function isTextLikeFile(entry: Pick<FileEntry, 'name' | 'mime_type'>) {
+  const mime = entry.mime_type?.toLowerCase() || ''
+  if (mime.startsWith('text/')) return true
+  if (mime.includes('json') || mime.includes('xml') || mime.includes('javascript')) return true
+  return /\.(md|txt|json|ya?ml|toml|ini|cfg|conf|env|csv|ts|tsx|js|jsx|vue|go|py|rb|php|java|kt|swift|sql|html|css|scss|sh)$/i.test(entry.name)
 }
 
-function formatBytes(size?: number) {
-  if (!size) return ''
-  if (size < 1024) return `${size} B`
-  const units = ['KB', 'MB', 'GB', 'TB']
-  let value = size / 1024
-  let unitIndex = 0
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024
-    unitIndex += 1
-  }
-  const precision = value >= 10 ? 0 : 1
-  return `${value.toFixed(precision)} ${units[unitIndex]}`
-}
-
-function formatDate(value?: string) {
-  if (!value) return ''
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString()
+function isImageLikeFile(entry: Pick<FileEntry, 'name' | 'mime_type'>) {
+  const mime = entry.mime_type?.toLowerCase() || ''
+  return mime.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg)$/i.test(entry.name)
 }
 
 function todayStamp(offsetDays = 0) {
@@ -457,87 +339,166 @@ function parentPath(path: string) {
   return parts.join('/')
 }
 
-function isTextLikeFile(entry: Pick<FileEntry, 'name' | 'mime_type'>) {
-  const mimeType = entry.mime_type?.toLowerCase() || ''
-  if (mimeType.startsWith('text/')) return true
-  if (mimeType.includes('json') || mimeType.includes('xml') || mimeType.includes('javascript')) return true
-  return /\.(md|txt|json|ya?ml|toml|ini|cfg|conf|env|csv|ts|tsx|js|jsx|vue|go|py|rb|php|java|kt|swift|sql|html|css|scss|sh)$/i.test(entry.name)
-}
-
-function isImageLikeFile(entry: Pick<FileEntry, 'name' | 'mime_type'>) {
-  const mimeType = entry.mime_type?.toLowerCase() || ''
-  return mimeType.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg)$/i.test(entry.name)
-}
-
 function resetPreview() {
-  if (preview.url) {
-    URL.revokeObjectURL(preview.url)
-  }
+  if (preview.url) URL.revokeObjectURL(preview.url)
   preview.kind = 'empty'
   preview.text = ''
   preview.url = ''
   preview.message = ''
+  preview.loading = false
 }
 
 async function syncRoute(rootId = currentRootId.value, path = currentPath.value) {
   await router.replace({
     path: '/computer/files',
-    query: {
-      ...route.query,
-      root: rootId,
-      path,
-    },
+    query: { ...route.query, root: rootId, path },
   })
 }
 
+// ── Navigation ─────────────────────────────────────────────────────
 async function refresh() {
-  await loadRoots()
+  try {
+    await loadRoots()
+  } catch {
+    return
+  }
   if (!roots.value.length) return
   const rootId = roots.value.find((root) => root.id === currentRootId.value)?.id || roots.value[0]?.id
   if (!rootId) return
   const path = typeof route.query.path === 'string' && route.query.path.trim() ? route.query.path : currentPath.value || '.'
   await listDirectory(rootId, path).catch(async () => {
-    await listDirectory(rootId, '.')
+    await listDirectory(rootId, '.').catch(() => undefined)
   })
   await syncRoute()
-  await loadMemoryShortcuts()
 }
 
-async function handleRootChange(value: string | Record<string, unknown> | null) {
-  const rootId = typeof value === 'string' ? value : typeof value?.id === 'string' ? value.id : ''
+async function handleRootChange(rootId: string) {
   if (!rootId || rootId === currentRootId.value) return
   clearSearch()
-  clearSelection()
-  await listDirectory(rootId, '.')
+  selectedEntry.value = null
+  resetPreview()
+  await listDirectory(rootId, '.').catch(() => undefined)
   await syncRoute(rootId, '.')
-  await loadMemoryShortcuts()
+  if (memoryToolsLoaded) await loadMemoryShortcuts().catch(() => undefined)
 }
 
 async function navigatePath(path: string) {
-  clearSelection()
-  await listDirectory(currentRootId.value, path)
+  selectedEntry.value = null
+  resetPreview()
+  await listDirectory(currentRootId.value, path).catch(() => undefined)
   await syncRoute(currentRootId.value, path)
 }
 
+async function goUp() {
+  if (!currentPath.value || currentPath.value === '.') return
+  await navigatePath(parentPath(currentPath.value))
+}
+
+// ── Entries ────────────────────────────────────────────────────────
 async function openEntry(entry: FileEntry) {
   if (entry.type === 'directory') {
-    clearSelection()
-    await openDirectory(entry)
+    selectedEntry.value = null
+    resetPreview()
+    await openDirectory(entry).catch(() => undefined)
     await syncRoute(currentRootId.value, entry.path)
     return
   }
-  await selectEntry(entry)
+  await showDetails(entry)
 }
 
-async function selectEntry(entry: FileEntry) {
+async function showDetails(entry: FileEntry) {
   selectedEntry.value = entry
+  detailsOpen.value = true
   if (entry.type === 'file') await loadPreview(entry)
   else resetPreview()
 }
 
-function clearSelection() {
-  selectedEntry.value = null
-  resetPreview()
+function editEntry(entry: FileEntry) {
+  if (entry.type !== 'file' || !canEditFile(entry)) return
+  void navigateTo(buildComputerEditorRoute({
+    rootId: currentRootId.value,
+    path: entry.path,
+    returnRootId: currentRootId.value,
+    returnPath: currentPath.value,
+  }))
+}
+
+async function copyEntryPath(entry: FileEntry) {
+  const ok = await copyPath(entry).catch(() => false)
+  toast.add({
+    title: ok ? 'Path copied' : 'Could not copy path',
+    description: ok ? entry.path : 'Clipboard access is not available here.',
+    color: ok ? 'success' : 'warning',
+    icon: ok ? 'i-pixelarticons-check' : 'i-pixelarticons-alert',
+  })
+}
+
+async function downloadEntry(entry: FileEntry) {
+  if (entry.type !== 'file' || !import.meta.client) return
+  try {
+    const blob = await downloadFile(entry)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = entry.name || 'download'
+    link.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+    toast.add({ title: 'Download started', description: entry.name, color: 'success', icon: 'i-pixelarticons-download' })
+  } catch (error: any) {
+    toast.add({ title: 'Download failed', description: error?.message || 'Could not download that file.', color: 'error', icon: 'i-pixelarticons-alert' })
+  }
+}
+
+async function openEntryInBrowser(entry: FileEntry) {
+  if (entry.type !== 'file' || !import.meta.client) return
+  openingFile.value = true
+  try {
+    const blob = await downloadFile(entry)
+    const url = URL.createObjectURL(blob)
+    window.open(url, '_blank', 'noopener,noreferrer')
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  } catch (error: any) {
+    toast.add({ title: 'Could not open file', description: error?.message || 'Try again.', color: 'error', icon: 'i-pixelarticons-alert' })
+  } finally {
+    openingFile.value = false
+  }
+}
+
+function openTerminalAt(entry: FileEntry) {
+  const path = entry.type === 'directory' ? entry.path : parentPath(entry.path)
+  void navigateTo({ path: '/computer/terminal', query: { root: currentRootId.value, path } })
+}
+
+function openTerminalForCurrentFolder() {
+  void navigateTo({ path: '/computer/terminal', query: { root: currentRootId.value, path: currentPath.value } })
+}
+
+function askAboutEntry(entry: FileEntry) {
+  void programmaticSend('main', `Help me understand this file on my computer: ${entry.path}`)
+}
+
+async function openSelectedDirectory() {
+  if (!selectedEntry.value || selectedEntry.value.type !== 'directory') return
+  detailsOpen.value = false
+  await openEntry(selectedEntry.value)
+}
+
+// ── Search ─────────────────────────────────────────────────────────
+function toggleSearch() {
+  searchOpen.value = !searchOpen.value
+  if (!searchOpen.value) clearSearch()
+}
+
+function switchMode(mode: SearchMode) {
+  searchMode.value = mode
+  searchResults.value = []
+  searchTouched.value = false
+}
+
+function clearSearch() {
+  searchQuery.value = ''
+  searchResults.value = []
+  searchTouched.value = false
 }
 
 async function runSearch() {
@@ -547,48 +508,84 @@ async function runSearch() {
     searchResults.value = []
     return
   }
-  searchResults.value = await searchWorkspaceFiles(query, 20, currentRootId.value).catch(() => [])
-}
 
-function clearSearch() {
-  searchQuery.value = ''
-  searchResults.value = []
-  searchTouched.value = false
+  if (searchMode.value === 'path') {
+    const item = await statPath(currentRootId.value, query).catch(() => null)
+    searchResults.value = item
+      ? [{
+          root_id: currentRootId.value,
+          name: item.name,
+          path: item.path,
+          type: item.type,
+          mime_type: item.mime_type,
+          size: item.size,
+          modified_at: item.modified_at,
+        } as FileSearchItem]
+      : []
+    return
+  }
+
+  // 'folder' mode: ask the server, then filter client-side to current subtree.
+  const remote = await searchWorkspaceFiles(query, 50, currentRootId.value).catch(() => [] as FileSearchItem[])
+  if (!currentPath.value || currentPath.value === '.') {
+    searchResults.value = remote
+    return
+  }
+  const prefix = currentPath.value.endsWith('/') ? currentPath.value : `${currentPath.value}/`
+  searchResults.value = remote.filter((item) => item.path === currentPath.value || item.path.startsWith(prefix))
 }
 
 async function revealFile(rootId: string, path: string, type: 'file' | 'directory') {
   if (type === 'directory') {
-    clearSelection()
-    await listDirectory(rootId, path)
+    selectedEntry.value = null
+    resetPreview()
+    await listDirectory(rootId, path).catch(() => undefined)
     await syncRoute(rootId, path)
     return
   }
-
   const folder = parentPath(path)
-  await listDirectory(rootId, folder)
+  await listDirectory(rootId, folder).catch(() => undefined)
   await syncRoute(rootId, folder)
   const match = entries.value.find((entry) => entry.path === path)
-  if (match) await selectEntry(match)
+  if (match) await showDetails(match)
 }
 
 async function revealSearchResult(item: FileSearchItem) {
   await revealFile(item.root_id, item.path, item.type)
+  // Auto-collapse the search bar after a successful jump.
+  searchOpen.value = false
 }
 
+// Debounced live search as the user types. Path mode is intentionally manual
+// (Enter) since stat-on-keystroke would be wasteful.
+let searchTimer: ReturnType<typeof setTimeout> | null = null
+watch(searchQuery, (value) => {
+  if (searchMode.value === 'path') return
+  if (searchTimer) clearTimeout(searchTimer)
+  if (!value.trim()) {
+    searchResults.value = []
+    searchTouched.value = false
+    return
+  }
+  searchTimer = setTimeout(() => {
+    void runSearch()
+  }, 200)
+})
+
+// ── Memory tools ───────────────────────────────────────────────────
 async function loadMemoryShortcuts() {
   const workspaceRoot = roots.value.find((root) => root.id === 'workspace')
   if (!workspaceRoot) {
     memoryShortcuts.value = []
     return
   }
-
   const candidates = [
-    { label: 'Long-term memory', description: 'The durable note OR3 keeps close at hand.', path: 'MEMORY.md' },
-    { label: 'Today note', description: 'Today\'s daily memory log.', path: `memory/${todayStamp(0)}.md` },
-    { label: 'Yesterday note', description: 'Yesterday\'s daily memory log.', path: `memory/${todayStamp(-1)}.md` },
-    { label: 'Memory folder', description: 'All daily notes and support memory files.', path: 'memory' },
-    { label: 'Identity note', description: 'The assistant identity and behavior guide.', path: 'SOUL.md' },
-    { label: 'User note', description: 'The human context note OR3 reads at startup.', path: 'USER.md' },
+    { label: 'Long-term memory', description: "OR3's durable note.", path: 'MEMORY.md' },
+    { label: 'Today note', description: "Today's daily memory log.", path: `memory/${todayStamp(0)}.md` },
+    { label: 'Yesterday note', description: "Yesterday's daily memory log.", path: `memory/${todayStamp(-1)}.md` },
+    { label: 'Memory folder', description: 'All daily notes and support files.', path: 'memory' },
+    { label: 'Identity note', description: 'Assistant identity and behavior guide.', path: 'SOUL.md' },
+    { label: 'User note', description: 'Human context note read at startup.', path: 'USER.md' },
   ] as const
 
   const resolved = await Promise.all(candidates.map(async (candidate): Promise<MemoryShortcut | null> => {
@@ -602,14 +599,46 @@ async function loadMemoryShortcuts() {
       rootId: 'workspace',
     } satisfies MemoryShortcut
   }))
-
   memoryShortcuts.value = resolved.filter((item): item is MemoryShortcut => item !== null)
 }
 
 async function openShortcut(shortcut: MemoryShortcut) {
+  memoryToolsOpen.value = false
   await revealFile(shortcut.rootId, shortcut.path, shortcut.type)
 }
 
+async function handleRefreshMemory() {
+  await Promise.allSettled([loadEmbeddingsStatus(), loadAuditStatus()])
+}
+
+async function handleRebuild(target: 'memory' | 'docs') {
+  try {
+    await rebuildEmbeddings(target)
+    toast.add({
+      title: target === 'memory' ? 'Notes re-scanned' : 'Documents re-scanned',
+      description: target === 'memory' ? 'The memory index was rebuilt for saved notes.' : 'The document index was rebuilt for approved document roots.',
+      color: 'success',
+      icon: 'i-pixelarticons-check',
+    })
+  } catch {
+    /* surfaced in composable */
+  }
+}
+
+async function handleRefreshAudit() {
+  await loadAuditStatus().catch(() => undefined)
+}
+
+async function handleVerifyAudit() {
+  try {
+    await verifyAudit()
+    toast.add({ title: 'Activity log verified', description: 'The audit chain passed its integrity check.', color: 'success', icon: 'i-pixelarticons-check-double' })
+  } catch {
+    /* surfaced in composable */
+  }
+}
+
+// ── Upload + folder creation ───────────────────────────────────────
 function openUploadPicker() {
   uploadInput.value?.inputRef?.click()
 }
@@ -618,25 +647,57 @@ async function handleUpload(event: Event) {
   const input = event.target as HTMLInputElement
   if (!input.files?.length) return
   try {
+    const count = input.files.length
     await uploadFiles(input.files)
-    toast.add({ title: 'Upload complete', description: `${input.files.length} file${input.files.length === 1 ? '' : 's'} added to this folder.` })
+    toast.add({
+      title: 'Upload complete',
+      description: `${count} file${count === 1 ? '' : 's'} added to this folder.`,
+      color: 'success',
+      icon: 'i-pixelarticons-check',
+    })
   } catch {
-    // Error state is already surfaced by the composable.
+    /* surfaced via fileError */
   } finally {
     input.value = ''
   }
 }
 
+function closeCreateFolder() {
+  newFolderOpen.value = false
+  newFolderName.value = ''
+  createFolderError.value = null
+}
+
+async function confirmCreateFolder() {
+  const name = newFolderName.value.trim()
+  if (!name) {
+    createFolderError.value = 'Choose a folder name first.'
+    return
+  }
+  creatingFolder.value = true
+  createFolderError.value = null
+  try {
+    await createDirectory(name)
+    toast.add({ title: 'Folder created', description: `${name} is ready.`, color: 'success', icon: 'i-pixelarticons-check' })
+    closeCreateFolder()
+  } catch (error: any) {
+    createFolderError.value = error?.message ?? 'Could not create that folder.'
+  } finally {
+    creatingFolder.value = false
+  }
+}
+
+// ── Preview loader ─────────────────────────────────────────────────
 async function loadPreview(entry: FileEntry) {
   resetPreview()
   if (entry.type !== 'file') return
-
   if ((entry.size || 0) > 512 * 1024 && !isImageLikeFile(entry)) {
     preview.kind = 'unavailable'
     preview.message = 'This file is larger than the inline preview limit. Download or open it in your browser instead.'
     return
   }
 
+  preview.loading = true
   previewLoading.value = true
   try {
     const blob = await downloadFile(entry)
@@ -657,133 +718,12 @@ async function loadPreview(entry: FileEntry) {
     preview.kind = 'unavailable'
     preview.message = error?.message ?? 'Could not load a preview for this file.'
   } finally {
+    preview.loading = false
     previewLoading.value = false
   }
 }
 
-async function withDownloadedBlob(entry: FileEntry, handler: (blob: Blob) => Promise<void> | void) {
-  const blob = await downloadFile(entry)
-  await handler(blob)
-}
-
-async function downloadSelectedFile() {
-  if (!selectedEntry.value || selectedEntry.value.type !== 'file' || !import.meta.client) return
-  await withDownloadedBlob(selectedEntry.value, (blob) => {
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = selectedEntry.value?.name || 'download'
-    link.click()
-    setTimeout(() => URL.revokeObjectURL(url), 1000)
-  }).catch(() => undefined)
-}
-
-async function openSelectedFile() {
-  if (!selectedEntry.value || selectedEntry.value.type !== 'file' || !import.meta.client) return
-  openingFile.value = true
-  try {
-    await withDownloadedBlob(selectedEntry.value, (blob) => {
-      const url = URL.createObjectURL(blob)
-      window.open(url, '_blank', 'noopener,noreferrer')
-      setTimeout(() => URL.revokeObjectURL(url), 60_000)
-    })
-  } finally {
-    openingFile.value = false
-  }
-}
-
-async function copySelectedPath() {
-  if (!selectedEntry.value) return
-  const copied = await copyPath(selectedEntry.value).catch(() => false)
-  toast.add({
-    title: copied ? 'Path copied' : 'Could not copy path',
-    description: copied ? selectedEntry.value.path : 'Clipboard access is not available here.',
-  })
-}
-
-function askAssistant() {
-  if (!selectedEntry.value) return
-  void programmaticSend('main', `Help me understand this file on my computer: ${selectedEntry.value.path}`)
-}
-
-async function openSelectedDirectory() {
-  if (!selectedEntry.value || selectedEntry.value.type !== 'directory') return
-  await openEntry(selectedEntry.value)
-}
-
-function openTerminalHere() {
-  const path = selectedEntry.value?.type === 'directory' ? selectedEntry.value.path : currentPath.value
-  void navigateTo({ path: '/computer/terminal', query: { root: currentRootId.value, path } })
-}
-
-function openTerminalForCurrentFolder() {
-  void navigateTo({ path: '/computer/terminal', query: { root: currentRootId.value, path: currentPath.value } })
-}
-
-function openSelectedEditor() {
-  if (!selectedEntry.value || selectedEntry.value.type !== 'file' || !canEditFile(selectedEntry.value)) return
-  void navigateTo(buildComputerEditorRoute({
-    rootId: currentRootId.value,
-    path: selectedEntry.value.path,
-    returnRootId: currentRootId.value,
-    returnPath: currentPath.value,
-  }))
-}
-
-function closeCreateFolder() {
-  newFolderOpen.value = false
-  newFolderName.value = ''
-  createFolderError.value = null
-}
-
-async function confirmCreateFolder() {
-  const name = newFolderName.value.trim()
-  if (!name) {
-    createFolderError.value = 'Choose a folder name first.'
-    return
-  }
-  creatingFolder.value = true
-  createFolderError.value = null
-  try {
-    await createDirectory(name)
-    toast.add({ title: 'Folder created', description: `${name} is ready.` })
-    closeCreateFolder()
-  } catch (error: any) {
-    createFolderError.value = error?.message ?? 'Could not create that folder.'
-  } finally {
-    creatingFolder.value = false
-  }
-}
-
-async function handleRefreshMemory() {
-  await Promise.allSettled([loadEmbeddingsStatus(), loadAuditStatus()])
-}
-
-async function handleRebuild(target: 'memory' | 'docs') {
-  try {
-    await rebuildEmbeddings(target)
-    toast.add({
-      title: target === 'memory' ? 'Notes re-scanned' : 'Documents re-scanned',
-      description: target === 'memory' ? 'The memory index was rebuilt for saved notes.' : 'The document index was rebuilt for approved document roots.',
-    })
-  } catch {
-    // Error state already handled in the memory composable.
-  }
-}
-
-async function handleRefreshAudit() {
-  await loadAuditStatus().catch(() => undefined)
-}
-
-async function handleVerifyAudit() {
-  try {
-    await verifyAudit()
-    toast.add({ title: 'Activity log verified', description: 'The audit chain passed its integrity check.' })
-  } catch {
-    // Error state already handled in the memory composable.
-  }
-}
-
+// ── Lifecycle ──────────────────────────────────────────────────────
 onMounted(async () => {
   await refresh().catch(() => undefined)
   const rootFromQuery = typeof route.query.root === 'string' ? route.query.root : ''
@@ -792,10 +732,22 @@ onMounted(async () => {
     await listDirectory(rootFromQuery, pathFromQuery || '.').catch(() => undefined)
     await syncRoute(rootFromQuery, currentPath.value)
   }
-  await Promise.allSettled([loadEmbeddingsStatus(), loadAuditStatus(), loadMemoryShortcuts()])
+  await Promise.allSettled([loadEmbeddingsStatus().catch(() => undefined)])
 })
 
 onBeforeUnmount(() => {
+  if (searchTimer) clearTimeout(searchTimer)
   resetPreview()
 })
 </script>
+
+<style scoped>
+.or3-fb-root {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+  /* Containment so a long preview line inside a card never blows the page width. */
+  overflow-x: clip;
+}
+</style>

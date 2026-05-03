@@ -152,7 +152,13 @@ export default defineAppConfig({
           'bg-[var(--or3-surface)] shadow-[0_18px_40px_rgba(42,35,25,0.18)]',
           'backdrop-blur-md',
         ],
-        viewport: 'p-1.5',
+        viewport: 'p-1.5 divide-y-0',
+        group: [
+          'p-1 isolate',
+          '[&:not(:first-child)]:mt-1 [&:not(:first-child)]:pt-2',
+          '[&:not(:first-child)]:border-t [&:not(:first-child)]:border-[color:color-mix(in_srgb,var(--or3-border)_38%,white_62%)]',
+        ],
+        separator: 'mx-2 my-1.5 h-px bg-[color:color-mix(in_srgb,var(--or3-border)_38%,white_62%)]',
         item: [
           'rounded-xl px-3! py-2.5 text-sm font-medium text-[var(--or3-text)]',
           'data-[highlighted]:bg-[var(--or3-green-soft)] data-[highlighted]:text-[var(--or3-green-dark)]',
@@ -169,7 +175,13 @@ export default defineAppConfig({
           'bg-[var(--or3-surface)] shadow-[0_18px_40px_rgba(42,35,25,0.18)]',
           'backdrop-blur-md',
         ],
-        viewport: 'p-1.5',
+        viewport: 'p-1.5 divide-y-0',
+        group: [
+          'p-1 isolate',
+          '[&:not(:first-child)]:mt-1 [&:not(:first-child)]:pt-2',
+          '[&:not(:first-child)]:border-t [&:not(:first-child)]:border-[color:color-mix(in_srgb,var(--or3-border)_38%,white_62%)]',
+        ],
+        separator: 'mx-2 my-1.5 h-px bg-[color:color-mix(in_srgb,var(--or3-border)_38%,white_62%)]',
         item: [
           'rounded-xl px-3 py-2.5 text-sm font-medium text-[var(--or3-text)]',
           'data-[highlighted]:bg-[var(--or3-green-soft)] data-[highlighted]:text-[var(--or3-green-dark)]',
