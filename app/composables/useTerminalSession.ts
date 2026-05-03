@@ -4,6 +4,8 @@ import { useOr3Api } from './useOr3Api'
 
 const session = ref<TerminalSessionSnapshot | null>(null)
 const terminalLines = ref<string[]>([])
+const terminalChunks = ref<{ id: number; data: string }[]>([])
+let chunkSeq = 0
 const terminalError = ref<string | null>(null)
 const terminalBusy = ref(false)
 const terminalStreaming = ref(false)
@@ -13,6 +15,12 @@ let streamAbortController: AbortController | null = null
 
 function appendTerminalLine(line: string) {
   terminalLines.value = [...terminalLines.value, line].slice(-600)
+}
+
+function appendTerminalChunk(chunk: string) {
+  if (!chunk) return
+  chunkSeq += 1
+  terminalChunks.value = [...terminalChunks.value, { id: chunkSeq, data: chunk }].slice(-2000)
 }
 
 function approvalIdFromError(error: any) {
@@ -40,6 +48,8 @@ export function useTerminalSession() {
         method: 'POST',
         body: payload,
       })
+      chunkSeq = 0
+      terminalChunks.value = []
       session.value = created
       terminalLines.value = [`$ Connected to ${created.cwd}\n`]
       await attach(created.session_id)
@@ -75,7 +85,13 @@ export function useTerminalSession() {
             if (payload) session.value = payload as TerminalSessionSnapshot
             break
           case 'output':
-            appendTerminalLine(String(payload?.chunk ?? ''))
+            {
+              const chunk = String(payload?.chunk ?? '')
+              appendTerminalChunk(chunk)
+              // Keep a stripped, ANSI-free preview for legacy consumers (no xterm).
+              const stripped = chunk.replace(/\x1b\[[0-9;?]*[ -\/]*[@-~]/g, '')
+              if (stripped) appendTerminalLine(stripped)
+            }
             break
           case 'error':
             if (payload?.error) appendTerminalLine(`\n[error] ${String(payload.error)}\n`)
@@ -110,6 +126,17 @@ export function useTerminalSession() {
     })
   }
 
+  // sendKeys writes raw bytes (no implicit newline) and is used by the on-screen
+  // key row + Ctrl chord palette + xterm.onData. We deliberately reuse the same
+  // /input endpoint: server-side it already proxies to PTY stdin verbatim.
+  async function sendKeys(bytes: string) {
+    if (!session.value || !bytes) return
+    await api.request(`/internal/v1/terminal/sessions/${session.value.session_id}/input`, {
+      method: 'POST',
+      body: { input: bytes },
+    })
+  }
+
   async function resize(rows: number, cols: number) {
     if (!session.value) return
     await api.request(`/internal/v1/terminal/sessions/${session.value.session_id}/resize`, {
@@ -129,8 +156,10 @@ export function useTerminalSession() {
 
   function reset() {
     streamAbortController?.abort()
+    chunkSeq = 0
     session.value = null
     terminalLines.value = []
+    terminalChunks.value = []
     terminalError.value = null
     terminalBusy.value = false
     terminalStreaming.value = false
@@ -142,6 +171,7 @@ export function useTerminalSession() {
     session,
     transcript,
     terminalLines,
+    terminalChunks,
     terminalError,
     terminalBusy,
     terminalStreaming,
@@ -152,6 +182,7 @@ export function useTerminalSession() {
     refresh,
     attach,
     sendInput,
+    sendKeys,
     resize,
     close,
     reset,

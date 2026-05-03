@@ -8,7 +8,7 @@
           <div>
             <p class="font-mono text-base font-semibold text-(--or3-text)">Run commands on your computer</p>
             <p class="mt-1 text-sm leading-6 text-(--or3-text-muted)">
-              Open a terminal session and type commands. Use this if you know what you're doing.
+              A real shell with full TUI support — vim, htop, less and friends all work.
             </p>
           </div>
         </div>
@@ -76,14 +76,19 @@
         <p v-if="fileError" class="text-sm text-(--or3-text-muted)">{{ fileError }}</p>
       </SurfaceCard>
 
-      <TerminalPanel
+      <TerminalSurface
         :session="session"
-        :transcript="transcript"
+        :chunks="terminalChunks"
         :busy="starting"
         :streaming="terminalStreaming"
         :error="terminalError"
-        @send="handleSend"
+        :font-size="fontSize"
+        :font-size-min="fontSizeMin"
+        :font-size-max="fontSizeMax"
+        @send="handleKeys"
+        @resize="handleResize"
         @close="handleClose"
+        @zoom="handleZoom"
       />
     </div>
   </AppShell>
@@ -93,7 +98,9 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from '#app'
 import { useComputerFiles } from '~/composables/useComputerFiles'
+import { useTerminalPrefs } from '~/composables/useTerminalPrefs'
 import { useTerminalSession } from '~/composables/useTerminalSession'
+import TerminalSurface from '~/components/computer/terminal/TerminalSurface.vue'
 
 const route = useRoute()
 
@@ -108,16 +115,19 @@ const {
 
 const {
   session,
-  transcript,
+  terminalChunks,
   terminalError,
   terminalBusy,
   terminalStreaming,
   terminalUnavailable,
   pendingApprovalId,
   start,
-  sendInput,
+  sendKeys,
+  resize,
   close,
 } = useTerminalSession()
+
+const { fontSize, fontSizeMin, fontSizeMax, bumpFontSize } = useTerminalPrefs()
 
 const selectedRootId = ref('')
 const selectedPath = ref('.')
@@ -140,12 +150,20 @@ async function handleStart() {
   }).catch(() => {})
 }
 
-async function handleSend(value: string) {
-  await sendInput(value).catch(() => {})
+async function handleKeys(bytes: string) {
+  await sendKeys(bytes).catch(() => {})
+}
+
+async function handleResize(rows: number, cols: number) {
+  await resize(rows, cols).catch(() => {})
 }
 
 async function handleClose() {
   await close().catch(() => {})
+}
+
+function handleZoom(delta: number) {
+  bumpFontSize(delta)
 }
 
 onMounted(async () => {
