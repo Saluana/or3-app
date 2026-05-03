@@ -3,6 +3,8 @@
 @import "streamdown-vue/style.css";
 
 :root {
+  --or3-font-body: "IBM Plex Sans", sans-serif;
+  --or3-font-display: "IBM Plex Serif", "IBM Plex Sans", serif;
   --or3-background: #f7f3ea;
   --or3-surface: #fffcf5;
   --or3-surface-soft: #f1eadf;
@@ -111,6 +113,23 @@ body:has(.or3-chat-shell),
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--or3-green);
+}
+
+.or3-display-title,
+h1,
+h2,
+h3 {
+  font-family: "IBM Plex Serif", "IBM Plex Sans", serif;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.or3-display-title {
+  line-height: 0.95;
+}
+
+.or3-display-title--sm {
+  line-height: 1;
 }
 
 .or3-command {

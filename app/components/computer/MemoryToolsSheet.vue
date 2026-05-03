@@ -24,7 +24,7 @@
               <Icon name="i-pixelarticons-database" class="size-5" />
             </span>
             <div class="min-w-0 flex-1">
-              <p class="font-mono text-base font-semibold text-(--or3-text)">Memory tools</p>
+              <p class="or3-display-title or3-display-title--sm text-2xl text-(--or3-text)">Memory tools</p>
               <p class="mt-1 text-xs leading-5 text-(--or3-text-muted)">
                 Check the memory index, re-scan when notes change, and verify the activity log.
               </p>

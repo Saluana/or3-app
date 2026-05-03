@@ -26,7 +26,7 @@
               <Icon :name="iconName" class="size-5" />
             </span>
             <div class="min-w-0 flex-1">
-              <p class="truncate font-mono text-base font-semibold text-(--or3-text)" :title="entry.name">
+              <p class="or3-display-title or3-display-title--sm truncate text-2xl text-(--or3-text)" :title="entry.name">
                 {{ entry.name }}
               </p>
               <p class="mt-1 break-all text-xs text-(--or3-text-muted)" :title="entry.path">

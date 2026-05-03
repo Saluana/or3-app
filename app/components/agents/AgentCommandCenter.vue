@@ -144,7 +144,7 @@
 
             <!-- Settings row -->
             <div
-                class="grid grid-cols-3 divide-x divide-(--or3-border) overflow-hidden rounded-2xl border border-(--or3-border) bg-(--or3-surface)/60"
+                class="grid grid-cols-2 overflow-hidden rounded-2xl border border-(--or3-border) bg-(--or3-surface)/60"
             >
                 <!-- Priority -->
                 <UDropdownMenu
@@ -153,7 +153,7 @@
                 >
                     <button
                         type="button"
-                        class="or3-focus-ring flex h-full w-full flex-col items-start gap-1.5 px-3 py-2.5 text-left transition hover:bg-(--or3-green-soft)/40"
+                        class="or3-focus-ring flex h-full w-full flex-col items-start gap-1.5 border-r border-b border-(--or3-border) px-3 py-2.5 text-left transition hover:bg-(--or3-green-soft)/40"
                         aria-label="Set task priority"
                     >
                         <span
@@ -186,7 +186,7 @@
                 >
                     <button
                         type="button"
-                        class="or3-focus-ring flex h-full w-full flex-col items-start gap-1.5 px-3 py-2.5 text-left transition hover:bg-(--or3-green-soft)/40"
+                        class="or3-focus-ring flex h-full w-full flex-col items-start gap-1.5 border-b border-(--or3-border) px-3 py-2.5 text-left transition hover:bg-(--or3-green-soft)/40"
                         aria-label="Set notification preference"
                     >
                         <span
@@ -215,13 +215,13 @@
                 <!-- Auto-approve -->
                 <button
                     type="button"
-                    class="or3-focus-ring flex h-full w-full flex-col items-start gap-1.5 px-3 py-2.5 text-left transition hover:bg-(--or3-green-soft)/40"
+                    class="or3-focus-ring col-span-2 flex h-full w-full flex-col items-start gap-1.5 px-3 py-2.5 text-left transition hover:bg-(--or3-green-soft)/40 sm:flex-row sm:items-center sm:justify-between"
                     @click="formState.autoApprove = !formState.autoApprove"
                     :aria-pressed="formState.autoApprove"
                     aria-label="Toggle auto-approve safe actions"
                 >
                     <span
-                        class="flex w-full items-center gap-1.5 text-[12px] font-medium text-(--or3-text-muted)"
+                        class="flex w-full items-center gap-1.5 text-[12px] font-medium text-(--or3-text-muted) sm:w-auto"
                     >
                         <Icon
                             name="i-pixelarticons-shield"
@@ -230,7 +230,7 @@
                         <span class="truncate">Auto-approve</span>
                     </span>
                     <span
-                        class="flex w-full items-center justify-between gap-2"
+                        class="flex w-full items-center justify-between gap-2 sm:w-auto sm:min-w-44"
                     >
                         <span class="truncate text-sm text-(--or3-text)"
                             >Safe actions</span

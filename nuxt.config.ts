@@ -27,8 +27,10 @@ export default defineNuxtConfig({
   },
 
   fonts: {
+    processCSSVariables: true,
     families: [
-      { name: 'IBM Plex Sans', provider: 'google' }
+      { name: 'IBM Plex Sans', provider: 'google' },
+      { name: 'IBM Plex Serif', provider: 'google' }
     ]
   }
 })

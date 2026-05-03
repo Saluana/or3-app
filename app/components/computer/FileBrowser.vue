@@ -45,7 +45,7 @@
     >
       <div class="grid place-items-center gap-3 py-8">
         <RetroIcon name="i-pixelarticons-device-laptop" />
-        <p class="font-mono text-sm font-semibold text-(--or3-text)">No paired computer</p>
+        <p class="or3-display-title or3-display-title--sm text-2xl text-(--or3-text)">No paired computer</p>
         <p class="max-w-sm text-sm leading-6 text-(--or3-text-muted)">
           Pair this computer and allow file access in OR3 to browse its folders here.
         </p>
@@ -121,7 +121,7 @@
         </template>
 
         <div v-else class="px-4 py-8 text-center">
-          <p class="font-mono text-sm font-semibold text-(--or3-text)">This folder is empty</p>
+          <p class="or3-display-title or3-display-title--sm text-2xl text-(--or3-text)">This folder is empty</p>
           <p class="mt-2 text-sm leading-6 text-(--or3-text-muted)">
             Upload files here or create a new folder to get started.
           </p>
@@ -162,7 +162,7 @@
       <template #content>
         <div class="space-y-4 p-5">
           <div>
-            <p class="font-mono text-base font-semibold text-(--or3-text)">Create a new folder</p>
+            <p class="or3-display-title or3-display-title--sm text-2xl text-(--or3-text)">Create a new folder</p>
             <p class="mt-1 text-sm leading-6 text-(--or3-text-muted)">
               This creates a folder inside {{ currentPath === '.' ? activeRoot?.label || 'the current area' : currentPath }}.
             </p>

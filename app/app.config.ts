@@ -280,7 +280,7 @@ export default defineAppConfig({
           'focus:outline-none',
         ].join(' '),
         wrapper: 'w-0 flex-1 flex flex-col',
-        title: 'text-sm font-semibold text-[var(--or3-text)]',
+        title: 'or3-display-title or3-display-title--sm text-base text-[var(--or3-text)]',
         description: 'text-sm text-[var(--or3-text-muted)] mt-0.5',
         icon: 'shrink-0 size-5 text-[var(--or3-green)]',
         actions: 'flex gap-1.5 shrink-0',

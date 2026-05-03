@@ -4,7 +4,7 @@
       <BrandMark size="lg" />
       <div>
         <div class="flex items-center gap-2">
-          <h1 class="font-mono text-xl font-semibold tracking-tight text-(--or3-text) sm:text-2xl">or3-intern</h1>
+          <h1 class="or3-display-title text-3xl tracking-[0.01em] text-(--or3-text) sm:text-4xl">or3-intern</h1>
           <span class="or3-live-dot" :aria-label="connected ? 'Connected' : 'Not connected'" :title="connected ? 'Connected to your computer' : 'No computer paired yet'" />
         </div>
         <p class="or3-command text-[11px] uppercase tracking-[0.18em]">{{ subtitle }}</p>
