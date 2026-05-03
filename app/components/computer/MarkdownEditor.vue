@@ -150,7 +150,6 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
-import { useToast } from '@nuxt/ui/composables'
 import Placeholder from '@tiptap/extension-placeholder'
 import { Editor, EditorContent } from '@tiptap/vue-3'
 import type { EditorCommandAction } from '~/composables/useEditorCommands'
@@ -222,6 +221,62 @@ const statusTitle = computed(() => {
   return statusText.value
 })
 
+const actionSuccessMessages: Record<string, { title: string, description: string }> = {
+  bold: {
+    title: 'Bold updated',
+    description: 'The current selection was toggled as bold.',
+  },
+  italic: {
+    title: 'Italic updated',
+    description: 'The current selection was toggled as italic.',
+  },
+  heading: {
+    title: 'Heading updated',
+    description: 'The current block was toggled as a heading.',
+  },
+  'bullet-list': {
+    title: 'Bullet list updated',
+    description: 'The current block was toggled as a bullet list.',
+  },
+  'ordered-list': {
+    title: 'Numbered list updated',
+    description: 'The current block was toggled as a numbered list.',
+  },
+  'inline-code': {
+    title: 'Inline code updated',
+    description: 'Inline code formatting was toggled for the selection.',
+  },
+  'code-block': {
+    title: 'Code block updated',
+    description: 'The current block was toggled as a code block.',
+  },
+  'horizontal-rule': {
+    title: 'Divider inserted',
+    description: 'A divider was added to the document.',
+  },
+  undo: {
+    title: 'Undo complete',
+    description: 'The previous editor change was reverted.',
+  },
+  redo: {
+    title: 'Redo complete',
+    description: 'The last reverted editor change was restored.',
+  },
+}
+
+const actionSuccessIcons: Record<string, string> = {
+  bold: 'i-pixelarticons-edit',
+  italic: 'i-pixelarticons-edit-box',
+  heading: 'i-pixelarticons-book-open',
+  'bullet-list': 'i-pixelarticons-list',
+  'ordered-list': 'i-pixelarticons-list',
+  'inline-code': 'i-pixelarticons-code',
+  'code-block': 'i-pixelarticons-terminal',
+  'horizontal-rule': 'i-pixelarticons-minus',
+  undo: 'i-pixelarticons-undo',
+  redo: 'i-pixelarticons-redo',
+}
+
 const showFormattingToolbar = computed(() => {
   return mode.value === 'edit'
     && !props.unsupportedMessage
@@ -230,8 +285,41 @@ const showFormattingToolbar = computed(() => {
 })
 
 function setMode(next: 'edit' | 'read') {
-  if (next === 'edit' && (props.unsupportedMessage)) return
+  if (next === mode.value) {
+    toast.add({
+      title: `${next === 'edit' ? 'Edit' : 'Read'} mode already active`,
+      description: next === 'edit'
+        ? 'You can keep typing in the editor.'
+        : 'You are already viewing the clean reading mode.',
+      color: 'neutral',
+      icon: next === 'edit' ? 'i-pixelarticons-edit' : 'i-pixelarticons-book-open',
+      close: true,
+      duration: 2200,
+    })
+    return
+  }
+  if (next === 'edit' && props.unsupportedMessage) {
+    toast.add({
+      title: 'Edit mode unavailable',
+      description: props.unsupportedMessage,
+      color: 'error',
+      icon: 'i-pixelarticons-alert',
+      close: true,
+      duration: 3200,
+    })
+    return
+  }
   mode.value = next
+  toast.add({
+    title: next === 'edit' ? 'Edit mode enabled' : 'Reading mode enabled',
+    description: next === 'edit'
+      ? 'Formatting tools are ready and the document is editable.'
+      : 'The editor switched to a cleaner read-only view.',
+    color: 'success',
+    icon: next === 'edit' ? 'i-pixelarticons-edit' : 'i-pixelarticons-book-open',
+    close: true,
+    duration: 2200,
+  })
 }
 
 watch(() => props.readOnly, (ro) => {
@@ -252,13 +340,27 @@ function clearAutosaveTimer() {
 async function copyMarkdown() {
   if (!import.meta.client || !editor.value) throw new Error('Clipboard access is unavailable here.')
   await navigator.clipboard.writeText(editorToMarkdown(editor.value))
-  toast.add({ title: 'Markdown copied', description: 'The Markdown source is on your clipboard.' })
+  toast.add({
+    title: 'Markdown copied',
+    description: 'The Markdown source is on your clipboard.',
+    color: 'success',
+    icon: 'i-pixelarticons-copy',
+    close: true,
+    duration: 2200,
+  })
 }
 
 async function copyPlainText() {
   if (!import.meta.client || !editor.value) throw new Error('Clipboard access is unavailable here.')
   await navigator.clipboard.writeText(editor.value.getText({ blockSeparator: '\n\n' }))
-  toast.add({ title: 'Text copied', description: 'The plain text version is on your clipboard.' })
+  toast.add({
+    title: 'Text copied',
+    description: 'The plain text version is on your clipboard.',
+    color: 'success',
+    icon: 'i-pixelarticons-article',
+    close: true,
+    duration: 2200,
+  })
 }
 
 const commandActions = useEditorCommands(editor, {
@@ -365,11 +467,24 @@ async function runAction(action: EditorCommandAction) {
   if (action.disabled) return
   try {
     await action.run()
+    const successMessage = actionSuccessMessages[action.id]
+    if (successMessage) {
+      toast.add({
+        ...successMessage,
+        color: 'success',
+        icon: actionSuccessIcons[action.id] || 'i-pixelarticons-save',
+        close: true,
+        duration: 2200,
+      })
+    }
   } catch (error: any) {
     toast.add({
       title: 'Action unavailable',
       description: error?.message || 'That editor action could not finish.',
       color: 'error',
+      icon: 'i-pixelarticons-alert',
+      close: true,
+      duration: 3200,
     })
   }
 }

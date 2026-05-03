@@ -238,5 +238,53 @@ export default defineAppConfig({
         content: 'bg-[var(--or3-background)] border-l border-[var(--or3-border)]',
       },
     },
+
+    // Toaster viewport: push below the iOS safe area + keep clear of the
+    // notch/status bar. Works for any selected position; the per-position
+    // `top-*` / `right-*` defaults are extended (Tailwind Variants merges).
+    toaster: {
+      slots: {
+        viewport: [
+          'fixed z-[1000]',
+          // Override default `top-4` to respect the safe-area inset.
+          'top-[calc(env(safe-area-inset-top,0px)+1rem)]!',
+          // Pull in from the right edge a bit further on tiny screens.
+          'right-[calc(env(safe-area-inset-right,0px)+1rem)]!',
+          // Slightly narrower viewport on mobile so it doesn't feel slammed.
+          'w-[calc(100%-2rem)] sm:w-96 max-w-sm',
+        ].join(' '),
+      },
+    },
+
+    // Individual toast cards: retro cream surface, soft border + shadow,
+    // generous rounding to match the rest of the app.
+    toast: {
+      slots: {
+        root: [
+          'relative group overflow-hidden flex gap-2.5 p-4',
+          'bg-[var(--or3-surface)] text-[var(--or3-text)]',
+          'border border-[var(--or3-border)] rounded-2xl',
+          'shadow-[var(--or3-shadow-strong)] backdrop-blur-md',
+          'focus:outline-none',
+        ].join(' '),
+        wrapper: 'w-0 flex-1 flex flex-col',
+        title: 'text-sm font-semibold text-[var(--or3-text)]',
+        description: 'text-sm text-[var(--or3-text-muted)] mt-0.5',
+        icon: 'shrink-0 size-5 text-[var(--or3-green)]',
+        actions: 'flex gap-1.5 shrink-0',
+        progress: 'absolute inset-x-0 bottom-0',
+        close: 'p-0',
+      },
+      variants: {
+        color: {
+          success: { icon: 'text-[var(--or3-green)]' },
+          error: { icon: 'text-[var(--or3-danger)]' },
+          warning: { icon: 'text-[var(--or3-amber)]' },
+          info: { icon: 'text-sky-500' },
+          primary: { icon: 'text-[var(--or3-green)]' },
+          neutral: { icon: 'text-[var(--or3-text-muted)]' },
+        },
+      },
+    },
   },
 });

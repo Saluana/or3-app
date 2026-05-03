@@ -33,7 +33,7 @@ export function useEditorCommands(editorRef: Ref<Editor | null | undefined>, opt
       {
         id: 'bold',
         label: 'Bold',
-        icon: 'i-pixelarticons-text-bold',
+        icon: 'i-pixelarticons-edit',
         run: () => { editor?.chain().focus().toggleBold().run() },
         isActive: canRun(() => editor?.isActive('bold') === true),
         disabled: !canRun(() => editor?.can().chain().focus().toggleBold().run() === true),
@@ -41,7 +41,7 @@ export function useEditorCommands(editorRef: Ref<Editor | null | undefined>, opt
       {
         id: 'italic',
         label: 'Italic',
-        icon: 'i-pixelarticons-text-italic',
+        icon: 'i-pixelarticons-edit-box',
         run: () => { editor?.chain().focus().toggleItalic().run() },
         isActive: canRun(() => editor?.isActive('italic') === true),
         disabled: !canRun(() => editor?.can().chain().focus().toggleItalic().run() === true),
@@ -49,7 +49,7 @@ export function useEditorCommands(editorRef: Ref<Editor | null | undefined>, opt
       {
         id: 'heading',
         label: 'Heading',
-        icon: 'i-pixelarticons-text-add',
+        icon: 'i-pixelarticons-book-open',
         run: () => { editor?.chain().focus().toggleHeading({ level: 2 }).run() },
         isActive: canRun(() => editor?.isActive('heading', { level: 2 }) === true),
         disabled: !canRun(() => editor?.can().chain().focus().toggleHeading({ level: 2 }).run() === true),
@@ -57,7 +57,7 @@ export function useEditorCommands(editorRef: Ref<Editor | null | undefined>, opt
       {
         id: 'bullet-list',
         label: 'Bullet list',
-        icon: 'i-pixelarticons-list-box',
+        icon: 'i-pixelarticons-list',
         run: () => { editor?.chain().focus().toggleBulletList().run() },
         isActive: canRun(() => editor?.isActive('bulletList') === true),
         disabled: !canRun(() => editor?.can().chain().focus().toggleBulletList().run() === true),

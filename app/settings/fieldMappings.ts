@@ -222,7 +222,7 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
         key: 'tools',
         label: 'Tools & Skills',
         description: 'Manage local tools, skill execution, and service capability.',
-        icon: 'i-pixelarticons-tool',
+        icon: 'i-pixelarticons-tool-case',
         summaryTemplate: (v) => {
             const exec = Boolean(get(v, 'tools.enableExec', false))
             const skillExec = Boolean(get(v, 'skills.enableExec', false))
