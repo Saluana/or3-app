@@ -27,6 +27,14 @@
   --or3-safe-bottom: env(safe-area-inset-bottom, 0px);
   --or3-safe-left: env(safe-area-inset-left, 0px);
   --or3-keyboard-height: 0px;
+
+  --color-primary: var(--or3-green);
+  --color-success: var(--or3-green);
+  --color-warning: var(--or3-amber);
+  --color-error: var(--or3-danger);
+
+  --ui-bg: var(--or3-surface);
+  --ui-text-inverted: #ffffff;
 }
 
 html {
