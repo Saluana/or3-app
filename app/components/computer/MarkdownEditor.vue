@@ -423,7 +423,7 @@ function isHeadingActive(level: HeadingLevel): boolean {
 
 function canSetHeading(level: HeadingLevel): boolean {
   try {
-    return editor.value?.can().chain().focus().toggleHeading({ level }).run() === true
+    return (editor.value?.can().chain().focus() as any).toggleHeading({ level }).run() === true
   } catch {
     return false
   }
@@ -446,7 +446,7 @@ const activeHeadingIcon = computed(() => {
 function setHeadingLevel(level: HeadingLevel) {
   if (!editor.value) return
   if (!canSetHeading(level)) return
-  editor.value.chain().focus().toggleHeading({ level }).run()
+  (editor.value.chain().focus() as any).toggleHeading({ level }).run()
   toast.add({
     title: `Heading ${level} updated`,
     description: 'The current block was toggled as a heading.',

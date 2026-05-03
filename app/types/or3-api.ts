@@ -4,6 +4,59 @@ export interface ToolPolicy {
     blocked_tools?: string[];
 }
 
+export type CronScheduleKind = 'at' | 'every' | 'cron';
+
+export interface CronSchedule {
+    kind: CronScheduleKind;
+    at_ms?: number;
+    every_ms?: number;
+    expr?: string;
+    tz?: string;
+}
+
+export interface CronPayload {
+    kind: 'agent_turn' | 'system_event' | string;
+    message: string;
+    deliver?: boolean;
+    channel?: string;
+    to?: string;
+    session_key?: string;
+}
+
+export interface CronJobState {
+    next_run_at_ms?: number | null;
+    last_run_at_ms?: number | null;
+    last_status?: 'ok' | 'error' | 'skipped' | string;
+    last_error?: string;
+}
+
+export interface CronJob {
+    id: string;
+    name: string;
+    enabled: boolean;
+    schedule: CronSchedule;
+    payload: CronPayload;
+    state?: CronJobState;
+    created_at_ms?: number;
+    updated_at_ms?: number;
+    delete_after_run?: boolean;
+}
+
+export interface CronStatusResponse {
+    enabled?: boolean;
+    available?: boolean;
+    jobs?: number;
+    next_wake_at_ms?: number | null;
+}
+
+export interface CronJobsResponse {
+    items: CronJob[];
+}
+
+export interface CronJobResponse {
+    job: CronJob;
+}
+
 export interface TurnRequest {
     session_key: string;
     message: string;

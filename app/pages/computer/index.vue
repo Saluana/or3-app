@@ -395,6 +395,12 @@ const actions = [
         to: '/approvals',
     },
     {
+        label: 'Scheduled Tasks',
+        description: 'Manage recurring or future work.',
+        icon: 'i-pixelarticons-clock',
+        to: '/scheduled',
+    },
+    {
         label: 'Adjust Preferences',
         description: 'Tune how or3-intern behaves.',
         icon: 'i-pixelarticons-settings-cog',

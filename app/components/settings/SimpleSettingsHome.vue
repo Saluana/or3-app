@@ -101,6 +101,17 @@
                         Toggle and configure agent skills.
                     </p>
                 </NuxtLink>
+                <NuxtLink
+                    to="/scheduled"
+                    class="or3-focus-ring rounded-xl border border-(--or3-border) bg-white/70 p-3 text-sm hover:bg-(--or3-green-soft)"
+                >
+                    <p class="font-mono font-semibold text-(--or3-text)">
+                        Scheduled tasks
+                    </p>
+                    <p class="mt-0.5 text-xs text-(--or3-text-muted)">
+                        Create and manage recurring work.
+                    </p>
+                </NuxtLink>
             </div>
         </SurfaceCard>
 

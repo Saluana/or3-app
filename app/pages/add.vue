@@ -165,10 +165,7 @@ const gridActions: AddAction[] = [
     label: 'Cron Job',
     description: 'Schedule a task to run on a recurring basis.',
     icon: 'i-pixelarticons-clock',
-    route: '/settings/advanced',
-    hash: 'automation',
-    toastTitle: 'Schedule a recurring task',
-    toastDescription: 'Cron jobs are managed under Settings → Automation.',
+    route: '/scheduled',
   },
 ]
 
