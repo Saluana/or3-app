@@ -2,11 +2,6 @@
   <AppShell>
     <AppHeader subtitle="PROMPT EDITOR" />
     <div class="space-y-4">
-      <div class="flex flex-wrap gap-2">
-        <UButton label="Back to prompts" icon="i-pixelarticons-arrow-left" color="neutral" variant="ghost" @click="goBack" />
-        <UButton v-if="promptState" label="Use in Chat" icon="i-pixelarticons-message-text" color="neutral" variant="soft" @click="useInChat" />
-      </div>
-
       <SurfaceCard v-if="loading" class-name="space-y-3">
         <div class="h-8 w-48 animate-pulse rounded-xl bg-(--or3-surface-soft)" />
         <div class="h-72 animate-pulse rounded-3xl bg-(--or3-surface-soft)" />
@@ -27,11 +22,35 @@
         :read-only="!promptState.writable"
         :unsupported-message="unsupportedMessage"
         :conflict-message="conflictMessage"
+        back-label="Prompts"
         @save="savePromptDocument"
         @save-copy="savePromptCopy"
         @reload="reloadPrompt"
         @dismiss-conflict="dismissConflict"
-      />
+        @back="goBack"
+      >
+        <template #topbar-extra>
+          <UButton
+            label="Use in Chat"
+            icon="i-pixelarticons-message-text"
+            color="neutral"
+            variant="soft"
+            size="xs"
+            class="hidden sm:inline-flex"
+            @click="useInChat"
+          />
+          <UButton
+            icon="i-pixelarticons-message-text"
+            color="neutral"
+            variant="ghost"
+            size="xs"
+            square
+            class="sm:hidden"
+            aria-label="Use prompt in chat"
+            @click="useInChat"
+          />
+        </template>
+      </MarkdownEditor>
     </div>
   </AppShell>
 </template>

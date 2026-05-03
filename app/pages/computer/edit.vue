@@ -2,11 +2,6 @@
   <AppShell>
     <AppHeader subtitle="EDITOR" />
     <div class="space-y-4">
-      <div class="flex flex-wrap gap-2">
-        <UButton label="Back to files" icon="i-pixelarticons-arrow-left" color="neutral" variant="ghost" @click="goBack" />
-        <UButton v-if="documentState" label="Open folder" icon="i-pixelarticons-folder" color="neutral" variant="soft" @click="goBack" />
-      </div>
-
       <SurfaceCard v-if="loading" class-name="space-y-3">
         <div class="h-8 w-48 animate-pulse rounded-xl bg-(--or3-surface-soft)" />
         <div class="h-72 animate-pulse rounded-3xl bg-(--or3-surface-soft)" />
@@ -27,11 +22,13 @@
         :read-only="isReadOnly"
         :unsupported-message="unsupportedMessage"
         :conflict-message="conflictMessage"
+        back-label="Files"
         @save="saveDocument"
         @save-copy="saveCopy"
         @reload="reloadDocument"
         @dismiss-conflict="dismissConflict"
         @dirty-change="dirty = $event"
+        @back="goBack"
       />
     </div>
   </AppShell>
