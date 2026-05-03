@@ -102,9 +102,17 @@ function onSendText(value: string) {
   emit('send', value)
 }
 
+function shouldRefocusConsoleAfterVirtualKey() {
+  if (typeof window === 'undefined') return false
+  if (typeof window.matchMedia !== 'function') return true
+  return window.matchMedia('(hover: hover) and (pointer: fine)').matches
+}
+
 function onKey(bytes: string) {
   emit('send', bytes)
-  consoleRef.value?.focus()
+  if (shouldRefocusConsoleAfterVirtualKey()) {
+    consoleRef.value?.focus()
+  }
 }
 
 function onPaletteSend(bytes: string) {

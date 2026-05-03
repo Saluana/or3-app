@@ -121,7 +121,7 @@ function clear() {
   min-height: 36px;
   padding: 8px 6px 4px;
   font-family: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, monospace;
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.35;
   background: transparent;
   border: none;

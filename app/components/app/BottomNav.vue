@@ -227,7 +227,7 @@ function isActive(to: string) {
     align-items: center;
     justify-content: center;
     gap: 0.2rem;
-    padding: 0.25rem 0.2rem 0.3rem;
+    padding: 0.45rem 0.2rem 0.5rem;
     border-radius: 0;
     color: var(--or3-text-muted);
     text-decoration: none;
@@ -267,8 +267,8 @@ function isActive(to: string) {
 }
 
 .or3-nav-label {
-    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo,
-        monospace;
+    font-family:
+        'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 0.7rem;
     font-weight: 700;
     letter-spacing: 0.02em;
@@ -408,7 +408,7 @@ function isActive(to: string) {
 @media (max-width: 420px) {
     .or3-nav-chassis {
         padding: 0.2rem 0.25rem 0.25rem;
-        min-height: 56px;
+        min-height: 64px;
     }
 
     .or3-nav-endcap {
