@@ -5,9 +5,19 @@
       <RetroIcon name="i-pixelarticons-terminal" class="text-(--or3-green)" />
       <p class="mt-2 text-sm text-(--or3-text-muted)">Pick an area above and tap "Open terminal" to start a shell.</p>
     </div>
-    <div v-else class="or3-terminal-badge">
-      <RetroIcon name="i-pixelarticons-shield" />
-      <span>This is your real computer</span>
+    <div v-else-if="showWarning" class="or3-terminal-badge" role="status">
+      <span class="or3-terminal-badge__icon" aria-hidden="true">
+        <Icon name="i-pixelarticons-alert" class="size-4" />
+      </span>
+      <span class="or3-terminal-badge__copy">Caution: commands run on your actual Mac.</span>
+      <button
+        type="button"
+        class="or3-terminal-badge__close"
+        aria-label="Dismiss terminal warning"
+        @click="dismissWarning"
+      >
+        <Icon name="i-pixelarticons-close" class="size-3.5" />
+      </button>
     </div>
   </div>
 </template>
@@ -29,13 +39,26 @@ const emit = defineEmits<{
   resize: [rows: number, cols: number]
 }>()
 
+const terminalWarningDismissedKey = 'or3:terminal-warning-dismissed'
 const mountRef = ref<HTMLDivElement | null>(null)
+const showWarning = ref(false)
 let term: Terminal | null = null
 let fit: FitAddon | null = null
 let resizeObserver: ResizeObserver | null = null
 let lastWrittenId = 0
 let lastReportedRows = 0
 let lastReportedCols = 0
+
+function loadWarningState() {
+  if (!process.client) return false
+  return window.localStorage.getItem(terminalWarningDismissedKey) !== '1'
+}
+
+function dismissWarning() {
+  showWarning.value = false
+  if (!process.client) return
+  window.localStorage.setItem(terminalWarningDismissedKey, '1')
+}
 
 async function setup() {
   if (!mountRef.value) return
@@ -155,10 +178,12 @@ watch(
       lastReportedRows = 0
       lastReportedCols = 0
     }
+    showWarning.value = Boolean(id) && loadWarningState()
   },
 )
 
 onMounted(() => {
+  showWarning.value = Boolean(props.session) && loadWarningState()
   void setup()
 })
 
@@ -215,19 +240,50 @@ defineExpose({
 
 .or3-terminal-badge {
   position: absolute;
-  bottom: 10px;
   right: 10px;
+  bottom: 10px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 10px;
+  max-width: min(320px, calc(100% - 20px));
+  padding: 6px 8px 6px 6px;
   border-radius: 999px;
   background: rgba(22, 26, 20, 0.85);
-  color: #cfe6c8;
-  border: 1px solid rgba(122, 213, 142, 0.3);
+  color: #f0e6cf;
+  border: 1px solid rgba(224, 123, 107, 0.32);
   font-size: 11px;
   letter-spacing: 0.02em;
-  pointer-events: none;
   backdrop-filter: blur(6px);
+  pointer-events: auto;
+}
+
+.or3-terminal-badge__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 14px;
+  background: rgba(255, 248, 242, 0.92);
+  color: #58443a;
+}
+
+.or3-terminal-badge__copy {
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.or3-terminal-badge__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  border: 1px solid rgba(224, 123, 107, 0.2);
+  background: transparent;
+  color: inherit;
 }
 </style>

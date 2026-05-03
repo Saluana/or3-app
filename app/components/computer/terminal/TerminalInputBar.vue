@@ -1,14 +1,16 @@
 <template>
-  <div class="or3-terminal-input">
+  <div class="or3-terminal-input" :class="{ 'is-disabled': disabled }">
     <UTextarea
       v-model="text"
-      :rows="2"
+      :rows="1"
+      :maxrows="4"
       autoresize
       color="neutral"
-      variant="outline"
+      variant="none"
       :disabled="disabled"
       placeholder="Type a command, then tap Send."
       class="or3-terminal-input__textarea"
+      :ui="{ base: 'or3-terminal-input__textarea-inner' }"
       @keydown.enter.exact.prevent="onEnter"
       @keydown.meta.enter.prevent="onSend"
       @keydown.ctrl.enter.prevent="onSend"
@@ -19,18 +21,20 @@
           type="button"
           class="or3-terminal-input__chip"
           :disabled="disabled"
+          aria-label="Paste from clipboard"
           @click="paste"
         >
-          <RetroIcon name="i-pixelarticons-clipboard" />
+          <Icon name="i-pixelarticons-clipboard" class="size-4" />
           <span>Paste</span>
         </button>
         <button
           type="button"
           class="or3-terminal-input__chip"
           :disabled="disabled || !text"
+          aria-label="Clear input"
           @click="clear"
         >
-          <RetroIcon name="i-pixelarticons-trash" />
+          <Icon name="i-pixelarticons-trash" class="size-4" />
           <span>Clear</span>
         </button>
       </div>
@@ -38,12 +42,13 @@
         type="button"
         class="or3-terminal-input__send"
         :disabled="disabled || !text.trim()"
-        :aria-label="'Send command'"
+        aria-label="Send command"
         @click="onSend"
       >
-        <RetroIcon name="i-pixelarticons-arrow-up" />
+        <Icon name="i-pixelarticons-arrow-up" class="size-4" />
       </button>
     </div>
+    <p v-if="error" class="or3-terminal-input__error">{{ error }}</p>
   </div>
 </template>
 
@@ -52,6 +57,7 @@ import { ref } from 'vue'
 
 const props = defineProps<{
   disabled?: boolean
+  error?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -61,7 +67,6 @@ const emit = defineEmits<{
 const text = ref('')
 
 function onEnter(event: KeyboardEvent) {
-  // Enter alone sends; Shift+Enter inserts a newline (handled by browser default).
   if (event.shiftKey) {
     text.value += '\n'
     return
@@ -72,7 +77,6 @@ function onEnter(event: KeyboardEvent) {
 function onSend() {
   const value = text.value
   if (!value.trim()) return
-  // Always end with a newline so the shell executes immediately.
   const payload = value.endsWith('\n') ? value : `${value}\n`
   emit('send', payload)
   text.value = ''
@@ -84,7 +88,7 @@ async function paste() {
     const value = await navigator.clipboard.readText()
     if (value) text.value = text.value ? `${text.value}${value}` : value
   } catch {
-    // Clipboard access may be denied; the user can long-press to paste.
+    /* clipboard denied */
   }
 }
 
@@ -97,53 +101,74 @@ function clear() {
 .or3-terminal-input {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px;
+  gap: 4px;
+  padding: 6px 8px 8px;
   border-radius: var(--or3-radius-card);
   background: var(--or3-surface);
   border: 1px solid var(--or3-border);
   box-shadow: var(--or3-shadow-soft);
 }
 
+.or3-terminal-input.is-disabled {
+  opacity: 0.85;
+}
+
+.or3-terminal-input__textarea {
+  width: 100%;
+}
+
 .or3-terminal-input__textarea :deep(textarea) {
-  min-height: 56px;
+  min-height: 36px;
+  padding: 8px 6px 4px;
   font-family: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 14px;
+  line-height: 1.35;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.or3-terminal-input__textarea :deep(textarea:focus) {
+  box-shadow: none;
+  outline: none;
 }
 
 .or3-terminal-input__row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
+  padding: 0 2px;
 }
 
 .or3-terminal-input__actions {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
 }
 
 .or3-terminal-input__chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-  border-radius: 999px;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 8px;
   background: transparent;
-  color: var(--or3-text);
-  border: 1px solid var(--or3-border);
-  font-size: 13px;
+  color: var(--or3-text-muted);
+  border: none;
+  font-size: 12px;
   font-weight: 500;
-  transition: background 120ms ease, transform 120ms ease;
-  min-height: 36px;
+  transition: background 120ms ease, color 120ms ease;
+  min-height: 28px;
 }
 
 .or3-terminal-input__chip:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--or3-surface) 80%, var(--or3-green-soft) 20%);
+  background: color-mix(in srgb, var(--or3-surface) 70%, var(--or3-green-soft) 30%);
+  color: var(--or3-text);
 }
 
 .or3-terminal-input__chip:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
@@ -151,13 +176,13 @@ function clear() {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 48px;
+  width: 36px;
+  height: 36px;
   border-radius: 999px;
   background: var(--or3-green);
   color: #ffffff;
   border: none;
-  box-shadow: 0 6px 14px color-mix(in srgb, var(--or3-green) 35%, transparent);
+  box-shadow: 0 4px 10px color-mix(in srgb, var(--or3-green) 35%, transparent);
   transition: transform 120ms ease, background 120ms ease, box-shadow 120ms ease;
 }
 
@@ -167,12 +192,20 @@ function clear() {
 }
 
 .or3-terminal-input__send:active:not(:disabled) {
-  transform: translateY(0) scale(0.97);
+  transform: translateY(0) scale(0.95);
 }
 
 .or3-terminal-input__send:disabled {
-  background: color-mix(in srgb, var(--or3-green) 35%, var(--or3-surface) 65%);
+  background: color-mix(in srgb, var(--or3-green) 30%, var(--or3-surface) 70%);
   box-shadow: none;
   cursor: not-allowed;
+}
+
+.or3-terminal-input__error {
+  margin: 0;
+  padding: 0 2px;
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--or3-danger);
 }
 </style>

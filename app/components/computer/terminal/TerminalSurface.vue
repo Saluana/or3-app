@@ -1,16 +1,6 @@
 <template>
-  <SurfaceCard class-name="or3-terminal-card !p-0 overflow-hidden">
-    <header class="or3-terminal-card__head">
-      <div class="or3-terminal-card__heading">
-        <SectionHeader title="Terminal session" subtitle="Live PTY shell on your computer" />
-        <p class="or3-terminal-card__sub">
-          {{ session ? `Working in ${session.cwd}` : "Pick an area above and tap 'Open terminal' to start." }}
-        </p>
-      </div>
-      <StatusPill :label="statusLabel" :tone="statusTone" :pulse="session?.status === 'running'" />
-    </header>
-
-    <div class="or3-terminal-card__body">
+  <section class="or3-terminal-stage" :data-has-session="Boolean(session)">
+    <div class="or3-terminal-stage__screen">
       <TerminalConsole
         ref="consoleRef"
         :session="session"
@@ -19,59 +9,50 @@
         @data="onConsoleData"
         @resize="onConsoleResize"
       />
+      <slot name="screen-overlay" />
     </div>
 
-    <footer class="or3-terminal-card__foot">
-      <TerminalQuickCommands
-        :commands="quickCommands"
-        :disabled="!session || busy"
-        @run="onQuickCommand"
-      />
-      <div class="or3-terminal-card__keys-wrap">
+    <footer class="or3-terminal-stage__foot">
+      <div class="or3-terminal-stage__keys-wrap">
+        <TerminalQuickCommands
+          v-show="quickOpen"
+          :commands="quickCommands"
+          :disabled="!interactive || busy"
+          @run="onQuickCommand"
+          @close="quickOpen = false"
+        />
         <TerminalCtrlPalette
           :open="ctrlOpen"
+          :disabled="!interactive || busy"
           @send="onPaletteSend"
           @close="ctrlOpen = false"
         />
         <TerminalKeyRow
-          :disabled="!session || busy"
+          :disabled="!interactive || busy"
           :ctrl-active="ctrlOpen"
+          :quick-active="quickOpen"
           :font-size="fontSize"
           :font-size-min="fontSizeMin"
           :font-size-max="fontSizeMax"
           @key="onKey"
-          @toggle-ctrl="ctrlOpen = !ctrlOpen"
+          @toggle-ctrl="onToggleCtrl"
+          @toggle-quick="onToggleQuick"
           @zoom="onZoom"
         />
       </div>
       <TerminalInputBar
-        :disabled="!session || busy"
+        :disabled="!interactive || busy"
+        :error="error"
         @send="onSendText"
       />
     </footer>
 
-    <div v-if="session" class="or3-terminal-card__meta">
-      <span class="or3-command">or3://computer/terminal</span>
-      <span>{{ session.shell }}</span>
-      <span>{{ session.rows }}×{{ session.cols }}</span>
-      <span v-if="streaming" class="or3-terminal-card__live"><span class="or3-live-dot" />Live</span>
-      <UButton
-        size="xs"
-        variant="ghost"
-        color="neutral"
-        label="Close session"
-        icon="i-pixelarticons-close"
-        :disabled="busy"
-        @click="emit('close')"
-      />
-    </div>
-
-    <p v-if="error" class="or3-terminal-card__error">{{ error }}</p>
-  </SurfaceCard>
+    <p v-if="error" class="or3-terminal-stage__error">{{ error }}</p>
+  </section>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { ref, watch } from 'vue'
 import type { TerminalSessionSnapshot } from '~/types/or3-api'
 
 const props = defineProps<{
@@ -80,6 +61,7 @@ const props = defineProps<{
   busy?: boolean
   streaming?: boolean
   error?: string | null
+  interactive?: boolean
   fontSize: number
   fontSizeMin: number
   fontSizeMax: number
@@ -94,22 +76,21 @@ const emit = defineEmits<{
 
 const consoleRef = ref<{ focus: () => void; fit: () => void } | null>(null)
 const ctrlOpen = ref(false)
+const quickOpen = ref(false)
 
-const quickCommands = ['ls -la', 'cd ..', 'pwd', 'git status', 'top', 'htop', 'docker ps', 'clear']
-
-const statusLabel = computed(() => props.session?.status ?? 'idle')
-const statusTone = computed(() => {
-  switch (props.session?.status) {
-    case 'running': return 'green'
-    case 'failed': return 'danger'
-    case 'closed':
-    case 'expired': return 'amber'
-    default: return 'neutral'
-  }
-})
+const quickCommands = [
+  'ls -la',
+  'cd ..',
+  'pwd',
+  'git status',
+  'git diff',
+  'top',
+  'htop',
+  'docker ps',
+  'clear',
+]
 
 function onConsoleData(bytes: string) {
-  // Forward keystrokes typed inside the xterm canvas (e.g. desktop users).
   emit('send', bytes)
 }
 
@@ -132,70 +113,81 @@ function onPaletteSend(bytes: string) {
 
 function onQuickCommand(cmd: string) {
   emit('send', `${cmd}\n`)
+  quickOpen.value = false
+}
+
+function onToggleCtrl() {
+  ctrlOpen.value = !ctrlOpen.value
+  if (ctrlOpen.value) quickOpen.value = false
+}
+
+function onToggleQuick() {
+  quickOpen.value = !quickOpen.value
+  if (quickOpen.value) ctrlOpen.value = false
 }
 
 function onZoom(delta: number) {
   emit('zoom', delta)
 }
+
+watch(
+  () => props.interactive,
+  (interactive) => {
+    if (interactive) return
+    ctrlOpen.value = false
+    quickOpen.value = false
+  },
+)
+
+defineExpose({
+  focus() {
+    consoleRef.value?.focus()
+  },
+  fit() {
+    consoleRef.value?.fit()
+  },
+})
 </script>
 
 <style scoped>
-.or3-terminal-card__head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 16px 18px 8px;
-}
-
-.or3-terminal-card__sub {
-  margin-top: 4px;
-  font-size: 13px;
-  color: var(--or3-text-muted);
-}
-
-.or3-terminal-card__body {
-  padding: 0 12px;
+.or3-terminal-stage {
   display: flex;
   flex-direction: column;
-}
-
-.or3-terminal-card__body :deep(.or3-terminal-screen-wrap) {
-  height: 56dvh;
-  min-height: 280px;
-  max-height: 640px;
-}
-
-.or3-terminal-card__foot {
-  position: relative;
-  padding: 8px 12px 12px;
-  display: flex;
-  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
   gap: 8px;
 }
 
-.or3-terminal-card__keys-wrap {
+.or3-terminal-stage__screen {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.or3-terminal-stage__screen :deep(.or3-terminal-screen-wrap) {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  border-radius: var(--or3-radius-card);
+}
+
+.or3-terminal-stage__foot {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0;
+}
+
+.or3-terminal-stage__keys-wrap {
   position: relative;
 }
 
-.or3-terminal-card__meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  padding: 4px 18px 14px;
-  font-size: 12px;
-  color: var(--or3-text-muted);
-}
-
-.or3-terminal-card__live {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.or3-terminal-card__error {
-  padding: 0 18px 14px;
+.or3-terminal-stage__error {
+  margin: 0;
+  padding: 6px 12px;
   font-size: 13px;
   color: var(--or3-danger);
 }

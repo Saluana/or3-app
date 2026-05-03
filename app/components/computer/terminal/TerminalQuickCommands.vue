@@ -1,22 +1,34 @@
 <template>
-  <div class="or3-terminal-quick">
-    <span class="or3-terminal-quick__label">
-      <RetroIcon name="i-pixelarticons-zap" />
-      <span>Quick commands</span>
-    </span>
-    <div class="or3-terminal-quick__scroll">
-      <button
-        v-for="cmd in commands"
-        :key="cmd"
-        type="button"
-        class="or3-terminal-quick__chip"
-        :disabled="disabled"
-        @click="emit('run', cmd)"
-      >
-        {{ cmd }}
-      </button>
+  <Transition name="or3-terminal-quick">
+    <div class="or3-terminal-quick" role="dialog" aria-label="Quick commands">
+      <div class="or3-terminal-quick__head">
+        <span class="or3-terminal-quick__label">
+          <RetroIcon name="i-pixelarticons-zap" />
+          <span>Quick commands</span>
+        </span>
+        <button
+          type="button"
+          class="or3-terminal-quick__close"
+          aria-label="Close quick commands"
+          @click="emit('close')"
+        >
+          <Icon name="i-pixelarticons-close" class="size-4" />
+        </button>
+      </div>
+      <div class="or3-terminal-quick__scroll">
+        <button
+          v-for="cmd in commands"
+          :key="cmd"
+          type="button"
+          class="or3-terminal-quick__chip"
+          :disabled="disabled"
+          @click="emit('run', cmd)"
+        >
+          {{ cmd }}
+        </button>
+      </div>
     </div>
-  </div>
+  </Transition>
 </template>
 
 <script setup lang="ts">
@@ -27,16 +39,33 @@ defineProps<{
 
 const emit = defineEmits<{
   run: [command: string]
+  close: []
 }>()
 </script>
 
 <style scoped>
 .or3-terminal-quick {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  margin-bottom: 8px;
+  padding: 10px 12px;
+  border-radius: var(--or3-radius-card);
+  background: var(--or3-surface);
+  border: 1px solid var(--or3-border);
+  box-shadow: 0 14px 30px rgba(42, 35, 25, 0.14);
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 10px 12px 8px;
-  border-top: 1px solid var(--or3-border);
+  gap: 8px;
+  z-index: 5;
+}
+
+.or3-terminal-quick__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .or3-terminal-quick__label {
@@ -49,12 +78,25 @@ const emit = defineEmits<{
   letter-spacing: 0.02em;
 }
 
+.or3-terminal-quick__close {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: transparent;
+  border: 1px solid var(--or3-border);
+  color: var(--or3-text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
 .or3-terminal-quick__scroll {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   overflow-x: auto;
-  padding: 4px 0 6px;
+  padding: 2px 0 4px;
   scrollbar-width: none;
 }
 
@@ -83,5 +125,16 @@ const emit = defineEmits<{
 
 .or3-terminal-quick__chip:disabled {
   opacity: 0.5;
+}
+
+.or3-terminal-quick-enter-from,
+.or3-terminal-quick-leave-to {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.or3-terminal-quick-enter-active,
+.or3-terminal-quick-leave-active {
+  transition: opacity 140ms ease, transform 140ms ease;
 }
 </style>

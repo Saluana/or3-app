@@ -1,26 +1,40 @@
 <template>
-    <SurfaceCard class-name="space-y-5" padded>
-        <!-- Header row with mascot -->
-        <div class="flex items-start justify-between gap-3">
-            <div class="min-w-0 flex-1">
-                <p
-                    class="or3-label text-xs font-semibold tracking-[0.18em] text-(--or3-green)"
-                >
-                    COMMAND CENTER
+    <SurfaceCard class-name="or3-command-center space-y-5" padded>
+        <!-- Header: hero with mascot on a podium -->
+        <header class="or3-cc-hero">
+            <div class="or3-cc-hero__copy">
+                <p class="or3-cc-eyebrow">
+                    <Icon
+                        name="i-pixelarticons-sparkles"
+                        class="size-3.5"
+                        aria-hidden="true"
+                    />
+                    <span>COMMAND CENTER</span>
                 </p>
-                <h2
-                    class="mt-1 font-mono text-2xl font-semibold leading-tight text-(--or3-text)"
-                >
-                    Delegate work
+                <h2 class="or3-cc-title">
+                    Delegate with
+                    <span class="or3-cc-title__accent">confidence.</span>
                 </h2>
-                <p class="mt-2 text-sm leading-6 text-(--or3-text-muted)">
-                    Give or3-intern a task and it will search, summarize, or
-                    prepare drafts in the background while you keep using the
-                    app.
+                <p class="or3-cc-sub">
+                    or3-intern handles the heavy lifting—research, summarize,
+                    draft, and plan—so you can stay in your flow.
                 </p>
             </div>
-            <RetroComputerMascot :size="84" sparkle class="-mt-1 shrink-0" />
-        </div>
+            <div class="or3-cc-stage" aria-hidden="true">
+                <span class="or3-cc-stage__sparkle or3-cc-stage__sparkle--a" />
+                <span class="or3-cc-stage__sparkle or3-cc-stage__sparkle--b" />
+                <span class="or3-cc-stage__sparkle or3-cc-stage__sparkle--c" />
+                <div class="or3-cc-stage__podium">
+                    <span class="or3-cc-stage__glow" />
+                    <RetroComputerMascot
+                        :size="132"
+                        src="/computer-icons/platform-guy.webp"
+                        sparkle
+                        class="or3-cc-stage__mascot"
+                    />
+                </div>
+            </div>
+        </header>
 
         <!-- Disabled / setup hint -->
         <div
@@ -415,3 +429,204 @@ function resetForm() {
 
 defineExpose({ resetForm });
 </script>
+
+<style scoped>
+.or3-command-center {
+    position: relative;
+    overflow: hidden;
+    background:
+        radial-gradient(
+            120% 90% at 100% 0%,
+            color-mix(in srgb, var(--or3-green) 18%, transparent) 0%,
+            transparent 55%
+        ),
+        radial-gradient(
+            90% 70% at 0% 0%,
+            color-mix(in srgb, var(--or3-green) 8%, transparent) 0%,
+            transparent 60%
+        ),
+        var(--or3-surface);
+}
+
+.or3-command-center::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+        radial-gradient(
+            color-mix(in srgb, var(--or3-green) 22%, transparent) 1px,
+            transparent 1px
+        );
+    background-size: 14px 14px;
+    background-position: top right;
+    mask-image: radial-gradient(
+        70% 60% at 100% 0%,
+        rgba(0, 0, 0, 0.55),
+        transparent 70%
+    );
+    opacity: 0.55;
+}
+
+.or3-command-center > * {
+    position: relative;
+}
+
+.or3-cc-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: center;
+}
+
+.or3-cc-hero__copy {
+    min-width: 0;
+}
+
+.or3-cc-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family:
+        'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    color: var(--or3-green-dark);
+    text-transform: uppercase;
+}
+
+.or3-cc-title {
+    margin-top: 6px;
+    font-family: 'IBM Plex Serif', 'Georgia', ui-serif, serif;
+    font-size: clamp(1.65rem, 5vw, 2.15rem);
+    font-weight: 600;
+    line-height: 1.05;
+    letter-spacing: -0.01em;
+    color: var(--or3-text);
+}
+
+.or3-cc-title__accent {
+    display: inline;
+    color: var(--or3-green-dark);
+    font-style: italic;
+}
+
+.or3-cc-sub {
+    margin-top: 10px;
+    max-width: 32ch;
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: var(--or3-text-muted);
+}
+
+/* Mascot stage — podium + glow + floating UI tiles + sparkles */
+.or3-cc-stage {
+    position: relative;
+    width: 168px;
+    height: 168px;
+    flex-shrink: 0;
+}
+
+.or3-cc-stage__podium {
+    position: absolute;
+    inset: 14px 8px 0 8px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+}
+
+.or3-cc-stage__glow {
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    width: 120px;
+    height: 26px;
+    transform: translateX(-50%);
+    border-radius: 999px;
+    background: radial-gradient(
+        ellipse at center,
+        color-mix(in srgb, var(--or3-green) 55%, transparent) 0%,
+        transparent 70%
+    );
+    filter: blur(2px);
+}
+
+.or3-cc-stage__mascot {
+    position: relative;
+    z-index: 1;
+}
+
+.or3-cc-stage__tile {
+    position: absolute;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--or3-surface) 85%, white);
+    border: 1px solid color-mix(in srgb, var(--or3-green) 22%, var(--or3-border));
+    color: var(--or3-green-dark);
+    box-shadow: 0 6px 14px color-mix(in srgb, var(--or3-green) 14%, transparent);
+}
+
+.or3-cc-stage__tile--chart {
+    top: 18px;
+    left: 4px;
+    transform: rotate(-6deg);
+}
+
+.or3-cc-stage__tile--doc {
+    top: 38px;
+    right: 0px;
+    transform: rotate(8deg);
+}
+
+.or3-cc-stage__tile--search {
+    bottom: 44px;
+    left: -2px;
+    transform: rotate(4deg);
+}
+
+.or3-cc-stage__sparkle {
+    position: absolute;
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: var(--or3-green);
+    opacity: 0.7;
+    box-shadow: 0 0 8px color-mix(in srgb, var(--or3-green) 60%, transparent);
+}
+
+.or3-cc-stage__sparkle--a {
+    top: 6px;
+    right: 22px;
+}
+.or3-cc-stage__sparkle--b {
+    top: 70px;
+    right: -2px;
+    width: 4px;
+    height: 4px;
+}
+.or3-cc-stage__sparkle--c {
+    top: 4px;
+    left: 38px;
+    width: 4px;
+    height: 4px;
+}
+
+@media (max-width: 480px) {
+    .or3-cc-stage {
+        width: 132px;
+        height: 132px;
+    }
+    .or3-cc-stage__tile {
+        width: 26px;
+        height: 26px;
+    }
+    .or3-cc-title {
+        font-size: 1.55rem;
+    }
+}
+</style>

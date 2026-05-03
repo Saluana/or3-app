@@ -7,7 +7,7 @@
           <p class="or3-terminal-palette__hint">Tap a chip to send the chord. Auto-closes after one press.</p>
         </div>
         <button type="button" class="or3-terminal-palette__close" aria-label="Close" @click="emit('close')">
-          <RetroIcon name="i-pixelarticons-close" />
+          <Icon name="i-pixelarticons-close" class="size-4" />
         </button>
       </div>
       <div class="or3-terminal-palette__row">
@@ -16,6 +16,7 @@
           :key="key"
           type="button"
           class="or3-terminal-palette__chip"
+          :disabled="disabled"
           @click="send(key)"
         >
           Ctrl+{{ key }}
@@ -27,6 +28,7 @@
           :key="`shift-${combo.label}`"
           type="button"
           class="or3-terminal-palette__chip or3-terminal-palette__chip--ghost"
+          :disabled="disabled"
           @click="sendRaw(combo.bytes)"
         >
           Ctrl+Shift+{{ combo.label }}
@@ -39,6 +41,7 @@
 <script setup lang="ts">
 defineProps<{
   open: boolean
+  disabled?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -118,9 +121,9 @@ function sendRaw(bytes: string) {
 }
 
 .or3-terminal-palette__close {
-  width: 32px;
-  height: 32px;
-  border-radius: 999px;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
   background: transparent;
   border: 1px solid var(--or3-border);
   color: var(--or3-text-muted);
@@ -168,6 +171,11 @@ function sendRaw(bytes: string) {
 
 .or3-terminal-palette__chip:active {
   transform: scale(0.96);
+}
+
+.or3-terminal-palette__chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .or3-terminal-palette-enter-from,

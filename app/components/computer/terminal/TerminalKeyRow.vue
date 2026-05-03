@@ -26,12 +26,19 @@
 
       <button
         type="button"
+        class="or3-terminal-keys__btn"
+        :disabled="disabled"
+        @click="emit('key', '\r')"
+      >Enter</button>
+
+      <button
+        type="button"
         class="or3-terminal-keys__btn or3-terminal-keys__btn--icon"
         :disabled="disabled"
         aria-label="Arrow left"
         @click="emit('key', '\u001b[D')"
       >
-        <RetroIcon name="i-pixelarticons-arrow-left" />
+        <Icon name="i-pixelarticons-arrow-left" class="size-4" />
       </button>
       <button
         type="button"
@@ -40,7 +47,7 @@
         aria-label="Arrow right"
         @click="emit('key', '\u001b[C')"
       >
-        <RetroIcon name="i-pixelarticons-arrow-right" />
+        <Icon name="i-pixelarticons-arrow-right" class="size-4" />
       </button>
       <button
         type="button"
@@ -49,7 +56,7 @@
         aria-label="Arrow up"
         @click="emit('key', '\u001b[A')"
       >
-        <RetroIcon name="i-pixelarticons-arrow-up" />
+        <Icon name="i-pixelarticons-arrow-up" class="size-4" />
       </button>
       <button
         type="button"
@@ -58,7 +65,7 @@
         aria-label="Arrow down"
         @click="emit('key', '\u001b[B')"
       >
-        <RetroIcon name="i-pixelarticons-arrow-down" />
+        <Icon name="i-pixelarticons-arrow-down" class="size-4" />
       </button>
 
       <button
@@ -75,6 +82,20 @@
       >PgDn</button>
 
       <span class="or3-terminal-keys__divider" aria-hidden="true" />
+
+      <button
+        type="button"
+        class="or3-terminal-keys__btn or3-terminal-keys__btn--quick"
+        :class="{ 'is-active': quickActive }"
+        :disabled="disabled"
+        :aria-pressed="quickActive"
+        :aria-expanded="quickActive"
+        aria-label="Quick commands"
+        @click="emit('toggle-quick')"
+      >
+        <Icon name="i-pixelarticons-zap" class="size-4" />
+        <span class="or3-terminal-keys__btn-label">quick</span>
+      </button>
 
       <button
         type="button"
@@ -98,6 +119,7 @@
 defineProps<{
   disabled?: boolean
   ctrlActive?: boolean
+  quickActive?: boolean
   fontSize: number
   fontSizeMin: number
   fontSizeMax: number
@@ -106,13 +128,14 @@ defineProps<{
 const emit = defineEmits<{
   key: [bytes: string]
   'toggle-ctrl': []
+  'toggle-quick': []
   zoom: [delta: number]
 }>()
 </script>
 
 <style scoped>
 .or3-terminal-keys {
-  padding: 8px 4px 6px;
+  padding: 4px 0 2px;
   background: transparent;
 }
 
@@ -122,32 +145,44 @@ const emit = defineEmits<{
   gap: 6px;
   overflow-x: auto;
   scrollbar-width: none;
-  padding: 0 6px;
+  padding: 0 2px;
 }
 
 .or3-terminal-keys__scroll::-webkit-scrollbar { display: none; }
 
 .or3-terminal-keys__btn {
   flex-shrink: 0;
-  min-width: 44px;
-  height: 40px;
-  padding: 0 12px;
+  min-width: 40px;
+  height: 34px;
+  padding: 0 10px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 4px;
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--or3-surface);
   border: 1px solid var(--or3-border);
   color: var(--or3-text);
   font-family: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, monospace;
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 500;
   transition: background 120ms ease, transform 120ms ease, border-color 120ms ease;
 }
 
 .or3-terminal-keys__btn--icon {
-  padding: 0 10px;
+  width: 36px;
+  min-width: 36px;
+  padding: 0;
+}
+
+.or3-terminal-keys__btn--quick {
+  padding: 0 10px 0 8px;
+  color: var(--or3-text);
+}
+
+.or3-terminal-keys__btn-label {
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
 }
 
 .or3-terminal-keys__btn:hover:not(:disabled) {
@@ -170,9 +205,9 @@ const emit = defineEmits<{
 
 .or3-terminal-keys__divider {
   width: 1px;
-  height: 20px;
+  height: 18px;
   background: var(--or3-border);
-  margin: 0 4px;
+  margin: 0 2px;
   flex-shrink: 0;
 }
 </style>

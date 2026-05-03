@@ -466,11 +466,11 @@ async function openEntryInBrowser(entry: FileEntry) {
 
 function openTerminalAt(entry: FileEntry) {
   const path = entry.type === 'directory' ? entry.path : parentPath(entry.path)
-  void navigateTo({ path: '/computer/terminal', query: { root: currentRootId.value, path } })
+  void navigateTo({ path: '/computer/terminal', query: { root: currentRootId.value, path, fresh: '1' } })
 }
 
 function openTerminalForCurrentFolder() {
-  void navigateTo({ path: '/computer/terminal', query: { root: currentRootId.value, path: currentPath.value } })
+  void navigateTo({ path: '/computer/terminal', query: { root: currentRootId.value, path: currentPath.value, fresh: '1' } })
 }
 
 function askAboutEntry(entry: FileEntry) {
