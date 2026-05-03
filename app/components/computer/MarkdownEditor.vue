@@ -121,19 +121,52 @@
     <Transition name="or3-md-toolbar-fade">
       <div v-if="showFormattingToolbar" class="or3-md-toolbar-wrap">
         <div class="or3-md-toolbar">
-          <button
-            v-for="action in primaryFormatActions"
-            :key="action.id"
-            type="button"
-            class="or3-md-tool-btn or3-focus-ring"
-            :class="{ 'is-active': action.isActive }"
-            :disabled="action.disabled"
-            :aria-label="action.label"
-            :title="action.label"
-            @click="runAction(action)"
-          >
-            <Icon :name="action.icon" class="size-4" />
-          </button>
+          <template v-for="action in primaryFormatActions" :key="action.id">
+            <UPopover
+              v-if="action.id === 'heading'"
+              :content="{ align: 'center', side: 'top', sideOffset: 10 }"
+            >
+              <button
+                type="button"
+                class="or3-md-tool-btn or3-focus-ring"
+                :class="{ 'is-active': activeHeadingLevel !== null }"
+                :aria-label="action.label"
+                :title="action.label"
+              >
+                <Icon :name="activeHeadingIcon" class="size-4" />
+              </button>
+              <template #content>
+                <div class="or3-md-heading-popover" role="group" aria-label="Heading level">
+                  <button
+                    v-for="level in HEADING_LEVELS"
+                    :key="level"
+                    type="button"
+                    class="or3-md-tool-btn or3-focus-ring"
+                    :class="{ 'is-active': activeHeadingLevel === level }"
+                    :disabled="!canSetHeading(level)"
+                    :aria-label="`Heading ${level}`"
+                    :aria-pressed="activeHeadingLevel === level"
+                    :title="`Heading ${level}`"
+                    @click="setHeadingLevel(level)"
+                  >
+                    <Icon :name="`gridicons:heading-h${level}`" class="size-4" />
+                  </button>
+                </div>
+              </template>
+            </UPopover>
+            <button
+              v-else
+              type="button"
+              class="or3-md-tool-btn or3-focus-ring"
+              :class="{ 'is-active': action.isActive }"
+              :disabled="action.disabled"
+              :aria-label="action.label"
+              :title="action.label"
+              @click="runAction(action)"
+            >
+              <Icon :name="action.icon" class="size-4" />
+            </button>
+          </template>
 
           <div class="or3-md-tool-divider" aria-hidden="true" />
 
@@ -265,9 +298,9 @@ const actionSuccessMessages: Record<string, { title: string, description: string
 }
 
 const actionSuccessIcons: Record<string, string> = {
-  bold: 'i-pixelarticons-edit',
-  italic: 'i-pixelarticons-edit-box',
-  heading: 'i-pixelarticons-book-open',
+  bold: 'gridicons:bold',
+  italic: 'gridicons:italic',
+  heading: 'gridicons:heading',
   'bullet-list': 'i-pixelarticons-list',
   'ordered-list': 'i-pixelarticons-list',
   'inline-code': 'i-pixelarticons-code',
@@ -375,6 +408,54 @@ const PRIMARY_FORMAT_IDS = ['bold', 'italic', 'heading', 'bullet-list', 'ordered
 const primaryFormatActions = computed(() =>
   commandActions.value.filter((action) => PRIMARY_FORMAT_IDS.includes(action.id)),
 )
+
+// Heading popover: H1–H4 quick selection
+const HEADING_LEVELS = [1, 2, 3, 4] as const
+type HeadingLevel = (typeof HEADING_LEVELS)[number]
+
+function isHeadingActive(level: HeadingLevel): boolean {
+  try {
+    return editor.value?.isActive('heading', { level }) === true
+  } catch {
+    return false
+  }
+}
+
+function canSetHeading(level: HeadingLevel): boolean {
+  try {
+    return editor.value?.can().chain().focus().toggleHeading({ level }).run() === true
+  } catch {
+    return false
+  }
+}
+
+const activeHeadingLevel = computed<HeadingLevel | null>(() => {
+  // Read commandActions so this recomputes on the same cadence as other toolbar buttons.
+  void commandActions.value
+  for (const lvl of HEADING_LEVELS) {
+    if (isHeadingActive(lvl)) return lvl
+  }
+  return null
+})
+
+const activeHeadingIcon = computed(() => {
+  const lvl = activeHeadingLevel.value
+  return lvl ? `gridicons:heading-h${lvl}` : 'gridicons:heading'
+})
+
+function setHeadingLevel(level: HeadingLevel) {
+  if (!editor.value) return
+  if (!canSetHeading(level)) return
+  editor.value.chain().focus().toggleHeading({ level }).run()
+  toast.add({
+    title: `Heading ${level} updated`,
+    description: 'The current block was toggled as a heading.',
+    color: 'success',
+    icon: `gridicons:heading-h${level}`,
+    close: true,
+    duration: 2000,
+  })
+}
 
 // Everything else lives behind the toolbar "..." menu
 const SECONDARY_FORMAT_IDS = ['code-block', 'horizontal-rule', 'undo', 'redo']
@@ -847,6 +928,14 @@ onBeforeUnmount(() => {
   height: 1.4rem;
   margin: 0 0.2rem;
   background: var(--or3-border);
+}
+
+/* Heading popover (H1–H4 quick picker) */
+.or3-md-heading-popover {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.3rem;
 }
 
 /* Toolbar enter/exit */
