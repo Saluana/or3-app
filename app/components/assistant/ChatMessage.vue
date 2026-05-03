@@ -195,14 +195,18 @@ import { useChatSessions } from '../../composables/useChatSessions';
 import type { ChatMessage } from '../../types/app-state';
 import {
     approvalActionErrorMessage,
+    approvalStatusFromError,
     canContinueApprovedRequest,
+    resolvedApprovalMessage,
+    resolvedApprovalState,
 } from '../../utils/assistantApproval';
 
 const props = defineProps<{ message: ChatMessage }>();
 const toast = useToast();
 const { messages, toggleMessagePin, updateMessage } = useChatSessions();
 const { isStreaming, send } = useAssistantStream();
-const { approve, deny, consumeIssuedApprovalToken } = useApprovals();
+const { approve, deny, fetchApproval, consumeIssuedApprovalToken } =
+    useApprovals();
 const copied = ref(false);
 const approvalBusy = ref(false);
 let copiedTimer: ReturnType<typeof setTimeout> | null = null;
@@ -454,6 +458,39 @@ function approvalErrorMessage(error: unknown) {
     return approvalActionErrorMessage(error);
 }
 
+async function resolveStaleApprovalAction(error: unknown) {
+    const message = currentMessage();
+    const requestId = message.approvalRequestId;
+    let status = approvalStatusFromError(error);
+    if (!resolvedApprovalState(status) && requestId) {
+        try {
+            const approval = await fetchApproval(requestId);
+            status = approval.status;
+        } catch {
+            // Keep the original error path if the status cannot be refreshed.
+        }
+    }
+    const state = resolvedApprovalState(status);
+    if (!state) return false;
+
+    const description = resolvedApprovalMessage(status);
+    updateMessage(message.id, {
+        approvalState: state,
+        status: 'complete',
+        error: description,
+    });
+    toast.add({
+        title: 'Approval already handled',
+        description,
+        color: state === 'approved' ? 'success' : 'neutral',
+        icon:
+            state === 'approved'
+                ? 'i-pixelarticons-check'
+                : 'i-pixelarticons-info-box',
+    });
+    return true;
+}
+
 async function approveApproval() {
     const message = currentMessage();
     if (!message.approvalRequestId || approvalBusy.value) return;
@@ -497,6 +534,7 @@ async function approveApproval() {
             icon: 'i-pixelarticons-check',
         });
     } catch (error) {
+        if (await resolveStaleApprovalAction(error)) return;
         const message = approvalErrorMessage(error);
         updateMessage(currentMessage().id, {
             approvalState: retryAttempted ? 'failed' : 'pending',
@@ -560,6 +598,7 @@ async function denyApproval() {
             icon: 'i-pixelarticons-close-box',
         });
     } catch (error) {
+        if (await resolveStaleApprovalAction(error)) return;
         const message =
             error instanceof Error && error.message
                 ? error.message

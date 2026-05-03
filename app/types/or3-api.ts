@@ -239,6 +239,7 @@ export interface ApprovalActionResponse {
     token?: string;
     allowlist_id?: number | string;
     resume_job_id?: string;
+    session_key?: string;
     status?: string;
 }
 

@@ -169,6 +169,8 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useToast } from '@nuxt/ui/composables';
 import type { ApprovalRequest } from '../types/or3-api';
 import { useApprovals } from '../composables/useApprovals';
+import { useAssistantStream } from '../composables/useAssistantStream';
+import { useChatSessions } from '../composables/useChatSessions';
 import { approvalActionErrorMessage } from '../utils/assistantApproval';
 
 const filters = [
@@ -180,6 +182,8 @@ const filters = [
 ];
 
 const toast = useToast();
+const { activeSession } = useChatSessions();
+const { send } = useAssistantStream();
 const selectedFilter = ref('pending');
 const detailOpen = ref(false);
 const approvalActionBusy = ref(false);
@@ -261,6 +265,25 @@ async function handleApprovalActionFailure(error: unknown, fallback: string) {
     });
 }
 
+async function followApprovalResumeJob(response?: {
+    resume_job_id?: string;
+    session_key?: string;
+}) {
+    const jobId = response?.resume_job_id?.trim();
+    if (!jobId) return;
+    const responseSession = response?.session_key?.trim();
+    const currentSession = activeSession.value?.sessionKey?.trim();
+    if (!responseSession || responseSession !== currentSession) {
+        return;
+    }
+    await send({
+        text: '',
+        transportText: '',
+        followJobId: jobId,
+        suppressUserEcho: true,
+    });
+}
+
 async function changeFilter(filter: string) {
     selectedFilter.value = filter;
     if (filter === 'saved') {
@@ -282,13 +305,14 @@ async function handleQuickApprove(
     busyId.value = approval.id;
     approvalsError.value = null;
     try {
-        await approve(
+        const response = await approve(
             approval.id,
             remember,
             remember
                 ? 'approved and remembered from mobile'
                 : 'approved from mobile',
         );
+        await followApprovalResumeJob(response);
     } catch (error) {
         await handleApprovalActionFailure(
             error,
@@ -319,13 +343,14 @@ async function handleApprove(remember: boolean) {
     approvalActionBusy.value = true;
     approvalsError.value = null;
     try {
-        await approve(
+        const response = await approve(
             selectedApproval.value.id,
             remember,
             remember
                 ? 'approved and remembered from mobile'
                 : 'approved from mobile',
         );
+        await followApprovalResumeJob(response);
         detailOpen.value = false;
     } catch (error) {
         await handleApprovalActionFailure(

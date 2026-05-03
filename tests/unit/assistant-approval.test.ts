@@ -1,6 +1,9 @@
 import {
     approvalActionErrorMessage,
+    approvalStatusFromError,
     canContinueApprovedRequest,
+    resolvedApprovalMessage,
+    resolvedApprovalState,
 } from '../../app/utils/assistantApproval';
 
 describe('assistant approval helpers', () => {
@@ -38,5 +41,25 @@ describe('assistant approval helpers', () => {
                 status: 400,
             }),
         ).toBe('approval request is not pending');
+    });
+
+    it('recognizes resolved approval states from structured errors', () => {
+        expect(
+            approvalStatusFromError({
+                message: 'This approval request was already approved.',
+                approval_status: 'approved',
+                status: 400,
+            }),
+        ).toBe('approved');
+        expect(resolvedApprovalState('approved')).toBe('approved');
+        expect(resolvedApprovalState('expired')).toBe('expired');
+        expect(resolvedApprovalState('pending')).toBeUndefined();
+    });
+
+    it('explains stale approval states without reusing the generic failure text', () => {
+        expect(resolvedApprovalMessage('approved')).toContain(
+            'already granted',
+        );
+        expect(resolvedApprovalMessage('expired')).toContain('expired');
     });
 });
