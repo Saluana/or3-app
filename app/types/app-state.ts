@@ -116,6 +116,20 @@ export interface RecentJobSummary {
     finished_at?: string;
     artifact_id?: string;
     source?: 'local' | 'persisted' | 'live';
+    /** External CLI delegation fields */
+    runner_id?: string;
+    runner_label?: string;
+    mode?: string;
+    isolation?: string;
+    model?: string;
+    cwd?: string;
+    stdout_preview?: string;
+    stderr_preview?: string;
+    output_preview?: string;
+    error_preview?: string;
+    raw_events?: unknown[];
+    structured_events?: unknown[];
+    output_truncated?: boolean;
 }
 
 export interface Or3AppState {

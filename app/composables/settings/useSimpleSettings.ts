@@ -98,6 +98,15 @@ const FIELD_ALIASES: Record<string, BackendFieldRef> = {
     [refKey('security', 'audit.keyFile')]: { section: 'security', field: 'security_audit_key_file' },
     [refKey('security', 'secretStore.enabled')]: { section: 'security', field: 'security_secret_store_enabled' },
     [refKey('security', 'secretStore.keyFile')]: { section: 'security', field: 'security_secret_store_key_file' },
+
+    [refKey('agentCLI', 'enabled')]: { section: 'agentcli', field: 'agentCLI_enabled' },
+    [refKey('agentCLI', 'maxConcurrent')]: { section: 'agentcli', field: 'agentCLI_max_concurrent' },
+    [refKey('agentCLI', 'maxQueued')]: { section: 'agentcli', field: 'agentCLI_max_queued' },
+    [refKey('agentCLI', 'defaultTimeoutSeconds')]: { section: 'agentcli', field: 'agentCLI_default_timeout' },
+    [refKey('agentCLI', 'allowSandboxAuto')]: { section: 'agentcli', field: 'agentCLI_allow_sandbox_auto' },
+    [refKey('agentCLI', 'disabledRunners')]: { section: 'agentcli', field: 'agentCLI_disabled_runners' },
+    [refKey('agentCLI', 'defaultMode')]: { section: 'agentcli', field: 'agentCLI_default_mode' },
+    [refKey('agentCLI', 'defaultIsolation')]: { section: 'agentcli', field: 'agentCLI_default_isolation' },
 }
 
 function resolveFieldRef(section: string, field: string, channel?: string): BackendFieldRef {

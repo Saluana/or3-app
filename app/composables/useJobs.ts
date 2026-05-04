@@ -1,20 +1,30 @@
 import { computed, ref, shallowRef } from 'vue';
 import type { Or3AppError, RecentJobSummary } from '~/types/app-state';
 import type {
+    AgentCliListResponse,
+    AgentCliRunRequest,
+    AgentCliRunResponse,
+    AgentRunnerInfo,
+    AgentRunnersResponse,
     ArtifactResponse,
     JobSnapshot,
     Or3SseEvent,
+    PersistedAgentCliJob,
     PersistedSubagentJob,
     SubagentListResponse,
     SubagentRequest,
     SubagentResponse,
 } from '~/types/or3-api';
 import {
+    formatAgentCliKind,
     isActiveStatus,
+    isCliJob,
     isTerminalStatus,
     mergeJobSummary,
     normalizeStatus,
+    persistedAgentCliJobToSummary,
     persistedJobToSummary,
+    runnerLabel,
     summaryToSnapshot,
 } from '~/utils/or3/jobs';
 import { useLocalCache } from './useLocalCache';
@@ -29,14 +39,34 @@ export interface AgentJobUiMeta {
     parent_session_key?: string;
 }
 
+export interface AgentCliJobUiMeta extends AgentJobUiMeta {
+    runner_id: string;
+    runner_label?: string;
+    mode?: string;
+    isolation?: string;
+    model?: string;
+    cwd?: string;
+    max_turns?: number;
+}
+
 const MAX_RECENT_JOBS_PER_HOST = 80;
 const MAX_LIVE_STREAMS = 3;
 const POLL_INTERVAL_MS = 6_000;
 const HISTORY_REFRESH_MS = 45_000;
 
+const MAX_CACHED_CLI_OUTPUT_CHARS = 64_000;
+const MAX_CACHED_STRUCTURED_EVENTS = 100;
+const MAX_CACHED_RAW_EVENTS = 200;
+
 const loadingJobs = ref(false);
 const lastListError = shallowRef<Or3AppError | null>(null);
 const listSupported = ref(true);
+
+// ── Runner discovery ──
+const loadingRunners = ref(false);
+const runnerListSupported = ref(true);
+const lastRunnerError = shallowRef<Or3AppError | null>(null);
+const agentRunners = shallowRef<AgentRunnerInfo[]>([]);
 
 interface JobTracker {
     jobId: string;
@@ -50,6 +80,29 @@ let visibilityHandler: (() => void) | null = null;
 
 function activeHostId(cache: ReturnType<typeof useLocalCache>) {
     return cache.state.value.activeHostId ?? 'local';
+}
+
+function builtinInternRunner(): AgentRunnerInfo {
+    return {
+        id: 'or3-intern',
+        display_name: 'or3-intern',
+        status: 'available',
+        auth_status: 'ready',
+        supports: {
+            structuredOutput: false,
+            streamingJson: false,
+            modelFlag: false,
+            permissionsMode: false,
+            safeSandboxFlag: false,
+            dangerousBypassFlag: false,
+            stdinPrompt: false,
+        },
+    };
+}
+
+function normalizeRunnerList(runners: AgentRunnerInfo[]): AgentRunnerInfo[] {
+    const hasIntern = runners.some((r) => r.id === 'or3-intern');
+    return hasIntern ? runners : [builtinInternRunner(), ...runners];
 }
 
 function hostJobSummaries(cache: ReturnType<typeof useLocalCache>) {
@@ -79,6 +132,19 @@ function snapshotToSummary(
         final_text: job.final_text ?? base?.final_text,
         error: job.error ?? base?.error,
         artifact_id: job.artifact_id ?? base?.artifact_id,
+        runner_id: job.runner_id ?? base?.runner_id,
+        runner_label: job.runner_label ?? base?.runner_label,
+        mode: job.mode ?? base?.mode,
+        isolation: job.isolation ?? base?.isolation,
+        model: job.model ?? base?.model,
+        cwd: job.cwd ?? base?.cwd,
+        stdout_preview: job.stdout_preview ?? base?.stdout_preview,
+        stderr_preview: job.stderr_preview ?? base?.stderr_preview,
+        output_preview: job.output_preview ?? base?.output_preview,
+        error_preview: job.error_preview ?? base?.error_preview,
+        raw_events: job.raw_events ?? base?.raw_events,
+        structured_events: job.structured_events ?? base?.structured_events,
+        output_truncated: job.output_truncated ?? base?.output_truncated,
         source: 'live',
     };
 }
@@ -151,20 +217,28 @@ export function applySseEventToCache(
     let finalText = existing.final_text;
     let errorText = existing.error;
     let artifactId = existing.artifact_id;
+    let stdoutPreview = existing.stdout_preview;
+    let stderrPreview = existing.stderr_preview;
+    let structuredEvents = existing.structured_events;
+    let rawEvents = existing.raw_events;
+    let outputTruncated = existing.output_truncated;
     let terminal = false;
 
     switch (eventType) {
         case 'queued':
             nextStatus = 'queued';
+            rawEvents = appendBoundedRaw(rawEvents, payload ?? {}, MAX_CACHED_RAW_EVENTS);
             break;
         case 'started':
             nextStatus = 'running';
+            rawEvents = appendBoundedRaw(rawEvents, payload ?? {}, MAX_CACHED_RAW_EVENTS);
             break;
         case 'text_delta':
             if (payload && typeof payload.text === 'string') {
                 finalText = (finalText ?? '') + payload.text;
             }
             nextStatus = 'running';
+            rawEvents = appendBoundedRaw(rawEvents, payload ?? {}, MAX_CACHED_RAW_EVENTS);
             break;
         case 'assistant':
             if (payload && typeof payload.text === 'string') {
@@ -173,10 +247,42 @@ export function applySseEventToCache(
                 finalText = payload.final_text;
             }
             nextStatus = 'running';
+            rawEvents = appendBoundedRaw(rawEvents, payload ?? {}, MAX_CACHED_RAW_EVENTS);
             break;
         case 'tool_call':
         case 'tool_result':
             nextStatus = 'running';
+            rawEvents = appendBoundedRaw(rawEvents, payload ?? {}, MAX_CACHED_RAW_EVENTS);
+            break;
+        case 'output': {
+            nextStatus = 'running';
+            const stream = payload && typeof payload.stream === 'string'
+                ? payload.stream
+                : 'stdout';
+            const chunk = payload && typeof payload.chunk === 'string'
+                ? payload.chunk
+                : '';
+            if (stream === 'stderr') {
+                stderrPreview = boundedAppend(stderrPreview, chunk, MAX_CACHED_CLI_OUTPUT_CHARS);
+            } else {
+                stdoutPreview = boundedAppend(stdoutPreview, chunk, MAX_CACHED_CLI_OUTPUT_CHARS);
+            }
+            rawEvents = appendBoundedRaw(rawEvents, payload ?? {}, MAX_CACHED_RAW_EVENTS);
+            break;
+        }
+        case 'structured': {
+            nextStatus = 'running';
+            structuredEvents = appendBoundedRaw(
+                structuredEvents,
+                payload ?? {},
+                MAX_CACHED_STRUCTURED_EVENTS,
+            );
+            rawEvents = appendBoundedRaw(rawEvents, payload ?? {}, MAX_CACHED_RAW_EVENTS);
+            break;
+        }
+        case 'output_truncated':
+            outputTruncated = true;
+            rawEvents = appendBoundedRaw(rawEvents, payload ?? {}, MAX_CACHED_RAW_EVENTS);
             break;
         case 'completion': {
             const completionStatus =
@@ -185,6 +291,7 @@ export function applySseEventToCache(
                     : 'completed';
             nextStatus = completionStatus;
             terminal = true;
+            rawEvents = appendBoundedRaw(rawEvents, payload ?? {}, MAX_CACHED_RAW_EVENTS);
             if (payload && typeof payload.final_text === 'string') {
                 finalText = payload.final_text as string;
             } else if (payload && typeof payload.result_preview === 'string') {
@@ -193,6 +300,19 @@ export function applySseEventToCache(
                 finalText = payload.preview as string;
             } else if (payload && typeof payload.message === 'string') {
                 finalText = payload.message as string;
+            } else if (payload && typeof payload.final_text_preview === 'string') {
+                finalText = payload.final_text_preview as string;
+            } else if (payload && typeof payload.stdout_preview === 'string') {
+                finalText = payload.stdout_preview as string;
+            }
+            if (payload && typeof payload.stderr_preview === 'string') {
+                stderrPreview = payload.stderr_preview as string;
+            }
+            if (payload && typeof payload.stdout_preview === 'string') {
+                stdoutPreview = payload.stdout_preview as string;
+            }
+            if (payload && typeof payload.error_message === 'string') {
+                errorText = payload.error_message as string;
             }
             if (payload && typeof payload.artifact_id === 'string') {
                 artifactId = payload.artifact_id as string;
@@ -203,6 +323,7 @@ export function applySseEventToCache(
         case 'runtime_error':
             nextStatus = 'failed';
             terminal = true;
+            rawEvents = appendBoundedRaw(rawEvents, payload ?? {}, MAX_CACHED_RAW_EVENTS);
             if (payload && typeof payload.message === 'string') {
                 errorText = payload.message as string;
             } else if (payload && typeof payload.error === 'string') {
@@ -219,10 +340,38 @@ export function applySseEventToCache(
         final_text: finalText,
         error: errorText,
         artifact_id: artifactId,
+        stdout_preview: stdoutPreview,
+        stderr_preview: stderrPreview,
+        structured_events: structuredEvents,
+        raw_events: rawEvents,
+        output_truncated: outputTruncated,
         updated_at: new Date().toISOString(),
         source: 'live',
     });
     return terminal;
+}
+
+function boundedAppend(
+    existing: string | undefined,
+    chunk: string,
+    maxChars: number,
+): string {
+    const base = existing ?? '';
+    const combined = base + chunk;
+    if (combined.length <= maxChars) return combined;
+    return combined.slice(combined.length - maxChars);
+}
+
+function appendBoundedRaw(
+    existing: unknown[] | undefined,
+    item: unknown,
+    maxItems: number,
+): unknown[] {
+    const list = existing ?? [];
+    const next = [...list, item];
+    return maxItems > 0 && next.length > maxItems
+        ? next.slice(next.length - maxItems)
+        : next;
 }
 
 function stopTracker(jobId: string) {
@@ -268,6 +417,10 @@ export function useJobs() {
             for (const item of items) {
                 upsertHostJob(cache, persistedJobToSummary(item));
             }
+            // Best-effort CLI history loading
+            if (runnerListSupported.value) {
+                void loadAgentCliHistory().catch(() => {});
+            }
         } catch (error) {
             const err = error as Or3AppError;
             if (
@@ -282,6 +435,60 @@ export function useJobs() {
             throw err;
         } finally {
             loadingJobs.value = false;
+        }
+    }
+
+    async function loadAgentCliHistory() {
+        try {
+            const response = await api.request<AgentCliListResponse>(
+                '/internal/v1/agent-runs?limit=50',
+            );
+            const items: PersistedAgentCliJob[] = Array.isArray(response?.items)
+                ? response.items
+                : [];
+            for (const item of items) {
+                upsertHostJob(cache, persistedAgentCliJobToSummary(item));
+            }
+        } catch (_err) {
+            const err = _err as Or3AppError;
+            if (
+                err?.status === 404 ||
+                err?.status === 405 ||
+                err?.code === 'capability_unavailable'
+            ) {
+                return;
+            }
+            // Non-fatal; subagent history still loaded.
+        }
+    }
+
+    async function loadAgentRunners() {
+        loadingRunners.value = true;
+        lastRunnerError.value = null;
+        try {
+            const response = await api.request<AgentRunnersResponse>(
+                '/internal/v1/agent-runners',
+            );
+            runnerListSupported.value = true;
+            agentRunners.value = normalizeRunnerList(
+                Array.isArray(response?.runners) ? response.runners : [],
+            );
+        } catch (error) {
+            const err = error as Or3AppError;
+            if (
+                err?.status === 404 ||
+                err?.status === 405 ||
+                err?.status === 503 ||
+                err?.code === 'capability_unavailable'
+            ) {
+                runnerListSupported.value = false;
+                agentRunners.value = [builtinInternRunner()];
+                return;
+            }
+            lastRunnerError.value = err;
+            agentRunners.value = [builtinInternRunner()];
+        } finally {
+            loadingRunners.value = false;
         }
     }
 
@@ -309,6 +516,41 @@ export function useJobs() {
             source: 'live',
         };
         upsertHostJob(cache, summary);
+        void subscribeJob(response.job_id);
+        return response;
+    }
+
+    async function queueAgentCliJob(
+        request: AgentCliRunRequest,
+        uiMeta?: AgentCliJobUiMeta,
+    ) {
+        const response = await api.request<AgentCliRunResponse>(
+            '/internal/v1/agent-runs',
+            { body: request as unknown as Record<string, unknown> },
+        );
+        const nowIso = new Date().toISOString();
+        const label = uiMeta?.runner_label ?? runnerLabel(request.runner_id);
+        upsertHostJob(cache, {
+            job_id: response.job_id,
+            kind: `agent_cli:${request.runner_id}`,
+            status: normalizeStatus(response.status ?? 'queued'),
+            title: uiMeta?.task || request.task || `${label} task`,
+            task: uiMeta?.task ?? request.task,
+            updated_at: nowIso,
+            created_at: nowIso,
+            parent_session_key: request.parent_session_key,
+            runner_id: request.runner_id,
+            runner_label: label,
+            mode: request.mode,
+            isolation: request.isolation,
+            model: request.model,
+            cwd: request.cwd,
+            category: uiMeta?.category,
+            priority: uiMeta?.priority,
+            notify: uiMeta?.notify,
+            autoApprove: uiMeta?.autoApprove,
+            source: 'live',
+        });
         void subscribeJob(response.job_id);
         return response;
     }
@@ -427,6 +669,41 @@ export function useJobs() {
         if (!summary || !summary.task || !summary.parent_session_key) {
             return null;
         }
+        if (isCliJob(summary.kind) && summary.runner_id && summary.runner_id !== 'or3-intern') {
+            return await queueAgentCliJob(
+                {
+                    parent_session_key: summary.parent_session_key,
+                    runner_id: summary.runner_id as Exclude<string, 'or3-intern'>,
+                    task: summary.task,
+                    mode: summary.mode as AgentCliRunRequest['mode'],
+                    isolation: summary.isolation as AgentCliRunRequest['isolation'],
+                    model: summary.model,
+                    cwd: summary.cwd,
+                    max_turns: undefined,
+                    meta: {
+                        category: summary.category,
+                        priority: summary.priority,
+                        notify: summary.notify,
+                        auto_approve_safe: summary.autoApprove,
+                        retry_of: jobId,
+                    },
+                },
+                {
+                    task: summary.task,
+                    category: summary.category,
+                    priority: summary.priority,
+                    notify: summary.notify,
+                    autoApprove: summary.autoApprove,
+                    parent_session_key: summary.parent_session_key,
+                    runner_id: summary.runner_id,
+                    runner_label: summary.runner_label,
+                    mode: summary.mode,
+                    isolation: summary.isolation,
+                    model: summary.model,
+                    cwd: summary.cwd,
+                },
+            );
+        }
         return await queueJob(
             {
                 parent_session_key: summary.parent_session_key,
@@ -492,7 +769,10 @@ export function useJobs() {
         lastListError,
         listSupported,
         queueJob,
+        queueAgentCliJob,
         loadJobs,
+        loadAgentRunners,
+        loadAgentCliHistory,
         fetchJob,
         fetchArtifact,
         subscribeJob,
@@ -501,5 +781,9 @@ export function useJobs() {
         startActiveJobTracking,
         stopActiveJobTracking,
         findSummary,
+        agentRunners,
+        loadingRunners,
+        runnerListSupported,
+        lastRunnerError,
     };
 }

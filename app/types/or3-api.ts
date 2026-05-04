@@ -57,6 +57,157 @@ export interface CronJobResponse {
     job: CronJob;
 }
 
+// ── External Agent CLI Delegation ──
+
+export type AgentRunnerId = 'or3-intern' | 'opencode' | 'codex' | 'claude' | 'gemini' | string;
+
+export type AgentRunnerStatus =
+    | 'available'
+    | 'missing'
+    | 'not_executable'
+    | 'auth_missing'
+    | 'auth_unknown'
+    | 'unsupported_version'
+    | 'disabled_by_config'
+    | 'error';
+
+export type AgentRunnerAuthStatus = 'ready' | 'missing' | 'unknown';
+
+export interface AgentRunnerSupports {
+    structuredOutput: boolean;
+    streamingJson: boolean;
+    modelFlag: boolean;
+    permissionsMode: boolean;
+    safeSandboxFlag: boolean;
+    dangerousBypassFlag: boolean;
+    stdinPrompt: boolean;
+    maxTurns?: boolean;
+}
+
+export interface AgentRunnerInfo {
+    id: AgentRunnerId;
+    display_name: string;
+    binary_name?: string;
+    binary_path?: string;
+    version?: string;
+    status: AgentRunnerStatus;
+    disabled_reason?: string;
+    auth_status?: AgentRunnerAuthStatus;
+    supports: AgentRunnerSupports;
+    default_args_preview?: string[];
+}
+
+export interface AgentRunnersResponse {
+    runners: AgentRunnerInfo[];
+}
+
+export type AgentRunMode = 'review' | 'safe_edit' | 'sandbox_auto';
+export type AgentRunIsolation =
+    | 'host_readonly'
+    | 'host_workspace_write'
+    | 'sandbox_workspace_write'
+    | 'sandbox_dangerous';
+
+export interface AgentCliRunRequest {
+    parent_session_key: string;
+    runner_id: Exclude<AgentRunnerId, 'or3-intern'>;
+    task: string;
+    timeout_seconds?: number;
+    cwd?: string;
+    model?: string;
+    mode?: AgentRunMode;
+    isolation?: AgentRunIsolation;
+    max_turns?: number;
+    meta?: Record<string, unknown>;
+}
+
+export interface AgentCliRunResponse {
+    job_id: string;
+    run_id?: string;
+    status: 'queued' | 'running' | string;
+}
+
+export type PersistedAgentCliStatus =
+    | 'queued'
+    | 'starting'
+    | 'running'
+    | 'succeeded'
+    | 'failed'
+    | 'aborted'
+    | 'timed_out';
+
+export interface PersistedAgentCliJob {
+    job_id: string;
+    run_id?: string;
+    kind: `agent_cli:${string}` | string;
+    runner_id: string;
+    parent_session_key: string;
+    task: string;
+    status: PersistedAgentCliStatus | string;
+    requested_at: string;
+    started_at?: string;
+    completed_at?: string;
+    updated_at: string;
+    mode?: string;
+    isolation?: string;
+    model?: string;
+    cwd?: string;
+    stdout_preview?: string;
+    stderr_preview?: string;
+    final_text_preview?: string;
+    error?: string;
+    attempts?: number;
+}
+
+export interface AgentCliListResponse {
+    items: PersistedAgentCliJob[];
+}
+
+export interface AgentCliSseOutputEvent {
+    type: 'output';
+    ts?: string;
+    seq?: number;
+    job_id?: string;
+    runner_id?: string;
+    stream: 'stdout' | 'stderr';
+    chunk: string;
+}
+
+export interface AgentCliSseStructuredEvent {
+    type: 'structured';
+    ts?: string;
+    seq?: number;
+    job_id?: string;
+    runner_id?: string;
+    payload?: unknown;
+}
+
+export interface AgentCliSseCompletionEvent {
+    type: 'completion';
+    ts?: string;
+    job_id?: string;
+    runner_id?: string;
+    status: string;
+    exit_code?: number;
+    final_text_preview?: string;
+    stdout_preview?: string;
+    stderr_preview?: string;
+    error_message?: string;
+    duration_ms?: number;
+    message?: string;
+}
+
+export interface AgentCliSseErrorEvent {
+    type: 'error';
+    ts?: string;
+    job_id?: string;
+    runner_id?: string;
+    code?: string;
+    message?: string;
+}
+
+// ── Existing types ──
+
 export interface TurnRequest {
     session_key: string;
     message: string;
@@ -135,6 +286,20 @@ export interface JobSnapshot {
     parent_session_key?: string;
     /** Stored full-result artifact id when the final text exceeds the inline preview cap. */
     artifact_id?: string;
+    /** External CLI delegation fields */
+    runner_id?: string;
+    runner_label?: string;
+    mode?: string;
+    isolation?: string;
+    model?: string;
+    cwd?: string;
+    stdout_preview?: string;
+    stderr_preview?: string;
+    output_preview?: string;
+    error_preview?: string;
+    raw_events?: unknown[];
+    structured_events?: unknown[];
+    output_truncated?: boolean;
 }
 
 export interface PairingRequestResponse {

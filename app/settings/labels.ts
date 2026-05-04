@@ -72,6 +72,14 @@ export const FIELD_LABEL_MAP: Record<string, string> = {
     'security.secretStore.enabled': 'Protect saved secrets',
     'approvalModes.exec': 'Approval for terminal',
     'approvalModes.skill': 'Approval for skills',
+
+    // External Agent CLI Delegation
+    'agentCLI.enabled': 'External CLI agents',
+    'agentCLI.maxConcurrent': 'External agent power',
+    'agentCLI.maxQueued': 'External queue size',
+    'agentCLI.defaultTimeoutSeconds': 'External task timeout',
+    'agentCLI.allowSandboxAuto': 'Full autonomy in sandbox',
+    'agentCLI.disabledRunners': 'Disabled external runners',
 }
 
 export function labelForFieldRef(section: string, field: string): string {

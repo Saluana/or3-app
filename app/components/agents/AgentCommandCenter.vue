@@ -249,7 +249,207 @@
                 </button>
             </div>
 
-            <!-- Settings row -->
+            <!-- Runner & mode selection for external CLI -->
+            <div
+                v-if="runnerOptions && runnerOptions.length > 0"
+                class="rounded-2xl border border-(--or3-border) bg-(--or3-surface)/60 p-3 space-y-3"
+            >
+                <!-- Runner dropdown -->
+                <div class="grid grid-cols-2 gap-2">
+                    <div class="col-span-2 sm:col-span-1">
+                        <label
+                            class="block font-mono text-[11px] font-semibold tracking-[0.18em] text-(--or3-text-muted) mb-1.5"
+                        >
+                            RUNNER
+                        </label>
+                        <div class="relative">
+                            <button
+                                type="button"
+                                class="or3-focus-ring flex w-full items-center justify-between gap-2 rounded-xl border border-(--or3-border) bg-(--or3-surface) px-3 py-2 text-sm text-(--or3-text) hover:bg-(--or3-surface-soft) disabled:cursor-not-allowed disabled:opacity-60"
+                                :disabled="props.disabled || props.loadingRunners"
+                                @click="showRunnerExpanded = !showRunnerExpanded"
+                            >
+                                <span class="truncate">{{
+                                    runnerLabel(selectedRunner)
+                                }}</span>
+                                <Icon
+                                    :name="
+                                        props.loadingRunners
+                                            ? 'i-pixelarticons-loader'
+                                            : 'i-pixelarticons-chevron-down'
+                                    "
+                                    :class="[
+                                        'size-3.5 shrink-0 text-(--or3-text-muted)',
+                                        props.loadingRunners && 'animate-spin',
+                                    ]"
+                                />
+                            </button>
+                            <div
+                                v-if="showRunnerExpanded"
+                                class="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-xl border border-(--or3-border) bg-(--or3-surface) shadow-lg"
+                            >
+                                <button
+                                    v-for="runner in availableRunners"
+                                    :key="runner.id"
+                                    type="button"
+                                    class="or3-focus-ring flex w-full items-center gap-2 px-3 py-2 text-sm text-(--or3-text) transition hover:bg-(--or3-surface-soft)"
+                                    :class="{
+                                        'bg-(--or3-green-soft)/60 text-(--or3-green-dark)':
+                                            selectedRunner === runner.id,
+                                    }"
+                                    @click="
+                                        selectedRunner = runner.id;
+                                        showRunnerExpanded = false;
+                                    "
+                                >
+                                    <span class="truncate flex-1 text-left">{{
+                                        runner.label
+                                    }}</span>
+                                    <span
+                                        v-if="runner.auth_status === 'unknown'"
+                                        class="text-[10px] text-(--or3-amber)"
+                                        >Auth unverified</span
+                                    >
+                                </button>
+                                <template
+                                    v-if="unavailableRunners.length"
+                                >
+                                    <div
+                                        class="border-t border-(--or3-border) px-3 py-1.5 font-mono text-[10px] font-semibold text-(--or3-text-muted) uppercase tracking-wider"
+                                    >
+                                        Not available
+                                    </div>
+                                    <button
+                                        v-for="runner in unavailableRunners"
+                                        :key="runner.id"
+                                        type="button"
+                                        class="flex w-full items-center gap-2 px-3 py-2 text-sm text-(--or3-text-muted) cursor-not-allowed"
+                                        disabled
+                                    >
+                                        <span class="truncate flex-1 text-left">{{
+                                            runner.label
+                                        }}</span>
+                                        <span class="text-[10px] text-(--or3-text-muted)">{{
+                                            runner.disabledReason || runner.status
+                                        }}</span>
+                                    </button>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Mode selector (external runners only) -->
+                    <div
+                        v-if="selectedRunner !== 'or3-intern'"
+                        class="col-span-2 sm:col-span-1"
+                    >
+                        <label
+                            class="block font-mono text-[11px] font-semibold tracking-[0.18em] text-(--or3-text-muted) mb-1.5"
+                        >
+                            PERMISSIONS
+                        </label>
+                        <div class="relative">
+                            <button
+                                type="button"
+                                class="or3-focus-ring flex w-full items-center justify-between gap-2 rounded-xl border border-(--or3-border) bg-(--or3-surface) px-3 py-2 text-sm text-(--or3-text) hover:bg-(--or3-surface-soft) disabled:cursor-not-allowed disabled:opacity-60"
+                                :disabled="props.disabled"
+                                @click="showModeExpanded = !showModeExpanded"
+                            >
+                                <span class="truncate">{{
+                                    modeLabel(selectedMode)
+                                }}</span>
+                                <Icon
+                                    name="i-pixelarticons-chevron-down"
+                                    class="size-3.5 shrink-0 text-(--or3-text-muted)"
+                                />
+                            </button>
+                            <div
+                                v-if="showModeExpanded"
+                                class="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-xl border border-(--or3-border) bg-(--or3-surface) shadow-lg"
+                            >
+                                <button
+                                    v-for="mode in modeOptions"
+                                    :key="mode.id"
+                                    type="button"
+                                    class="or3-focus-ring flex w-full items-center gap-2 px-3 py-2 text-sm transition hover:bg-(--or3-surface-soft)"
+                                    :class="{
+                                        'bg-(--or3-green-soft)/60 text-(--or3-green-dark)':
+                                            selectedMode === mode.id,
+                                        'cursor-not-allowed opacity-50':
+                                            mode.disabled,
+                                    }"
+                                    :disabled="mode.disabled"
+                                    @click="
+                                        if (!mode.disabled) {
+                                            selectedMode = mode.id;
+                                            showModeExpanded = false;
+                                        }
+                                    "
+                                >
+                                    <span class="truncate flex-1 text-left">{{
+                                        mode.label
+                                    }}</span>
+                                    <span
+                                        v-if="mode.disabled"
+                                        class="text-[10px] text-(--or3-text-muted)"
+                                        >Requires sandbox</span
+                                    >
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Model and max-turns (external runners only, compact row) -->
+                <div
+                    v-if="
+                        selectedRunner !== 'or3-intern' &&
+                        activeRunnerSupports?.modelFlag
+                    "
+                    class="grid grid-cols-2 gap-2"
+                >
+                    <div class="col-span-2 sm:col-span-1">
+                        <label
+                            class="block font-mono text-[11px] font-semibold tracking-[0.18em] text-(--or3-text-muted) mb-1.5"
+                        >
+                            MODEL
+                        </label>
+                        <input
+                            v-model="selectedModel"
+                            type="text"
+                            class="or3-focus-ring w-full rounded-xl border border-(--or3-border) bg-(--or3-surface) px-3 py-2 text-sm text-(--or3-text) placeholder:text-(--or3-text-muted) disabled:cursor-not-allowed disabled:opacity-60"
+                            placeholder="Default model"
+                            :disabled="props.disabled"
+                        />
+                    </div>
+                    <div
+                        v-if="activeRunnerSupports?.maxTurns"
+                        class="col-span-2 sm:col-span-1"
+                    >
+                        <label
+                            class="block font-mono text-[11px] font-semibold tracking-[0.18em] text-(--or3-text-muted) mb-1.5"
+                        >
+                            MAX TURNS
+                        </label>
+                        <input
+                            v-model.number="selectedMaxTurns"
+                            type="number"
+                            min="1"
+                            class="or3-focus-ring w-full rounded-xl border border-(--or3-border) bg-(--or3-surface) px-3 py-2 text-sm text-(--or3-text) placeholder:text-(--or3-text-muted) disabled:cursor-not-allowed disabled:opacity-60"
+                            placeholder="Unlimited"
+                            :disabled="props.disabled"
+                        />
+                    </div>
+                </div>
+
+                <!-- Safety copy for external runners -->
+                <p
+                    v-if="selectedRunner !== 'or3-intern'"
+                    class="font-mono text-[10px] text-(--or3-text-muted) leading-relaxed"
+                >
+                    Runs in the background using non-interactive safe mode. It
+                    won't wait for terminal approvals.
+                </p>
+            </div>
             <div
                 class="grid grid-cols-2 overflow-hidden rounded-2xl border border-(--or3-border) bg-(--or3-surface)/60"
             >
@@ -383,6 +583,8 @@ import {
     type FileMentionSuggestionItem,
 } from '~/composables/useFileMentionSuggestions';
 import type { ChatAttachment } from '~/types/app-state';
+import type { AgentRunnerInfo } from '~/types/or3-api';
+import { runnerLabel } from '~/utils/or3/jobs';
 
 export interface AgentTaskPayload {
     task: string;
@@ -392,6 +594,13 @@ export interface AgentTaskPayload {
     notify: AgentNotify;
     autoApprove: boolean;
     attachments: ChatAttachment[];
+    runnerId: string;
+    runnerLabel?: string;
+    mode?: string;
+    isolation?: string;
+    model?: string;
+    maxTurns?: number;
+    cwd?: string;
 }
 
 export type AgentCategory =
@@ -403,6 +612,8 @@ export type AgentCategory =
 export type AgentPriority = 'low' | 'balanced' | 'high';
 export type AgentNotify = 'always' | 'complete' | 'never';
 
+export type AgentCommandMode = 'review' | 'safe_edit' | 'sandbox_auto';
+
 export interface AgentCommandDisabledReason {
     title: string;
     description: string;
@@ -410,11 +621,24 @@ export interface AgentCommandDisabledReason {
     actionLabel?: string;
 }
 
+interface RunnerOption {
+    id: string;
+    label: string;
+    status: string;
+    disabled?: boolean;
+    disabledReason?: string;
+    auth_status?: string;
+}
+
 const props = defineProps<{
     disabled?: boolean;
     disabledReason?: AgentCommandDisabledReason | null;
     submitting?: boolean;
     submitError?: string | null;
+    runnerOptions?: AgentRunnerInfo[];
+    selectedRunnerId?: string;
+    loadingRunners?: boolean;
+    runnerListSupported?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -429,6 +653,14 @@ const formState = reactive({
     notify: 'complete' as AgentNotify,
     autoApprove: true,
 });
+
+const selectedRunner = ref(props.selectedRunnerId ?? 'or3-intern');
+const selectedMode = ref<AgentCommandMode>('safe_edit');
+const selectedModel = ref('');
+const selectedMaxTurns = ref<number | undefined>(undefined);
+const cwdText = ref('');
+const showRunnerExpanded = ref(false);
+const showModeExpanded = ref(false);
 
 interface DraftAttachment extends ChatAttachment {
     content?: string;
@@ -560,6 +792,71 @@ const notifyMenuItems = computed(() =>
         },
     })),
 );
+
+// ── Runner dropdown helpers ──
+
+const runnerList = computed<RunnerOption[]>(() => {
+    const runners = props.runnerOptions ?? [];
+    if (!runners.length)
+        return [{ id: 'or3-intern', label: 'or3-intern', status: 'available' }];
+    return runners.map((r) => ({
+        id: r.id,
+        label: r.display_name || r.id,
+        status: r.status,
+        disabled:
+            r.status === 'missing' ||
+            r.status === 'not_executable' ||
+            r.status === 'auth_missing' ||
+            r.status === 'error' ||
+            r.status === 'disabled_by_config' ||
+            r.status === 'unsupported_version',
+        disabledReason: r.disabled_reason || r.status,
+        auth_status: r.auth_status,
+    }));
+});
+
+const availableRunners = computed(() =>
+    runnerList.value.filter((r) => !r.disabled),
+);
+
+const unavailableRunners = computed(() =>
+    runnerList.value.filter((r) => r.disabled),
+);
+
+const activeRunnerInfo = computed(() =>
+    props.runnerOptions?.find((r) => r.id === selectedRunner.value),
+);
+
+const activeRunnerSupports = computed(() =>
+    activeRunnerInfo.value?.supports,
+);
+
+const modeOptions = computed<
+    Array<{ id: AgentCommandMode; label: string; disabled?: boolean }>
+>(() => [
+    { id: 'review', label: 'Review only' },
+    { id: 'safe_edit', label: 'Safe workspace edits' },
+    {
+        id: 'sandbox_auto',
+        label: 'Full autonomy in sandbox',
+        disabled:
+            !activeRunnerSupports.value?.safeSandboxFlag ||
+            !activeRunnerSupports.value?.dangerousBypassFlag,
+    },
+]);
+
+function modeLabel(mode: string): string {
+    switch (mode) {
+        case 'review':
+            return 'Review only';
+        case 'safe_edit':
+            return 'Safe workspace edits';
+        case 'sandbox_auto':
+            return 'Full autonomy in sandbox';
+        default:
+            return 'Safe workspace edits';
+    }
+}
 
 function priorityLabel(value: AgentPriority) {
     return priorityItems.find((p) => p.value === value)?.label ?? 'Balanced';
@@ -982,7 +1279,39 @@ function submit() {
         notify: formState.notify,
         autoApprove: formState.autoApprove,
         attachments: attachmentPayload(),
+        runnerId: selectedRunner.value,
+        runnerLabel: runnerLabel(selectedRunner.value),
+        mode: selectedRunner.value !== 'or3-intern' ? selectedMode.value : undefined,
+        isolation:
+            selectedRunner.value !== 'or3-intern'
+                ? modeToIsolation(selectedMode.value)
+                : undefined,
+        model:
+            selectedRunner.value !== 'or3-intern' && selectedModel.value
+                ? selectedModel.value
+                : undefined,
+        maxTurns:
+            selectedRunner.value !== 'or3-intern' && selectedMaxTurns.value
+                ? selectedMaxTurns.value
+                : undefined,
+        cwd:
+            selectedRunner.value !== 'or3-intern' && cwdText.value
+                ? cwdText.value
+                : undefined,
     });
+}
+
+function modeToIsolation(mode: string): string {
+    switch (mode) {
+        case 'review':
+            return 'host_readonly';
+        case 'safe_edit':
+            return 'host_workspace_write';
+        case 'sandbox_auto':
+            return 'sandbox_dangerous';
+        default:
+            return 'host_workspace_write';
+    }
 }
 
 function resetForm() {
@@ -997,6 +1326,16 @@ watch(
     (isReadonly) => {
         editor.value?.setEditable(!isReadonly);
     },
+);
+
+watch(
+    availableRunners,
+    (runners) => {
+        if (!runners.some((runner) => runner.id === selectedRunner.value)) {
+            selectedRunner.value = runners[0]?.id ?? 'or3-intern';
+        }
+    },
+    { immediate: true },
 );
 
 onMounted(() => {

@@ -94,6 +94,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { JobSnapshot } from '~/types/or3-api';
+import { formatAgentCliKind } from '~/utils/or3/jobs';
 
 const props = defineProps<{
     pending: JobSnapshot[];
@@ -112,9 +113,7 @@ const recent = computed<JobSnapshot[]>(
 function titleFor(job: JobSnapshot) {
     if (job.title) return job.title;
     if (job.task) return job.task;
-    const kind = job.kind;
-    if (!kind || kind === 'agent' || kind === 'subagent') return 'Agent task';
-    return kind.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    return formatAgentCliKind(job.kind);
 }
 
 function labelFor(job: JobSnapshot) {

@@ -690,6 +690,72 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                     },
                 },
             },
+            {
+                key: 'auto-agent-cli',
+                label: 'External CLI agents',
+                description:
+                    'Let OR3 run external tools like OpenCode, Codex, Claude, or Gemini alongside internal agents.',
+                kind: 'toggle',
+                fieldRefs: [{ section: 'agentCLI', field: 'enabled' }],
+                impacts: ['higher-risk'],
+                warningLevel: 'medium',
+                advancedKeys: ['agentCLI.enabled'],
+                toggle: {
+                    on: { section: 'agentCLI', field: 'enabled', value: true },
+                    off: {
+                        section: 'agentCLI',
+                        field: 'enabled',
+                        value: false,
+                    },
+                },
+            },
+            {
+                key: 'auto-agent-cli-power',
+                label: 'External agent power',
+                description:
+                    'How many external CLI agents may run at once.',
+                kind: 'preset-slider',
+                fieldRefs: [
+                    { section: 'agentCLI', field: 'maxConcurrent' },
+                    { section: 'agentCLI', field: 'maxQueued' },
+                ],
+                presets: SUBAGENT_POWER_PRESETS,
+                impacts: ['higher-cost'],
+                warningLevel: 'medium',
+                advancedKeys: [
+                    'agentCLI.maxConcurrent',
+                    'agentCLI.maxQueued',
+                    'agentCLI.defaultTimeoutSeconds',
+                ],
+            },
+            {
+                key: 'auto-agent-cli-sandbox',
+                label: 'Full autonomy in sandbox',
+                description:
+                    'Allow external CLIs to run with full autonomy inside an isolated sandbox. Requires sandbox setup.',
+                kind: 'toggle',
+                fieldRefs: [
+                    { section: 'agentCLI', field: 'allowSandboxAuto' },
+                ],
+                impacts: ['higher-risk'],
+                warningLevel: 'high',
+                recommended: { value: false, label: 'Off for safety' },
+                advancedKeys: [
+                    'agentCLI.allowSandboxAuto',
+                ],
+                toggle: {
+                    on: {
+                        section: 'agentCLI',
+                        field: 'allowSandboxAuto',
+                        value: true,
+                    },
+                    off: {
+                        section: 'agentCLI',
+                        field: 'allowSandboxAuto',
+                        value: false,
+                    },
+                },
+            },
         ],
     },
     {

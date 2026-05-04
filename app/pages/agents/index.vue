@@ -9,6 +9,9 @@
                 :disabled-reason="disabledReason"
                 :submitting="submitting"
                 :submit-error="submitError"
+                :runner-options="agentRunners"
+                :loading-runners="loadingRunners"
+                :runner-list-supported="runnerListSupported"
                 @submit="createJob"
                 @dismiss-error="submitError = null"
             />
@@ -114,12 +117,17 @@ const {
     lastListError,
     listSupported,
     queueJob,
+    queueAgentCliJob,
     loadJobs,
+    loadAgentRunners,
     abortJob,
     retryJob,
     fetchArtifact,
     startActiveJobTracking,
     stopActiveJobTracking,
+    agentRunners,
+    loadingRunners,
+    runnerListSupported,
 } = useJobs();
 const { health, refreshStatus } = useComputerStatus();
 
@@ -174,7 +182,14 @@ const disabledReason = computed<AgentCommandDisabledReason | null>(() => {
             actionLabel: 'Resume pairing',
         };
     }
-    if (!subagentsAvailable.value) {
+    // While runner discovery is loading, don't block the UI
+    if (loadingRunners.value) {
+        return null;
+    }
+    // Allow external runners even if subagents are off
+    const hasExternalRunners =
+        agentRunners.value?.some((r) => r.id !== 'or3-intern') ?? false;
+    if (!subagentsAvailable.value && !hasExternalRunners) {
         return {
             title: 'Agents are turned off on this computer',
             description:
@@ -224,37 +239,94 @@ async function createJob(payload: AgentTaskPayload) {
     submitError.value = null;
     try {
         const session = activeSession.value ?? ensureSession();
-        await queueJob(
-            {
-                parent_session_key: session.sessionKey,
-                task: payload.transportTask,
-                timeout_seconds:
-                    payload.priority === 'high'
-                        ? 1800
-                        : payload.priority === 'low'
-                          ? 600
-                          : 900,
-                meta: {
+        const isExternal = payload.runnerId !== 'or3-intern';
+        if (isExternal) {
+            await queueAgentCliJob(
+                {
+                    parent_session_key: session.sessionKey,
+                    runner_id: payload.runnerId as Exclude<
+                        string,
+                        'or3-intern'
+                    >,
+                    task: payload.transportTask,
+                    timeout_seconds:
+                        payload.priority === 'high'
+                            ? 1800
+                            : payload.priority === 'low'
+                              ? 600
+                              : 900,
+                    mode: payload.mode as
+                        | 'review'
+                        | 'safe_edit'
+                        | 'sandbox_auto'
+                        | undefined,
+                    isolation: payload.isolation as
+                        | 'host_readonly'
+                        | 'host_workspace_write'
+                        | 'sandbox_workspace_write'
+                        | 'sandbox_dangerous'
+                        | undefined,
+                    model: payload.model,
+                    max_turns: payload.maxTurns,
+                    cwd: payload.cwd,
+                    meta: {
+                        category: payload.category,
+                        priority: payload.priority,
+                        notify: payload.notify,
+                        auto_approve_safe: payload.autoApprove,
+                        attachments: payload.attachments,
+                    },
+                },
+                {
+                    task: payload.task,
                     category: payload.category,
                     priority: payload.priority,
                     notify: payload.notify,
-                    auto_approve_safe: payload.autoApprove,
-                    attachments: payload.attachments,
+                    autoApprove: payload.autoApprove,
+                    parent_session_key: session.sessionKey,
+                    runner_id: payload.runnerId,
+                    runner_label: payload.runnerLabel,
+                    mode: payload.mode,
+                    isolation: payload.isolation,
+                    model: payload.model,
+                    cwd: payload.cwd,
+                    max_turns: payload.maxTurns,
                 },
-            },
-            {
-                task: payload.task,
-                category: payload.category,
-                priority: payload.priority,
-                notify: payload.notify,
-                autoApprove: payload.autoApprove,
-                parent_session_key: session.sessionKey,
-            },
-        );
+            );
+        } else {
+            await queueJob(
+                {
+                    parent_session_key: session.sessionKey,
+                    task: payload.transportTask,
+                    timeout_seconds:
+                        payload.priority === 'high'
+                            ? 1800
+                            : payload.priority === 'low'
+                              ? 600
+                              : 900,
+                    meta: {
+                        category: payload.category,
+                        priority: payload.priority,
+                        notify: payload.notify,
+                        auto_approve_safe: payload.autoApprove,
+                        attachments: payload.attachments,
+                    },
+                },
+                {
+                    task: payload.task,
+                    category: payload.category,
+                    priority: payload.priority,
+                    notify: payload.notify,
+                    autoApprove: payload.autoApprove,
+                    parent_session_key: session.sessionKey,
+                },
+            );
+        }
         commandCenterRef.value?.resetForm();
+        const runnerName = payload.runnerLabel || 'or3-intern';
         toast.add({
-            title: 'Task handed off',
-            description: 'or3-intern will work on it in the background.',
+            title: `Task handed off to ${runnerName}`,
+            description: `${runnerName} will work on it in the background.`,
             icon: 'i-pixelarticons-check',
             color: 'success',
         });
@@ -357,8 +429,12 @@ function buildContinuationPrompt(
               : job.status === 'aborted'
                 ? 'was cancelled'
                 : 'is in progress';
+    const agentName =
+        job.runner_label || job.runner_id
+            ? `${job.runner_label || job.runner_id} (via or3-intern)`
+            : 'or3-intern';
     lines.push(
-        `I just had my **or3-intern agent** run a background task that ${statusWord}, and I want to keep working on it here in chat with full context.`,
+        `I just had my **${agentName}** run a background task that ${statusWord}, and I want to keep working on it here in chat with full context.`,
     );
     lines.push('');
     if (hasTask) {
@@ -452,6 +528,7 @@ async function continueInChat(job: JobSnapshot) {
 onMounted(async () => {
     startActiveJobTracking();
     void refreshStatus().catch(() => {});
+    void loadAgentRunners().catch(() => {});
     try {
         await loadJobs();
     } catch (error) {
