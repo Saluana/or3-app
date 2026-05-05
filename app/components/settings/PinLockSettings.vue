@@ -42,7 +42,7 @@
             Current PIN
           </label>
           <UInput
-            :ref="(el: any) => { if (el && changing) focusInput(el) }"
+            ref="currentPinInput"
             v-model="currentPin"
             type="password"
             inputmode="numeric"
@@ -59,7 +59,7 @@
             {{ changing ? 'New PIN' : 'PIN (4-6 digits)' }}
           </label>
           <UInput
-            :ref="(el: any) => { if (el && !changing) focusInput(el) }"
+            ref="newPinInput"
             v-model="newPin"
             type="password"
             inputmode="numeric"
@@ -95,6 +95,7 @@
             Enter PIN to disable
           </label>
           <UInput
+            ref="currentPinInput"
             v-model="currentPin"
             type="password"
             inputmode="numeric"
@@ -152,13 +153,35 @@
       </div>
     </div>
 
+    <div class="space-y-3 rounded-xl border border-(--or3-border) bg-white/70 p-4">
+      <div>
+        <p class="font-mono text-xs font-semibold text-(--or3-text)">
+          Unlock grace period
+        </p>
+        <p class="mt-1 text-xs leading-5 text-(--or3-text-muted)">
+          Keep OR3 unlocked for a short time after you leave the app so quick app switches do not prompt for your PIN again.
+        </p>
+      </div>
+
+      <USelectMenu
+        value-key="value"
+        class="w-full"
+        :items="unlockDurationOptions"
+        :model-value="selectedUnlockDuration"
+        @update:model-value="onUnlockDurationChange"
+      />
+
+      <p class="font-mono text-[11px] leading-5 text-(--or3-text-muted)">
+        {{ isEnabled ? 'Changes apply immediately for future app switches.' : 'This will be used the next time you enable PIN lock.' }}
+      </p>
+    </div>
+
     <div
       v-if="isEnabled && !showSetup"
       class="rounded-xl border border-(--or3-green) bg-(--or3-green-soft) px-4 py-3"
     >
       <p class="font-mono text-xs text-(--or3-green-dark)">
-        PIN lock is active. Your tokens are encrypted and will require a PIN
-        each time you reopen this app.
+        {{ unlockStatusMessage }}
       </p>
     </div>
 
@@ -195,13 +218,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import {
+  PIN_UNLOCK_DEFAULT_MS,
+  PIN_UNLOCK_IMMEDIATE_MS,
   changePin,
   disable,
   enable,
+  setUnlockDuration,
   usePinLockState,
-} from '~/composables/usePinLock'
+} from '../../composables/usePinLock'
 
 const pinLock = usePinLockState()
 const isEnabled = computed(() => pinLock.isEnabled.value)
@@ -212,15 +238,42 @@ const newPin = ref('')
 const confirmPin = ref('')
 const setupError = ref<string | null>(null)
 const working = ref(false)
+const selectedUnlockDuration = ref(PIN_UNLOCK_DEFAULT_MS)
+const currentPinInput = ref<any>(null)
+const newPinInput = ref<any>(null)
+
+const unlockDurationOptions = [
+  { label: 'Ask every time', value: PIN_UNLOCK_IMMEDIATE_MS },
+  { label: '5 minutes', value: 5 * 60 * 1000 },
+  { label: '10 minutes', value: 10 * 60 * 1000 },
+  { label: '30 minutes', value: 30 * 60 * 1000 },
+  { label: '1 hour', value: 60 * 60 * 1000 },
+]
 
 onMounted(() => {
   pinLock.refresh()
 })
 
-function focusInput(el: HTMLElement) {
-  if (el && 'focus' in el) {
-    (el as HTMLInputElement).focus?.()
-  }
+watch(
+  () => pinLock.unlockDurationMs.value,
+  (value) => {
+    selectedUnlockDuration.value = value ?? PIN_UNLOCK_DEFAULT_MS
+  },
+  { immediate: true },
+)
+
+watch(
+  () => showSetup.value,
+  async (open) => {
+    if (!open) return
+    await nextTick()
+    focusInput(isEnabled.value ? currentPinInput.value : newPinInput.value)
+  },
+)
+
+function focusInput(el: any) {
+  const target = el?.$el?.querySelector?.('input') ?? el?.inputRef ?? el
+  target?.focus?.()
 }
 
 const canSubmit = computed(() => {
@@ -237,6 +290,28 @@ const canChangePin = computed(() => {
     currentPin.value.length >= 4 &&
     canSubmit.value
   )
+})
+
+const unlockDurationLabel = computed(() => {
+  const match = unlockDurationOptions.find((option) => option.value === selectedUnlockDuration.value)
+  if (match) return match.label
+  if (selectedUnlockDuration.value <= PIN_UNLOCK_IMMEDIATE_MS) return 'Ask every time'
+
+  const totalMinutes = Math.round(selectedUnlockDuration.value / 60_000)
+  if (totalMinutes < 60) {
+    return `${totalMinutes} minute${totalMinutes === 1 ? '' : 's'}`
+  }
+
+  const totalHours = Math.round(totalMinutes / 60)
+  return `${totalHours} hour${totalHours === 1 ? '' : 's'}`
+})
+
+const unlockStatusMessage = computed(() => {
+  if (selectedUnlockDuration.value <= PIN_UNLOCK_IMMEDIATE_MS) {
+    return 'PIN lock is active. Your tokens are encrypted and OR3 will ask for your PIN again whenever the app is reopened.'
+  }
+
+  return `PIN lock is active. Your tokens are encrypted and OR3 will stay unlocked for ${unlockDurationLabel.value.toLowerCase()} after you leave the app.`
 })
 
 function cancel() {
@@ -288,7 +363,7 @@ async function enablePinLock() {
   working.value = true
   setupError.value = null
   try {
-    const result = await enable(newPin.value)
+    const result = await enable(newPin.value, selectedUnlockDuration.value)
     if (result.success) {
       cancel()
     } else {
@@ -318,6 +393,18 @@ async function disablePinLock() {
     setupError.value = `Failed to disable PIN lock. ${message || 'Please try again.'}`
   } finally {
     working.value = false
+  }
+}
+
+function onUnlockDurationChange(value: any) {
+  const nextValue = Number(value?.value ?? value)
+  selectedUnlockDuration.value = Number.isFinite(nextValue)
+    ? nextValue
+    : PIN_UNLOCK_DEFAULT_MS
+
+  if (isEnabled.value) {
+    setUnlockDuration(selectedUnlockDuration.value)
+    pinLock.refresh()
   }
 }
 

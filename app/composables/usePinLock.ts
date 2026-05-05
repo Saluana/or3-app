@@ -7,10 +7,12 @@ import type { HostTokenRecord } from './useSecureHostTokens'
 const PIN_LOCK_CONFIG_KEY = 'or3-app:v1:pin-lock-config'
 const PIN_LOCKOUT_KEY = 'or3-app:v1:pin-lockout'
 const HOST_TOKEN_STORAGE_KEY = 'or3-app:v1:secure-host-tokens'
+const PIN_UNLOCK_SESSION_KEY = 'or3-app:v1:pin-unlock-session'
 
 interface PinLockConfig {
   enabled: boolean
   salt: string
+  unlockDurationMs?: number
 }
 
 interface EncryptedTokenBlob {
@@ -24,15 +26,24 @@ interface PinLockoutState {
   lockedUntilTs: number | null
 }
 
+interface PinUnlockedSession {
+  salt: string
+  keyHex: string
+  expiresAtTs: number
+}
+
 let _config: PinLockConfig | null = null
 let _decryptedTokens: Record<string, HostTokenRecord> | null = null
 let _cachedKey: Uint8Array | null = null
 let _failedAttempts = 0
 let _lockedUntilTs: number | null = null
 let _initialized = false
+let _lifecycleHandlersAttached = false
+let _wasBackgrounded = false
 
 const pinEnabledState = ref(false)
 const decryptedTokensState = ref<Record<string, HostTokenRecord> | null>(null)
+const unlockDurationState = ref(0)
 const unlockRequiredState = computed(
   () => pinEnabledState.value && decryptedTokensState.value === null,
 )
@@ -44,11 +55,14 @@ export const PIN_MAX_ATTEMPTS = 5
 export const PIN_LOCKOUT_MS = 5 * 60 * 1000
 export const PIN_MIN_LENGTH = 4
 export const PIN_MAX_LENGTH = 6
+export const PIN_UNLOCK_IMMEDIATE_MS = 0
+export const PIN_UNLOCK_DEFAULT_MS = 10 * 60 * 1000
 const PIN_PATTERN = /^\d{4,6}$/
 
 function syncReactiveState() {
   pinEnabledState.value = _config?.enabled === true
   decryptedTokensState.value = _decryptedTokens
+  unlockDurationState.value = _config?.unlockDurationMs ?? PIN_UNLOCK_DEFAULT_MS
 }
 
 function randomBytes(length: number): Uint8Array {
@@ -84,6 +98,159 @@ function validatePin(pin: string): string | null {
     return 'PIN must contain only digits.'
   }
   return null
+}
+
+function sanitizeUnlockDurationMs(durationMs: unknown): number {
+  const parsed = typeof durationMs === 'number' ? durationMs : Number(durationMs)
+  if (!Number.isFinite(parsed) || parsed < 0) return PIN_UNLOCK_DEFAULT_MS
+  return Math.floor(parsed)
+}
+
+function clearUnlockedSessionCache() {
+  if (typeof sessionStorage !== 'undefined') {
+    sessionStorage.removeItem(PIN_UNLOCK_SESSION_KEY)
+  }
+}
+
+function persistUnlockedSession() {
+  if (!_config?.enabled || !_cachedKey) {
+    clearUnlockedSessionCache()
+    return
+  }
+
+  const unlockDurationMs = sanitizeUnlockDurationMs(_config.unlockDurationMs)
+  if (unlockDurationMs <= PIN_UNLOCK_IMMEDIATE_MS) {
+    clearUnlockedSessionCache()
+    return
+  }
+
+  const session: PinUnlockedSession = {
+    salt: _config.salt,
+    keyHex: bytesToHex(_cachedKey),
+    expiresAtTs: Date.now() + unlockDurationMs,
+  }
+
+  if (typeof sessionStorage !== 'undefined') {
+    sessionStorage.setItem(PIN_UNLOCK_SESSION_KEY, JSON.stringify(session))
+  }
+}
+
+function readUnlockedSession(): PinUnlockedSession | null {
+  if (typeof sessionStorage === 'undefined') return null
+
+  const raw = sessionStorage.getItem(PIN_UNLOCK_SESSION_KEY)
+  if (!raw) return null
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<PinUnlockedSession>
+    if (!parsed || typeof parsed !== 'object') {
+      clearUnlockedSessionCache()
+      return null
+    }
+
+    if (
+      typeof parsed.salt !== 'string'
+      || typeof parsed.keyHex !== 'string'
+      || typeof parsed.expiresAtTs !== 'number'
+      || !Number.isFinite(parsed.expiresAtTs)
+    ) {
+      clearUnlockedSessionCache()
+      return null
+    }
+
+    if (parsed.expiresAtTs <= Date.now()) {
+      clearUnlockedSessionCache()
+      return null
+    }
+
+    return {
+      salt: parsed.salt,
+      keyHex: parsed.keyHex,
+      expiresAtTs: parsed.expiresAtTs,
+    }
+  } catch {
+    clearUnlockedSessionCache()
+    return null
+  }
+}
+
+function restoreUnlockedSession() {
+  if (!_config?.enabled) return false
+
+  const session = readUnlockedSession()
+  if (!session || session.salt !== _config.salt) {
+    if (session && session.salt !== _config.salt) clearUnlockedSessionCache()
+    return false
+  }
+
+  try {
+    const key = hexToBytes(session.keyHex)
+    const tokens = readAndDecryptBlob(key)
+    if (tokens === null) {
+      clearUnlockedSessionCache()
+      return false
+    }
+
+    _cachedKey = key
+    _decryptedTokens = tokens
+    return true
+  } catch {
+    clearUnlockedSessionCache()
+    return false
+  }
+}
+
+function handleBackgrounding() {
+  if (!_config?.enabled || _decryptedTokens === null) return
+  _wasBackgrounded = true
+
+  const unlockDurationMs = sanitizeUnlockDurationMs(_config.unlockDurationMs)
+  if (unlockDurationMs <= PIN_UNLOCK_IMMEDIATE_MS) {
+    lock()
+    return
+  }
+
+  if (_cachedKey === null) return
+  persistUnlockedSession()
+}
+
+function handleForegrounding() {
+  clearExpiredLockout()
+
+  if (_config?.enabled && _wasBackgrounded) {
+    _wasBackgrounded = false
+
+    if (sanitizeUnlockDurationMs(_config.unlockDurationMs) > PIN_UNLOCK_IMMEDIATE_MS && readUnlockedSession() === null) {
+      lock()
+      return
+    }
+  }
+
+  if (_decryptedTokens === null) {
+    restoreUnlockedSession()
+    syncReactiveState()
+  }
+}
+
+function ensureLifecycleHandlers() {
+  if (_lifecycleHandlersAttached || typeof document === 'undefined' || typeof window === 'undefined') return
+  _lifecycleHandlersAttached = true
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      handleBackgrounding()
+    } else if (document.visibilityState === 'visible') {
+      handleForegrounding()
+    }
+  })
+
+  window.addEventListener('pagehide', () => {
+    handleBackgrounding()
+  })
+
+  window.addEventListener('pageshow', () => {
+    handleForegrounding()
+  })
 }
 
 function persistLockout() {
@@ -194,7 +361,13 @@ function readConfig(): PinLockConfig | null {
   if (!raw) return null
   try {
     const parsed = JSON.parse(raw) as PinLockConfig
-    if (parsed.enabled && parsed.salt) return parsed
+    if (parsed.enabled && parsed.salt) {
+      return {
+        enabled: true,
+        salt: parsed.salt,
+        unlockDurationMs: sanitizeUnlockDurationMs(parsed.unlockDurationMs),
+      }
+    }
     return null
   } catch {
     return null
@@ -266,30 +439,40 @@ function refreshPinStateFromStorage() {
 
   const previousSalt = _config?.salt ?? null
   const nextConfig = readConfig()
+  const saltChanged = previousSalt !== null && nextConfig?.enabled === true && nextConfig.salt !== previousSalt
 
   _initialized = true
   _config = nextConfig
 
-  if (!nextConfig?.enabled || nextConfig.salt !== previousSalt) {
+  if (!nextConfig?.enabled || saltChanged) {
     _decryptedTokens = null
     _cachedKey = null
+    clearUnlockedSessionCache()
   }
 
   loadLockout()
+
+  if (nextConfig?.enabled && _decryptedTokens === null) {
+    restoreUnlockedSession()
+  }
+
   syncReactiveState()
 }
 
 function ensureInit() {
   if (typeof localStorage === 'undefined') return
   if (_initialized) return
+  ensureLifecycleHandlers()
   refreshPinStateFromStorage()
 }
 
 export function usePinLockState() {
+  ensureInit()
   return {
     isEnabled: readonly(pinEnabledState),
     needsUnlock: unlockRequiredState,
     isUnlocked: unlockedState,
+    unlockDurationMs: readonly(unlockDurationState),
     refresh: refreshPinStateFromStorage,
   }
 }
@@ -336,6 +519,7 @@ export function getDecryptedTokens(): Record<string, HostTokenRecord> | null {
 export function lock() {
   _decryptedTokens = null
   _cachedKey = null
+  clearUnlockedSessionCache()
   syncReactiveState()
 }
 
@@ -371,6 +555,7 @@ export async function unlock(pin: string): Promise<{ success: boolean; error?: s
     }
     _decryptedTokens = tokens
     _cachedKey = key
+    persistUnlockedSession()
     resetLockout()
     syncReactiveState()
     return { success: true }
@@ -391,6 +576,7 @@ export function encryptAndStore(tokens: Record<string, HostTokenRecord>): boolea
     clearLegacySessionTokenStorage()
     writeEncryptedBlob(blob)
     _decryptedTokens = tokens
+    persistUnlockedSession()
     syncReactiveState()
     return true
   } catch (err) {
@@ -399,7 +585,7 @@ export function encryptAndStore(tokens: Record<string, HostTokenRecord>): boolea
   }
 }
 
-export async function enable(pin: string): Promise<{ success: boolean; error?: string }> {
+export async function enable(pin: string, unlockDurationMs = PIN_UNLOCK_DEFAULT_MS): Promise<{ success: boolean; error?: string }> {
   ensureInit()
   if (isPinEnabled()) return { success: false, error: 'PIN lock is already enabled.' }
 
@@ -412,13 +598,15 @@ export async function enable(pin: string): Promise<{ success: boolean; error?: s
     const tokensToStore = readPlainTokenMap()
     const plaintext = JSON.stringify(tokensToStore)
     const blob = encrypt(plaintext, key)
+    const nextUnlockDurationMs = sanitizeUnlockDurationMs(unlockDurationMs)
 
-    _config = { enabled: true, salt }
+    _config = { enabled: true, salt, unlockDurationMs: nextUnlockDurationMs }
     writeConfig(_config)
     clearLegacySessionTokenStorage()
     writeEncryptedBlob(blob)
     _decryptedTokens = tokensToStore
     _cachedKey = key
+    persistUnlockedSession()
     resetLockout()
     syncReactiveState()
     return { success: true }
@@ -452,6 +640,7 @@ export async function disable(pin: string): Promise<{ success: boolean; error?: 
     _config = null
     _decryptedTokens = null
     _cachedKey = null
+  clearUnlockedSessionCache()
     writeConfig(null)
     clearTokenStorage()
     if (typeof localStorage !== 'undefined' && Object.keys(tokens).length) {
@@ -493,12 +682,17 @@ export async function changePin(oldPin: string, newPin: string): Promise<{ succe
     const plaintext = JSON.stringify(tokens)
     const blob = encrypt(plaintext, newKey)
 
-    _config = { enabled: true, salt: newSalt }
+    _config = {
+      enabled: true,
+      salt: newSalt,
+      unlockDurationMs: sanitizeUnlockDurationMs(_config?.unlockDurationMs),
+    }
     writeConfig(_config)
     clearLegacySessionTokenStorage()
     writeEncryptedBlob(blob)
     _cachedKey = newKey
     _decryptedTokens = tokens
+    persistUnlockedSession()
     resetLockout()
     syncReactiveState()
     return { success: true }
@@ -515,8 +709,31 @@ export function resetPinLock() {
   _config = null
   _decryptedTokens = null
   _cachedKey = null
+  clearUnlockedSessionCache()
   writeConfig(null)
   resetLockout()
   clearTokenStorage()
   syncReactiveState()
+}
+
+export function setUnlockDuration(durationMs: number) {
+  ensureInit()
+  const nextUnlockDurationMs = sanitizeUnlockDurationMs(durationMs)
+
+  if (_config?.enabled) {
+    _config = {
+      ..._config,
+      unlockDurationMs: nextUnlockDurationMs,
+    }
+    writeConfig(_config)
+
+    if (_decryptedTokens !== null && _cachedKey !== null) {
+      persistUnlockedSession()
+    } else {
+      clearUnlockedSessionCache()
+    }
+  }
+
+  unlockDurationState.value = nextUnlockDurationMs
+  return nextUnlockDurationMs
 }
