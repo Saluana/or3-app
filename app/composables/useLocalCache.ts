@@ -1,5 +1,6 @@
 import { ref } from 'vue';
 import type { Or3AppState, Or3HostProfile } from '~/types/app-state';
+import { needsUnlock } from './usePinLock';
 import {
     useSecureHostTokens,
     withResolvedHostTokens,
@@ -37,6 +38,7 @@ function serializableState() {
 }
 
 function persistSessionTokens() {
+    if (needsUnlock()) return;
     useSecureHostTokens().replaceTokens(state.value.hosts);
 }
 
@@ -213,6 +215,10 @@ export function useLocalCache() {
         useSecureHostTokens().replaceTokens([]);
     }
 
+    function forceReload() {
+        refreshFromStorage();
+    }
+
     return {
         state,
         persist,
@@ -222,5 +228,6 @@ export function useLocalCache() {
         setDraft,
         setLastKnownStatus,
         clearAll,
+        forceReload,
     };
 }

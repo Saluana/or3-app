@@ -1,5 +1,6 @@
 import type { Or3HostProfile } from '~/types/app-state'
 import { deleteHostTokensFromNativeStorage, getNativeSecureStorageMode, readHostTokensFromNativeStorage, writeHostTokensToNativeStorage } from '~/utils/auth/nativeSecureStorage'
+import { isPinEnabled, needsUnlock, getDecryptedTokens, encryptAndStore } from './usePinLock'
 
 const HOST_TOKEN_STORAGE_KEY = 'or3-app:v1:secure-host-tokens'
 
@@ -33,34 +34,46 @@ function hostTokenOriginMatches(host?: Partial<Or3HostProfile> | null) {
   return Boolean(hostOrigin && tokenOrigin === hostOrigin)
 }
 
+function readTokenStorage(): string | null {
+  if (typeof localStorage === 'undefined') return null
+  return localStorage.getItem(HOST_TOKEN_STORAGE_KEY)
+}
+
 function readHostTokenMap() {
   if (getNativeSecureStorageMode() === 'native-secure') return {} as Record<string, HostTokenRecord>
-  if (typeof sessionStorage === 'undefined') return {} as Record<string, HostTokenRecord>
-  let raw = sessionStorage.getItem(HOST_TOKEN_STORAGE_KEY)
-  if (!raw && typeof localStorage !== 'undefined') {
-    raw = localStorage.getItem(HOST_TOKEN_STORAGE_KEY)
-    localStorage.removeItem(HOST_TOKEN_STORAGE_KEY)
+
+  if (isPinEnabled()) {
+    if (needsUnlock()) return {} as Record<string, HostTokenRecord>
+    return getDecryptedTokens() ?? ({} as Record<string, HostTokenRecord>)
+  }
+
+  let raw = readTokenStorage()
+  if (!raw) {
+    if (typeof sessionStorage !== 'undefined') {
+      raw = sessionStorage.getItem(HOST_TOKEN_STORAGE_KEY)
+    }
   }
   if (!raw) return {} as Record<string, HostTokenRecord>
   try {
     const parsed = JSON.parse(raw) as Record<string, HostTokenRecord>
     return Object.fromEntries(Object.entries(parsed).map(([hostId, value]) => [hostId, normalizeHostTokens(value)]))
   } catch {
-    sessionStorage.removeItem(HOST_TOKEN_STORAGE_KEY)
+    if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(HOST_TOKEN_STORAGE_KEY)
+    if (typeof localStorage !== 'undefined') localStorage.removeItem(HOST_TOKEN_STORAGE_KEY)
     return {} as Record<string, HostTokenRecord>
   }
 }
 
 function writeHostTokenMap(tokens: Record<string, HostTokenRecord>) {
-  if (typeof sessionStorage === 'undefined') return
+  if (typeof localStorage === 'undefined') return
   const entries = Object.entries(tokens)
     .map(([hostId, value]) => [hostId, normalizeHostTokens(value)] as const)
     .filter(([, value]) => Boolean(value.pairedToken || value.sessionToken))
   const normalized = Object.fromEntries(entries) as Record<string, HostTokenRecord>
   const storageMode = getNativeSecureStorageMode()
   if (storageMode === 'native-secure') {
-    sessionStorage.removeItem(HOST_TOKEN_STORAGE_KEY)
-    if (typeof localStorage !== 'undefined') localStorage.removeItem(HOST_TOKEN_STORAGE_KEY)
+    if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(HOST_TOKEN_STORAGE_KEY)
+    localStorage.removeItem(HOST_TOKEN_STORAGE_KEY)
     if (!Object.keys(normalized).length) {
       void deleteHostTokensFromNativeStorage()
     } else {
@@ -68,13 +81,20 @@ function writeHostTokenMap(tokens: Record<string, HostTokenRecord>) {
     }
     return
   }
-  if (!Object.keys(normalized).length) {
-    sessionStorage.removeItem(HOST_TOKEN_STORAGE_KEY)
-    if (typeof localStorage !== 'undefined') localStorage.removeItem(HOST_TOKEN_STORAGE_KEY)
+  if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(HOST_TOKEN_STORAGE_KEY)
+
+  if (isPinEnabled()) {
+    if (!encryptAndStore(normalized)) {
+      throw new Error('PIN lock is enabled but secure host tokens cannot be updated until the app is unlocked.')
+    }
     return
   }
-  sessionStorage.setItem(HOST_TOKEN_STORAGE_KEY, JSON.stringify(normalized))
-  if (typeof localStorage !== 'undefined') localStorage.removeItem(HOST_TOKEN_STORAGE_KEY)
+
+  if (!Object.keys(normalized).length) {
+    localStorage.removeItem(HOST_TOKEN_STORAGE_KEY)
+    return
+  }
+  localStorage.setItem(HOST_TOKEN_STORAGE_KEY, JSON.stringify(normalized))
 }
 
 export function resolveHostAuthTokens(host?: Partial<Or3HostProfile> | null) {

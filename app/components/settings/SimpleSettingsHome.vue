@@ -65,6 +65,15 @@
             <p
                 class="or3-command text-[11px] uppercase tracking-[0.2em] text-(--or3-green-dark)"
             >
+                Security
+            </p>
+            <PinLockSettings />
+        </SurfaceCard>
+
+        <SurfaceCard class-name="space-y-3">
+            <p
+                class="or3-command text-[11px] uppercase tracking-[0.2em] text-(--or3-green-dark)"
+            >
                 Useful checks
             </p>
             <div class="grid gap-2 sm:grid-cols-2">
