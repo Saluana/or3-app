@@ -35,6 +35,11 @@ const pinStateReady = ref(false)
 const showUnlockOverlay = computed(() => pinStateReady.value && pinLock.needsUnlock.value)
 
 onMounted(() => {
+  const standalone =
+    window.matchMedia?.('(display-mode: standalone)').matches ||
+    (navigator as Navigator & { standalone?: boolean }).standalone === true
+
+  document.documentElement.classList.toggle('or3-standalone', Boolean(standalone))
   pinLock.refresh()
   pinStateReady.value = true
 })

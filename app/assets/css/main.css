@@ -31,7 +31,7 @@
   --or3-safe-left: env(safe-area-inset-left, 0px);
   --or3-keyboard-height: 0px;
   --or3-bottom-nav-height: 5.5rem;
-  --or3-bottom-nav-offset: max(0.35rem, var(--or3-safe-bottom));
+  --or3-bottom-nav-offset: var(--or3-safe-bottom);
 
   /* Re-tint Nuxt UI's `primary` (and its semantic siblings) to match the
      or3 brand palette. Without this override, `bg-primary` resolves to
@@ -50,6 +50,22 @@
   --ui-color-primary-900: #233a23;
   --ui-color-primary-950: #142214;
   --ui-primary: var(--or3-green);
+}
+
+@media (display-mode: standalone) {
+  :root {
+    /*
+       iOS home-screen PWAs sometimes report a zero safe-area inset until after
+       first paint, even though the home indicator is still physically there.
+       Keep the tappable nav clear in standalone mode without adding this extra
+       space to normal browser tabs.
+    */
+    --or3-bottom-nav-offset: max(var(--or3-safe-bottom), 1.25rem);
+  }
+}
+
+html.or3-standalone {
+  --or3-bottom-nav-offset: max(var(--or3-safe-bottom), 1.25rem);
 }
 
 html {
@@ -181,7 +197,8 @@ h3 {
 }
 
 .or3-bottom-nav-safe {
-  padding-bottom: 0.35rem;
+  padding-bottom: var(--or3-safe-bottom);
+  background: var(--or3-surface, #faf4df);
 }
 
 .or3-bottom-nav {

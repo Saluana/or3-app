@@ -149,7 +149,13 @@ body:has(.or3-chat-shell),
 }
 
 .or3-bottom-nav-safe {
-  padding-bottom: calc(var(--or3-safe-bottom) + 0.75rem);
+  padding-bottom: 0;
+}
+
+@media (display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui) {
+  .or3-bottom-nav-safe {
+    padding-bottom: calc(var(--or3-safe-bottom) + 0.75rem);
+  }
 }
 
 .or3-bottom-nav {
