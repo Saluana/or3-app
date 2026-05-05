@@ -111,7 +111,7 @@ function isActive(to: string) {
 .or3-nav-shell {
     position: fixed;
     inset-inline: 0;
-    bottom: 0;
+    bottom: var(--or3-bottom-nav-offset);
     z-index: 50;
     display: flex;
     justify-content: stretch;
@@ -127,7 +127,7 @@ function isActive(to: string) {
     align-items: stretch;
     gap: 0;
     padding: 0.2rem 0.5rem 0.25rem;
-    min-height: 60px;
+    min-height: var(--or3-bottom-nav-height);
     border-radius: 0;
     background: var(--or3-surface, #faf4df);
     border-top: 1px solid var(--or3-border, #d4cab1);

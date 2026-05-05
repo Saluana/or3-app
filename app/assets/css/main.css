@@ -30,6 +30,8 @@
   --or3-safe-bottom: env(safe-area-inset-bottom, 0px);
   --or3-safe-left: env(safe-area-inset-left, 0px);
   --or3-keyboard-height: 0px;
+  --or3-bottom-nav-height: 5.5rem;
+  --or3-bottom-nav-offset: max(0.35rem, var(--or3-safe-bottom));
 
   /* Re-tint Nuxt UI's `primary` (and its semantic siblings) to match the
      or3 brand palette. Without this override, `bg-primary` resolves to
@@ -179,7 +181,7 @@ h3 {
 }
 
 .or3-bottom-nav-safe {
-  padding-bottom: calc(var(--or3-safe-bottom) + 0.75rem);
+  padding-bottom: 0.35rem;
 }
 
 .or3-bottom-nav {
@@ -390,8 +392,8 @@ html.or3-keyboard-open .or3-mobile-screen {
   max-width: 46rem;
   margin: 0 auto;
   /* Reserve room so messages can scroll fully out from under the floating
-     composer + bottom nav (composer ~120px, nav ~88px, gap). */
-  padding: 0.5rem 0 calc(var(--or3-safe-bottom) + 16rem);
+     composer + bottom nav (composer + nav + safe area + spacing). */
+  padding: 0.5rem 0 calc(var(--or3-bottom-nav-height) + var(--or3-bottom-nav-offset) + 9.5rem);
 }
 
 html.or3-keyboard-open .or3-chat-shell__content {
@@ -408,7 +410,7 @@ html.or3-keyboard-open .or3-chat-shell__content {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: calc(var(--or3-safe-bottom) + 6rem); /* clearance above bottom nav */
+  bottom: calc(var(--or3-bottom-nav-height) + var(--or3-bottom-nav-offset) + 0.4rem);
   z-index: 30;
   pointer-events: none;
   padding: 0 calc(var(--or3-safe-right) + 0.75rem) 0 calc(var(--or3-safe-left) + 0.75rem);
