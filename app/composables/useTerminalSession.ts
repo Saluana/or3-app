@@ -17,6 +17,23 @@ const lastLaunchPayload = ref<CreateTerminalSessionRequest | null>(null)
 const activeSessions = ref<TerminalSessionSnapshot[]>([])
 const sessionListingUnsupported = ref(false)
 let streamAbortController: AbortController | null = null
+let terminalSocket: WebSocket | null = null
+let terminalSocketSessionId: string | null = null
+let terminalSocketConnecting: Promise<boolean> | null = null
+let terminalWebSocketUnsupported = false
+
+const terminalWebSocketProtocol = 'or3.terminal.v1'
+const terminalWebSocketTicketPrefix = 'or3.ticket.'
+
+type TerminalWebSocketTicketResponse = {
+  ticket: string
+  expires_at?: string
+}
+
+type TerminalWebSocketEvent = {
+  type?: string
+  data?: Record<string, any>
+}
 
 type PersistedTerminalSession = {
   sessionId: string
@@ -107,6 +124,7 @@ function handleMissingSession(error: any, fallbackMessage: string) {
 
 function resetTerminalState() {
   streamAbortController?.abort()
+  closeTerminalSocket()
   chunkSeq = 0
   session.value = null
   terminalLines.value = []
@@ -114,6 +132,32 @@ function resetTerminalState() {
   terminalBusy.value = false
   terminalStreaming.value = false
   writePersistedTerminalSession(null)
+}
+
+function closeTerminalSocket() {
+  const socket = terminalSocket
+  terminalSocket = null
+  terminalSocketSessionId = null
+  terminalSocketConnecting = null
+  if (!socket) return
+  try {
+    socket.onopen = null
+    socket.onmessage = null
+    socket.onerror = null
+    socket.onclose = null
+    socket.close()
+  } catch {
+    // Best effort cleanup only.
+  }
+}
+
+function terminalSocketReady(sessionId = session.value?.session_id) {
+  return Boolean(
+    sessionId &&
+      terminalSocket &&
+      terminalSocketSessionId === sessionId &&
+      terminalSocket.readyState === WebSocket.OPEN,
+  )
 }
 
 export function useTerminalSession() {
@@ -274,46 +318,18 @@ export function useTerminalSession() {
   async function attach(sessionId = session.value?.session_id) {
     if (!sessionId) return
     streamAbortController?.abort()
+    closeTerminalSocket()
     streamAbortController = new AbortController()
     terminalStreaming.value = true
+
+    if (await attachWebSocket(sessionId)) return
 
     try {
       for await (const event of api.stream(`/internal/v1/terminal/sessions/${sessionId}/stream`, {
         method: 'GET',
         signal: streamAbortController.signal,
       })) {
-        const payload = event.json as Record<string, any> | undefined
-        switch (event.event) {
-          case 'snapshot':
-            if (payload) applySession(payload as TerminalSessionSnapshot)
-            break
-          case 'output':
-            {
-              const chunk = String(payload?.chunk ?? '')
-              appendTerminalChunk(chunk)
-              // Keep a stripped, ANSI-free preview for legacy consumers (no xterm).
-              const stripped = chunk.replace(/\x1b\[[0-9;?]*[ -\/]*[@-~]/g, '')
-              if (stripped) appendTerminalLine(stripped)
-            }
-            break
-          case 'error':
-            if (payload?.error) appendTerminalLine(`\n[error] ${String(payload.error)}\n`)
-            break
-          case 'status':
-            if (session.value && payload?.status) {
-              applySession({ ...session.value, status: String(payload.status) })
-            }
-            break
-          case 'resize':
-            if (session.value) {
-              applySession({
-                ...session.value,
-                rows: Number(payload?.rows ?? session.value.rows),
-                cols: Number(payload?.cols ?? session.value.cols),
-              })
-            }
-            break
-        }
+        applyTerminalEvent(event.event, event.json as Record<string, any> | undefined)
       }
     } catch (error: any) {
       if (streamAbortController?.signal.aborted) return
@@ -324,8 +340,121 @@ export function useTerminalSession() {
     }
   }
 
+  function applyTerminalEvent(eventType?: string, payload?: Record<string, any>) {
+    switch (eventType) {
+      case 'snapshot':
+        if (payload) applySession(payload as TerminalSessionSnapshot)
+        break
+      case 'output':
+        {
+          const chunk = String(payload?.chunk ?? '')
+          appendTerminalChunk(chunk)
+          // Keep a stripped, ANSI-free preview for legacy consumers (no xterm).
+          const stripped = chunk.replace(/\x1b\[[0-9;?]*[ -\/]*[@-~]/g, '')
+          if (stripped) appendTerminalLine(stripped)
+        }
+        break
+      case 'input':
+        break
+      case 'error':
+        if (payload?.error) appendTerminalLine(`\n[error] ${String(payload.error)}\n`)
+        break
+      case 'status':
+        if (session.value && payload?.status) {
+          applySession({ ...session.value, status: String(payload.status) })
+        }
+        break
+      case 'resize':
+        if (session.value) {
+          applySession({
+            ...session.value,
+            rows: Number(payload?.rows ?? session.value.rows),
+            cols: Number(payload?.cols ?? session.value.cols),
+          })
+        }
+        break
+    }
+  }
+
+  async function attachWebSocket(sessionId: string) {
+    if (terminalWebSocketUnsupported) return false
+    if (!process.client || typeof WebSocket === 'undefined') return false
+    terminalSocketConnecting = connectTerminalWebSocket(sessionId)
+    return await terminalSocketConnecting
+  }
+
+  async function connectTerminalWebSocket(sessionId: string) {
+    let ticketResponse: TerminalWebSocketTicketResponse
+    try {
+      ticketResponse = await api.request<TerminalWebSocketTicketResponse>(`/internal/v1/terminal/sessions/${sessionId}/ws-ticket`, {
+        method: 'POST',
+      })
+    } catch (error: any) {
+      if (isTerminalSessionMissing(error) || isMethodNotAllowed(error) || error?.status === 400) {
+        terminalWebSocketUnsupported = true
+        return false
+      }
+      if (handleMissingSession(error, 'Terminal session expired or was cleared. Start a new session.')) return true
+      terminalError.value = error?.message ?? 'Terminal WebSocket ticket request failed.'
+      return false
+    }
+    const ticket = ticketResponse?.ticket?.trim()
+    if (!ticket) return false
+
+    return await new Promise<boolean>((resolve) => {
+      let settled = false
+      const wsUrl = api.buildUrl(`/internal/v1/terminal/sessions/${sessionId}/ws`)
+        .replace(/^http:/i, 'ws:')
+        .replace(/^https:/i, 'wss:')
+      const socket = new WebSocket(wsUrl, [
+        terminalWebSocketProtocol,
+        `${terminalWebSocketTicketPrefix}${ticket}`,
+      ])
+      terminalSocket = socket
+      terminalSocketSessionId = sessionId
+
+      const settle = (value: boolean) => {
+        if (settled) return
+        settled = true
+        resolve(value)
+      }
+
+      socket.onopen = () => {
+        streamAbortController?.abort()
+        terminalStreaming.value = true
+        settle(true)
+      }
+      socket.onmessage = (message) => {
+        try {
+          const event = JSON.parse(String(message.data)) as TerminalWebSocketEvent
+          applyTerminalEvent(event.type, event.data)
+        } catch {
+          appendTerminalLine('\n[error] Invalid terminal WebSocket event.\n')
+        }
+      }
+      socket.onerror = () => {
+        if (!settled) {
+          closeTerminalSocket()
+          settle(false)
+        }
+      }
+      socket.onclose = () => {
+        if (terminalSocket === socket) {
+          terminalSocket = null
+          terminalSocketSessionId = null
+        }
+        terminalStreaming.value = false
+        settle(false)
+      }
+    })
+  }
+
   async function sendInput(input: string) {
     if (!session.value || !input || session.value.status !== 'running') return
+    if (terminalSocketReady()) {
+      terminalSocket?.send(JSON.stringify({ type: 'input', input }))
+      return
+    }
     try {
       await api.request(`/internal/v1/terminal/sessions/${session.value.session_id}/input`, {
         method: 'POST',
@@ -345,6 +474,10 @@ export function useTerminalSession() {
   // /input endpoint: server-side it already proxies to PTY stdin verbatim.
   async function sendKeys(bytes: string) {
     if (!session.value || !bytes || session.value.status !== 'running') return
+    if (terminalSocketReady()) {
+      terminalSocket?.send(JSON.stringify({ type: 'input', input: bytes }))
+      return
+    }
     try {
       await api.request(`/internal/v1/terminal/sessions/${session.value.session_id}/input`, {
         method: 'POST',
@@ -361,6 +494,11 @@ export function useTerminalSession() {
 
   async function resize(rows: number, cols: number) {
     if (!session.value || session.value.status !== 'running') return
+    if (terminalSocketReady()) {
+      terminalSocket?.send(JSON.stringify({ type: 'resize', rows, cols }))
+      if (session.value) applySession({ ...session.value, rows, cols })
+      return
+    }
     try {
       await api.request(`/internal/v1/terminal/sessions/${session.value.session_id}/resize`, {
         method: 'POST',
@@ -379,7 +517,12 @@ export function useTerminalSession() {
     if (!session.value) return
     const sessionId = session.value.session_id
     streamAbortController?.abort()
-    await api.request(`/internal/v1/terminal/sessions/${sessionId}/close`, { method: 'POST' })
+    if (terminalSocketReady(sessionId)) {
+      terminalSocket?.send(JSON.stringify({ type: 'close' }))
+      closeTerminalSocket()
+    } else {
+      await api.request(`/internal/v1/terminal/sessions/${sessionId}/close`, { method: 'POST' })
+    }
     if (session.value) applySession({ ...session.value, status: 'closed' })
     writePersistedTerminalSession(null)
     await listSessions().catch(() => {})
@@ -391,6 +534,7 @@ export function useTerminalSession() {
     terminalUnavailable.value = false
     pendingApprovalId.value = null
     sessionListingUnsupported.value = false
+    terminalWebSocketUnsupported = false
   }
 
   return {
