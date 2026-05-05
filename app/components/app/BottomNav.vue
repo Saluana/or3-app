@@ -132,9 +132,7 @@ function isActive(to: string) {
     border-radius: 0;
     background: var(--or3-surface, #faf4df);
     border-top: 1px solid var(--or3-border, #d4cab1);
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.78),
-        inset 0 -1px 0 rgba(120, 100, 60, 0.08);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
 }
 
 .or3-nav-chassis::before {
