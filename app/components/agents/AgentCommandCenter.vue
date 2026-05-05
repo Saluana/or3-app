@@ -441,6 +441,27 @@
                     </div>
                 </div>
 
+                <!-- Working directory (external runners only) -->
+                <div v-if="selectedRunner !== 'or3-intern'">
+                    <label
+                        class="block font-mono text-[11px] font-semibold tracking-[0.18em] text-(--or3-text-muted) mb-1.5"
+                    >
+                        WORKING DIRECTORY
+                    </label>
+                    <button
+                        type="button"
+                        class="or3-focus-ring flex w-full items-center justify-between gap-2 rounded-xl border border-(--or3-border) bg-(--or3-surface) px-3 py-2 text-sm text-(--or3-text) hover:bg-(--or3-surface-soft) disabled:cursor-not-allowed disabled:opacity-60"
+                        :disabled="props.disabled"
+                        @click="openCwdSlideover"
+                    >
+                        <span class="truncate">{{ cwdDisplayLabel }}</span>
+                        <Icon
+                            name="i-pixelarticons-folder"
+                            class="size-3.5 shrink-0 text-(--or3-text-muted)"
+                        />
+                    </button>
+                </div>
+
                 <!-- Safety copy for external runners -->
                 <p
                     v-if="selectedRunner !== 'or3-intern'"
@@ -562,6 +583,13 @@
             </div>
         </UForm>
     </SurfaceCard>
+
+    <!-- CWD Picker Slideover -->
+    <CwdPickerSheet
+        v-model:open="showCwdSlideover"
+        :initial-path="cwdText"
+        @select="onCwdSelected"
+    />
 </template>
 
 <script setup lang="ts">
@@ -585,6 +613,7 @@ import {
 import type { ChatAttachment } from '~/types/app-state';
 import type { AgentRunnerInfo } from '~/types/or3-api';
 import { runnerLabel } from '~/utils/or3/jobs';
+import CwdPickerSheet from '~/components/agents/CwdPickerSheet.vue';
 
 export interface AgentTaskPayload {
     task: string;
@@ -661,6 +690,7 @@ const selectedMaxTurns = ref<number | undefined>(undefined);
 const cwdText = ref('');
 const showRunnerExpanded = ref(false);
 const showModeExpanded = ref(false);
+const showCwdSlideover = ref(false);
 
 interface DraftAttachment extends ChatAttachment {
     content?: string;
@@ -856,6 +886,21 @@ function modeLabel(mode: string): string {
         default:
             return 'Safe workspace edits';
     }
+}
+
+const cwdDisplayLabel = computed(() => {
+    if (!cwdText.value.trim()) return 'Default';
+    const p = cwdText.value;
+    if (p.length > 36) return '…' + p.slice(-34);
+    return p;
+});
+
+function openCwdSlideover() {
+    showCwdSlideover.value = true;
+}
+
+function onCwdSelected(path: string) {
+    cwdText.value = path;
 }
 
 function priorityLabel(value: AgentPriority) {

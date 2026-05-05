@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "@nuxt/ui";
 @import "or3-scroll/style.css";
 @import "streamdown-vue/style.css";
 
@@ -12,7 +13,7 @@
   --or3-border-strong: #c9beaf;
   --or3-text: #24241f;
   --or3-text-muted: #6f6a60;
-  --or3-green: #3f8f58;
+  --or3-green: #71a75f;
   --or3-green-soft: #e1efe4;
   --or3-green-dark: #28623b;
   --or3-amber: #c89232;
@@ -29,6 +30,24 @@
   --or3-safe-bottom: env(safe-area-inset-bottom, 0px);
   --or3-safe-left: env(safe-area-inset-left, 0px);
   --or3-keyboard-height: 0px;
+
+  /* Re-tint Nuxt UI's `primary` (and its semantic siblings) to match the
+     or3 brand palette. Without this override, `bg-primary` resolves to
+     Tailwind's stock `green-500` which is far too saturated for the cream
+     theme. Mapping the full --ui-color-primary-* ramp keeps shade utilities
+     (bg-primary/10, ring-primary/50, etc.) consistent. */
+  --ui-color-primary-50:  #eef6ea;
+  --ui-color-primary-100: #d8ead0;
+  --ui-color-primary-200: #b6d6a7;
+  --ui-color-primary-300: #95c281;
+  --ui-color-primary-400: #82b570;
+  --ui-color-primary-500: #71a75f;
+  --ui-color-primary-600: #5d9050;
+  --ui-color-primary-700: #487140;
+  --ui-color-primary-800: #355431;
+  --ui-color-primary-900: #233a23;
+  --ui-color-primary-950: #142214;
+  --ui-primary: var(--or3-green);
 }
 
 html {
@@ -488,11 +507,13 @@ html.or3-keyboard-open .or3-chat-shell__composer {
 }
 
 /* ── Floating slideover sheets (computer/files) ──────────────────────
-   Used by FileDetailsSheet & MemoryToolsSheet. Lifts the sheet visually
-   off the page (which uses --or3-surface) with a brighter surface,
-   accent edge, and strong shadow. */
+   Used by FileDetailsSheet, MemoryToolsSheet, and CwdPickerSheet.
+   Lift the sheet visually off the page (which uses --or3-surface) with
+   the same cream surface tint, an accent edge, and a strong shadow.
+   The background must match the inner header/body — otherwise the drag
+   handle area shows as a white stripe above the cream chrome. */
 .or3-fb-sheet-shell {
-  background: color-mix(in srgb, var(--or3-surface) 35%, #ffffff 65%) !important;
+  background: var(--or3-surface) !important;
   border-color: color-mix(in srgb, var(--or3-border) 70%, transparent) !important;
 }
 .or3-fb-sheet-shell--bottom {

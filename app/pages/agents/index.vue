@@ -106,6 +106,7 @@ import type {
 } from '~/components/agents/AgentCommandCenter.vue';
 import type { Or3AppError } from '~/types/app-state';
 import { programmaticSend } from '~/composables/useChatInputBridge';
+import { normalizeResultDisplayText } from '~/utils/or3/result-display';
 
 const router = useRouter();
 const toast = useToast();
@@ -411,10 +412,12 @@ function buildContinuationPrompt(
     job: JobSnapshot,
     overrideResult?: string | null,
 ): string | null {
-    const resolvedResult =
+    const rawResult =
         overrideResult && overrideResult.trim().length > 0
             ? overrideResult
             : job.final_text;
+    const resolvedResult = normalizeResultDisplayText(rawResult, job.runner_id)
+        .trim();
     const hasResult = !!resolvedResult;
     const hasError = !!job.error;
     const hasTask = !!job.task;

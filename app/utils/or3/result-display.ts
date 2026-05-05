@@ -21,11 +21,9 @@ export function extractReadableResultText(
   try {
     consider(JSON.parse(trimmed));
   } catch {
-    for (const line of trimmed.split("\n")) {
-      const candidateLine = line.trim();
-      if (!candidateLine) continue;
+    for (const document of splitJsonDocuments(trimmed)) {
       try {
-        consider(JSON.parse(candidateLine));
+        consider(JSON.parse(document));
       } catch {
         continue;
       }
@@ -58,7 +56,7 @@ export function looksLikeJsonDocument(
     JSON.parse(trimmed);
     return true;
   } catch {
-    return false;
+    return splitJsonDocuments(trimmed).length > 0;
   }
 }
 
@@ -110,6 +108,12 @@ function extractCandidate(
       break;
     }
     case "opencode":
+      if (obj.type === "text") {
+        const partText = extractPartText(obj.part);
+        if (partText) {
+          return { score: 100, text: partText };
+        }
+      }
       if (
         (obj.type === "assistant_message" || obj.type === "assistant") &&
         asText(obj.message)
@@ -130,6 +134,12 @@ function extractCandidate(
     asText(obj.message)
   ) {
     return { score: 90, text: asText(obj.message)! };
+  }
+  if (obj.type === "text") {
+    const partText = extractPartText(obj.part);
+    if (partText) {
+      return { score: 84, text: partText };
+    }
   }
   if (obj.type === "assistant" && asText(obj.content)) {
     return { score: 85, text: asText(obj.content)! };
@@ -167,6 +177,101 @@ function extractClaudeAssistantText(value: unknown): string {
       .join("\n\n");
   }
   return asText(content) ?? "";
+}
+
+function extractPartText(value: unknown): string {
+  const part = asObject(value);
+  if (!part) return "";
+  if (part.type && part.type !== "text") return "";
+  return asText(part.text ?? part) ?? "";
+}
+
+function splitJsonDocuments(text: string): string[] {
+  const documents: string[] = [];
+  let index = 0;
+
+  while (index < text.length) {
+    while (index < text.length && /\s/.test(text[index]!)) index += 1;
+    if (index >= text.length) break;
+
+    const end = findJsonDocumentEnd(text, index);
+    if (end <= index) return [];
+
+    documents.push(text.slice(index, end));
+    index = end;
+  }
+
+  return documents;
+}
+
+function findJsonDocumentEnd(text: string, start: number): number {
+  const startChar = text[start];
+  if (!startChar) return -1;
+
+  if (startChar === "{" || startChar === "[") {
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+
+    for (let index = start; index < text.length; index += 1) {
+      const char = text[index]!;
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (char === "\\") {
+          escaped = true;
+        } else if (char === '"') {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (char === '"') {
+        inString = true;
+        continue;
+      }
+
+      if (char === "{" || char === "[") depth += 1;
+      if (char === "}" || char === "]") {
+        depth -= 1;
+        if (depth === 0) return index + 1;
+        if (depth < 0) return -1;
+      }
+    }
+
+    return -1;
+  }
+
+  if (startChar === '"') {
+    let escaped = false;
+    for (let index = start + 1; index < text.length; index += 1) {
+      const char = text[index]!;
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (char === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (char === '"') return index + 1;
+    }
+    return -1;
+  }
+
+  if (text.startsWith("true", start)) return start + 4;
+  if (text.startsWith("false", start)) return start + 5;
+  if (text.startsWith("null", start)) return start + 4;
+
+  if (/[\-0-9]/.test(startChar)) {
+    let index = start + 1;
+    while (index < text.length && /[0-9eE+\-.]/.test(text[index]!)) {
+      index += 1;
+    }
+    return index;
+  }
+
+  return -1;
 }
 
 function asObject(value: unknown): ParsedPayload | null {

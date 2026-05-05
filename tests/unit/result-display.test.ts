@@ -10,6 +10,11 @@ describe("result display helpers", () => {
   it("treats JSON objects and arrays as raw structured output", () => {
     expect(looksLikeJsonDocument('{"response":"done"}')).toBe(true);
     expect(looksLikeJsonDocument('[{"type":"result"}]')).toBe(true);
+    expect(
+      looksLikeJsonDocument(
+        '{"type":"step_start"} {"type":"text","part":{"type":"text","text":"done"}}',
+      ),
+    ).toBe(true);
     expect(shouldRenderResultAsMarkdown('{"response":"done"}')).toBe(false);
   });
 
@@ -40,5 +45,23 @@ describe("result display helpers", () => {
     expect(extractReadableResultText(raw, "codex")).toBe(
       "Repo contains docs and examples.",
     );
+  });
+
+  it("extracts readable text from OpenCode text events", () => {
+    const raw = [
+      '{"type":"step_start","timestamp":1777866965731}',
+      '{"type":"tool_use","part":{"type":"tool","tool":"webfetch"}}',
+      '{"type":"text","part":{"type":"text","text":"## Summary\\n\\nOpenCode returned markdown."}}',
+    ].join(" ");
+
+    expect(extractReadableResultText(raw, "opencode")).toBe(
+      "## Summary\n\nOpenCode returned markdown.",
+    );
+    expect(normalizeResultDisplayText(raw, "opencode")).toBe(
+      "## Summary\n\nOpenCode returned markdown.",
+    );
+    expect(
+      shouldRenderResultAsMarkdown(normalizeResultDisplayText(raw, "opencode")),
+    ).toBe(true);
   });
 });
