@@ -416,8 +416,10 @@ function buildContinuationPrompt(
         overrideResult && overrideResult.trim().length > 0
             ? overrideResult
             : job.final_text;
-    const resolvedResult = normalizeResultDisplayText(rawResult, job.runner_id)
-        .trim();
+    const resolvedResult = normalizeResultDisplayText(
+        rawResult,
+        job.runner_id,
+    ).trim();
     const hasResult = !!resolvedResult;
     const hasError = !!job.error;
     const hasTask = !!job.task;
