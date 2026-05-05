@@ -199,4 +199,14 @@ defineExpose({
     font-size: 13px;
     color: var(--or3-danger);
 }
+
+@media (hover: hover) and (pointer: fine) {
+    .or3-terminal-stage {
+        gap: 0;
+    }
+
+    .or3-terminal-stage__foot {
+        display: none;
+    }
+}
 </style>

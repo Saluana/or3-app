@@ -1,4 +1,4 @@
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import type { JobEvent, JobSnapshot, TurnResponse } from '~/types/or3-api';
 import type {
     AssistantSendPayload,
@@ -8,11 +8,15 @@ import type {
     Or3AppErrorCode,
 } from '~/types/app-state';
 import { useChatSessions } from './useChatSessions';
+import { useActiveHost } from './useActiveHost';
+import { useLocalCache } from './useLocalCache';
 import { useOr3Api } from './useOr3Api';
 
 const isStreaming = ref(false);
 const activeJobId = ref<string | null>(null);
 let controller: AbortController | null = null;
+let recoveryWatcherInstalled = false;
+const recoveryAttempted = new Set<string>();
 
 function describeRequestError(error: unknown) {
     if (error instanceof Error && error.message.trim()) return error.message;
@@ -352,10 +356,102 @@ function eventJobId(event: JobEvent | { event?: string; json?: unknown }) {
     return typeof payload?.job_id === 'string' ? payload.job_id : undefined;
 }
 
+function responseJobId(response: Response) {
+    const header = response.headers.get('X-Or3-Job-Id')?.trim();
+    return header || null;
+}
+
 export function useAssistantStream() {
     const api = useOr3Api();
     const chat = useChatSessions();
+    const cache = useLocalCache();
+    const { activeHost } = useActiveHost();
     const toast = useToast();
+
+    const recoverPendingMessages = async () => {
+        if (!import.meta.client || isStreaming.value) return;
+        const hostId = activeHost.value?.id?.trim();
+        const authToken = activeHost.value?.token?.trim();
+        if (!hostId || !authToken) return;
+
+        const sessionIds = new Set(
+            cache.state.value.sessions
+                .filter((session) => session.hostId === hostId)
+                .map((session) => session.id),
+        );
+        if (!sessionIds.size) return;
+
+        const pendingMessage = [...cache.state.value.messages]
+            .filter(
+                (message) =>
+                    message.role === 'assistant' &&
+                    message.status === 'streaming' &&
+                    Boolean(message.jobId) &&
+                    sessionIds.has(message.sessionId),
+            )
+            .sort(
+                (left, right) =>
+                    Date.parse(left.createdAt || '') -
+                    Date.parse(right.createdAt || ''),
+            )[0];
+
+        if (!pendingMessage?.jobId) return;
+
+        const recoveryKey = `${hostId}:${pendingMessage.id}:${pendingMessage.jobId}`;
+        if (recoveryAttempted.has(recoveryKey)) return;
+
+        recoveryAttempted.add(recoveryKey);
+        try {
+            await send({
+                text: pendingMessage.retryPayload?.text || pendingMessage.content,
+                transportText:
+                    pendingMessage.retryPayload?.transportText ||
+                    pendingMessage.retryPayload?.text ||
+                    pendingMessage.content,
+                attachments: pendingMessage.retryPayload?.attachments || [],
+                followJobId: pendingMessage.jobId,
+                continueMessageId: pendingMessage.id,
+                suppressUserEcho: true,
+            });
+        } finally {
+            recoveryAttempted.delete(recoveryKey);
+            if (!isStreaming.value) {
+                queueMicrotask(() => {
+                    void recoverPendingMessages();
+                });
+            }
+        }
+    };
+
+    if (import.meta.client && !recoveryWatcherInstalled) {
+        recoveryWatcherInstalled = true;
+        watch(
+            () => {
+                const hostId = activeHost.value?.id ?? '';
+                const tokenState = activeHost.value?.token ? 'ready' : 'none';
+                const sessionIds = new Set(
+                    cache.state.value.sessions
+                        .filter((session) => session.hostId === hostId)
+                        .map((session) => session.id),
+                );
+                const pending = cache.state.value.messages
+                    .filter(
+                        (message) =>
+                            message.role === 'assistant' &&
+                            message.status === 'streaming' &&
+                            Boolean(message.jobId) &&
+                            sessionIds.has(message.sessionId),
+                    )
+                    .map((message) => `${message.id}:${message.jobId}:${message.status}`)
+                    .join('|');
+                return `${hostId}:${tokenState}:${pending}`;
+            },
+            () => {
+                void recoverPendingMessages();
+            },
+            { immediate: true },
+        );
+    }
 
     async function send(message: string | AssistantSendPayload) {
         const payload = normalizePayload(message);
@@ -834,7 +930,15 @@ export function useAssistantStream() {
                 updateAssistant({ jobId: followJobId });
                 for await (const event of api.stream(
                     `/internal/v1/jobs/${encodeURIComponent(followJobId)}/stream`,
-                    { method: 'GET', signal: activeController.signal },
+                    {
+                        method: 'GET',
+                        signal: activeController.signal,
+                        onOpen(response) {
+                            const jobId = responseJobId(response) || followJobId;
+                            activeJobId.value = jobId;
+                            updateAssistant({ jobId });
+                        },
+                    },
                 )) {
                     sawStreamEvent = true;
                     const result = applyEvent(event);
@@ -845,6 +949,13 @@ export function useAssistantStream() {
                 for await (const event of api.stream('/internal/v1/turns', {
                     body: turnRequest,
                     signal: activeController.signal,
+                    onOpen(response) {
+                        const jobId = responseJobId(response);
+                        if (!jobId) return;
+                        streamedJobId = jobId;
+                        activeJobId.value = jobId;
+                        updateAssistant({ jobId });
+                    },
                 })) {
                     sawStreamEvent = true;
                     const jobId = eventJobId(event);

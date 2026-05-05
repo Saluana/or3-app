@@ -13,6 +13,9 @@ export interface Or3ApiRequestOptions {
     acceptSse?: boolean;
     requireAuth?: boolean;
     preferPairedToken?: boolean;
+    onOpen?:
+        | ((response: Response) => Promise<void> | void)
+        | undefined;
     onAuthChallenge?: (
         challenge: AuthChallengeError,
     ) => Promise<boolean | void> | boolean | void;
@@ -305,6 +308,7 @@ export function useOr3Api() {
             }
             throw mapError(response.status, payload);
         }
+        if (options.onOpen) await options.onOpen(response);
         if (!response.body)
             throw {
                 code: 'stream_failed',
