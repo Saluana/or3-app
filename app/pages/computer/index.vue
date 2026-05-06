@@ -223,7 +223,7 @@
                 <div class="flex items-center justify-between">
                     <p class="or3-section-label">RECENT ACTIVITY</p>
                     <NuxtLink
-                        to="/computer/files"
+                        to="/activity"
                         class="inline-flex items-center gap-1 text-sm font-medium text-(--or3-green-dark)"
                     >
                         <span>View all</span>

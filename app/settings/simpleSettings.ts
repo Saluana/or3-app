@@ -15,6 +15,7 @@
 import type { ConfigureChange } from '~/types/or3-api'
 
 export type SimpleSettingSectionKey =
+    | 'providers'
     | 'ai'
     | 'memory'
     | 'workspace'

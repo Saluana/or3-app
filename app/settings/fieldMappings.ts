@@ -24,40 +24,143 @@ function get<T>(values: Record<string, unknown>, key: string, fallback: T): T {
 
 export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
     {
-        key: 'ai',
-        label: 'AI Model',
-        description: 'Choose the AI service, model, and response style.',
-        icon: 'i-pixelarticons-cpu',
+        key: 'providers',
+        label: 'AI Providers',
+        description: 'Connect more than one AI service and keep favorite models handy.',
+        icon: 'i-pixelarticons-server',
         summaryTemplate: (v) => {
-            const provider = get(v, 'provider.kind', 'OpenRouter');
-            const model = get(v, 'provider.model', 'default model');
-            return `${provider}, ${model}.`;
+            const openai = get(v, 'provider.openaiApiKey', '');
+            const openrouter = get(v, 'provider.openrouterApiKey', '');
+            const names = [
+                openai ? 'OpenAI' : '',
+                openrouter ? 'OpenRouter' : '',
+            ].filter(Boolean);
+            return names.length
+                ? `${names.join(' and ')} configured.`
+                : 'No provider keys configured yet.';
         },
         controls: [
             {
-                key: 'ai-provider',
-                label: 'AI provider',
-                description: 'Which service answers your messages.',
-                kind: 'choice',
-                fieldRefs: [{ section: 'provider', field: 'kind' }],
-                advancedKeys: ['provider.kind', 'provider.apiBase'],
+                key: 'provider-openai-key',
+                label: 'OpenAI key',
+                description: 'Use OpenAI for chat, agents, summaries, or embeddings.',
+                kind: 'secret',
+                fieldRefs: [{ section: 'provider', field: 'openaiApiKey' }],
+                advancedKeys: ['provider.openaiApiKey'],
+                warningLevel: 'medium',
             },
             {
-                key: 'ai-key',
-                label: 'API key',
-                description: 'Your private key for the chosen provider.',
+                key: 'provider-openrouter-key',
+                label: 'OpenRouter key',
+                description: 'Use OpenRouter alongside OpenAI for selected roles or fallbacks.',
                 kind: 'secret',
-                fieldRefs: [{ section: 'provider', field: 'apiKey' }],
+                fieldRefs: [{ section: 'provider', field: 'openrouterApiKey' }],
+                advancedKeys: ['provider.openrouterApiKey'],
                 warningLevel: 'medium',
-                advancedKeys: ['provider.apiKey'],
+            },
+            {
+                key: 'provider-custom-base',
+                label: 'Custom provider URL',
+                description: 'OpenAI-compatible API base for a local or custom provider.',
+                kind: 'text',
+                fieldRefs: [{ section: 'provider', field: 'customApiBase' }],
+                advancedKeys: ['provider.customApiBase'],
+            },
+            {
+                key: 'favorites-openai',
+                label: 'OpenAI favorites',
+                description: 'Comma-separated OpenAI model IDs shown first in model settings.',
+                kind: 'text',
+                fieldRefs: [{ section: 'favorites', field: 'openai' }],
+                advancedKeys: ['favorites.openai'],
+            },
+            {
+                key: 'favorites-openrouter',
+                label: 'OpenRouter favorites',
+                description: 'Comma-separated OpenRouter model IDs shown first in model settings.',
+                kind: 'text',
+                fieldRefs: [{ section: 'favorites', field: 'openrouter' }],
+                advancedKeys: ['favorites.openrouter'],
+            },
+        ],
+    },
+    {
+        key: 'ai',
+        label: 'Model Roles',
+        description: 'Choose which provider and model handles each kind of work.',
+        icon: 'i-pixelarticons-cpu',
+        summaryTemplate: (v) => {
+            const provider = get(v, 'routing.chatProvider', 'openai');
+            const model = get(v, 'routing.chatModel', 'default model');
+            const embedProvider = get(v, 'routing.embeddingsProvider', provider);
+            return `Chat uses ${provider}/${model}; embeddings use ${embedProvider}.`;
+        },
+        controls: [
+            {
+                key: 'chat-provider',
+                label: 'Chat provider',
+                description: 'Which provider answers normal messages.',
+                kind: 'choice',
+                fieldRefs: [{ section: 'routing', field: 'chatProvider' }],
+                advancedKeys: ['routing.chatProvider'],
             },
             {
                 key: 'ai-model',
                 label: 'Chat model',
                 description: 'The model used for replies.',
+                kind: 'text',
+                fieldRefs: [{ section: 'routing', field: 'chatModel' }],
+                advancedKeys: ['routing.chatModel'],
+            },
+            {
+                key: 'chat-fallbacks',
+                label: 'Chat fallbacks',
+                description: 'Fallback provider/model entries, like openrouter/openai/gpt-4o-mini.',
+                kind: 'text',
+                fieldRefs: [{ section: 'routing', field: 'chatFallbacks' }],
+                advancedKeys: ['routing.chatFallbacks'],
+            },
+            {
+                key: 'subagents-model',
+                label: 'Subagent model',
+                description: 'Model used for internal background subagents.',
+                kind: 'text',
+                fieldRefs: [{ section: 'routing', field: 'subagentsModel' }],
+                advancedKeys: ['routing.subagentsProvider', 'routing.subagentsModel'],
+            },
+            {
+                key: 'summarization-model',
+                label: 'Summarization model',
+                description: 'Model used for memory consolidation and summaries.',
+                kind: 'text',
+                fieldRefs: [{ section: 'routing', field: 'summarizationModel' }],
+                advancedKeys: ['routing.summarizationProvider', 'routing.summarizationModel'],
+            },
+            {
+                key: 'context-model',
+                label: 'Context manager model',
+                description: 'Model used for context cleanup and maintenance proposals.',
+                kind: 'text',
+                fieldRefs: [{ section: 'routing', field: 'contextModel' }],
+                advancedKeys: ['routing.contextProvider', 'routing.contextModel'],
+            },
+            {
+                key: 'embeddings-provider',
+                label: 'Embeddings provider',
+                description: 'Provider used for memory and document search embeddings.',
                 kind: 'choice',
-                fieldRefs: [{ section: 'provider', field: 'model' }],
-                advancedKeys: ['provider.model'],
+                fieldRefs: [{ section: 'routing', field: 'embeddingsProvider' }],
+                impacts: ['requires-reindex'],
+                advancedKeys: ['routing.embeddingsProvider'],
+            },
+            {
+                key: 'embeddings-model',
+                label: 'Embeddings model',
+                description: 'Model used for memory and document search embeddings.',
+                kind: 'text',
+                fieldRefs: [{ section: 'routing', field: 'embeddingsModel' }],
+                impacts: ['requires-reindex'],
+                advancedKeys: ['routing.embeddingsModel', 'routing.embeddingsDimensions'],
             },
             {
                 key: 'ai-vision',

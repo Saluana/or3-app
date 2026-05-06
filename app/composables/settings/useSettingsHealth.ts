@@ -98,16 +98,25 @@ export function useSettingsHealth() {
             await simple.ensureLoaded()
             const v = simple.valueIndex.value
 
-            // 4. AI provider configured.
-            const apiKey = v['provider.apiKey']
-            const model = v['provider.model']
-            if (!apiKey) {
+            // 4. AI providers and routing configured.
+            const openaiKey = v['provider.openaiApiKey']
+            const openrouterKey = v['provider.openrouterApiKey']
+            const legacyApiKey = v['provider.apiKey']
+            const chatProvider = String(v['routing.chatProvider'] ?? v['provider.kind'] ?? '')
+            const embeddingsProvider = String(v['routing.embeddingsProvider'] ?? '')
+            const model = v['routing.chatModel'] ?? v['provider.model']
+            const providerHasKey = (provider: string) => {
+                if (provider === 'openai') return Boolean(openaiKey || legacyApiKey)
+                if (provider === 'openrouter') return Boolean(openrouterKey)
+                return Boolean(legacyApiKey)
+            }
+            if (!openaiKey && !openrouterKey && !legacyApiKey) {
                 next.push({
                     id: 'ai-key',
                     label: 'AI provider key set',
                     status: 'error',
-                    detail: 'No API key. The AI cannot reply.',
-                    fixHref: '/settings/section/ai?focus=ai-key',
+                    detail: 'No provider key. The AI cannot reply.',
+                    fixHref: '/settings/section/providers?focus=provider-openai-key',
                     fixLabel: 'Add key',
                 })
             } else {
@@ -115,7 +124,27 @@ export function useSettingsHealth() {
                     id: 'ai-key',
                     label: 'AI provider key set',
                     status: 'ok',
-                    detail: 'API key is present.',
+                    detail: 'At least one provider key is present.',
+                })
+            }
+            if (chatProvider && !providerHasKey(chatProvider)) {
+                next.push({
+                    id: 'chat-provider-key',
+                    label: 'Chat provider key set',
+                    status: 'warning',
+                    detail: `${chatProvider} is selected for chat but has no key.`,
+                    fixHref: '/settings/section/providers',
+                    fixLabel: 'Review providers',
+                })
+            }
+            if (embeddingsProvider && !providerHasKey(embeddingsProvider)) {
+                next.push({
+                    id: 'embeddings-provider-key',
+                    label: 'Embeddings provider key set',
+                    status: 'warning',
+                    detail: `${embeddingsProvider} is selected for embeddings but has no key.`,
+                    fixHref: '/settings/section/providers',
+                    fixLabel: 'Review providers',
                 })
             }
             if (!model) {
