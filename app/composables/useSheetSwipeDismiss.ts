@@ -25,6 +25,8 @@ export function useSheetSwipeDismiss(opts: Options) {
     let currentDelta = 0;
     let active = false;
     let pointerId: number | null = null;
+    let dismissing = false;
+    let resetTimer: number | null = null;
 
     /**
      * Resolve the actual element that should slide. We walk up from the inner
@@ -62,6 +64,10 @@ export function useSheetSwipeDismiss(opts: Options) {
     }
 
     function reset(animated: boolean) {
+        if (resetTimer !== null) {
+            window.clearTimeout(resetTimer);
+            resetTimer = null;
+        }
         const el = targetEl();
         if (!el) return;
         el.style.animation = 'none';
@@ -70,13 +76,14 @@ export function useSheetSwipeDismiss(opts: Options) {
             : 'none';
         el.style.transform = 'translate3d(0,0,0)';
         if (animated) {
-            window.setTimeout(() => {
+            resetTimer = window.setTimeout(() => {
                 const node = targetEl();
                 if (!node) return;
                 node.style.transition = '';
                 node.style.transform = '';
                 node.style.animation = '';
                 node.style.willChange = '';
+                resetTimer = null;
             }, 280);
         } else {
             el.style.transition = '';
@@ -87,6 +94,7 @@ export function useSheetSwipeDismiss(opts: Options) {
 
     function onDown(event: PointerEvent) {
         if (!opts.enabled.value) return;
+        if (dismissing) return;
         if (event.button !== undefined && event.button !== 0) return;
         active = true;
         pointerId = event.pointerId;
@@ -120,6 +128,7 @@ export function useSheetSwipeDismiss(opts: Options) {
         active = false;
         pointerId = null;
         if (currentDelta >= threshold) {
+            dismissing = true;
             // Animate fully out, then dismiss
             const el = targetEl();
             if (el) {
@@ -130,7 +139,6 @@ export function useSheetSwipeDismiss(opts: Options) {
             }
             window.setTimeout(() => {
                 opts.onDismiss();
-                reset(false);
             }, 180);
         } else {
             reset(true);
@@ -160,6 +168,12 @@ export function useSheetSwipeDismiss(opts: Options) {
         (curr, prev, onCleanup) => {
             unbind();
             if (curr[0] && curr[1]) bind();
+            if (!curr[1] && prev?.[1]) {
+                window.setTimeout(() => {
+                    dismissing = false;
+                    reset(false);
+                }, 360);
+            }
             onCleanup(() => unbind());
         },
         { immediate: true, flush: 'post' },

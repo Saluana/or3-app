@@ -145,6 +145,36 @@
                         </template>
                     </div>
 
+                    <!-- Current-level search -->
+                    <UInput
+                        v-model="searchQuery"
+                        :placeholder="
+                            atRootList
+                                ? 'Search approved areas'
+                                : 'Search current folder'
+                        "
+                        icon="i-pixelarticons-search"
+                        size="md"
+                        class="or3-cwd-search"
+                        :ui="{
+                            base: 'font-mono !ps-[3.35rem] !pe-[3.2rem]',
+                        }"
+                    >
+                        <template #trailing>
+                            <UButton
+                                v-if="searchQuery"
+                                color="neutral"
+                                variant="ghost"
+                                size="xs"
+                                icon="i-pixelarticons-close"
+                                square
+                                aria-label="Clear search"
+                                class="or3-cwd-search__clear"
+                                @click="clearSearch"
+                            />
+                        </template>
+                    </UInput>
+
                     <!-- List card -->
                     <div class="or3-cwd-list">
                         <!-- Loading -->
@@ -181,8 +211,20 @@
                                     No approved areas available.
                                 </p>
                             </div>
+                            <div
+                                v-else-if="filteredRoots.length === 0"
+                                class="or3-cwd-empty"
+                            >
+                                <Icon
+                                    name="i-pixelarticons-search"
+                                    class="size-5 text-(--or3-text-muted)"
+                                />
+                                <p class="or3-cwd-empty__text">
+                                    No matching approved areas.
+                                </p>
+                            </div>
                             <button
-                                v-for="root in roots"
+                                v-for="root in filteredRoots"
                                 v-else
                                 :key="root.id"
                                 type="button"
@@ -226,8 +268,20 @@
                                     This folder has no sub-folders.
                                 </p>
                             </div>
+                            <div
+                                v-else-if="visibleDirectoryEntries.length === 0"
+                                class="or3-cwd-empty"
+                            >
+                                <Icon
+                                    name="i-pixelarticons-search"
+                                    class="size-5 text-(--or3-text-muted)"
+                                />
+                                <p class="or3-cwd-empty__text">
+                                    No matching folders in this directory.
+                                </p>
+                            </div>
                             <button
-                                v-for="entry in directoryEntries"
+                                v-for="entry in visibleDirectoryEntries"
                                 v-else
                                 :key="entry.path"
                                 type="button"
@@ -359,6 +413,7 @@ const currentPath = ref('.');
 const loading = ref(false);
 const error = ref<string | null>(null);
 const draftPath = ref('');
+const searchQuery = ref('');
 
 const atRootList = computed(() => currentRootId.value === '');
 
@@ -373,6 +428,28 @@ const currentRootLabel = computed(
 const directoryEntries = computed(() =>
     entries.value.filter((e) => e.type === 'directory'),
 );
+
+const normalizedSearch = computed(() => searchQuery.value.trim().toLowerCase());
+
+const filteredRoots = computed(() => {
+    const query = normalizedSearch.value;
+    if (!query) return roots.value;
+    return roots.value.filter((root) =>
+        [root.label, root.path, root.id].some((value) =>
+            (value ?? '').toLowerCase().includes(query),
+        ),
+    );
+});
+
+const visibleDirectoryEntries = computed(() => {
+    const query = normalizedSearch.value;
+    if (!query) return directoryEntries.value;
+    return directoryEntries.value.filter((entry) =>
+        [entry.name, entry.path].some((value) =>
+            (value ?? '').toLowerCase().includes(query),
+        ),
+    );
+});
 
 const breadcrumbParts = computed(() => {
     if (currentPath.value === '.' || currentPath.value === '') return [];
@@ -451,6 +528,7 @@ async function listDirectory(rootId: string, path: string) {
 }
 
 function openRoot(root: FileRoot) {
+    clearSearch();
     currentRootId.value = root.id;
     currentPath.value = '.';
     listDirectory(root.id, '.');
@@ -458,6 +536,7 @@ function openRoot(root: FileRoot) {
 }
 
 function navigateToRoot() {
+    clearSearch();
     currentRootId.value = '';
     currentPath.value = '.';
     entries.value = [];
@@ -467,6 +546,7 @@ function navigateToRoot() {
 
 function navigateUp() {
     if (atRootList.value) return;
+    clearSearch();
     const parts = breadcrumbParts.value;
     if (parts.length === 0) {
         navigateToRoot();
@@ -486,6 +566,7 @@ function navigateUp() {
 
 function onEntryOpen(entry: FileEntry) {
     if (entry.type !== 'directory') return;
+    clearSearch();
     currentPath.value = entry.path;
     listDirectory(currentRootId.value, entry.path);
     syncDraftFromNav();
@@ -496,9 +577,14 @@ function navigateToBreadcrumb(index: number) {
     if (index < 0 || index >= parts.length) return;
     const part = parts[index];
     if (!part) return;
+    clearSearch();
     currentPath.value = part.path;
     listDirectory(currentRootId.value, part.path);
     syncDraftFromNav();
+}
+
+function clearSearch() {
+    searchQuery.value = '';
 }
 
 function syncDraftFromNav() {
@@ -518,6 +604,7 @@ function buildFullPath(): string {
 
 async function applyDraftPath() {
     const raw = draftPath.value.trim();
+    clearSearch();
     if (!raw) {
         navigateToRoot();
         return;
@@ -561,6 +648,7 @@ watch(
         currentPath.value = '.';
         entries.value = [];
         draftPath.value = props.initialPath ?? '';
+        searchQuery.value = '';
         loadRoots();
     },
     { immediate: true },
@@ -764,6 +852,29 @@ watch(
     background: var(--or3-green-soft);
     color: var(--or3-green-dark);
     font-weight: 600;
+}
+
+/* ── Search ─────────────────────────────────────────────────────── */
+.or3-cwd-search {
+    flex-shrink: 0;
+}
+.or3-cwd-search :deep([data-slot='leading']) {
+    padding-inline-start: 1rem;
+}
+.or3-cwd-search :deep([data-slot='trailing']) {
+    padding-inline-end: 0.95rem;
+}
+.or3-cwd-search :deep([data-slot='leadingIcon']) {
+    width: 1.1rem;
+    height: 1.1rem;
+}
+.or3-cwd-search :deep(input) {
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+.or3-cwd-search :deep(.or3-cwd-search__clear) {
+    min-width: 2.2rem;
+    min-height: 2.2rem;
 }
 
 /* ── List card ──────────────────────────────────────────────────── */

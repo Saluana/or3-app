@@ -14,13 +14,26 @@ export interface CronSchedule {
     tz?: string;
 }
 
+export interface CronAgentRunPayload {
+    runner_id: string;
+    task: string;
+    timeout_seconds?: number;
+    cwd?: string;
+    model?: string;
+    mode?: AgentRunMode | string;
+    isolation?: AgentRunIsolation | string;
+    max_turns?: number;
+    meta?: Record<string, unknown>;
+}
+
 export interface CronPayload {
-    kind: 'agent_turn' | 'system_event' | string;
-    message: string;
+    kind: 'agent_turn' | 'system_event' | 'agent_cli_run' | string;
+    message?: string;
     deliver?: boolean;
     channel?: string;
     to?: string;
     session_key?: string;
+    agent_run?: CronAgentRunPayload;
 }
 
 export interface CronJobState {
@@ -28,6 +41,8 @@ export interface CronJobState {
     last_run_at_ms?: number | null;
     last_status?: 'ok' | 'error' | 'skipped' | string;
     last_error?: string;
+    last_enqueued_job_id?: string;
+    last_enqueued_run_id?: string;
 }
 
 export interface CronJob {

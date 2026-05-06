@@ -87,13 +87,31 @@
                     </label>
 
                     <label class="or3-field sm:col-span-2">
-                        <span>What should OR3 do?</span>
+                        <span>{{ form.target === 'agent_cli' ? 'What should the external agent do?' : 'What should OR3 do?' }}</span>
                         <textarea
                             v-model="form.message"
                             class="or3-textarea"
                             rows="5"
                             placeholder="Check the repo for overnight changes, summarize open risks, and send me the top 3 actions."
                         />
+                    </label>
+
+                    <label class="or3-field">
+                        <span>Target</span>
+                        <select v-model="form.target" class="or3-input">
+                            <option value="or3">OR3 turn</option>
+                            <option value="agent_cli">External agent</option>
+                        </select>
+                    </label>
+
+                    <label v-if="form.target === 'agent_cli'" class="or3-field">
+                        <span>Runner</span>
+                        <select v-model="form.runnerId" class="or3-input">
+                            <option value="" disabled>Select runner</option>
+                            <option v-for="runner in externalRunnerOptions" :key="runner.id" :value="runner.id">
+                                {{ runner.display_name || runner.id }}
+                            </option>
+                        </select>
                     </label>
 
                     <label class="or3-field">
@@ -141,15 +159,66 @@
                         <input v-model="form.sessionKey" class="or3-input font-mono" placeholder="cron:default" />
                     </label>
 
-                    <label class="or3-field">
+                    <label v-if="form.target === 'or3'" class="or3-field">
                         <span>Delivery channel</span>
                         <input v-model="form.channel" class="or3-input" placeholder="optional, e.g. cli" />
                     </label>
 
-                    <label class="or3-field sm:col-span-2">
+                    <label v-if="form.target === 'or3'" class="or3-field sm:col-span-2">
                         <span>Send to</span>
                         <input v-model="form.to" class="or3-input" placeholder="optional destination/user/channel id" />
                     </label>
+
+                    <template v-if="form.target === 'agent_cli'">
+                        <label class="or3-field">
+                            <span>Mode</span>
+                            <select v-model="form.mode" class="or3-input">
+                                <option value="review">Review only</option>
+                                <option value="safe_edit">Safe edit</option>
+                                <option value="sandbox_auto">Sandbox auto</option>
+                            </select>
+                        </label>
+
+                        <label class="or3-field">
+                            <span>Isolation</span>
+                            <select v-model="form.isolation" class="or3-input">
+                                <option value="host_readonly">Host read-only</option>
+                                <option value="host_workspace_write">Host workspace write</option>
+                                <option value="sandbox_workspace_write">Sandbox workspace write</option>
+                                <option value="sandbox_dangerous">Sandbox dangerous</option>
+                            </select>
+                        </label>
+
+                        <label class="or3-field">
+                            <span>Working directory</span>
+                            <button
+                                type="button"
+                                class="or3-cwd-trigger"
+                                @click="showCwdSlideover = true"
+                            >
+                                <span class="truncate">{{ cwdDisplayLabel }}</span>
+                                <Icon
+                                    name="i-pixelarticons-folder"
+                                    class="size-4 shrink-0 text-(--or3-text-muted)"
+                                />
+                            </button>
+                        </label>
+
+                        <label class="or3-field">
+                            <span>Model</span>
+                            <input v-model="form.model" class="or3-input" placeholder="runner default" />
+                        </label>
+
+                        <label class="or3-field">
+                            <span>Timeout seconds</span>
+                            <input v-model.number="form.timeoutSeconds" class="or3-input" min="1" type="number" placeholder="900" />
+                        </label>
+
+                        <label class="or3-field">
+                            <span>Max turns</span>
+                            <input v-model.number="form.maxTurns" class="or3-input" min="1" type="number" placeholder="optional" />
+                        </label>
+                    </template>
                 </div>
 
                 <div class="grid gap-2 sm:grid-cols-2">
@@ -218,11 +287,16 @@
                                     <p class="truncate font-mono text-sm font-semibold text-(--or3-text)">{{ job.name || job.id }}</p>
                                     <StatusPill :label="statusLabel(job)" :tone="statusTone(job)" />
                                 </div>
-                                <p class="mt-1 line-clamp-2 text-xs leading-5 text-(--or3-text-muted)">{{ job.payload?.message || 'No prompt set.' }}</p>
+                                <p class="mt-1 line-clamp-2 text-xs leading-5 text-(--or3-text-muted)">{{ jobPrompt(job) }}</p>
                                 <div class="mt-3 grid gap-2 text-xs sm:grid-cols-3">
                                     <span class="or3-job-meta"><strong>Next</strong>{{ formatDate(job.state?.next_run_at_ms) }}</span>
                                     <span class="or3-job-meta"><strong>Last</strong>{{ formatLastRun(job) }}</span>
                                     <span class="or3-job-meta"><strong>Schedule</strong>{{ describeSchedule(job) }}</span>
+                                </div>
+                                <div v-if="job.payload?.kind === 'agent_cli_run'" class="mt-2 grid gap-2 text-xs sm:grid-cols-3">
+                                    <span class="or3-job-meta"><strong>Runner</strong>{{ agentRunnerLabel(job.payload?.agent_run?.runner_id) }}</span>
+                                    <span class="or3-job-meta"><strong>Mode</strong>{{ job.payload?.agent_run?.mode || 'review' }}</span>
+                                    <span class="or3-job-meta"><strong>Last run</strong>{{ job.state?.last_enqueued_run_id || 'Not enqueued' }}</span>
                                 </div>
                                 <p v-if="job.state?.last_error" class="mt-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
                                     {{ job.state.last_error }}
@@ -255,13 +329,19 @@
                 />
             </section>
         </div>
+        <CwdPickerSheet
+            v-model:open="showCwdSlideover"
+            :initial-path="form.cwd"
+            @select="onCwdSelected"
+        />
     </AppShell>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
-import type { CronJob, CronSchedule } from '~/types/or3-api';
+import type { AgentRunnerInfo, CronJob, CronSchedule } from '~/types/or3-api';
 import type { Or3AppError } from '~/types/app-state';
+import CwdPickerSheet from '~/components/agents/CwdPickerSheet.vue';
 
 const toast = useToast();
 const {
@@ -283,15 +363,28 @@ const {
     pauseJob,
     resumeJob,
 } = useCronJobs();
+const {
+    agentRunners,
+    loadAgentRunners,
+} = useJobs();
 
 const formOpen = ref(false);
 const editingId = ref<string | null>(null);
 const formError = ref<string | null>(null);
 const actionId = ref<string | null>(null);
+const showCwdSlideover = ref(false);
 
 const form = reactive({
     name: '',
     message: '',
+    target: 'or3' as 'or3' | 'agent_cli',
+    runnerId: '',
+    mode: 'review' as 'review' | 'safe_edit' | 'sandbox_auto',
+    isolation: 'host_readonly' as 'host_readonly' | 'host_workspace_write' | 'sandbox_workspace_write' | 'sandbox_dangerous',
+    cwd: '',
+    model: '',
+    timeoutSeconds: undefined as number | undefined,
+    maxTurns: undefined as number | undefined,
     preset: 'daily' as 'hourly' | 'daily' | 'weekdays' | 'weekly' | 'interval' | 'once' | 'custom',
     intervalValue: 1,
     intervalUnit: 'hours' as 'minutes' | 'hours' | 'days',
@@ -307,6 +400,17 @@ const form = reactive({
 const cronAvailable = computed(() => cronStatus.value?.available !== false && cronStatus.value?.enabled !== false);
 const formTitle = computed(() => editingId.value ? 'Update when and how this task runs.' : 'Describe the work, pick a schedule, and enable it when ready.');
 const schedulePreview = computed(() => describeScheduleFromPreset());
+const externalRunnerOptions = computed(() => {
+    const runners = (agentRunners.value ?? []).filter((runner) => runner.id !== 'or3-intern');
+    const available = runners.filter((runner) => runner.status === 'available');
+    return available.length ? available : runners;
+});
+const cwdDisplayLabel = computed(() => {
+    const path = form.cwd.trim();
+    if (!path) return 'Default working directory';
+    if (path.length > 44) return `...${path.slice(-41)}`;
+    return path;
+});
 
 const statusLine = computed(() => {
     if (!cronStatus.value) return 'Checking scheduler status…';
@@ -328,7 +432,10 @@ onMounted(() => {
 
 async function refreshAll() {
     try {
-        const status = await loadStatus();
+        const [status] = await Promise.all([
+            loadStatus(),
+            loadAgentRunners().catch(() => undefined),
+        ]);
         if (status?.available === false || status?.enabled === false) return;
         await loadJobs();
     } catch {
@@ -344,11 +451,19 @@ function startCreate() {
 function startEdit(job: CronJob) {
     resetForm();
     editingId.value = job.id;
+    form.target = job.payload?.kind === 'agent_cli_run' ? 'agent_cli' : 'or3';
     form.name = job.name || '';
-    form.message = job.payload?.message || '';
+    form.message = job.payload?.kind === 'agent_cli_run' ? job.payload?.agent_run?.task || '' : job.payload?.message || '';
     form.sessionKey = job.payload?.session_key || 'cron:default';
     form.channel = job.payload?.channel || '';
     form.to = job.payload?.to || '';
+    form.runnerId = job.payload?.agent_run?.runner_id || defaultRunnerId();
+    form.mode = (job.payload?.agent_run?.mode as typeof form.mode) || 'review';
+    form.isolation = (job.payload?.agent_run?.isolation as typeof form.isolation) || 'host_readonly';
+    form.cwd = job.payload?.agent_run?.cwd || '';
+    form.model = job.payload?.agent_run?.model || '';
+    form.timeoutSeconds = job.payload?.agent_run?.timeout_seconds || undefined;
+    form.maxTurns = job.payload?.agent_run?.max_turns || undefined;
     form.enabled = job.enabled;
     form.deleteAfterRun = Boolean(job.delete_after_run);
     applyScheduleToForm(job.schedule);
@@ -365,6 +480,14 @@ function resetForm() {
     formError.value = null;
     form.name = '';
     form.message = '';
+    form.target = 'or3';
+    form.runnerId = defaultRunnerId();
+    form.mode = 'review';
+    form.isolation = 'host_readonly';
+    form.cwd = '';
+    form.model = '';
+    form.timeoutSeconds = undefined;
+    form.maxTurns = undefined;
     form.preset = 'daily';
     form.intervalValue = 1;
     form.intervalUnit = 'hours';
@@ -439,7 +562,8 @@ async function remove(job: CronJob) {
 
 function validateForm() {
     if (!form.name.trim()) return 'Give this scheduled task a name.';
-    if (!form.message.trim()) return 'Describe what OR3 should do when the task runs.';
+    if (!form.message.trim()) return form.target === 'agent_cli' ? 'Describe what the external agent should do when the task runs.' : 'Describe what OR3 should do when the task runs.';
+    if (form.target === 'agent_cli' && !form.runnerId.trim()) return 'Choose an external agent runner.';
     if (form.preset === 'interval' && (!Number.isFinite(form.intervalValue) || form.intervalValue <= 0)) return 'Choose an interval greater than zero.';
     if (form.preset === 'once' && Number.isNaN(Date.parse(form.atLocal))) return 'Choose a valid run date and time.';
     if (form.preset === 'custom' && !form.cronExpr.trim()) return 'Enter a cron expression.';
@@ -447,18 +571,34 @@ function validateForm() {
 }
 
 function buildJobPayload(): Partial<CronJob> {
-    return {
-        name: form.name.trim(),
-        enabled: form.enabled,
-        schedule: buildSchedule(),
-        payload: {
+    const payload = form.target === 'agent_cli'
+        ? {
+            kind: 'agent_cli_run',
+            session_key: form.sessionKey.trim() || undefined,
+            agent_run: {
+                runner_id: form.runnerId.trim(),
+                task: form.message.trim(),
+                mode: form.mode,
+                isolation: form.isolation,
+                cwd: form.cwd.trim() || undefined,
+                model: form.model.trim() || undefined,
+                timeout_seconds: positiveNumberOrUndefined(form.timeoutSeconds),
+                max_turns: positiveNumberOrUndefined(form.maxTurns),
+            },
+        }
+        : {
             kind: 'agent_turn',
             message: form.message.trim(),
             deliver: Boolean(form.channel.trim() || form.to.trim()),
             channel: form.channel.trim() || undefined,
             to: form.to.trim() || undefined,
             session_key: form.sessionKey.trim() || undefined,
-        },
+        };
+    return {
+        name: form.name.trim(),
+        enabled: form.enabled,
+        schedule: buildSchedule(),
+        payload,
         delete_after_run: form.deleteAfterRun,
     };
 }
@@ -518,6 +658,29 @@ function describeSchedule(job: CronJob) {
     if (schedule.kind === 'at') return `Once at ${formatDate(schedule.at_ms)}`;
     if (schedule.kind === 'every') return `Every ${formatDuration(schedule.every_ms || 0)}`;
     return schedule.expr || 'Cron expression';
+}
+
+function jobPrompt(job: CronJob) {
+    if (job.payload?.kind === 'agent_cli_run') return job.payload?.agent_run?.task || 'No task set.';
+    return job.payload?.message || 'No prompt set.';
+}
+
+function agentRunnerLabel(id?: string) {
+    if (!id) return 'Unknown';
+    const runner = (agentRunners.value ?? []).find((item: AgentRunnerInfo) => item.id === id);
+    return runner?.display_name || id;
+}
+
+function defaultRunnerId() {
+    return externalRunnerOptions.value[0]?.id?.toString() || '';
+}
+
+function positiveNumberOrUndefined(value?: number) {
+    return Number.isFinite(value) && Number(value) > 0 ? Number(value) : undefined;
+}
+
+function onCwdSelected(path: string) {
+    form.cwd = path;
 }
 
 function describeScheduleFromPreset() {
@@ -686,6 +849,38 @@ function describeError(error: unknown, fallback: string) {
 
 .or3-input:focus,
 .or3-textarea:focus {
+    border-color: var(--or3-green);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--or3-green-soft) 78%, transparent);
+}
+
+.or3-cwd-trigger {
+    display: flex;
+    width: 100%;
+    min-height: 2.9rem;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.65rem;
+    border-radius: 1rem;
+    border: 1px solid var(--or3-border);
+    background: rgb(255 255 255 / 0.78);
+    padding: 0.75rem 0.9rem;
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--or3-text);
+    text-align: left;
+    outline: none;
+    transition:
+        border-color 140ms ease,
+        background 140ms ease,
+        box-shadow 140ms ease;
+}
+
+.or3-cwd-trigger:hover {
+    background: var(--or3-surface-soft);
+}
+
+.or3-cwd-trigger:focus-visible {
     border-color: var(--or3-green);
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--or3-green-soft) 78%, transparent);
 }
