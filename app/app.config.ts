@@ -27,6 +27,25 @@ export default defineAppConfig({
                     'focus-visible:ring-2 focus-visible:ring-[var(--or3-green)]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--or3-background)]',
                 ],
             },
+            variants: {
+                size: {
+                    xs: {
+                        base: 'h-8 px-3 text-sm gap-1.5',
+                    },
+                    sm: {
+                        base: 'h-10 px-4 text-sm gap-2',
+                    },
+                    md: {
+                        base: 'h-11 px-4 text-sm gap-2',
+                    },
+                    lg: {
+                        base: 'h-12 px-5 text-base gap-2.5',
+                    },
+                    xl: {
+                        base: 'h-14 px-6 text-base gap-3',
+                    },
+                },
+            },
             defaultVariants: {
                 color: 'primary',
                 variant: 'solid',
@@ -52,11 +71,52 @@ export default defineAppConfig({
                 trailing: 'pe-2.5',
                 leadingIcon: 'text-[var(--or3-text-muted)]',
             },
+            variants: {
+                size: {
+                    xs: {
+                        base: 'h-9 px-3 py-2 gap-1.5',
+                        leading: 'ps-3 inset-y-0',
+                        trailing: 'pe-3 inset-y-0',
+                        leadingIcon: 'size-4',
+                        trailingIcon: 'size-4',
+                    },
+                    sm: {
+                        base: 'h-10 px-3.5 py-2 gap-1.5',
+                        leading: 'ps-3.5 inset-y-0',
+                        trailing: 'pe-3.5 inset-y-0',
+                        leadingIcon: 'size-4',
+                        trailingIcon: 'size-4',
+                    },
+                    md: {
+                        base: 'h-11 px-4 py-2.5 gap-2',
+                        leading: 'ps-4 inset-y-0',
+                        trailing: 'pe-4 inset-y-0',
+                        leadingIcon: 'size-5',
+                        trailingIcon: 'size-5',
+                    },
+                    lg: {
+                        base: 'h-12 px-4 py-3 gap-2',
+                        leading: 'ps-4 inset-y-0',
+                        trailing: 'pe-4 inset-y-0',
+                        leadingIcon: 'size-5',
+                        trailingIcon: 'size-5',
+                    },
+                    xl: {
+                        base: 'h-14 px-5 py-4 gap-2.5',
+                        leading: 'ps-5 inset-y-0',
+                        trailing: 'pe-5 inset-y-0',
+                        leadingIcon: 'size-6',
+                        trailingIcon: 'size-6',
+                    },
+                },
+            },
             compoundVariants: [
+                { leading: true, size: 'xs', class: 'ps-10' },
                 { leading: true, size: 'sm', class: 'ps-11' },
                 { leading: true, size: 'md', class: 'ps-12' },
                 { leading: true, size: 'lg', class: 'ps-[3.25rem]' },
                 { leading: true, size: 'xl', class: 'ps-[3.5rem]' },
+                { trailing: true, size: 'xs', class: 'pe-10' },
                 { trailing: true, size: 'sm', class: 'pe-10' },
                 { trailing: true, size: 'md', class: 'pe-11' },
                 { trailing: true, size: 'lg', class: 'pe-12' },
@@ -76,6 +136,25 @@ export default defineAppConfig({
                     'shadow-[var(--or3-shadow-soft)] text-base sm:text-sm text-[var(--or3-text)] placeholder:text-[var(--or3-text-muted)]',
                     'focus:border-[var(--or3-green)] focus-visible:ring-2 focus-visible:ring-[var(--or3-green)]/30',
                 ],
+            },
+            variants: {
+                size: {
+                    xs: {
+                        base: 'min-h-16 px-3 py-2',
+                    },
+                    sm: {
+                        base: 'min-h-20 px-3.5 py-2.5',
+                    },
+                    md: {
+                        base: 'min-h-24 px-4 py-3',
+                    },
+                    lg: {
+                        base: 'min-h-30 px-4 py-3.5',
+                    },
+                    xl: {
+                        base: 'min-h-40 px-5 py-4',
+                    },
+                },
             },
             defaultVariants: {
                 color: 'neutral',
@@ -111,7 +190,7 @@ export default defineAppConfig({
                 // doesn't render that hard black underline inside the popover.
                 input: [
                     'rounded-2xl border border-[var(--or3-border)] bg-[var(--or3-surface)] shadow-[var(--or3-shadow-soft)]',
-                    'px-3 py-2.5 text-sm text-[var(--or3-text)] placeholder:text-[var(--or3-text-muted)]',
+                    'px-3 py-2.5 text-base sm:text-sm text-[var(--or3-text)] placeholder:text-[var(--or3-text-muted)]',
                     'focus:outline-none focus:ring-0 focus-visible:ring-0',
                 ],
                 item: [
@@ -125,6 +204,35 @@ export default defineAppConfig({
                 itemLeadingIcon: 'text-[var(--or3-text-muted)] size-4',
                 itemTrailingIcon: 'text-[var(--or3-green)] size-4',
                 itemLabel: 'truncate',
+            },
+            variants: {
+                size: {
+                    xs: {
+                        base: 'h-9 px-3',
+                        trailing: 'w-9 pe-2.5',
+                        trailingIcon: 'size-4',
+                    },
+                    sm: {
+                        base: 'h-10 px-3.5',
+                        trailing: 'w-10 pe-3',
+                        trailingIcon: 'size-4',
+                    },
+                    md: {
+                        base: 'h-11 px-4',
+                        trailing: 'w-10 pe-3',
+                        trailingIcon: 'size-5',
+                    },
+                    lg: {
+                        base: 'h-12 px-4',
+                        trailing: 'w-11 pe-3.5',
+                        trailingIcon: 'size-5',
+                    },
+                    xl: {
+                        base: 'h-14 px-5',
+                        trailing: 'w-12 pe-4',
+                        trailingIcon: 'size-6',
+                    },
+                },
             },
             defaultVariants: {
                 color: 'neutral',
@@ -161,6 +269,35 @@ export default defineAppConfig({
                 itemTrailing:
                     'ms-auto inline-flex min-h-5 items-center gap-1.5 ps-3',
             },
+            variants: {
+                size: {
+                    xs: {
+                        base: 'h-9 px-3',
+                        trailing: 'w-9 pe-2.5',
+                        trailingIcon: 'size-4',
+                    },
+                    sm: {
+                        base: 'h-10 px-3.5',
+                        trailing: 'w-10 pe-3',
+                        trailingIcon: 'size-4',
+                    },
+                    md: {
+                        base: 'h-11 px-4',
+                        trailing: 'w-10 pe-3',
+                        trailingIcon: 'size-5',
+                    },
+                    lg: {
+                        base: 'h-12 px-4',
+                        trailing: 'w-11 pe-3.5',
+                        trailingIcon: 'size-5',
+                    },
+                    xl: {
+                        base: 'h-14 px-5',
+                        trailing: 'w-12 pe-4',
+                        trailingIcon: 'size-6',
+                    },
+                },
+            },
             defaultVariants: {
                 color: 'neutral',
                 variant: 'outline',
@@ -175,20 +312,67 @@ export default defineAppConfig({
                     'bg-[var(--or3-surface)] shadow-[0_18px_40px_rgba(42,35,25,0.18)]',
                     'backdrop-blur-md',
                 ],
-                viewport: 'p-1.5 divide-y-0',
+                viewport: 'divide-y-0',
                 group: [
-                    'p-1 isolate',
+                    'isolate',
                     '[&:not(:first-child)]:mt-1 [&:not(:first-child)]:pt-2',
                     '[&:not(:first-child)]:border-t [&:not(:first-child)]:border-[color:color-mix(in_srgb,var(--or3-border)_38%,white_62%)]',
                 ],
                 separator:
-                    'mx-2 my-1.5 h-px bg-[color:color-mix(in_srgb,var(--or3-border)_38%,white_62%)]',
+                    'h-px bg-[color:color-mix(in_srgb,var(--or3-border)_38%,white_62%)]',
                 item: [
-                    'rounded-xl px-3! py-2.5 text-sm font-medium text-[var(--or3-text)]',
+                    'rounded-xl font-medium text-[var(--or3-text)]',
                     'data-[highlighted]:bg-[var(--or3-green-soft)] data-[highlighted]:text-[var(--or3-green-dark)]',
                 ],
-                itemLeadingIcon: 'text-[var(--or3-text-muted)] size-4',
-                itemTrailingIcon: 'text-[var(--or3-text-muted)] size-4',
+                itemLeadingIcon: 'text-[var(--or3-text-muted)]',
+                itemTrailingIcon: 'text-[var(--or3-text-muted)]',
+            },
+            variants: {
+                size: {
+                    xs: {
+                        viewport: 'p-1',
+                        group: 'p-0.5',
+                        separator: 'mx-1.5 my-1',
+                        item: 'px-2.5! py-2 text-xs',
+                        itemLeadingIcon: 'size-4',
+                        itemTrailingIcon: 'size-4',
+                    },
+                    sm: {
+                        viewport: 'p-1',
+                        group: 'p-0.5',
+                        separator: 'mx-1.5 my-1',
+                        item: 'px-3! py-2 text-sm',
+                        itemLeadingIcon: 'size-4',
+                        itemTrailingIcon: 'size-4',
+                    },
+                    md: {
+                        viewport: 'p-1.5',
+                        group: 'p-1',
+                        separator: 'mx-2 my-1.5',
+                        item: 'px-3! py-2.5 text-sm',
+                        itemLeadingIcon: 'size-4',
+                        itemTrailingIcon: 'size-4',
+                    },
+                    lg: {
+                        viewport: 'p-1.5',
+                        group: 'p-1',
+                        separator: 'mx-2 my-1.5',
+                        item: 'px-3.5! py-3 text-sm',
+                        itemLeadingIcon: 'size-5',
+                        itemTrailingIcon: 'size-5',
+                    },
+                    xl: {
+                        viewport: 'p-2',
+                        group: 'p-1.5',
+                        separator: 'mx-2.5 my-2',
+                        item: 'px-4! py-3.5 text-base',
+                        itemLeadingIcon: 'size-5',
+                        itemTrailingIcon: 'size-5',
+                    },
+                },
+            },
+            defaultVariants: {
+                size: 'lg',
             },
         },
 
@@ -199,18 +383,55 @@ export default defineAppConfig({
                     'bg-[var(--or3-surface)] shadow-[0_18px_40px_rgba(42,35,25,0.18)]',
                     'backdrop-blur-md',
                 ],
-                viewport: 'p-1.5 divide-y-0',
+                viewport: 'divide-y-0',
                 group: [
-                    'p-1 isolate',
+                    'isolate',
                     '[&:not(:first-child)]:mt-1 [&:not(:first-child)]:pt-2',
                     '[&:not(:first-child)]:border-t [&:not(:first-child)]:border-[color:color-mix(in_srgb,var(--or3-border)_38%,white_62%)]',
                 ],
                 separator:
-                    'mx-2 my-1.5 h-px bg-[color:color-mix(in_srgb,var(--or3-border)_38%,white_62%)]',
+                    'h-px bg-[color:color-mix(in_srgb,var(--or3-border)_38%,white_62%)]',
                 item: [
-                    'rounded-xl px-3 py-2.5 text-sm font-medium text-[var(--or3-text)]',
+                    'rounded-xl font-medium text-[var(--or3-text)]',
                     'data-[highlighted]:bg-[var(--or3-green-soft)] data-[highlighted]:text-[var(--or3-green-dark)]',
                 ],
+            },
+            variants: {
+                size: {
+                    xs: {
+                        viewport: 'p-1',
+                        group: 'p-0.5',
+                        separator: 'mx-1.5 my-1',
+                        item: 'px-2.5 py-2 text-xs',
+                    },
+                    sm: {
+                        viewport: 'p-1',
+                        group: 'p-0.5',
+                        separator: 'mx-1.5 my-1',
+                        item: 'px-3 py-2 text-sm',
+                    },
+                    md: {
+                        viewport: 'p-1.5',
+                        group: 'p-1',
+                        separator: 'mx-2 my-1.5',
+                        item: 'px-3 py-2.5 text-sm',
+                    },
+                    lg: {
+                        viewport: 'p-1.5',
+                        group: 'p-1',
+                        separator: 'mx-2 my-1.5',
+                        item: 'px-3.5 py-3 text-sm',
+                    },
+                    xl: {
+                        viewport: 'p-2',
+                        group: 'p-1.5',
+                        separator: 'mx-2.5 my-2',
+                        item: 'px-4 py-3.5 text-base',
+                    },
+                },
+            },
+            defaultVariants: {
+                size: 'lg',
             },
         },
 
@@ -235,9 +456,9 @@ export default defineAppConfig({
         switch: {
             slots: {
                 root: 'relative inline-flex items-center justify-end',
-                container: 'flex !h-6 items-center',
+                container: 'flex items-center',
                 base: [
-                    'inline-flex !h-6 !w-11 items-center shrink-0 rounded-full border !px-[2px]',
+                    'inline-flex items-center shrink-0 rounded-full border !px-[2px]',
                     'focus-visible:outline-2 focus-visible:outline-offset-2 transition-[background,border-color,box-shadow] duration-200',
                     'border-[color:rgba(136,117,89,0.22)] data-[state=unchecked]:!bg-[#d6cab4]',
                     'data-[state=checked]:border-[var(--or3-green)] data-[state=checked]:!bg-[#3f8f58]',
@@ -246,10 +467,38 @@ export default defineAppConfig({
                 thumb: [
                     'group pointer-events-none flex items-center justify-center rounded-full bg-white',
                     'shadow-[0_1px_2px_rgba(42,35,25,0.25)] ring-1 ring-black/5',
-                    '!h-[18px] !w-[18px] transition-transform duration-200',
+                    'transition-transform duration-200',
                     'data-[state=unchecked]:translate-x-0 data-[state=unchecked]:rtl:-translate-x-0',
-                    'data-[state=checked]:!translate-x-5 data-[state=checked]:rtl:!translate-x-5',
                 ],
+            },
+            variants: {
+                size: {
+                    xs: {
+                        container: '!h-5',
+                        base: '!h-5 !w-9',
+                        thumb: '!h-[14px] !w-[14px] data-[state=checked]:!translate-x-[18px] data-[state=checked]:rtl:!translate-x-[-18px]',
+                    },
+                    sm: {
+                        container: '!h-5',
+                        base: '!h-5 !w-10',
+                        thumb: '!h-4 !w-4 data-[state=checked]:!translate-x-5 data-[state=checked]:rtl:!translate-x-[-20px]',
+                    },
+                    md: {
+                        container: '!h-6',
+                        base: '!h-6 !w-11',
+                        thumb: '!h-[18px] !w-[18px] data-[state=checked]:!translate-x-[22px] data-[state=checked]:rtl:!translate-x-[-22px]',
+                    },
+                    lg: {
+                        container: '!h-7',
+                        base: '!h-7 !w-12',
+                        thumb: '!h-5 !w-5 data-[state=checked]:!translate-x-6 data-[state=checked]:rtl:!translate-x-[-24px]',
+                    },
+                    xl: {
+                        container: '!h-8',
+                        base: '!h-8 !w-14',
+                        thumb: '!h-6 !w-6 data-[state=checked]:!translate-x-7 data-[state=checked]:rtl:!translate-x-[-28px]',
+                    },
+                },
             },
             defaultVariants: {
                 size: 'lg',
