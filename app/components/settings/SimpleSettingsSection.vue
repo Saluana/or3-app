@@ -29,15 +29,45 @@
             </p>
         </SurfaceCard>
 
-        <SettingCard
-            v-for="control in section.controls"
-            :key="control.key"
-            :control="control"
-            :value-index="valueIndex"
-            :pending-changes="pendingChanges"
-            :focus-key="focusKey"
-            @change="onChange"
-        />
+        <template v-for="group in controlGroups" :key="group.key">
+            <SurfaceCard
+                v-if="group.grouped"
+                class-name="space-y-1"
+            >
+                <div class="space-y-1 pb-2">
+                    <p class="font-mono text-base font-semibold text-(--or3-text)">
+                        {{ group.label }}
+                    </p>
+                    <p
+                        v-if="group.description"
+                        class="text-sm leading-6 text-(--or3-text-muted)"
+                    >
+                        {{ group.description }}
+                    </p>
+                </div>
+                <div class="divide-y divide-(--or3-border)">
+                    <SettingCard
+                        v-for="control in group.controls"
+                        :key="control.key"
+                        :control="control"
+                        :value-index="valueIndex"
+                        :pending-changes="pendingChanges"
+                        :focus-key="focusKey"
+                        :framed="false"
+                        @change="onChange"
+                    />
+                </div>
+            </SurfaceCard>
+            <SettingCard
+                v-else-if="group.controls[0]"
+                :control="group.controls[0]"
+                :value-index="valueIndex"
+                :pending-changes="pendingChanges"
+                :focus-key="focusKey"
+                :framed="true"
+                @change="onChange"
+            />
+        </template>
 
         <SurfaceCard v-if="saveError" tone="danger" class-name="space-y-2">
             <p class="font-mono text-sm font-semibold text-rose-900">
@@ -96,6 +126,7 @@
 import { computed, onMounted, ref } from 'vue';
 import type {
     SimpleSettingChange,
+    SimpleSettingControl,
     SimpleSettingSection,
 } from '~/settings/simpleSettings';
 import { useSimpleSettings } from '~/composables/settings/useSimpleSettings';
@@ -118,6 +149,36 @@ const saving = ref(false);
 const saveError = ref<string | null>(null);
 
 const valueIndex = computed(() => simple.valueIndex.value);
+
+interface ControlGroup {
+    key: string;
+    label?: string;
+    description?: string;
+    grouped: boolean;
+    controls: SimpleSettingControl[];
+}
+
+const controlGroups = computed<ControlGroup[]>(() => {
+    const groups: ControlGroup[] = [];
+    const byKey = new Map<string, ControlGroup>();
+    for (const control of props.section.controls) {
+        const key = control.group ?? control.key;
+        let group = byKey.get(key);
+        if (!group) {
+            group = {
+                key,
+                label: control.groupLabel,
+                description: control.groupDescription,
+                grouped: Boolean(control.group),
+                controls: [],
+            };
+            byKey.set(key, group);
+            groups.push(group);
+        }
+        group.controls.push(control);
+    }
+    return groups;
+});
 
 function onChange(changes: SimpleSettingChange[]) {
     saveError.value = null;

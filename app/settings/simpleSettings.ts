@@ -33,6 +33,8 @@ export type SimpleSettingControlKind =
     | 'path'
     | 'connection-card'
     | 'summary-card'
+    | 'provider-manager'
+    | 'model-picker'
 
 export type SimpleSettingImpact =
     | 'higher-cost'
@@ -78,6 +80,16 @@ export interface SimpleSettingControl {
     label: string
     description: string
     kind: SimpleSettingControlKind
+    /**
+     * Optional simple-settings grouping. Controls with the same group render
+     * together so related provider/model fields read as one job instead of
+     * unrelated raw config keys.
+     */
+    group?: string
+    groupLabel?: string
+    groupDescription?: string
+    modelRole?: string
+    modelKind?: 'chat' | 'embeddings'
     /**
      * Raw config keys this control reads from / writes to. The control is
      * hidden if NONE of these fields are exposed by the connected backend.

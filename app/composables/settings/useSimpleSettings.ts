@@ -41,6 +41,7 @@ const FIELD_ALIASES: Record<string, BackendFieldRef> = {
     [refKey('provider', 'apiKey')]: { section: 'provider', field: 'provider_api_key' },
     [refKey('provider', 'model')]: { section: 'provider', field: 'provider_model' },
     [refKey('provider', 'embedModel')]: { section: 'provider', field: 'provider_embed' },
+    [refKey('provider', 'embedDimensions')]: { section: 'provider', field: 'provider_embed_dimensions' },
     [refKey('provider', 'temperature')]: { section: 'provider', field: 'provider_temperature' },
     [refKey('provider', 'enableVision')]: { section: 'provider', field: 'provider_vision' },
     [refKey('provider', 'timeoutSeconds')]: { section: 'provider', field: 'provider_timeout' },
@@ -53,14 +54,19 @@ const FIELD_ALIASES: Record<string, BackendFieldRef> = {
     [refKey('routing', 'chatFallbacks')]: { section: 'provider', field: 'routing_chat_fallbacks' },
     [refKey('routing', 'agentsProvider')]: { section: 'provider', field: 'routing_agents_provider' },
     [refKey('routing', 'agentsModel')]: { section: 'provider', field: 'routing_agents_model' },
+    [refKey('routing', 'agentsFallbacks')]: { section: 'provider', field: 'routing_agents_fallbacks' },
     [refKey('routing', 'subagentsProvider')]: { section: 'provider', field: 'routing_subagents_provider' },
     [refKey('routing', 'subagentsModel')]: { section: 'provider', field: 'routing_subagents_model' },
+    [refKey('routing', 'subagentsFallbacks')]: { section: 'provider', field: 'routing_subagents_fallbacks' },
     [refKey('routing', 'summarizationProvider')]: { section: 'provider', field: 'routing_summarization_provider' },
     [refKey('routing', 'summarizationModel')]: { section: 'provider', field: 'routing_summarization_model' },
+    [refKey('routing', 'summarizationFallbacks')]: { section: 'provider', field: 'routing_summarization_fallbacks' },
     [refKey('routing', 'contextProvider')]: { section: 'provider', field: 'routing_context_provider' },
     [refKey('routing', 'contextModel')]: { section: 'provider', field: 'routing_context_model' },
+    [refKey('routing', 'contextFallbacks')]: { section: 'provider', field: 'routing_context_fallbacks' },
     [refKey('routing', 'embeddingsProvider')]: { section: 'provider', field: 'routing_embeddings_provider' },
     [refKey('routing', 'embeddingsModel')]: { section: 'provider', field: 'routing_embeddings_model' },
+    [refKey('routing', 'embeddingsFallbacks')]: { section: 'provider', field: 'routing_embeddings_fallbacks' },
     [refKey('routing', 'embeddingsDimensions')]: { section: 'provider', field: 'routing_embeddings_dimensions' },
     [refKey('favorites', 'openai')]: { section: 'provider', field: 'favorites_openai' },
     [refKey('favorites', 'openrouter')]: { section: 'provider', field: 'favorites_openrouter' },
@@ -139,13 +145,23 @@ function findField(section: string, field: string, channel?: string): ConfigureF
     return fieldCache.value.find((entry) => refKey(entry.section, entry.field.key, entry.channel) === key)?.field
 }
 
+function availableFieldRef(control: SimpleSettingControl): BackendFieldRef | undefined {
+    for (const ref of control.fieldRefs) {
+        const resolved = resolveFieldRef(ref.section, ref.field, ref.channel)
+        if (findField(resolved.section, resolved.field, resolved.channel)) {
+            return ref
+        }
+    }
+    return control.fieldRefs[0]
+}
+
 /**
  * The current concrete value of a control's primary field, normalised.
  *
  * Returns `undefined` when the field isn't exposed by the backend yet.
  */
 function readPrimaryValue(control: SimpleSettingControl): unknown {
-    const ref = control.fieldRefs[0]
+    const ref = availableFieldRef(control)
     if (!ref) return undefined
     const f = findField(ref.section, ref.field, ref.channel)
     return f?.value
@@ -343,10 +359,11 @@ export function useSimpleSettings() {
         valueIndex,
         summaryFor,
         readPrimaryValue: (control: SimpleSettingControl, overrides: readonly SimpleSettingChange[] = []) => {
-            const ref = control.fieldRefs[0]
+            const ref = availableFieldRef(control)
             if (!ref) return undefined
             return readFieldValue(ref.section, ref.field, ref.channel, overrides)
         },
+        availableFieldRef,
         detectPreset,
         readFieldValue,
         findField,
