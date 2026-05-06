@@ -278,6 +278,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
+import type { HealthResponse } from '~/types/or3-api';
 import {
     getBootstrapWarningGuidance,
     getReadinessGuidance,
@@ -323,7 +324,11 @@ const bootstrapWarningTone = computed(() => {
     if (severity === 'info') return 'info';
     return 'caution';
 });
-const bootstrapWarningMessage = computed(() => bootstrapWarning.value?.message ?? 'The computer reported a connection-related warning.');
+const bootstrapWarningMessage = computed(
+    () =>
+        bootstrapWarning.value?.message ??
+        'The computer reported a connection-related warning.',
+);
 const mergedConnectionWarningMessage = computed(() => {
     if (!isDuplicateReadinessWarning(bootstrapWarning.value, readiness.value)) {
         return '';
@@ -546,27 +551,68 @@ function delay(ms: number) {
     return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
-async function waitForServiceRecovery() {
-    const deadline = Date.now() + 30000;
+function isHealthyResponse(value: HealthResponse | null | undefined) {
+    return value?.status === 'ok' || value?.status === 'healthy';
+}
+
+function serviceHealthGeneration(value: HealthResponse | null | undefined) {
+    const processId = value?.processId;
+    const startedAt = value?.startedAt?.trim();
+    if (typeof processId === 'number' && Number.isFinite(processId)) {
+        return `${processId}:${startedAt || ''}`;
+    }
+    return startedAt || null;
+}
+
+async function waitForServiceRecovery(previousGeneration: string | null) {
+    const deadline = Date.now() + 60000;
+    const earliestLegacySuccess = Date.now() + 3000;
+    let sawDisconnect = false;
     while (Date.now() < deadline) {
         try {
             await refreshStatus();
-            if (
-                health.value?.status === 'ok' ||
-                health.value?.status === 'healthy'
-            ) {
-                return true;
+            if (!isHealthyResponse(health.value)) {
+                sawDisconnect = true;
+            } else {
+                const nextGeneration = serviceHealthGeneration(health.value);
+                if (
+                    previousGeneration &&
+                    nextGeneration &&
+                    nextGeneration !== previousGeneration
+                ) {
+                    return true;
+                }
+                if (previousGeneration && !nextGeneration && sawDisconnect) {
+                    return true;
+                }
+                if (
+                    !previousGeneration &&
+                    (sawDisconnect || Date.now() >= earliestLegacySuccess)
+                ) {
+                    return true;
+                }
             }
         } catch {
-            // Ignore transient disconnects while the service restarts.
+            sawDisconnect = true;
         }
         await delay(1500);
     }
     return false;
 }
 
+function restartWarningDescription(
+    result: Awaited<ReturnType<typeof restartService>>,
+) {
+    if (result.mode === 'action' && result.logPath) {
+        return `The service may still be coming back. Restart log: ${result.logPath}`;
+    }
+    return 'The service may still be coming back. Refresh if it stays offline.';
+}
+
 async function handleRestartService() {
     if (!restartButtonEnabled.value) return;
+
+    const previousGeneration = serviceHealthGeneration(health.value);
 
     try {
         const result = await restartService();
@@ -579,7 +625,7 @@ async function handleRestartService() {
             color: 'neutral',
         });
 
-        const recovered = await waitForServiceRecovery();
+        const recovered = await waitForServiceRecovery(previousGeneration);
         if (recovered) {
             toast.add({
                 title: 'or3-intern restarted',
@@ -591,8 +637,7 @@ async function handleRestartService() {
 
         toast.add({
             title: 'Restart sent',
-            description:
-                'The service may still be coming back. Refresh if it stays offline.',
+            description: restartWarningDescription(result),
             color: 'warning',
         });
     } catch (error: any) {

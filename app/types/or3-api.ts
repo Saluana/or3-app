@@ -74,7 +74,13 @@ export interface CronJobResponse {
 
 // ── External Agent CLI Delegation ──
 
-export type AgentRunnerId = 'or3-intern' | 'opencode' | 'codex' | 'claude' | 'gemini' | string;
+export type AgentRunnerId =
+    | 'or3-intern'
+    | 'opencode'
+    | 'codex'
+    | 'claude'
+    | 'gemini'
+    | string;
 
 export type AgentRunnerStatus =
     | 'available'
@@ -347,6 +353,8 @@ export interface HealthResponse {
     jobRegistryAvailable?: boolean;
     subagentManagerEnabled?: boolean;
     approvalBrokerAvailable?: boolean;
+    processId?: number;
+    startedAt?: string;
 }
 
 export interface ReadinessResponse {
@@ -455,6 +463,7 @@ export interface AppActionResponse {
     message?: string;
     approval_id?: number;
     operation_id?: string;
+    log_path?: string;
 }
 
 export interface ApprovalRequest {
