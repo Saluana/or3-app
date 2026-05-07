@@ -1,5 +1,10 @@
 import { ref, watch } from 'vue';
-import type { JobEvent, JobSnapshot, ToolPolicy, TurnResponse } from '~/types/or3-api';
+import type {
+    JobEvent,
+    JobSnapshot,
+    ToolPolicy,
+    TurnResponse,
+} from '~/types/or3-api';
 import type {
     AssistantSendPayload,
     AssistantReplayToolCall,
@@ -200,7 +205,9 @@ function retryPayloadForStorage(
     };
 }
 
-export function modeToolPolicy(mode?: AssistantSendPayload['mode']): ToolPolicy {
+export function modeToolPolicy(
+    mode?: AssistantSendPayload['mode'],
+): ToolPolicy {
     return { mode: mode || chatMode.value || 'work' };
 }
 
@@ -449,7 +456,8 @@ export function useAssistantStream() {
                     text: pendingMessage.content,
                     transportText: pendingMessage.content,
                 }),
-                text: pendingMessage.retryPayload?.text || pendingMessage.content,
+                text:
+                    pendingMessage.retryPayload?.text || pendingMessage.content,
                 transportText:
                     pendingMessage.retryPayload?.transportText ||
                     pendingMessage.retryPayload?.text ||
@@ -488,7 +496,10 @@ export function useAssistantStream() {
                             Boolean(message.jobId) &&
                             sessionIds.has(message.sessionId),
                     )
-                    .map((message) => `${message.id}:${message.jobId}:${message.status}`)
+                    .map(
+                        (message) =>
+                            `${message.id}:${message.jobId}:${message.status}`,
+                    )
                     .join('|');
                 return `${hostId}:${tokenState}:${pending}`;
             },
@@ -540,16 +551,21 @@ export function useAssistantStream() {
                   role: 'assistant',
                   content: '',
                   status: 'streaming',
-	                  retryPayload: storedRetryPayload,
-	                  reasoningText: '',
-	                  toolCalls: [],
-	                  parts: [],
-	                  activityLog: [],
-	              });
+                  retryPayload: storedRetryPayload,
+                  reasoningText: '',
+                  toolCalls: [],
+                  parts: [],
+                  activityLog: [],
+              });
         isStreaming.value = true;
         const activeController = new AbortController();
         controller = activeController;
         let rawAssistantContent = existingAssistant?.content || '';
+        let activeTextPartId: string | null = null;
+        let activeTextPartRaw = '';
+        let textPartIndex =
+            existingAssistant?.parts?.filter((part) => part.type === 'text')
+                .length ?? 0;
         let sawVisibleOutput = false;
         const appliedEventSequenceKeys = new Set<string>();
         const streamedEventPayloadKeys = new Set<string>();
@@ -565,29 +581,75 @@ export function useAssistantStream() {
                 content: sanitizeAssistantText(rawAssistantContent),
             });
         };
-	        const replaceAssistantContent = (value: string) => {
-	            rawAssistantContent = value;
-	            updateAssistant({
-	                content: sanitizeAssistantText(rawAssistantContent),
-	            });
-	        };
-	        const upsertPart = (part: ChatMessagePart) => {
-	            const current = readAssistant();
-	            const parts = [...(current?.parts ?? [])];
-	            const index = parts.findIndex((item) => item.id === part.id);
-	            if (index === -1) {
-	                parts.push(part);
-	            } else {
-	                parts[index] = { ...parts[index], ...part };
-	            }
-	            updateAssistant({ parts });
-	        };
-	        const turnRequest = followJobId
-	            ? null
-	            : {
-	                  session_key: session.sessionKey,
-	                  message: text,
-	                  tool_policy: payload.toolPolicy ?? modeToolPolicy(payload.mode),
+        const replaceAssistantContent = (value: string) => {
+            rawAssistantContent = value;
+            updateAssistant({
+                content: sanitizeAssistantText(rawAssistantContent),
+            });
+        };
+        const upsertPart = (part: ChatMessagePart) => {
+            const current = readAssistant();
+            const parts = [...(current?.parts ?? [])];
+            const index = parts.findIndex((item) => item.id === part.id);
+            if (index === -1) {
+                parts.push(part);
+            } else {
+                parts[index] = { ...parts[index], ...part };
+            }
+            updateAssistant({ parts });
+        };
+        const hasVisibleTextPart = () =>
+            Boolean(
+                readAssistant()?.parts?.some(
+                    (part) => part.type === 'text' && part.content?.trim(),
+                ),
+            );
+        const hasTextPartContent = (content: string) => {
+            const normalized = sanitizeAssistantText(content);
+            if (!normalized) return false;
+            return Boolean(
+                readAssistant()?.parts?.some(
+                    (part) =>
+                        part.type === 'text' &&
+                        sanitizeAssistantText(part.content ?? '') ===
+                            normalized,
+                ),
+            );
+        };
+        const closeActiveTextPart = () => {
+            activeTextPartId = null;
+            activeTextPartRaw = '';
+        };
+        const ensureActiveTextPart = () => {
+            if (activeTextPartId) return activeTextPartId;
+            textPartIndex += 1;
+            activeTextPartId = `text:${textPartIndex}`;
+            activeTextPartRaw = '';
+            return activeTextPartId;
+        };
+        const appendTextPart = (value: string) => {
+            const partId = ensureActiveTextPart();
+            activeTextPartRaw += value;
+            const content = sanitizeAssistantText(activeTextPartRaw);
+            if (!content) return;
+            upsertPart({
+                id: partId,
+                type: 'text',
+                content,
+            });
+        };
+        const appendCompleteTextPart = (value: string) => {
+            closeActiveTextPart();
+            appendTextPart(value);
+            closeActiveTextPart();
+        };
+        const turnRequest = followJobId
+            ? null
+            : {
+                  session_key: session.sessionKey,
+                  message: text,
+                  tool_policy:
+                      payload.toolPolicy ?? modeToolPolicy(payload.mode),
                   ...(payload.approvalToken
                       ? { approval_token: payload.approvalToken }
                       : {}),
@@ -760,16 +822,11 @@ export function useAssistantStream() {
                     ),
                 );
             }
-	            if (type === 'text_delta' && delta) {
-	                appendAssistantContent(delta);
-	                upsertPart({
-	                    id: String(payload?.item_id || 'assistant_text'),
-	                    type: 'text',
-	                    content: sanitizeAssistantText(rawAssistantContent),
-	                });
-	                sawVisibleOutput =
-	                    sawVisibleOutput ||
-	                    !!sanitizeAssistantText(rawAssistantContent);
+            if (type === 'text_delta' && delta) {
+                appendAssistantContent(delta);
+                appendTextPart(delta);
+                sawVisibleOutput =
+                    sawVisibleOutput || !!sanitizeAssistantText(delta);
             }
             const finalText = payload?.final_text;
             const assistantContent =
@@ -780,45 +837,45 @@ export function useAssistantStream() {
                     : type === 'assistant'
                       ? assistantContent
                       : '';
-	            if (assistantText.trim()) {
-	                replaceAssistantContent(assistantText);
-	                upsertPart({
-	                    id: String(payload?.item_id || 'assistant_text'),
-	                    type: 'text',
-	                    content: sanitizeAssistantText(assistantText),
-	                });
-	                sawVisibleOutput =
-	                    sawVisibleOutput || !!sanitizeAssistantText(assistantText);
-	            }
-	            if (type === 'tool_call') {
-	                const toolCallId = String(
-	                    payload?.tool_call_id ||
-	                        payload?.id ||
-	                        `${payload?.name || 'tool'}:${payload?.arguments || ''}`,
-	                );
-	                addToolCall(
-	                    String(payload?.name || 'tool'),
-	                    typeof payload?.arguments === 'string'
-	                        ? payload.arguments
-	                        : undefined,
-	                );
-	                upsertPart({
-	                    id: `tool:${toolCallId}`,
-	                    type: 'tool',
-	                    toolCallId,
-	                    name: String(payload?.name || 'tool'),
-	                    status: 'running',
-	                    argumentsPreview: String(
-	                        payload?.arguments_preview ?? payload?.arguments ?? '',
-	                    ),
-	                });
-	            }
-	            if (type === 'tool_result') {
-	                const toolName = String(payload?.name || 'tool');
-	                const toolCallId = String(
-	                    payload?.tool_call_id || payload?.id || toolName,
-	                );
-	                const approvalRequired = isApprovalRequiredPayload(payload);
+            if (assistantText.trim()) {
+                replaceAssistantContent(assistantText);
+                if (!hasVisibleTextPart()) {
+                    appendCompleteTextPart(assistantText);
+                }
+                sawVisibleOutput =
+                    sawVisibleOutput || !!sanitizeAssistantText(assistantText);
+            }
+            if (type === 'tool_call') {
+                closeActiveTextPart();
+                const toolCallId = String(
+                    payload?.tool_call_id ||
+                        payload?.id ||
+                        `${payload?.name || 'tool'}:${payload?.arguments || ''}`,
+                );
+                addToolCall(
+                    String(payload?.name || 'tool'),
+                    typeof payload?.arguments === 'string'
+                        ? payload.arguments
+                        : undefined,
+                );
+                upsertPart({
+                    id: `tool:${toolCallId}`,
+                    type: 'tool',
+                    toolCallId,
+                    name: String(payload?.name || 'tool'),
+                    status: 'running',
+                    argumentsPreview: String(
+                        payload?.arguments_preview ?? payload?.arguments ?? '',
+                    ),
+                });
+            }
+            if (type === 'tool_result') {
+                closeActiveTextPart();
+                const toolName = String(payload?.name || 'tool');
+                const toolCallId = String(
+                    payload?.tool_call_id || payload?.id || toolName,
+                );
+                const approvalRequired = isApprovalRequiredPayload(payload);
                 const toolError =
                     typeof payload?.error === 'string'
                         ? payload.error
@@ -829,32 +886,33 @@ export function useAssistantStream() {
                         ? payload.result
                         : undefined,
                     toolError,
-	                    approvalRequired ? 'attention' : undefined,
-	                );
-	                upsertPart({
-	                    id: `tool:${toolCallId}`,
-	                    type: 'tool',
-	                    toolCallId,
-	                    name: toolName,
-	                    status: approvalRequired
-	                        ? 'attention'
-	                        : toolError
-	                          ? 'error'
-	                          : 'complete',
-	                    resultPreview: String(
-	                        payload?.result_preview ?? payload?.result ?? '',
-	                    ),
-	                    artifactId:
-	                        typeof payload?.artifact_id === 'string'
-	                            ? payload.artifact_id
-	                            : undefined,
-	                    publicCode:
-	                        typeof payload?.public_code === 'string'
-	                            ? payload.public_code
-	                            : typeof payload?.code === 'string'
-	                              ? payload.code
-	                              : undefined,
-	                });
+                    approvalRequired ? 'attention' : undefined,
+                );
+                upsertPart({
+                    id: `tool:${toolCallId}`,
+                    type: 'tool',
+                    toolCallId,
+                    name: toolName,
+                    status: approvalRequired
+                        ? 'attention'
+                        : toolError
+                          ? 'error'
+                          : 'complete',
+                    resultPreview: String(
+                        payload?.result_preview ?? payload?.result ?? '',
+                    ),
+                    errorPreview: toolError,
+                    artifactId:
+                        typeof payload?.artifact_id === 'string'
+                            ? payload.artifact_id
+                            : undefined,
+                    publicCode:
+                        typeof payload?.public_code === 'string'
+                            ? payload.public_code
+                            : typeof payload?.code === 'string'
+                              ? payload.code
+                              : undefined,
+                });
                 const approvalRequestId = extractApprovalRequestId(payload);
                 if (approvalRequestId) {
                     sawVisibleOutput = true;
@@ -871,6 +929,9 @@ export function useAssistantStream() {
                         !current.content.includes('**Tool:**')
                             ? `${current.content.trim()}\n\n${approvalMessage}`
                             : approvalMessage;
+                    if (!hasTextPartContent(approvalMessage)) {
+                        appendCompleteTextPart(approvalMessage);
+                    }
                     addActivity(
                         createActivity(
                             'approval_required',
@@ -969,12 +1030,12 @@ export function useAssistantStream() {
                     createActivity(
                         'completion',
                         'Completed turn',
-	                        typeof payload?.final_text === 'string' &&
-	                            payload.final_text.trim()
-	                            ? undefined
-	                            : readAssistant()?.toolCalls?.length
-	                              ? 'Tool work completed without a final assistant message.'
-	                              : 'No final text was included in the completion event.',
+                        typeof payload?.final_text === 'string' &&
+                            payload.final_text.trim()
+                            ? undefined
+                            : readAssistant()?.toolCalls?.length
+                              ? 'Tool work completed without a final assistant message.'
+                              : 'No final text was included in the completion event.',
                         'complete',
                     ),
                 );
@@ -993,6 +1054,7 @@ export function useAssistantStream() {
                 snapshot.final_text?.trim() || snapshot.error?.trim() || '';
             if (snapshotText && !sawVisibleOutput) {
                 replaceAssistantContent(snapshotText);
+                appendCompleteTextPart(snapshotText);
                 sawVisibleOutput =
                     sawVisibleOutput || !!sanitizeAssistantText(snapshotText);
             }
@@ -1046,7 +1108,8 @@ export function useAssistantStream() {
                         method: 'GET',
                         signal: activeController.signal,
                         onOpen(response) {
-                            const jobId = responseJobId(response) || followJobId;
+                            const jobId =
+                                responseJobId(response) || followJobId;
                             activeJobId.value = jobId;
                             updateAssistant({ jobId });
                         },

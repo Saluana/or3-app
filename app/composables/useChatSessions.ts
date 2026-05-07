@@ -105,6 +105,42 @@ export function useChatSessions() {
         return message.pinned;
     }
 
+    function findAssistantMessageForApproval(
+        approvalRequestId: number | string | undefined,
+        sessionKey?: string,
+    ) {
+        const approvalKey = String(approvalRequestId ?? '').trim();
+        if (!approvalKey) return null;
+
+        const hostId = activeHost.value?.id;
+        const requestedSessionKey = sessionKey?.trim();
+        const sessionIds = new Set(
+            cache.state.value.sessions
+                .filter((session) => {
+                    if (hostId && session.hostId !== hostId) return false;
+                    if (requestedSessionKey)
+                        return session.sessionKey === requestedSessionKey;
+                    return session.id === activeSession.value?.id;
+                })
+                .map((session) => session.id),
+        );
+        if (!sessionIds.size) return null;
+
+        for (
+            let index = cache.state.value.messages.length - 1;
+            index >= 0;
+            index--
+        ) {
+            const message = cache.state.value.messages[index];
+            if (!message || message.role !== 'assistant') continue;
+            if (!sessionIds.has(message.sessionId)) continue;
+            if (String(message.approvalRequestId ?? '').trim() !== approvalKey)
+                continue;
+            return message;
+        }
+        return null;
+    }
+
     function newSession(title = 'New conversation') {
         const hostId = activeHost.value?.id ?? 'local';
         const timestamp = now();
@@ -139,7 +175,10 @@ export function useChatSessions() {
         return removed;
     }
 
-    function appendSystemMessage(content: string, sessionId = activeSession.value?.id) {
+    function appendSystemMessage(
+        content: string,
+        sessionId = activeSession.value?.id,
+    ) {
         const targetSession = sessionId
             ? cache.state.value.sessions.find((item) => item.id === sessionId)
             : ensureSession();
@@ -169,6 +208,7 @@ export function useChatSessions() {
         addMessage,
         updateMessage,
         toggleMessagePin,
+        findAssistantMessageForApproval,
         clearSessionMessages,
         appendSystemMessage,
         messageCount,

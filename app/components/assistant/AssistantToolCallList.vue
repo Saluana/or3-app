@@ -1,7 +1,14 @@
 <template>
   <div v-if="toolCalls.length" class="space-y-2">
+    <div
+      v-if="hiddenCount"
+      class="rounded-2xl border border-(--or3-border) bg-(--or3-surface-soft) px-3 py-2 text-xs leading-5 text-(--or3-text-muted)"
+    >
+      {{ hiddenCount }} earlier completed tool call{{ hiddenCount === 1 ? '' : 's' }}
+      hidden here.
+    </div>
     <details
-      v-for="call in toolCalls"
+      v-for="call in visibleToolCalls"
       :key="call.id"
       class="overflow-hidden rounded-2xl border border-(--or3-border) bg-(--or3-surface-soft)"
     >
@@ -38,9 +45,29 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { ChatToolCall } from '~/types/app-state'
 
-defineProps<{ toolCalls: ChatToolCall[] }>()
+const props = defineProps<{ toolCalls: ChatToolCall[] }>()
+
+const TOOL_CALL_INLINE_LIMIT = 8
+const TOOL_CALL_TAIL_COUNT = 5
+
+const visibleToolCalls = computed(() => {
+  const calls = props.toolCalls ?? []
+  if (calls.length <= TOOL_CALL_INLINE_LIMIT) return calls
+  const visibleIds = new Set(
+    calls.slice(-TOOL_CALL_TAIL_COUNT).map((call) => call.id),
+  )
+  for (const call of calls) {
+    if (call.status !== 'complete') visibleIds.add(call.id)
+  }
+  return calls.filter((call) => visibleIds.has(call.id))
+})
+
+const hiddenCount = computed(
+  () => (props.toolCalls?.length ?? 0) - visibleToolCalls.value.length,
+)
 
 function iconFor(status: ChatToolCall['status']) {
   if (status === 'running') return 'i-pixelarticons-loader'

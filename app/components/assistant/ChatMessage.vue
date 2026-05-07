@@ -29,18 +29,28 @@
                         :pending="
                             message.status === 'streaming' && !message.content
                         "
-                        :tool-calls="message.toolCalls || []"
+                        :tool-calls="
+                            hasOrderedParts ? [] : message.toolCalls || []
+                        "
                     />
                     <AssistantToolCallList
-                        v-if="message.toolCalls?.length"
+                        v-if="!hasOrderedParts && message.toolCalls?.length"
                         :tool-calls="message.toolCalls"
                     />
-                    <AssistantActivityLog
-                        v-if="message.activityLog?.length"
-                        :items="message.activityLog"
-                    />
+                    <div v-if="hasOrderedParts" class="or3-msg__parts">
+                        <template v-for="part in orderedParts" :key="part.id">
+                            <StreamingMarkdown
+                                v-if="part.type === 'text' && part.content"
+                                :content="part.content"
+                            />
+                            <AssistantInlineToolCall
+                                v-else-if="part.type === 'tool'"
+                                :part="part"
+                            />
+                        </template>
+                    </div>
                     <StreamingMarkdown
-                        v-if="message.content"
+                        v-else-if="message.content"
                         :content="message.content"
                     />
                     <p
@@ -51,6 +61,10 @@
                         <span class="or3-msg__dot" />
                         <span class="or3-msg__dot" />
                     </p>
+                    <AssistantActivityLog
+                        v-if="message.activityLog?.length"
+                        :items="message.activityLog"
+                    />
                 </template>
                 <template v-else>
                     <p
@@ -164,10 +178,22 @@
                         :disabled="approvalBusy"
                         aria-label="Approve request"
                         title="Approve request"
-                        @click="approveApproval"
+                        @click="approveApproval(false)"
                     >
                         <Icon name="i-pixelarticons-check" class="size-4" />
-                        <span>Approve</span>
+                        <span>Approve once</span>
+                    </button>
+                    <button
+                        v-if="showApprovalActions"
+                        type="button"
+                        class="or3-msg__action or3-msg__action--remember"
+                        :disabled="approvalBusy"
+                        aria-label="Approve and remember request"
+                        title="Approve and remember matching future requests"
+                        @click="approveApproval(true)"
+                    >
+                        <Icon name="i-pixelarticons-bookmark" class="size-4" />
+                        <span>Approve &amp; remember</span>
                     </button>
                 </div>
             </div>
@@ -220,6 +246,13 @@ function currentMessage(): ChatMessage {
 
 const copyText = computed(() => props.message.content.trim());
 const canCopy = computed(() => Boolean(copyText.value));
+const orderedParts = computed(() =>
+    (props.message.parts ?? []).filter((part) => {
+        if (part.type === 'text') return Boolean(part.content?.trim());
+        return Boolean(part.name || part.toolCallId);
+    }),
+);
+const hasOrderedParts = computed(() => orderedParts.value.length > 0);
 const canRetry = computed(
     () =>
         props.message.role === 'assistant' &&
@@ -491,13 +524,19 @@ async function resolveStaleApprovalAction(error: unknown) {
     return true;
 }
 
-async function approveApproval() {
+async function approveApproval(remember = false) {
     const message = currentMessage();
     if (!message.approvalRequestId || approvalBusy.value) return;
     approvalBusy.value = true;
     let retryAttempted = false;
     try {
-        const approval = await approve(message.approvalRequestId);
+        const approval = await approve(
+            message.approvalRequestId,
+            remember,
+            remember
+                ? 'approved and remembered from chat'
+                : 'approved from chat',
+        );
         const approvalToken =
             consumeIssuedApprovalToken(message.approvalRequestId) ??
             approval.token;
@@ -526,10 +565,16 @@ async function approveApproval() {
             description: waitingAgain
                 ? 'The request was approved. Another approval is needed to continue.'
                 : approval.resume_job_id
-                  ? 'The request was approved and resumed.'
+                  ? remember
+                      ? 'The request was approved, remembered, and resumed.'
+                      : 'The request was approved and resumed.'
                   : retried
-                    ? 'The request was approved and retried.'
-                    : 'The request was approved.',
+                    ? remember
+                        ? 'The request was approved, remembered, and retried.'
+                        : 'The request was approved and retried.'
+                    : remember
+                      ? 'The request was approved and matching future requests were saved.'
+                      : 'The request was approved.',
             color: 'success',
             icon: 'i-pixelarticons-check',
         });
@@ -699,6 +744,12 @@ async function denyApproval() {
     margin-right: -0.35rem;
 }
 
+.or3-msg__parts {
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+}
+
 .or3-msg__attachments {
     display: flex;
     flex-wrap: wrap;
@@ -797,6 +848,18 @@ async function denyApproval() {
 .or3-msg__action--approve:hover:not(:disabled),
 .or3-msg__action--approve:focus-visible {
     background: color-mix(in srgb, var(--or3-green-soft) 80%, transparent);
+    opacity: 1;
+}
+
+.or3-msg__action--remember {
+    color: var(--or3-green-dark);
+    border-color: color-mix(in srgb, var(--or3-green) 22%, transparent);
+    opacity: 0.85;
+}
+
+.or3-msg__action--remember:hover:not(:disabled),
+.or3-msg__action--remember:focus-visible {
+    background: color-mix(in srgb, var(--or3-green-soft) 85%, transparent);
     opacity: 1;
 }
 

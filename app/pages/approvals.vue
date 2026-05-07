@@ -182,7 +182,8 @@ const filters = [
 ];
 
 const toast = useToast();
-const { activeSession } = useChatSessions();
+const { activeSession, findAssistantMessageForApproval, updateMessage } =
+    useChatSessions();
 const { send } = useAssistantStream();
 const selectedFilter = ref('pending');
 const detailOpen = ref(false);
@@ -265,10 +266,14 @@ async function handleApprovalActionFailure(error: unknown, fallback: string) {
     });
 }
 
-async function followApprovalResumeJob(response?: {
-    resume_job_id?: string;
-    session_key?: string;
-}) {
+async function followApprovalResumeJob(
+    response?: {
+        request_id?: number | string;
+        resume_job_id?: string;
+        session_key?: string;
+    },
+    approval?: ApprovalRequest | null,
+) {
     const jobId = response?.resume_job_id?.trim();
     if (!jobId) return;
     const responseSession = response?.session_key?.trim();
@@ -276,10 +281,22 @@ async function followApprovalResumeJob(response?: {
     if (!responseSession || responseSession !== currentSession) {
         return;
     }
+    const targetMessage = findAssistantMessageForApproval(
+        response?.request_id ?? approval?.id,
+        responseSession,
+    );
+    if (targetMessage) {
+        updateMessage(targetMessage.id, {
+            approvalState: 'retrying',
+            status: 'attention',
+            error: undefined,
+        });
+    }
     await send({
         text: '',
         transportText: '',
         followJobId: jobId,
+        continueMessageId: targetMessage?.id,
         suppressUserEcho: true,
     });
 }
@@ -312,7 +329,7 @@ async function handleQuickApprove(
                 ? 'approved and remembered from mobile'
                 : 'approved from mobile',
         );
-        await followApprovalResumeJob(response);
+        await followApprovalResumeJob(response, approval);
     } catch (error) {
         await handleApprovalActionFailure(
             error,
@@ -340,17 +357,18 @@ async function handleQuickDeny(approval: ApprovalRequest) {
 
 async function handleApprove(remember: boolean) {
     if (!selectedApproval.value) return;
+    const approval = selectedApproval.value;
     approvalActionBusy.value = true;
     approvalsError.value = null;
     try {
         const response = await approve(
-            selectedApproval.value.id,
+            approval.id,
             remember,
             remember
                 ? 'approved and remembered from mobile'
                 : 'approved from mobile',
         );
-        await followApprovalResumeJob(response);
+        await followApprovalResumeJob(response, approval);
         detailOpen.value = false;
     } catch (error) {
         await handleApprovalActionFailure(

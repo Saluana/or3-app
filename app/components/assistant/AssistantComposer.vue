@@ -12,7 +12,10 @@
             Drop files to attach them
         </div>
 
-        <div v-if="displayedAttachments.length" class="or3-composer__attachments">
+        <div
+            v-if="displayedAttachments.length"
+            class="or3-composer__attachments"
+        >
             <button
                 v-for="attachment in displayedAttachments"
                 :key="attachment.id"
@@ -28,11 +31,20 @@
                 />
                 <Icon
                     v-else
-                    :name="attachment.kind === 'text' ? 'i-pixelarticons-notebook' : attachment.source === 'workspace' ? 'i-pixelarticons-file' : 'i-pixelarticons-paperclip'"
+                    :name="
+                        attachment.kind === 'text'
+                            ? 'i-pixelarticons-notebook'
+                            : attachment.source === 'workspace'
+                              ? 'i-pixelarticons-file'
+                              : 'i-pixelarticons-paperclip'
+                    "
                     class="size-4 shrink-0 text-(--or3-green-dark)"
                 />
                 <span class="min-w-0 flex-1 text-left">
-                    <span class="block truncate font-medium text-(--or3-text)">{{ attachment.name }}</span>
+                    <span
+                        class="block truncate font-medium text-(--or3-text)"
+                        >{{ attachment.name }}</span
+                    >
                     <span
                         v-if="attachment.preview"
                         class="block truncate text-[0.75rem] text-(--or3-text-muted)"
@@ -67,7 +79,10 @@
                             class="or3-composer-menu__item"
                             @click="triggerFilePicker"
                         >
-                            <Icon name="i-pixelarticons-paperclip" class="size-5" />
+                            <Icon
+                                name="i-pixelarticons-paperclip"
+                                class="size-5"
+                            />
                             <span>Add photos & files</span>
                         </button>
                         <button
@@ -91,7 +106,9 @@
                                 :key="option.id"
                                 type="button"
                                 class="or3-composer-menu__mode"
-                                :class="{ 'is-active': selectedMode === option.id }"
+                                :class="{
+                                    'is-active': selectedMode === option.id,
+                                }"
                                 :aria-checked="selectedMode === option.id"
                                 role="radio"
                                 @click="selectMode(option.id)"
@@ -283,8 +300,11 @@ const slashMenu = reactive<{
 });
 
 let viewportChangeCleanup: (() => void) | null = null;
-let selectMentionFromSuggestion: ((item: FileMentionSuggestionItem) => void) | null = null;
-let selectSlashFromSuggestion: ((item: ChatCommandDefinition) => void) | null = null;
+let selectMentionFromSuggestion:
+    | ((item: FileMentionSuggestionItem) => void)
+    | null = null;
+let selectSlashFromSuggestion: ((item: ChatCommandDefinition) => void) | null =
+    null;
 
 const {
     loading: mentionLoading,
@@ -429,17 +449,25 @@ function syncWorkspaceMentionAttachments(instance?: Editor) {
     instance.state.doc.descendants((node) => {
         if (node.type.name !== 'fileMention') return;
         const id = String(
-            node.attrs.id || `${node.attrs.rootId || 'workspace'}:${node.attrs.path || node.attrs.name || 'file'}`,
+            node.attrs.id ||
+                `${node.attrs.rootId || 'workspace'}:${node.attrs.path || node.attrs.name || 'file'}`,
         );
         if (nextAttachments.has(id)) return;
         nextAttachments.set(id, {
             id,
             kind: 'file',
             source: 'workspace',
-            name: node.attrs.name || node.attrs.label || node.attrs.path || 'Workspace file',
+            name:
+                node.attrs.name ||
+                node.attrs.label ||
+                node.attrs.path ||
+                'Workspace file',
             preview: node.attrs.path || undefined,
             mimeType: node.attrs.mimeType || undefined,
-            size: typeof node.attrs.size === 'number' ? node.attrs.size : undefined,
+            size:
+                typeof node.attrs.size === 'number'
+                    ? node.attrs.size
+                    : undefined,
             path: node.attrs.path || undefined,
             rootId: node.attrs.rootId || undefined,
         });
@@ -455,7 +483,8 @@ function removeWorkspaceMention(id: string) {
     instance.state.doc.descendants((node, pos) => {
         if (node.type.name !== 'fileMention') return;
         const nodeId = String(
-            node.attrs.id || `${node.attrs.rootId || 'workspace'}:${node.attrs.path || node.attrs.name || 'file'}`,
+            node.attrs.id ||
+                `${node.attrs.rootId || 'workspace'}:${node.attrs.path || node.attrs.name || 'file'}`,
         );
         if (nodeId !== id) return;
 
@@ -467,7 +496,10 @@ function removeWorkspaceMention(id: string) {
         );
         ranges.push({
             from: pos,
-            to: trailing === ' ' ? pos + node.nodeSize + 1 : pos + node.nodeSize,
+            to:
+                trailing === ' '
+                    ? pos + node.nodeSize + 1
+                    : pos + node.nodeSize,
         });
     });
 
@@ -490,10 +522,13 @@ function removeAttachment(id: string) {
         return;
     }
 
-    if (workspacePickedAttachments.value.some((attachment) => attachment.id === id)) {
-        workspacePickedAttachments.value = workspacePickedAttachments.value.filter(
-            (item) => item.id !== id,
-        );
+    if (
+        workspacePickedAttachments.value.some(
+            (attachment) => attachment.id === id,
+        )
+    ) {
+        workspacePickedAttachments.value =
+            workspacePickedAttachments.value.filter((item) => item.id !== id);
         return;
     }
 
@@ -541,7 +576,8 @@ function buildTransportText() {
     }
 
     const localFiles = manualAttachments.value.filter(
-        (attachment) => attachment.kind === 'file' && attachment.source !== 'workspace',
+        (attachment) =>
+            attachment.kind === 'file' && attachment.source !== 'workspace',
     );
     if (localFiles.length) {
         sections.push(
@@ -627,8 +663,12 @@ function addWorkspacePickedFile(file: {
 }) {
     const id = `${file.rootId}:${file.path}`;
     if (
-        workspacePickedAttachments.value.some((attachment) => attachment.id === id) ||
-        workspaceMentionAttachments.value.some((attachment) => attachment.id === id)
+        workspacePickedAttachments.value.some(
+            (attachment) => attachment.id === id,
+        ) ||
+        workspaceMentionAttachments.value.some(
+            (attachment) => attachment.id === id,
+        )
     ) {
         return;
     }
@@ -637,7 +677,9 @@ function addWorkspacePickedFile(file: {
         kind: 'file',
         source: 'workspace',
         name: file.name || file.path,
-        preview: file.rootLabel ? `${file.rootLabel} - ${file.path}` : file.path,
+        preview: file.rootLabel
+            ? `${file.rootLabel} - ${file.path}`
+            : file.path,
         path: file.path,
         rootId: file.rootId,
         mimeType: file.mimeType,
@@ -752,14 +794,18 @@ function selectSlashCommand(item = slashMenu.items[slashMenu.selectedIndex]) {
 
 function createMentionRenderHooks() {
     return {
-        onStart: (props: SuggestionLifecycleProps<FileMentionSuggestionItem>) => {
+        onStart: (
+            props: SuggestionLifecycleProps<FileMentionSuggestionItem>,
+        ) => {
             mentionMenu.open = true;
             mentionMenu.items = props.items;
             mentionMenu.selectedIndex = 0;
             selectMentionFromSuggestion = props.command;
             closeSlashMenu();
         },
-        onUpdate: (props: SuggestionLifecycleProps<FileMentionSuggestionItem>) => {
+        onUpdate: (
+            props: SuggestionLifecycleProps<FileMentionSuggestionItem>,
+        ) => {
             mentionMenu.open = true;
             mentionMenu.items = props.items;
             mentionMenu.selectedIndex = Math.min(
@@ -889,7 +935,11 @@ onMounted(() => {
             };
         },
         renderHTML({ HTMLAttributes, node }) {
-            const label = node.attrs.path || node.attrs.label || node.attrs.name || 'file';
+            const label =
+                node.attrs.path ||
+                node.attrs.label ||
+                node.attrs.name ||
+                'file';
             return [
                 'span',
                 mergeAttributes(HTMLAttributes, {
@@ -900,7 +950,11 @@ onMounted(() => {
             ];
         },
         renderText({ node }) {
-            const label = node.attrs.path || node.attrs.label || node.attrs.name || 'file';
+            const label =
+                node.attrs.path ||
+                node.attrs.label ||
+                node.attrs.name ||
+                'file';
             return `@${label}`;
         },
     }).configure({
@@ -945,7 +999,11 @@ onMounted(() => {
                     startOfLine: true,
                     allowSpaces: false,
                     items: ({ query }) => filterCommands(query),
-                    command: ({ editor: instance, range, props: item }: any) => {
+                    command: ({
+                        editor: instance,
+                        range,
+                        props: item,
+                    }: any) => {
                         instance.chain().focus().deleteRange(range).run();
                         void runCommand(item);
                     },
@@ -967,7 +1025,7 @@ onMounted(() => {
                 horizontalRule: false,
             }),
             Placeholder.configure({
-                placeholder: 'Ask or3-intern to help with your computer…',
+                placeholder: 'Ask or3-intern for help…',
             }),
             FileMention as any,
             SlashCommand as any,
@@ -978,7 +1036,10 @@ onMounted(() => {
                 class: 'min-h-6 outline-none',
             },
             handleKeyDown(_view, event) {
-                if ((mentionMenu.open || slashMenu.open) && event.key === 'Escape') {
+                if (
+                    (mentionMenu.open || slashMenu.open) &&
+                    event.key === 'Escape'
+                ) {
                     event.preventDefault();
                     closeSuggestionMenus();
                     return true;

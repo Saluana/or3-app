@@ -82,6 +82,7 @@ export interface ChatMessagePart {
     status?: ChatToolCall['status'];
     argumentsPreview?: string;
     resultPreview?: string;
+    errorPreview?: string;
     artifactId?: string;
     publicCode?: string;
 }
