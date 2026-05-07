@@ -50,6 +50,7 @@ export function useChatSessions() {
             return cache.state.value.sessions[0] ?? null;
         }
         const [session] = cache.state.value.sessions.splice(index, 1);
+        if (!session) return null;
         cache.state.value.sessions.unshift(session);
         touchSession(session.id);
         cache.persist();
@@ -60,10 +61,11 @@ export function useChatSessions() {
         if (activeSession.value) return activeSession.value;
         const hostId = activeHost.value?.id ?? 'local';
         const timestamp = now();
+        const id = createId('session');
         const session: ChatSession = {
-            id: createId('session'),
+            id,
             hostId,
-            sessionKey: `or3-app:${hostId}:${Date.now().toString(36)}`,
+            sessionKey: `or3-app:${hostId}:${id}`,
             title: 'New conversation',
             createdAt: timestamp,
             updatedAt: timestamp,
@@ -262,10 +264,11 @@ export function useChatSessions() {
     function newSession(title = 'New conversation') {
         const hostId = activeHost.value?.id ?? 'local';
         const timestamp = now();
+        const id = createId('session');
         const session: ChatSession = {
-            id: createId('session'),
+            id,
             hostId,
-            sessionKey: `or3-app:${hostId}:${Date.now().toString(36)}`,
+            sessionKey: `or3-app:${hostId}:${id}`,
             title,
             createdAt: timestamp,
             updatedAt: timestamp,

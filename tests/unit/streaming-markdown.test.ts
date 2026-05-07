@@ -1,26 +1,44 @@
 import { describe, expect, it } from 'vitest';
-import { parseIncompleteMarkdown } from 'streamdown-vue';
 
-import { shouldRepairIncompleteMarkdownForStatus } from '../../app/utils/streamingMarkdown';
-
-function renderContentForStatus(status: 'streaming' | 'complete') {
-    const content = 'The `invalid_grant` error we have seen before.';
-
-    return shouldRepairIncompleteMarkdownForStatus(status)
-        ? parseIncompleteMarkdown(content)
-        : content;
-}
+import {
+    repairStreamingMarkdownContent,
+    shouldRepairIncompleteMarkdownForStatus,
+} from '../../app/utils/streamingMarkdown'
 
 describe('StreamingMarkdown', () => {
     it('does not append a fake trailing underscore for completed messages', () => {
-        expect(renderContentForStatus('complete')).toBe(
+        expect(
+            repairStreamingMarkdownContent(
+                'The `invalid_grant` error we have seen before.',
+                shouldRepairIncompleteMarkdownForStatus('complete'),
+            ),
+        ).toBe(
             'The `invalid_grant` error we have seen before.',
         );
     });
 
-    it('keeps repair enabled while a message is still streaming', () => {
-        expect(renderContentForStatus('streaming')).toBe(
-            'The `invalid_grant` error we have seen before._',
+    it('preserves inline code with underscores while a message is still streaming', () => {
+        expect(
+            repairStreamingMarkdownContent(
+                'The `invalid_grant` error we have seen before.',
+                shouldRepairIncompleteMarkdownForStatus('streaming'),
+            ),
+        ).toBe(
+            'The `invalid_grant` error we have seen before.',
+        )
+    })
+
+    it('still repairs incomplete emphasis while streaming', () => {
+        expect(repairStreamingMarkdownContent('This is *unfinished', true)).toBe(
+            'This is *unfinished*',
+        )
+    })
+
+    it('closes an open fenced code block while streaming', () => {
+        expect(
+            repairStreamingMarkdownContent('```ts\nconst value = 1', true),
+        ).toBe(
+            '```ts\nconst value = 1\n```',
         );
     });
 });
