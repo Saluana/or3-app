@@ -38,13 +38,18 @@
                         :tool-calls="message.toolCalls"
                     />
                     <div v-if="hasOrderedParts" class="or3-msg__parts">
-                        <template v-for="part in orderedParts" :key="part.id">
+                        <template v-for="part in orderedParts">
                             <StreamingMarkdown
                                 v-if="part.type === 'text' && part.content"
+                                :key="part.id"
                                 :content="part.content"
+                                :repair-incomplete-markdown="
+                                    shouldRepairIncompleteMarkdown
+                                "
                             />
                             <AssistantInlineToolCall
                                 v-else-if="part.type === 'tool'"
+                                :key="part.id"
                                 :part="part"
                             />
                         </template>
@@ -52,6 +57,9 @@
                     <StreamingMarkdown
                         v-else-if="message.content"
                         :content="message.content"
+                        :repair-incomplete-markdown="
+                            shouldRepairIncompleteMarkdown
+                        "
                     />
                     <p
                         v-else-if="message.status === 'streaming'"
@@ -226,6 +234,7 @@ import {
     resolvedApprovalMessage,
     resolvedApprovalState,
 } from '../../utils/assistantApproval';
+import { shouldRepairIncompleteMarkdownForStatus } from '../../utils/streamingMarkdown';
 
 const props = defineProps<{ message: ChatMessage }>();
 const toast = useToast();
@@ -236,6 +245,10 @@ const { approve, deny, fetchApproval, consumeIssuedApprovalToken } =
 const copied = ref(false);
 const approvalBusy = ref(false);
 let copiedTimer: ReturnType<typeof setTimeout> | null = null;
+
+const shouldRepairIncompleteMarkdown = computed(() =>
+    shouldRepairIncompleteMarkdownForStatus(props.message.status),
+);
 
 function currentMessage(): ChatMessage {
     return (
