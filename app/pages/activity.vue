@@ -4,9 +4,9 @@
 
         <div class="min-w-0 max-w-full space-y-4 pb-28">
             <SurfaceCard padded class-name="or3-activity-hero">
-                <div class="flex-col w-full">
-                    <div class="flex w-full justify-between">
-                        <div class="flex flex-col gap-1.5 min-w-2/3">
+                <div class="flex-col w-full h-full">
+                    <div class="flex w-full h-full justify-between">
+                        <div class="flex flex-col gap-1.5 min-w-1/2">
                             <div class="flex-1">
                                 <span class="or3-activity-eyebrow">
                                     <Icon name="i-pixelarticons-timeline" class="size-4" />
@@ -21,7 +21,7 @@
                                 </p>
                             </div>
                         </div>
-                        <div>
+                        <div class="min-w-4/12 flex items-center justify-center">
                             <img src="/computer-icons/timeline-guy.webp" alt="Activity timeline illustration"
                                 class="w-full max-h-[168px] object-contain" />
                         </div>
