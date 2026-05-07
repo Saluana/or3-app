@@ -48,15 +48,69 @@
         </div>
 
         <div class="or3-composer__row">
-            <UButton
-                icon="i-pixelarticons-paperclip"
-                color="neutral"
-                variant="ghost"
-                class="or3-composer__icon or3-touch-target"
-                aria-label="Attach file"
-                type="button"
-                @click="fileInput?.click()"
-            />
+            <UPopover
+                v-model:open="actionMenuOpen"
+                :content="{ align: 'start', side: 'top', sideOffset: 12 }"
+            >
+                <button
+                    type="button"
+                    class="or3-composer__icon or3-composer__plus or3-touch-target"
+                    aria-label="Open composer actions"
+                    :aria-expanded="actionMenuOpen"
+                >
+                    <Icon name="i-pixelarticons-plus" class="size-5" />
+                </button>
+                <template #content>
+                    <div class="or3-composer-menu">
+                        <button
+                            type="button"
+                            class="or3-composer-menu__item"
+                            @click="triggerFilePicker"
+                        >
+                            <Icon name="i-pixelarticons-paperclip" class="size-5" />
+                            <span>Add photos & files</span>
+                        </button>
+                        <button
+                            type="button"
+                            class="or3-composer-menu__item"
+                            @click="openWorkspaceFilePicker"
+                        >
+                            <Icon name="i-pixelarticons-file" class="size-5" />
+                            <span>Mention workspace file</span>
+                        </button>
+
+                        <div class="or3-composer-menu__divider" />
+                        <p class="or3-composer-menu__eyebrow">Mode</p>
+                        <div
+                            class="or3-composer-menu__modes"
+                            role="radiogroup"
+                            aria-label="Tool mode"
+                        >
+                            <button
+                                v-for="option in modeOptions"
+                                :key="option.id"
+                                type="button"
+                                class="or3-composer-menu__mode"
+                                :class="{ 'is-active': selectedMode === option.id }"
+                                :aria-checked="selectedMode === option.id"
+                                role="radio"
+                                @click="selectMode(option.id)"
+                            >
+                                <Icon :name="option.icon" class="size-4" />
+                                <span class="or3-composer-menu__mode-copy">
+                                    <span>{{ option.label }}</span>
+                                    <small>{{ option.description }}</small>
+                                </span>
+                                <Icon
+                                    v-if="selectedMode === option.id"
+                                    name="i-pixelarticons-check"
+                                    class="ml-auto size-4"
+                                />
+                            </button>
+                        </div>
+                    </div>
+                </template>
+            </UPopover>
             <input
                 ref="fileInput"
                 type="file"
@@ -114,6 +168,11 @@
             />
         </div>
     </UForm>
+    <CwdPickerSheet
+        v-model:open="workspaceFilePickerOpen"
+        purpose="file"
+        @select-file="addWorkspacePickedFile"
+    />
 </template>
 
 <script setup lang="ts">
@@ -155,16 +214,19 @@ const props = withDefaults(
         modelValue?: string;
         streaming?: boolean;
         paneId?: string;
+        mode?: 'ask' | 'work' | 'admin';
     }>(),
     {
         modelValue: '',
         streaming: false,
         paneId: 'main',
+        mode: 'work',
     },
 );
 
 const emit = defineEmits<{
     'update:modelValue': [value: string];
+    'update:mode': [value: 'ask' | 'work' | 'admin'];
     send: [value: AssistantSendPayload];
     stop: [];
 }>();
@@ -191,6 +253,8 @@ const fileInput = ref<HTMLInputElement | null>(null);
 const editor = shallowRef<Editor>();
 const isDragging = ref(false);
 const isFocused = ref(false);
+const actionMenuOpen = ref(false);
+const workspaceFilePickerOpen = ref(false);
 const dragDepth = ref(0);
 const enterCreatesNewLine = ref(false);
 const formState = reactive({
@@ -198,6 +262,7 @@ const formState = reactive({
 });
 const manualAttachments = ref<DraftAttachment[]>([]);
 const workspaceMentionAttachments = ref<DraftAttachment[]>([]);
+const workspacePickedAttachments = ref<DraftAttachment[]>([]);
 const mentionMenu = reactive<{
     open: boolean;
     selectedIndex: number;
@@ -231,8 +296,32 @@ const { filterCommands, findCommand, runCommand } = useChatCommands();
 
 const displayedAttachments = computed(() => [
     ...workspaceMentionAttachments.value,
+    ...workspacePickedAttachments.value,
     ...manualAttachments.value,
 ]);
+
+const modeOptions = [
+    {
+        id: 'ask' as const,
+        label: 'Ask',
+        icon: 'i-pixelarticons-message',
+        description: 'Answer, read, and look things up.',
+    },
+    {
+        id: 'work' as const,
+        label: 'Work',
+        icon: 'i-pixelarticons-edit-box',
+        description: 'Use normal guarded work tools.',
+    },
+    {
+        id: 'admin' as const,
+        label: 'Admin',
+        icon: 'i-pixelarticons-shield',
+        description: 'Expose powerful tools when allowed.',
+    },
+];
+
+const selectedMode = computed(() => props.mode ?? 'work');
 
 const canSend = computed(
     () => !!formState.text.trim() || displayedAttachments.value.length > 0,
@@ -281,6 +370,20 @@ function focusEditor() {
     editor.value?.commands.focus('end');
 }
 
+function triggerFilePicker() {
+    actionMenuOpen.value = false;
+    fileInput.value?.click();
+}
+
+function openWorkspaceFilePicker() {
+    actionMenuOpen.value = false;
+    workspaceFilePickerOpen.value = true;
+}
+
+function selectMode(mode: 'ask' | 'work' | 'admin') {
+    emit('update:mode', mode);
+}
+
 function revokeAttachmentPreview(attachment: DraftAttachment) {
     if (attachment.objectUrl) URL.revokeObjectURL(attachment.objectUrl);
 }
@@ -290,6 +393,10 @@ function clearManualAttachments() {
         revokeAttachmentPreview(attachment);
     }
     manualAttachments.value = [];
+}
+
+function clearWorkspacePickedAttachments() {
+    workspacePickedAttachments.value = [];
 }
 
 function closeMentionMenu() {
@@ -383,6 +490,13 @@ function removeAttachment(id: string) {
         return;
     }
 
+    if (workspacePickedAttachments.value.some((attachment) => attachment.id === id)) {
+        workspacePickedAttachments.value = workspacePickedAttachments.value.filter(
+            (item) => item.id !== id,
+        );
+        return;
+    }
+
     const attachment = manualAttachments.value.find((item) => item.id === id);
     if (attachment) revokeAttachmentPreview(attachment);
     manualAttachments.value = manualAttachments.value.filter(
@@ -410,11 +524,15 @@ function buildTransportText() {
         );
     }
 
-    if (workspaceMentionAttachments.value.length) {
+    const workspaceAttachments = [
+        ...workspaceMentionAttachments.value,
+        ...workspacePickedAttachments.value,
+    ];
+    if (workspaceAttachments.length) {
         sections.push(
             [
                 'Workspace files mentioned by the user:',
-                ...workspaceMentionAttachments.value.map(
+                ...workspaceAttachments.map(
                     (attachment) =>
                         `- ${attachment.rootId || 'workspace'}:${attachment.path || attachment.name}`,
                 ),
@@ -475,6 +593,7 @@ async function submit() {
 
     emit('send', payload);
     clearManualAttachments();
+    clearWorkspacePickedAttachments();
     updateEditorText('');
 }
 
@@ -496,6 +615,34 @@ function addFiles(files: File[]) {
             source: 'local',
         });
     }
+}
+
+function addWorkspacePickedFile(file: {
+    rootId: string;
+    rootLabel?: string;
+    path: string;
+    name: string;
+    size?: number;
+    mimeType?: string;
+}) {
+    const id = `${file.rootId}:${file.path}`;
+    if (
+        workspacePickedAttachments.value.some((attachment) => attachment.id === id) ||
+        workspaceMentionAttachments.value.some((attachment) => attachment.id === id)
+    ) {
+        return;
+    }
+    workspacePickedAttachments.value.push({
+        id,
+        kind: 'file',
+        source: 'workspace',
+        name: file.name || file.path,
+        preview: file.rootLabel ? `${file.rootLabel} - ${file.path}` : file.path,
+        path: file.path,
+        rootId: file.rootId,
+        mimeType: file.mimeType,
+        size: file.size,
+    });
 }
 
 function addPastedText(text: string) {
@@ -897,6 +1044,7 @@ onBeforeUnmount(() => {
     viewportChangeCleanup?.();
     closeSuggestionMenus();
     clearManualAttachments();
+    clearWorkspacePickedAttachments();
     const dom = editor.value?.view.dom;
     dom?.removeEventListener('dragenter', onDragEnter);
     dom?.removeEventListener('dragover', onDragOver);
@@ -979,6 +1127,101 @@ onBeforeUnmount(() => {
 
 .or3-composer__icon {
     align-self: flex-end;
+}
+
+.or3-composer__plus {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    background: transparent;
+    color: var(--or3-text-muted);
+}
+
+.or3-composer__plus:hover,
+.or3-composer__plus[aria-expanded='true'] {
+    background: color-mix(in srgb, var(--or3-surface-soft) 72%, white 28%);
+    color: var(--or3-text);
+}
+
+.or3-composer-menu {
+    width: min(21rem, calc(100vw - 2rem));
+    border-radius: 1.25rem;
+    border: 1px solid var(--or3-border);
+    background: color-mix(in srgb, white 94%, var(--or3-surface) 6%);
+    padding: 0.55rem;
+    box-shadow: 0 18px 44px rgba(35, 31, 27, 0.16);
+}
+
+.or3-composer-menu__item,
+.or3-composer-menu__mode {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    border: 0;
+    border-radius: 0.8rem;
+    background: transparent;
+    color: var(--or3-text);
+    text-align: left;
+}
+
+.or3-composer-menu__item {
+    min-height: 2.8rem;
+    padding: 0.55rem 0.65rem;
+    font-size: 0.96rem;
+    font-weight: 650;
+}
+
+.or3-composer-menu__item:hover,
+.or3-composer-menu__mode:hover {
+    background: color-mix(in srgb, var(--or3-surface-soft) 82%, white 18%);
+}
+
+.or3-composer-menu__divider {
+    height: 1px;
+    margin: 0.45rem 0.2rem;
+    background: var(--or3-border);
+}
+
+.or3-composer-menu__eyebrow {
+    margin: 0.2rem 0.55rem 0.35rem;
+    color: var(--or3-text-muted);
+    font-size: 0.68rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.or3-composer-menu__modes {
+    display: grid;
+    gap: 0.15rem;
+}
+
+.or3-composer-menu__mode {
+    min-height: 3.4rem;
+    padding: 0.55rem 0.65rem;
+}
+
+.or3-composer-menu__mode.is-active {
+    color: var(--or3-green-dark);
+    background: color-mix(in srgb, var(--or3-green-soft) 34%, white 66%);
+}
+
+.or3-composer-menu__mode-copy {
+    display: grid;
+    min-width: 0;
+    gap: 0.08rem;
+    font-weight: 750;
+}
+
+.or3-composer-menu__mode-copy small {
+    overflow: hidden;
+    color: var(--or3-text-muted);
+    font-size: 0.73rem;
+    font-weight: 600;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 :deep(.assistant-composer-editor .ProseMirror) {

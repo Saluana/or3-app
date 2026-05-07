@@ -61,8 +61,9 @@
             <div class="or3-chat-shell__composer-inner">
                 <AssistantComposer
                     v-model="draft"
+                    v-model:mode="chatMode"
                     :streaming="isStreaming"
-                    @send="send"
+                    @send="sendWithMode"
                     @stop="stop"
                 />
             </div>
@@ -76,7 +77,7 @@
 import { nextTick, onMounted, ref, watch } from 'vue';
 
 const { messages, draft } = useChatSessions();
-const { isStreaming, send, stop } = useAssistantStream();
+const { isStreaming, chatMode, send, stop } = useAssistantStream();
 const router = useRouter();
 
 const scrollEl = ref<HTMLElement | null>(null);
@@ -96,6 +97,14 @@ function openPromptGallery() {
 
 function openFileEditor() {
     void router.push('/computer');
+}
+
+function sendWithMode(payload: Parameters<typeof send>[0]) {
+    if (typeof payload === 'string') {
+        void send({ text: payload, transportText: payload, mode: chatMode.value });
+        return;
+    }
+    void send({ ...payload, mode: payload.mode ?? chatMode.value });
 }
 
 function distanceFromBottom(el: HTMLElement) {
@@ -159,4 +168,5 @@ onMounted(() => {
     gap: 0.75rem;
     margin-top: 1rem;
 }
+
 </style>

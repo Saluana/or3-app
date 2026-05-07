@@ -1,3 +1,5 @@
+import type { ToolPolicy } from './or3-api';
+
 export interface Or3HostProfile {
     id: string;
     name: string;
@@ -62,11 +64,26 @@ export interface AssistantSendPayload {
     text: string;
     transportText?: string;
     attachments?: ChatAttachment[];
+    mode?: 'ask' | 'work' | 'admin';
+    toolPolicy?: ToolPolicy;
     approvalToken?: string;
     followJobId?: string;
     replayToolCall?: AssistantReplayToolCall;
     continueMessageId?: string;
     suppressUserEcho?: boolean;
+}
+
+export interface ChatMessagePart {
+    id: string;
+    type: 'text' | 'tool';
+    content?: string;
+    toolCallId?: string;
+    name?: string;
+    status?: ChatToolCall['status'];
+    argumentsPreview?: string;
+    resultPreview?: string;
+    artifactId?: string;
+    publicCode?: string;
 }
 
 export interface ChatMessage {
@@ -92,6 +109,7 @@ export interface ChatMessage {
     retryPayload?: AssistantSendPayload;
     reasoningText?: string;
     toolCalls?: ChatToolCall[];
+    parts?: ChatMessagePart[];
     activityLog?: ChatActivityEntry[];
     attachments?: ChatAttachment[];
 }
@@ -157,6 +175,13 @@ export type Or3AppErrorCode =
     | 'capability_unavailable'
     | 'approval_required'
     | 'stream_failed'
+    | 'provider_error'
+    | 'stream_error'
+    | 'validation_error'
+    | 'policy_error'
+    | 'tool_execution_error'
+    | 'tool_loop_limit'
+    | 'aborted'
     | 'file_not_found'
     | 'file_conflict'
     | 'file_read_only'

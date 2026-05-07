@@ -5,9 +5,9 @@ import { useLocalCache } from '../../app/composables/useLocalCache';
 
 describe('useApprovals', () => {
     afterEach(() => {
-        vi.unstubAllGlobals();
         useApprovals().clearIssuedApprovalTokens();
         useLocalCache().clearAll();
+        vi.unstubAllGlobals();
     });
 
     it('blocks duplicate approval actions while one is in flight', async () => {

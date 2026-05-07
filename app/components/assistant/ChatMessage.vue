@@ -61,12 +61,12 @@
                     </p>
                     <div
                         v-if="message.attachments?.length"
-                        class="mt-2 flex flex-wrap gap-1.5"
+                        class="or3-msg__attachments"
                     >
                         <span
                             v-for="attachment in message.attachments"
                             :key="attachment.id"
-                            class="inline-flex max-w-full items-center gap-1.5 rounded-full border border-(--or3-border) bg-white/65 px-2.5 py-1 text-[11px] text-(--or3-text)"
+                            class="or3-msg__attachment"
                         >
                             <Icon
                                 :name="
@@ -76,7 +76,7 @@
                                 "
                                 class="size-3 shrink-0"
                             />
-                            <span class="truncate">{{
+                            <span class="or3-msg__attachment-label">{{
                                 attachment.preview || attachment.name
                             }}</span>
                         </span>
@@ -697,6 +697,38 @@ async function denyApproval() {
     gap: 0.15rem;
     margin-top: 0.55rem;
     margin-right: -0.35rem;
+}
+
+.or3-msg__attachments {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    max-width: 100%;
+    min-width: 0;
+    margin-top: 0.5rem;
+    overflow: hidden;
+}
+
+.or3-msg__attachment {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    border-radius: 9999px;
+    border: 1px solid var(--or3-border);
+    background: rgba(255, 255, 255, 0.65);
+    padding: 0.25rem 0.625rem;
+    color: var(--or3-text);
+    font-size: 0.6875rem;
+}
+
+.or3-msg__attachment-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .or3-msg__notice {

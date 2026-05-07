@@ -34,11 +34,11 @@
                         </span>
                         <div class="or3-cwd-head__text">
                             <p class="or3-label or3-cwd-head__eyebrow">
-                                WORKING DIRECTORY
+                                {{ headerEyebrow }}
                             </p>
-                            <h2 class="or3-cwd-head__title">Choose a folder</h2>
+                            <h2 class="or3-cwd-head__title">{{ headerTitle }}</h2>
                             <p class="or3-cwd-head__subtitle">
-                                Pick where the external CLI agent will run.
+                                {{ headerSubtitle }}
                             </p>
                         </div>
                     </div>
@@ -257,19 +257,19 @@
                         <!-- Directory list -->
                         <template v-else>
                             <div
-                                v-if="directoryEntries.length === 0"
+                                v-if="selectableEntries.length === 0"
                                 class="or3-cwd-empty"
                             >
                                 <Icon
-                                    name="i-pixelarticons-folder"
+                                    :name="purpose === 'file' ? 'i-pixelarticons-file' : 'i-pixelarticons-folder'"
                                     class="size-5 text-(--or3-text-muted)"
                                 />
                                 <p class="or3-cwd-empty__text">
-                                    This folder has no sub-folders.
+                                    {{ emptyFolderText }}
                                 </p>
                             </div>
                             <div
-                                v-else-if="visibleDirectoryEntries.length === 0"
+                                v-else-if="visibleSelectableEntries.length === 0"
                                 class="or3-cwd-empty"
                             >
                                 <Icon
@@ -277,20 +277,21 @@
                                     class="size-5 text-(--or3-text-muted)"
                                 />
                                 <p class="or3-cwd-empty__text">
-                                    No matching folders in this directory.
+                                    {{ emptySearchText }}
                                 </p>
                             </div>
                             <button
-                                v-for="entry in visibleDirectoryEntries"
+                                v-for="entry in visibleSelectableEntries"
                                 v-else
                                 :key="entry.path"
                                 type="button"
                                 class="or3-cwd-row"
+                                :class="{ 'or3-cwd-row--file': entry.type === 'file' }"
                                 @click="onEntryOpen(entry)"
                             >
                                 <span class="or3-cwd-row__icon">
                                     <Icon
-                                        name="i-pixelarticons-folder"
+                                        :name="entry.type === 'directory' ? 'i-pixelarticons-folder' : 'i-pixelarticons-file'"
                                         class="size-4"
                                     />
                                 </span>
@@ -298,9 +299,15 @@
                                     <p class="or3-cwd-row__title font-mono">
                                         {{ entry.name }}
                                     </p>
+                                    <p
+                                        v-if="entry.type === 'file'"
+                                        class="or3-cwd-row__meta"
+                                    >
+                                        {{ fileMeta(entry) }}
+                                    </p>
                                 </div>
                                 <Icon
-                                    name="i-pixelarticons-chevron-right"
+                                    :name="entry.type === 'directory' ? 'i-pixelarticons-chevron-right' : 'i-pixelarticons-check'"
                                     class="or3-cwd-row__chev"
                                 />
                             </button>
@@ -319,13 +326,13 @@
                             >SELECTED</span
                         >
                         <Icon
-                            name="i-pixelarticons-folder"
+                            :name="purpose === 'file' ? 'i-pixelarticons-file' : 'i-pixelarticons-folder'"
                             class="or3-cwd-foot__selected-icon"
                         />
                         <span
                             class="or3-cwd-foot__selected-path truncate font-mono"
                         >
-                            {{ previewPath || 'Tap a folder to select' }}
+                            {{ previewPath || selectedEmptyText }}
                         </span>
                     </div>
                     <div class="or3-cwd-foot__actions">
@@ -349,7 +356,7 @@
                                     : 'i-pixelarticons-check-double'
                             "
                             :label="
-                                atRootList ? 'Open area' : 'Use this folder'
+                                atRootList ? 'Open area' : primaryActionLabel
                             "
                             :disabled="!canSelect"
                             class="or3-cwd-foot__btn-primary"
@@ -373,11 +380,20 @@ import { useSheetSwipeDismiss } from '~/composables/useSheetSwipeDismiss';
 const props = defineProps<{
     open: boolean;
     initialPath?: string;
+    purpose?: 'directory' | 'file';
 }>();
 
 const emit = defineEmits<{
     'update:open': [value: boolean];
     select: [path: string];
+    selectFile: [file: {
+        rootId: string;
+        rootLabel?: string;
+        path: string;
+        name: string;
+        size?: number;
+        mimeType?: string;
+    }];
 }>();
 
 const api = useOr3Api();
@@ -416,6 +432,19 @@ const draftPath = ref('');
 const searchQuery = ref('');
 
 const atRootList = computed(() => currentRootId.value === '');
+const purpose = computed(() => props.purpose ?? 'directory');
+
+const headerEyebrow = computed(() =>
+    purpose.value === 'file' ? 'WORKSPACE FILE' : 'WORKING DIRECTORY',
+);
+const headerTitle = computed(() =>
+    purpose.value === 'file' ? 'Choose a file' : 'Choose a folder',
+);
+const headerSubtitle = computed(() =>
+    purpose.value === 'file'
+        ? 'Pick a workspace file to attach as chat context.'
+        : 'Pick where the external CLI agent will run.',
+);
 
 const currentRoot = computed(() =>
     roots.value.find((r) => r.id === currentRootId.value),
@@ -427,6 +456,25 @@ const currentRootLabel = computed(
 
 const directoryEntries = computed(() =>
     entries.value.filter((e) => e.type === 'directory'),
+);
+const selectableEntries = computed(() =>
+    purpose.value === 'file' ? entries.value : directoryEntries.value,
+);
+const emptyFolderText = computed(() =>
+    purpose.value === 'file'
+        ? 'This folder has no files or sub-folders.'
+        : 'This folder has no sub-folders.',
+);
+const emptySearchText = computed(() =>
+    purpose.value === 'file'
+        ? 'No matching files or folders in this directory.'
+        : 'No matching folders in this directory.',
+);
+const selectedEmptyText = computed(() =>
+    purpose.value === 'file' ? 'Tap a file to add it' : 'Tap a folder to select',
+);
+const primaryActionLabel = computed(() =>
+    purpose.value === 'file' ? 'Add current file' : 'Use this folder',
 );
 
 const normalizedSearch = computed(() => searchQuery.value.trim().toLowerCase());
@@ -441,10 +489,10 @@ const filteredRoots = computed(() => {
     );
 });
 
-const visibleDirectoryEntries = computed(() => {
+const visibleSelectableEntries = computed(() => {
     const query = normalizedSearch.value;
-    if (!query) return directoryEntries.value;
-    return directoryEntries.value.filter((entry) =>
+    if (!query) return selectableEntries.value;
+    return selectableEntries.value.filter((entry) =>
         [entry.name, entry.path].some((value) =>
             (value ?? '').toLowerCase().includes(query),
         ),
@@ -461,7 +509,10 @@ const breadcrumbParts = computed(() => {
 });
 
 const canSelect = computed(() => {
-    if (atRootList.value) return roots.value.length > 0;
+    if (atRootList.value) {
+        return purpose.value === 'directory' && roots.value.length > 0;
+    }
+    if (purpose.value === 'file') return false;
     return currentRoot.value != null;
 });
 
@@ -565,7 +616,10 @@ function navigateUp() {
 }
 
 function onEntryOpen(entry: FileEntry) {
-    if (entry.type !== 'directory') return;
+    if (entry.type === 'file') {
+        if (purpose.value === 'file') selectFile(entry);
+        return;
+    }
     clearSearch();
     currentPath.value = entry.path;
     listDirectory(currentRootId.value, entry.path);
@@ -600,6 +654,19 @@ function buildFullPath(): string {
     // produce paths like "//bin" when joining the relative segment.
     const base = rootPath.endsWith('/') ? rootPath.slice(0, -1) : rootPath;
     return base + '/' + currentPath.value;
+}
+
+function formatBytes(value?: number) {
+    if (!value || value < 0) return '';
+    if (value < 1024) return `${value} B`;
+    if (value < 1024 * 1024) return `${Math.round(value / 1024)} KB`;
+    return `${(value / (1024 * 1024)).toFixed(value < 10 * 1024 * 1024 ? 1 : 0)} MB`;
+}
+
+function fileMeta(entry: FileEntry) {
+    return [entry.mime_type || 'File', formatBytes(entry.size)]
+        .filter(Boolean)
+        .join(' · ');
 }
 
 async function applyDraftPath() {
@@ -637,6 +704,19 @@ async function applyDraftPath() {
 function selectCurrent() {
     const path = buildFullPath();
     emit('select', path);
+    emit('update:open', false);
+}
+
+function selectFile(entry: FileEntry) {
+    if (!currentRootId.value) return;
+    emit('selectFile', {
+        rootId: currentRootId.value,
+        rootLabel: currentRootLabel.value,
+        path: entry.path,
+        name: entry.name,
+        size: entry.size,
+        mimeType: entry.mime_type,
+    });
     emit('update:open', false);
 }
 

@@ -1,9 +1,10 @@
 import { ref, watch } from 'vue';
-import type { JobEvent, JobSnapshot, TurnResponse } from '~/types/or3-api';
+import type { JobEvent, JobSnapshot, ToolPolicy, TurnResponse } from '~/types/or3-api';
 import type {
     AssistantSendPayload,
     AssistantReplayToolCall,
     ChatActivityEntry,
+    ChatMessagePart,
     ChatToolCall,
     Or3AppErrorCode,
 } from '~/types/app-state';
@@ -14,6 +15,7 @@ import { useOr3Api } from './useOr3Api';
 
 const isStreaming = ref(false);
 const activeJobId = ref<string | null>(null);
+const chatMode = ref<'ask' | 'work' | 'admin'>('work');
 let controller: AbortController | null = null;
 let recoveryWatcherInstalled = false;
 const recoveryAttempted = new Set<string>();
@@ -62,6 +64,13 @@ const knownErrorCodes = new Set<Or3AppErrorCode>([
     'capability_unavailable',
     'approval_required',
     'stream_failed',
+    'provider_error',
+    'stream_error',
+    'validation_error',
+    'policy_error',
+    'tool_execution_error',
+    'tool_loop_limit',
+    'aborted',
     'file_not_found',
     'path_forbidden',
     'terminal_unavailable',
@@ -76,6 +85,12 @@ function extractErrorCode(error: unknown): Or3AppErrorCode | undefined {
         knownErrorCodes.has(record.code as Or3AppErrorCode)
     ) {
         return record.code as Or3AppErrorCode;
+    }
+    if (
+        typeof record.public_code === 'string' &&
+        knownErrorCodes.has(record.public_code as Or3AppErrorCode)
+    ) {
+        return record.public_code as Or3AppErrorCode;
     }
     if (record.cause && typeof record.cause === 'object') {
         const nestedCode: Or3AppErrorCode | undefined = extractErrorCode(
@@ -159,6 +174,8 @@ function normalizePayload(
         text: input.text.trim(),
         transportText: (input.transportText || input.text).trim(),
         attachments: input.attachments ?? [],
+        mode: input.mode,
+        toolPolicy: input.toolPolicy,
         approvalToken: input.approvalToken,
         followJobId: input.followJobId,
         replayToolCall: input.replayToolCall,
@@ -174,10 +191,35 @@ function retryPayloadForStorage(
         text: payload.text,
         transportText: payload.transportText,
         attachments: payload.attachments ?? [],
+        mode: payload.mode,
+        toolPolicy: payload.toolPolicy,
         approvalToken: payload.approvalToken,
         replayToolCall: payload.replayToolCall,
         continueMessageId: payload.continueMessageId,
         suppressUserEcho: payload.suppressUserEcho,
+    };
+}
+
+export function modeToolPolicy(mode?: AssistantSendPayload['mode']): ToolPolicy {
+    return { mode: mode || chatMode.value || 'work' };
+}
+
+export type NormalizedTurnEvent = {
+    type: string;
+    payload?: Record<string, unknown>;
+    sequence?: number;
+    jobId?: string;
+};
+
+export function normalizeTurnEvent(
+    event: JobEvent | { event?: string; json?: unknown },
+): NormalizedTurnEvent {
+    const payload = eventPayload(event);
+    return {
+        type: eventName(event),
+        payload,
+        sequence: eventSequence(event),
+        jobId: eventJobId(event),
     };
 }
 
@@ -403,6 +445,10 @@ export function useAssistantStream() {
         recoveryAttempted.add(recoveryKey);
         try {
             await send({
+                ...(pendingMessage.retryPayload ?? {
+                    text: pendingMessage.content,
+                    transportText: pendingMessage.content,
+                }),
                 text: pendingMessage.retryPayload?.text || pendingMessage.content,
                 transportText:
                     pendingMessage.retryPayload?.transportText ||
@@ -494,11 +540,12 @@ export function useAssistantStream() {
                   role: 'assistant',
                   content: '',
                   status: 'streaming',
-                  retryPayload: storedRetryPayload,
-                  reasoningText: '',
-                  toolCalls: [],
-                  activityLog: [],
-              });
+	                  retryPayload: storedRetryPayload,
+	                  reasoningText: '',
+	                  toolCalls: [],
+	                  parts: [],
+	                  activityLog: [],
+	              });
         isStreaming.value = true;
         const activeController = new AbortController();
         controller = activeController;
@@ -518,18 +565,29 @@ export function useAssistantStream() {
                 content: sanitizeAssistantText(rawAssistantContent),
             });
         };
-        const replaceAssistantContent = (value: string) => {
-            rawAssistantContent = value;
-            updateAssistant({
-                content: sanitizeAssistantText(rawAssistantContent),
-            });
-        };
-        const turnRequest = followJobId
-            ? null
-            : {
-                  session_key: session.sessionKey,
-                  message: text,
-                  tool_policy: { mode: 'allow_all' as const },
+	        const replaceAssistantContent = (value: string) => {
+	            rawAssistantContent = value;
+	            updateAssistant({
+	                content: sanitizeAssistantText(rawAssistantContent),
+	            });
+	        };
+	        const upsertPart = (part: ChatMessagePart) => {
+	            const current = readAssistant();
+	            const parts = [...(current?.parts ?? [])];
+	            const index = parts.findIndex((item) => item.id === part.id);
+	            if (index === -1) {
+	                parts.push(part);
+	            } else {
+	                parts[index] = { ...parts[index], ...part };
+	            }
+	            updateAssistant({ parts });
+	        };
+	        const turnRequest = followJobId
+	            ? null
+	            : {
+	                  session_key: session.sessionKey,
+	                  message: text,
+	                  tool_policy: payload.toolPolicy ?? modeToolPolicy(payload.mode),
                   ...(payload.approvalToken
                       ? { approval_token: payload.approvalToken }
                       : {}),
@@ -702,11 +760,16 @@ export function useAssistantStream() {
                     ),
                 );
             }
-            if (type === 'text_delta' && delta) {
-                appendAssistantContent(delta);
-                sawVisibleOutput =
-                    sawVisibleOutput ||
-                    !!sanitizeAssistantText(rawAssistantContent);
+	            if (type === 'text_delta' && delta) {
+	                appendAssistantContent(delta);
+	                upsertPart({
+	                    id: String(payload?.item_id || 'assistant_text'),
+	                    type: 'text',
+	                    content: sanitizeAssistantText(rawAssistantContent),
+	                });
+	                sawVisibleOutput =
+	                    sawVisibleOutput ||
+	                    !!sanitizeAssistantText(rawAssistantContent);
             }
             const finalText = payload?.final_text;
             const assistantContent =
@@ -717,22 +780,45 @@ export function useAssistantStream() {
                     : type === 'assistant'
                       ? assistantContent
                       : '';
-            if (assistantText.trim()) {
-                replaceAssistantContent(assistantText);
-                sawVisibleOutput =
-                    sawVisibleOutput || !!sanitizeAssistantText(assistantText);
-            }
-            if (type === 'tool_call') {
-                addToolCall(
-                    String(payload?.name || 'tool'),
-                    typeof payload?.arguments === 'string'
-                        ? payload.arguments
-                        : undefined,
-                );
-            }
-            if (type === 'tool_result') {
-                const toolName = String(payload?.name || 'tool');
-                const approvalRequired = isApprovalRequiredPayload(payload);
+	            if (assistantText.trim()) {
+	                replaceAssistantContent(assistantText);
+	                upsertPart({
+	                    id: String(payload?.item_id || 'assistant_text'),
+	                    type: 'text',
+	                    content: sanitizeAssistantText(assistantText),
+	                });
+	                sawVisibleOutput =
+	                    sawVisibleOutput || !!sanitizeAssistantText(assistantText);
+	            }
+	            if (type === 'tool_call') {
+	                const toolCallId = String(
+	                    payload?.tool_call_id ||
+	                        payload?.id ||
+	                        `${payload?.name || 'tool'}:${payload?.arguments || ''}`,
+	                );
+	                addToolCall(
+	                    String(payload?.name || 'tool'),
+	                    typeof payload?.arguments === 'string'
+	                        ? payload.arguments
+	                        : undefined,
+	                );
+	                upsertPart({
+	                    id: `tool:${toolCallId}`,
+	                    type: 'tool',
+	                    toolCallId,
+	                    name: String(payload?.name || 'tool'),
+	                    status: 'running',
+	                    argumentsPreview: String(
+	                        payload?.arguments_preview ?? payload?.arguments ?? '',
+	                    ),
+	                });
+	            }
+	            if (type === 'tool_result') {
+	                const toolName = String(payload?.name || 'tool');
+	                const toolCallId = String(
+	                    payload?.tool_call_id || payload?.id || toolName,
+	                );
+	                const approvalRequired = isApprovalRequiredPayload(payload);
                 const toolError =
                     typeof payload?.error === 'string'
                         ? payload.error
@@ -743,8 +829,32 @@ export function useAssistantStream() {
                         ? payload.result
                         : undefined,
                     toolError,
-                    approvalRequired ? 'attention' : undefined,
-                );
+	                    approvalRequired ? 'attention' : undefined,
+	                );
+	                upsertPart({
+	                    id: `tool:${toolCallId}`,
+	                    type: 'tool',
+	                    toolCallId,
+	                    name: toolName,
+	                    status: approvalRequired
+	                        ? 'attention'
+	                        : toolError
+	                          ? 'error'
+	                          : 'complete',
+	                    resultPreview: String(
+	                        payload?.result_preview ?? payload?.result ?? '',
+	                    ),
+	                    artifactId:
+	                        typeof payload?.artifact_id === 'string'
+	                            ? payload.artifact_id
+	                            : undefined,
+	                    publicCode:
+	                        typeof payload?.public_code === 'string'
+	                            ? payload.public_code
+	                            : typeof payload?.code === 'string'
+	                              ? payload.code
+	                              : undefined,
+	                });
                 const approvalRequestId = extractApprovalRequestId(payload);
                 if (approvalRequestId) {
                     sawVisibleOutput = true;
@@ -859,10 +969,12 @@ export function useAssistantStream() {
                     createActivity(
                         'completion',
                         'Completed turn',
-                        typeof payload?.final_text === 'string' &&
-                            payload.final_text.trim()
-                            ? undefined
-                            : 'No final text was included in the completion event.',
+	                        typeof payload?.final_text === 'string' &&
+	                            payload.final_text.trim()
+	                            ? undefined
+	                            : readAssistant()?.toolCalls?.length
+	                              ? 'Tool work completed without a final assistant message.'
+	                              : 'No final text was included in the completion event.',
                         'complete',
                     ),
                 );
@@ -1114,10 +1226,21 @@ export function useAssistantStream() {
         }
     }
 
-    function stop() {
+    async function stop() {
+        const jobId = activeJobId.value;
+        if (jobId) {
+            try {
+                await api.request(
+                    `/internal/v1/jobs/${encodeURIComponent(jobId)}/abort`,
+                    { method: 'POST' },
+                );
+            } catch {
+                // Local abort below is still the authoritative UI fallback.
+            }
+        }
         controller?.abort();
         isStreaming.value = false;
     }
 
-    return { isStreaming, activeJobId, send, stop };
+    return { isStreaming, activeJobId, chatMode, send, stop };
 }

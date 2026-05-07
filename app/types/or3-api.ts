@@ -1,5 +1,12 @@
 export interface ToolPolicy {
-    mode: 'allow_all' | 'deny_all' | 'allow_list' | 'deny_list';
+    mode:
+        | 'allow_all'
+        | 'deny_all'
+        | 'allow_list'
+        | 'deny_list'
+        | 'ask'
+        | 'work'
+        | 'admin';
     allowed_tools?: string[];
     blocked_tools?: string[];
 }

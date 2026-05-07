@@ -1,6 +1,6 @@
 <template>
     <nav
-        class="or3-nav-shell or3-bottom-nav-safe or3-bottom-nav"
+        class="or3-nav-shell or3-bottom-nav-safe or3-bottom-nav z-50"
         :class="isKeyboardOpen ? 'or3-bottom-nav--keyboard-open' : ''"
         :aria-hidden="isKeyboardOpen ? 'true' : undefined"
         aria-label="Primary"
