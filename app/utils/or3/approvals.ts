@@ -71,6 +71,10 @@ export function normalizeApprovalRequest(input: unknown): ApprovalRequest {
         expires_at:
             pick<string>(source, ['expires_at']) ??
             msToIsoString(pick(source, ['ExpiresAt', 'expires_at_ms'])),
+        requester_session_id: pick<string>(source, [
+            'requester_session_id',
+            'RequesterSessionID',
+        ]),
     };
     return result;
 }

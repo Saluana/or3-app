@@ -59,6 +59,9 @@
         <!-- Floating composer pinned just above the bottom navigation -->
         <div class="or3-chat-shell__composer">
             <div class="or3-chat-shell__composer-inner">
+                <div class="or3-chat-shell__status">
+                    <AssistantStatusIndicator :active="isStreaming" />
+                </div>
                 <AssistantComposer
                     v-model="draft"
                     v-model:mode="chatMode"
@@ -101,7 +104,11 @@ function openFileEditor() {
 
 function sendWithMode(payload: Parameters<typeof send>[0]) {
     if (typeof payload === 'string') {
-        void send({ text: payload, transportText: payload, mode: chatMode.value });
+        void send({
+            text: payload,
+            transportText: payload,
+            mode: chatMode.value,
+        });
         return;
     }
     void send({ ...payload, mode: payload.mode ?? chatMode.value });
@@ -161,6 +168,12 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.or3-chat-shell__status {
+    display: flex;
+    justify-content: center;
+    pointer-events: none;
+}
+
 .or3-chat-empty__actions {
     display: flex;
     flex-wrap: wrap;
@@ -168,5 +181,4 @@ onMounted(() => {
     gap: 0.75rem;
     margin-top: 1rem;
 }
-
 </style>

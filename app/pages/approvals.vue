@@ -165,13 +165,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import { useToast } from '@nuxt/ui/composables';
 import type { ApprovalRequest } from '../types/or3-api';
 import { useApprovals } from '../composables/useApprovals';
 import { useAssistantStream } from '../composables/useAssistantStream';
 import { useChatSessions } from '../composables/useChatSessions';
 import { approvalActionErrorMessage } from '../utils/assistantApproval';
+import { formatApprovalSubjectPreview } from '../utils/or3/approval-display';
 
 const filters = [
     { label: 'Waiting', value: 'pending', icon: '' },
@@ -182,8 +184,13 @@ const filters = [
 ];
 
 const toast = useToast();
-const { activeSession, findAssistantMessageForApproval, updateMessage } =
-    useChatSessions();
+const router = useRouter();
+const {
+    activeSession,
+    activateSessionByKey,
+    ensureApprovalMessage,
+    updateMessage,
+} = useChatSessions();
 const { send } = useAssistantStream();
 const selectedFilter = ref('pending');
 const detailOpen = ref(false);
@@ -266,6 +273,24 @@ async function handleApprovalActionFailure(error: unknown, fallback: string) {
     });
 }
 
+function approvalPlaceholderContent(approval?: ApprovalRequest | null) {
+    const preview = approval
+        ? formatApprovalSubjectPreview({
+              type: approval.type,
+              domain: approval.domain,
+              subject: approval.subject,
+          })
+        : '';
+    if (!preview) {
+        return 'Approval is needed before or3-intern can continue.';
+    }
+    return [
+        'Approval is needed before or3-intern can continue.',
+        '',
+        `Requested action: ${preview}`,
+    ].join('\n');
+}
+
 async function followApprovalResumeJob(
     response?: {
         request_id?: number | string;
@@ -276,21 +301,36 @@ async function followApprovalResumeJob(
 ) {
     const jobId = response?.resume_job_id?.trim();
     if (!jobId) return;
-    const responseSession = response?.session_key?.trim();
-    const currentSession = activeSession.value?.sessionKey?.trim();
-    if (!responseSession || responseSession !== currentSession) {
-        return;
+    const targetSessionKey =
+        response?.session_key?.trim() ||
+        approval?.requester_session_id?.trim() ||
+        activeSession.value?.sessionKey?.trim() ||
+        '';
+    if (targetSessionKey) {
+        activateSessionByKey(targetSessionKey, 'Approval follow-up');
     }
-    const targetMessage = findAssistantMessageForApproval(
-        response?.request_id ?? approval?.id,
-        responseSession,
-    );
+    const targetMessage = ensureApprovalMessage({
+        approvalRequestId:
+            response?.request_id ??
+            approval?.id ??
+            response?.resume_job_id ??
+            '',
+        sessionKey: targetSessionKey || undefined,
+        content: approvalPlaceholderContent(approval),
+        createdAt: approval?.created_at,
+        status: 'attention',
+        approvalState: 'retrying',
+    });
     if (targetMessage) {
         updateMessage(targetMessage.id, {
             approvalState: 'retrying',
             status: 'attention',
             error: undefined,
         });
+    }
+    if (router.currentRoute.value.path !== '/') {
+        await router.push('/');
+        await nextTick();
     }
     await send({
         text: '',

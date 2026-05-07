@@ -208,4 +208,45 @@ describe('useApprovals', () => {
             'http://127.0.0.1:9100/internal/v1/approvals',
         );
     });
+
+    it('normalizes requester session ids from approval responses', async () => {
+        useLocalCache().updateHost({
+            id: 'test',
+            name: 'Test Mac',
+            baseUrl: 'http://127.0.0.1:9100/',
+            token: 'secret',
+        });
+
+        const fetchMock = vi.fn(async (url: string | URL | Request) => {
+            const path = String(url);
+            if (path.includes('/internal/v1/approvals?status=pending')) {
+                return new Response(
+                    JSON.stringify({
+                        items: [
+                            {
+                                id: 42,
+                                status: 'pending',
+                                Type: 'exec',
+                                RequesterSessionID: 'svc:approval-chat',
+                            },
+                        ],
+                    }),
+                    {
+                        status: 200,
+                        headers: { 'Content-Type': 'application/json' },
+                    },
+                );
+            }
+            throw new Error(`unexpected request: ${path}`);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+
+        const { approvals, loadApprovals } = useApprovals();
+        await loadApprovals('pending');
+
+        expect(approvals.value[0]).toMatchObject({
+            id: 42,
+            requester_session_id: 'svc:approval-chat',
+        });
+    });
 });

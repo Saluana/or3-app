@@ -481,6 +481,7 @@ export interface ApprovalRequest {
     subject?: unknown;
     created_at?: string;
     expires_at?: string;
+    requester_session_id?: string;
 }
 
 export interface ApprovalActionResponse {

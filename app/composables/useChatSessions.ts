@@ -35,6 +35,27 @@ export function useChatSessions() {
         set: (value: string) => cache.setDraft(draftKey.value, value),
     });
 
+    function sessionIndexById(sessionId: string) {
+        return cache.state.value.sessions.findIndex(
+            (item) => item.id === sessionId,
+        );
+    }
+
+    function promoteSession(sessionId: string) {
+        const index = sessionIndexById(sessionId);
+        if (index < 0) return null;
+        if (index === 0) {
+            touchSession(sessionId);
+            cache.persist();
+            return cache.state.value.sessions[0] ?? null;
+        }
+        const [session] = cache.state.value.sessions.splice(index, 1);
+        cache.state.value.sessions.unshift(session);
+        touchSession(session.id);
+        cache.persist();
+        return session;
+    }
+
     function ensureSession() {
         if (activeSession.value) return activeSession.value;
         const hostId = activeHost.value?.id ?? 'local';
@@ -44,6 +65,48 @@ export function useChatSessions() {
             hostId,
             sessionKey: `or3-app:${hostId}:${Date.now().toString(36)}`,
             title: 'New conversation',
+            createdAt: timestamp,
+            updatedAt: timestamp,
+        };
+        cache.state.value.sessions.unshift(session);
+        cache.persist();
+        return session;
+    }
+
+    function findSessionByKey(sessionKey?: string) {
+        const requestedKey = sessionKey?.trim();
+        if (!requestedKey) return null;
+        const hostId = activeHost.value?.id;
+        return (
+            cache.state.value.sessions.find((session) => {
+                if (hostId && session.hostId !== hostId) return false;
+                return session.sessionKey === requestedKey;
+            }) ?? null
+        );
+    }
+
+    function activateSessionByKey(sessionKey?: string, title?: string) {
+        const requestedKey = sessionKey?.trim();
+        if (!requestedKey) return activeSession.value ?? ensureSession();
+
+        const existing = findSessionByKey(requestedKey);
+        if (existing) {
+            if (
+                (!existing.title || existing.title === 'New conversation') &&
+                title?.trim()
+            ) {
+                existing.title = title.trim().slice(0, 48);
+            }
+            return promoteSession(existing.id);
+        }
+
+        const hostId = activeHost.value?.id ?? 'local';
+        const timestamp = now();
+        const session: ChatSession = {
+            id: createId('session'),
+            hostId,
+            sessionKey: requestedKey,
+            title: title?.trim().slice(0, 48) || 'New conversation',
             createdAt: timestamp,
             updatedAt: timestamp,
         };
@@ -141,6 +204,61 @@ export function useChatSessions() {
         return null;
     }
 
+    function ensureApprovalMessage(options: {
+        approvalRequestId: number | string;
+        sessionKey?: string;
+        content?: string;
+        createdAt?: string;
+        status?: ChatMessage['status'];
+        approvalState?: ChatMessage['approvalState'];
+    }) {
+        const approvalKey = String(options.approvalRequestId ?? '').trim();
+        if (!approvalKey) return null;
+
+        const existing = findAssistantMessageForApproval(
+            options.approvalRequestId,
+            options.sessionKey,
+        );
+        if (existing) {
+            updateMessage(existing.id, {
+                status: options.status ?? existing.status ?? 'attention',
+                approvalState:
+                    options.approvalState ??
+                    existing.approvalState ??
+                    'pending',
+                content:
+                    existing.content || options.content || existing.content,
+                error: undefined,
+            });
+            return (
+                cache.state.value.messages.find(
+                    (item) => item.id === existing.id,
+                ) ?? existing
+            );
+        }
+
+        const session = options.sessionKey
+            ? activateSessionByKey(options.sessionKey)
+            : ensureSession();
+        if (!session) return null;
+
+        return addMessage({
+            sessionId: session.id,
+            role: 'assistant',
+            content:
+                options.content ||
+                'Approval is needed before or3-intern can continue.',
+            status: options.status ?? 'attention',
+            approvalRequestId: options.approvalRequestId,
+            approvalState: options.approvalState ?? 'pending',
+            createdAt: options.createdAt,
+            reasoningText: '',
+            toolCalls: [],
+            parts: [],
+            activityLog: [],
+        });
+    }
+
     function newSession(title = 'New conversation') {
         const hostId = activeHost.value?.id ?? 'local';
         const timestamp = now();
@@ -204,11 +322,14 @@ export function useChatSessions() {
         messages,
         draft,
         ensureSession,
+        findSessionByKey,
+        activateSessionByKey,
         newSession,
         addMessage,
         updateMessage,
         toggleMessagePin,
         findAssistantMessageForApproval,
+        ensureApprovalMessage,
         clearSessionMessages,
         appendSystemMessage,
         messageCount,

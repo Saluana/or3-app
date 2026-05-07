@@ -1,5 +1,6 @@
 import { ref, watch } from 'vue';
 import type {
+    ApprovalRequest,
     JobEvent,
     JobSnapshot,
     ToolPolicy,
@@ -13,6 +14,8 @@ import type {
     ChatToolCall,
     Or3AppErrorCode,
 } from '~/types/app-state';
+import { formatApprovalSubjectPreview } from '~/utils/or3/approval-display';
+import { normalizeApprovalRequest } from '~/utils/or3/approvals';
 import { useChatSessions } from './useChatSessions';
 import { useActiveHost } from './useActiveHost';
 import { useLocalCache } from './useLocalCache';
@@ -23,7 +26,9 @@ const activeJobId = ref<string | null>(null);
 const chatMode = ref<'ask' | 'work' | 'admin'>('work');
 let controller: AbortController | null = null;
 let recoveryWatcherInstalled = false;
+let approvalHydrationWatcherInstalled = false;
 const recoveryAttempted = new Set<string>();
+const approvalHydrationInFlight = new Set<string>();
 
 function describeRequestError(error: unknown) {
     if (error instanceof Error && error.message.trim()) return error.message;
@@ -373,6 +378,22 @@ export function describeApprovalRequest(toolName: string, argsJson?: string) {
     ].join('\n');
 }
 
+function pendingApprovalPlaceholderContent(approval: ApprovalRequest) {
+    const preview = formatApprovalSubjectPreview({
+        type: approval.type,
+        domain: approval.domain,
+        subject: approval.subject,
+    });
+    if (!preview) {
+        return 'Approval is needed before or3-intern can continue.';
+    }
+    return [
+        'Approval is needed before or3-intern can continue.',
+        '',
+        `Requested action: ${preview}`,
+    ].join('\n');
+}
+
 function eventPayload(event: JobEvent | { event?: string; json?: unknown }) {
     const json = 'json' in event ? event.json : undefined;
     const data = 'data' in event ? event.data : undefined;
@@ -477,6 +498,53 @@ export function useAssistantStream() {
         }
     };
 
+    const hydratePendingApprovalsForActiveSession = async () => {
+        if (!import.meta.client || isStreaming.value) return;
+        const hostId = activeHost.value?.id?.trim();
+        const authToken = activeHost.value?.token?.trim();
+        const sessionKey = chat.activeSession.value?.sessionKey?.trim();
+        if (!hostId || !authToken || !sessionKey) return;
+
+        const hydrationKey = `${hostId}:${sessionKey}`;
+        if (approvalHydrationInFlight.has(hydrationKey)) return;
+
+        approvalHydrationInFlight.add(hydrationKey);
+        try {
+            const response = await api.request<{ items: unknown[] }>(
+                '/internal/v1/approvals?status=pending',
+            );
+            const approvals = (response.items ?? [])
+                .map(normalizeApprovalRequest)
+                .filter(
+                    (approval) =>
+                        approval.requester_session_id?.trim() === sessionKey,
+                );
+
+            for (const approval of approvals) {
+                if (
+                    chat.findAssistantMessageForApproval(
+                        approval.id,
+                        sessionKey,
+                    )
+                ) {
+                    continue;
+                }
+                chat.ensureApprovalMessage({
+                    approvalRequestId: approval.id,
+                    sessionKey,
+                    content: pendingApprovalPlaceholderContent(approval),
+                    createdAt: approval.created_at,
+                    status: 'attention',
+                    approvalState: 'pending',
+                });
+            }
+        } catch {
+            // Ignore opportunistic hydration failures; the approvals view remains the fallback.
+        } finally {
+            approvalHydrationInFlight.delete(hydrationKey);
+        }
+    };
+
     if (import.meta.client && !recoveryWatcherInstalled) {
         recoveryWatcherInstalled = true;
         watch(
@@ -505,6 +573,22 @@ export function useAssistantStream() {
             },
             () => {
                 void recoverPendingMessages();
+            },
+            { immediate: true },
+        );
+    }
+
+    if (import.meta.client && !approvalHydrationWatcherInstalled) {
+        approvalHydrationWatcherInstalled = true;
+        watch(
+            () => ({
+                hostId: activeHost.value?.id ?? '',
+                token: activeHost.value?.token ? 'ready' : 'none',
+                sessionKey: chat.activeSession.value?.sessionKey ?? '',
+                streaming: isStreaming.value,
+            }),
+            () => {
+                void hydratePendingApprovalsForActiveSession();
             },
             { immediate: true },
         );
