@@ -95,6 +95,36 @@
                         </button>
 
                         <div class="or3-composer-menu__divider" />
+                        <p class="or3-composer-menu__eyebrow">Runner</p>
+                        <div class="or3-composer-menu__modes" role="radiogroup" aria-label="Chat runner">
+                            <button
+                                v-for="runner in runnerOptions"
+                                :key="runner.id"
+                                type="button"
+                                class="or3-composer-menu__mode"
+                                :class="{
+                                    'is-active': selectedRunnerId === runner.id,
+                                    'is-disabled': !runner.selectable,
+                                }"
+                                :aria-checked="selectedRunnerId === runner.id"
+                                :disabled="!runner.selectable"
+                                role="radio"
+                                @click="selectRunner(runner.id)"
+                            >
+                                <Icon :name="runner.icon" class="size-4" />
+                                <span class="or3-composer-menu__mode-copy">
+                                    <span>{{ runner.label }}</span>
+                                    <small>{{ runner.description }}</small>
+                                </span>
+                                <Icon
+                                    v-if="selectedRunnerId === runner.id"
+                                    name="i-pixelarticons-check"
+                                    class="ml-auto size-4"
+                                />
+                            </button>
+                        </div>
+
+                        <div class="or3-composer-menu__divider" />
                         <p class="or3-composer-menu__eyebrow">Mode</p>
                         <div
                             class="or3-composer-menu__modes"
@@ -225,6 +255,7 @@ import type {
     AssistantSendPayload,
     ChatAttachment,
 } from '../../types/app-state';
+import type { ChatRunnerInfo } from '../../types/or3-api';
 
 const props = withDefaults(
     defineProps<{
@@ -232,18 +263,23 @@ const props = withDefaults(
         streaming?: boolean;
         paneId?: string;
         mode?: 'ask' | 'work' | 'admin';
+        selectedRunnerId?: string;
+        runners?: ChatRunnerInfo[];
     }>(),
     {
         modelValue: '',
         streaming: false,
         paneId: 'main',
         mode: 'work',
+        selectedRunnerId: 'or3-intern',
+        runners: () => [],
     },
 );
 
 const emit = defineEmits<{
     'update:modelValue': [value: string];
     'update:mode': [value: 'ask' | 'work' | 'admin'];
+    'update:selectedRunnerId': [value: string];
     send: [value: AssistantSendPayload];
     stop: [];
 }>();
@@ -342,6 +378,64 @@ const modeOptions = [
 ];
 
 const selectedMode = computed(() => props.mode ?? 'work');
+const selectedRunnerId = computed(() => props.selectedRunnerId || 'or3-intern');
+
+const runnerOptions = computed(() => {
+    const runners = props.runners.length
+        ? props.runners
+        : [
+              {
+                  id: 'or3-intern',
+                  display_name: 'OR3 Intern',
+                  status: 'available',
+                  auth_status: 'ready',
+                  supports: {
+                      structuredOutput: false,
+                      streamingJson: false,
+                      modelFlag: true,
+                      permissionsMode: false,
+                      safeSandboxFlag: false,
+                      dangerousBypassFlag: false,
+                      stdinPrompt: false,
+                      chat: { chatSelectable: true, chatReplay: true },
+                  },
+                  chat_capabilities: { chatSelectable: true, chatReplay: true },
+              } satisfies ChatRunnerInfo,
+          ];
+    return runners.map((runner) => {
+        const caps = runner.chat_capabilities || runner.supports.chat;
+        const selectable =
+            runner.id === 'or3-intern' ||
+            (runner.status === 'available' &&
+                (!runner.auth_status || runner.auth_status === 'ready') &&
+                caps?.chatSelectable !== false &&
+                caps?.chatReplay !== false);
+        const reason =
+            runner.status === 'missing'
+                ? 'Binary missing'
+                : runner.status === 'disabled_by_config'
+                  ? 'Disabled in config'
+                  : runner.auth_status === 'missing'
+                    ? 'Auth required'
+                    : !selectable
+                      ? runner.disabled_reason || 'Unavailable'
+                      : runner.id === 'or3-intern'
+                        ? 'Default OR3 tools and approvals.'
+                        : caps?.chatNativeSession
+                          ? 'Replay and native session capable.'
+                          : 'Replay-mode external runner.';
+        return {
+            id: runner.id,
+            label: runner.display_name || runner.id,
+            description: reason,
+            selectable,
+            icon:
+                runner.id === 'or3-intern'
+                    ? 'i-pixelarticons-robot'
+                    : 'i-pixelarticons-terminal',
+        };
+    });
+});
 
 const canSend = computed(
     () => !!formState.text.trim() || displayedAttachments.value.length > 0,
@@ -402,6 +496,10 @@ function openWorkspaceFilePicker() {
 
 function selectMode(mode: 'ask' | 'work' | 'admin') {
     emit('update:mode', mode);
+}
+
+function selectRunner(runnerId: string) {
+    emit('update:selectedRunnerId', runnerId);
 }
 
 function revokeAttachmentPreview(attachment: DraftAttachment) {
@@ -625,6 +723,10 @@ async function submit() {
                 ...attachment
             }) => attachment,
         ),
+        runnerId: selectedRunnerId.value,
+        runnerLabel: runnerOptions.value.find(
+            (runner) => runner.id === selectedRunnerId.value,
+        )?.label,
     };
 
     emit('send', payload);
@@ -1266,6 +1368,11 @@ onBeforeUnmount(() => {
 .or3-composer-menu__mode.is-active {
     color: var(--or3-green-dark);
     background: color-mix(in srgb, var(--or3-green-soft) 34%, white 66%);
+}
+
+.or3-composer-menu__mode.is-disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
 }
 
 .or3-composer-menu__mode-copy {

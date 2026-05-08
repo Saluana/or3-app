@@ -21,6 +21,22 @@ export interface ChatSession {
     title: string;
     createdAt: string;
     updatedAt: string;
+    runnerId?: string;
+    runnerLabel?: string;
+    runnerChatSessionId?: string;
+    runnerChatTurnId?: string;
+    runnerContinuationMode?: 'replay' | 'native' | string;
+    runnerModel?: string;
+    runnerMode?: string;
+    runnerIsolation?: string;
+    runnerCwd?: string;
+    backendMessageCount?: number;
+    lastMessagePreview?: string;
+    parentSessionKey?: string;
+    forkAnchorMessageId?: number;
+    forkedFromRunnerId?: string;
+    forkStrategy?: string;
+    archived?: boolean;
 }
 
 export interface ChatToolCall {
@@ -71,6 +87,16 @@ export interface AssistantSendPayload {
     replayToolCall?: AssistantReplayToolCall;
     continueMessageId?: string;
     suppressUserEcho?: boolean;
+    runnerId?: string;
+    runnerLabel?: string;
+    runnerChatSessionId?: string;
+    runnerChatTurnId?: string;
+    runnerContinuationMode?: 'replay' | 'native' | string;
+    runnerModel?: string;
+    runnerMode?: string;
+    runnerIsolation?: string;
+    runnerCwd?: string;
+    runnerMaxTurns?: number;
 }
 
 export interface ChatMessagePart {
@@ -96,6 +122,14 @@ export interface ChatMessage {
     createdAt: string;
     pinned?: boolean;
     jobId?: string;
+    backendMessageId?: number;
+    sourceMessageId?: string;
+    sourceSessionKey?: string;
+    runnerId?: string;
+    runnerLabel?: string;
+    runnerChatSessionId?: string;
+    runnerChatTurnId?: string;
+    agentCliRunId?: string;
     error?: string;
     errorCode?: Or3AppErrorCode;
     approvalRequestId?: number | string;
@@ -191,6 +225,17 @@ export type Or3AppErrorCode =
     | 'invalid_file_target'
     | 'path_forbidden'
     | 'terminal_unavailable'
+    | 'runner_missing'
+    | 'runner_auth_missing'
+    | 'unsupported_native_session'
+    | 'runner_chat_turn_active'
+    | 'runner_chat_session_not_found'
+    | 'runner_chat_turn_not_found'
+    | 'runner_chat_aborted'
+    | 'chat_session_not_found'
+    | 'invalid_fork_anchor'
+    | 'fork_anchor_incomplete'
+    | 'unsupported_native_fork'
     | 'unknown';
 
 export interface Or3AppError {

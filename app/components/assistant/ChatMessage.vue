@@ -168,6 +168,29 @@
                         <span>Retry</span>
                     </button>
                     <button
+                        v-if="canFork"
+                        type="button"
+                        class="or3-msg__action"
+                        :disabled="isStreaming || forkBusy"
+                        aria-label="Fork conversation from this message"
+                        title="Fork conversation from this message"
+                        @click="forkMessage"
+                    >
+                        <Icon name="i-pixelarticons-git-branch" class="size-4" />
+                        <span>{{ forkBusy ? 'Forking…' : 'Fork' }}</span>
+                    </button>
+                    <button
+                        v-if="props.message.agentCliRunId || props.message.jobId"
+                        type="button"
+                        class="or3-msg__action"
+                        aria-label="Open activity details"
+                        title="Open activity details"
+                        @click="openActivity"
+                    >
+                        <Icon name="i-pixelarticons-list-box" class="size-4" />
+                        <span>Activity</span>
+                    </button>
+                    <button
                         v-if="showApprovalActions"
                         type="button"
                         class="or3-msg__action or3-msg__action--deny"
@@ -226,6 +249,7 @@ import { useToast } from '@nuxt/ui/composables';
 import { useApprovals } from '../../composables/useApprovals';
 import { useAssistantStream } from '../../composables/useAssistantStream';
 import { useChatSessions } from '../../composables/useChatSessions';
+import { useSessionHistory } from '../../composables/useSessionHistory';
 import type { ChatMessage } from '../../types/app-state';
 import {
     approvalActionErrorMessage,
@@ -238,12 +262,15 @@ import { shouldRepairIncompleteMarkdownForStatus } from '../../utils/streamingMa
 
 const props = defineProps<{ message: ChatMessage }>();
 const toast = useToast();
-const { messages, toggleMessagePin, updateMessage } = useChatSessions();
+const { activeSession, messages, toggleMessagePin, updateMessage } = useChatSessions();
 const { isStreaming, send } = useAssistantStream();
+const sessionHistory = useSessionHistory();
+const router = useRouter();
 const { approve, deny, fetchApproval, consumeIssuedApprovalToken } =
     useApprovals();
 const copied = ref(false);
 const approvalBusy = ref(false);
+const forkBusy = ref(false);
 let copiedTimer: ReturnType<typeof setTimeout> | null = null;
 
 const shouldRepairIncompleteMarkdown = computed(() =>
@@ -271,6 +298,12 @@ const canRetry = computed(
         props.message.role === 'assistant' &&
         props.message.status === 'failed' &&
         !!props.message.retryPayload,
+);
+const canFork = computed(
+    () =>
+        props.message.status === 'complete' &&
+        typeof props.message.backendMessageId === 'number' &&
+        !props.message.approvalRequestId,
 );
 const showApprovalActions = computed(
     () =>
@@ -407,6 +440,46 @@ function togglePin() {
 async function retryMessage() {
     if (!props.message.retryPayload || isStreaming.value) return;
     await send(props.message.retryPayload);
+}
+
+async function forkMessage() {
+    if (!props.message.backendMessageId || forkBusy.value || isStreaming.value) return;
+    forkBusy.value = true;
+    try {
+        const current = currentMessage();
+        await sessionHistory.forkSession({
+            sourceSessionKey:
+                current.sourceSessionKey ||
+                props.message.sourceSessionKey ||
+                activeSession.value?.sessionKey ||
+                '',
+            anchorMessageId: props.message.backendMessageId,
+            targetRunnerId: props.message.runnerId,
+            title: 'Forked conversation',
+        });
+        toast.add({
+            title: 'Conversation forked',
+            description: 'Opened a new conversation from this message.',
+            color: 'success',
+            icon: 'i-pixelarticons-git-branch',
+        });
+    } catch (error) {
+        toast.add({
+            title: 'Fork failed',
+            description:
+                error && typeof error === 'object' && 'message' in error
+                    ? String((error as { message?: unknown }).message || 'Could not fork this message.')
+                    : 'Could not fork this message.',
+            color: 'error',
+            icon: 'i-pixelarticons-warning-box',
+        });
+    } finally {
+        forkBusy.value = false;
+    }
+}
+
+function openActivity() {
+    void router.push('/activity');
 }
 
 async function retryApprovedRequest(

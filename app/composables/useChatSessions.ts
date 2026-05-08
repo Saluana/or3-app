@@ -1,5 +1,6 @@
 import { computed } from 'vue';
 import type { ChatMessage, ChatSession } from '~/types/app-state';
+import type { ChatHistoryMessage, ChatSessionMeta } from '~/types/or3-api';
 import { useActiveHost } from './useActiveHost';
 import { useLocalCache } from './useLocalCache';
 
@@ -9,6 +10,64 @@ function now() {
 
 function createId(prefix: string) {
     return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function msToIso(value?: number) {
+    if (!value) return now();
+    const ms = value > 10_000_000_000 ? value : value * 1000;
+    return new Date(ms).toISOString();
+}
+
+function defaultRunnerFields() {
+    return {
+        runnerId: 'or3-intern',
+        runnerLabel: 'OR3 Intern',
+        runnerContinuationMode: 'replay',
+        archived: false,
+    } satisfies Partial<ChatSession>;
+}
+
+function patchFromBackendSessionMeta(
+    meta: ChatSessionMeta,
+    session: ChatSession,
+): Partial<ChatSession> {
+    return {
+        title: meta.title || session.title,
+        runnerId: meta.runner_id || session.runnerId || 'or3-intern',
+        runnerLabel: meta.runner_label || session.runnerLabel,
+        runnerChatSessionId:
+            meta.runner_chat_session_id || session.runnerChatSessionId,
+        runnerContinuationMode:
+            meta.runner_continuation_mode ||
+            session.runnerContinuationMode ||
+            'replay',
+        runnerModel: meta.runner_model || session.runnerModel,
+        runnerMode: meta.runner_mode || session.runnerMode,
+        runnerIsolation: meta.runner_isolation || session.runnerIsolation,
+        runnerCwd: meta.runner_cwd || session.runnerCwd,
+        backendMessageCount: meta.message_count,
+        lastMessagePreview: meta.last_message_preview,
+        parentSessionKey: meta.parent_session_key || undefined,
+        forkAnchorMessageId: meta.fork_anchor_message_id || undefined,
+        forkedFromRunnerId: meta.forked_from_runner_id || undefined,
+        forkStrategy: meta.fork_strategy || undefined,
+        archived: Boolean(meta.archived),
+        createdAt: meta.created_at ? msToIso(meta.created_at) : session.createdAt,
+        updatedAt: meta.updated_at ? msToIso(meta.updated_at) : now(),
+    };
+}
+
+function backendRole(backend: ChatHistoryMessage): ChatMessage['role'] {
+    return backend.role === 'user' ||
+        backend.role === 'assistant' ||
+        backend.role === 'system' ||
+        backend.role === 'tool'
+        ? backend.role
+        : 'assistant';
+}
+
+function normalizeContent(value?: string) {
+    return (value ?? '').trim();
 }
 
 export function useChatSessions() {
@@ -69,6 +128,7 @@ export function useChatSessions() {
             title: 'New conversation',
             createdAt: timestamp,
             updatedAt: timestamp,
+            ...defaultRunnerFields(),
         };
         cache.state.value.sessions.unshift(session);
         cache.persist();
@@ -111,6 +171,7 @@ export function useChatSessions() {
             title: title?.trim().slice(0, 48) || 'New conversation',
             createdAt: timestamp,
             updatedAt: timestamp,
+            ...defaultRunnerFields(),
         };
         cache.state.value.sessions.unshift(session);
         cache.persist();
@@ -272,6 +333,7 @@ export function useChatSessions() {
             title,
             createdAt: timestamp,
             updatedAt: timestamp,
+            ...defaultRunnerFields(),
         };
         cache.state.value.sessions.unshift(session);
         cache.persist();
@@ -319,6 +381,122 @@ export function useChatSessions() {
         ).length;
     }
 
+    function setSessionRunnerMetadata(
+        sessionId: string,
+        patch: Partial<ChatSession>,
+    ) {
+        const session = cache.state.value.sessions.find(
+            (item) => item.id === sessionId,
+        );
+        if (!session) return null;
+        Object.assign(session, patch, { updatedAt: now() });
+        cache.persist();
+        return session;
+    }
+
+    function bindRunnerChatSession(
+        sessionId: string,
+        runnerChatSessionId: string,
+    ) {
+        return setSessionRunnerMetadata(sessionId, { runnerChatSessionId });
+    }
+
+    function syncBackendSessionMeta(meta: ChatSessionMeta) {
+        const existing = findSessionByKey(meta.session_key);
+        if (!existing) return null;
+        return setSessionRunnerMetadata(
+            existing.id,
+            patchFromBackendSessionMeta(meta, existing),
+        );
+    }
+
+    function applyBackendSessionMeta(meta: ChatSessionMeta) {
+        const session = activateSessionByKey(meta.session_key, meta.title);
+        if (!session) return null;
+        return setSessionRunnerMetadata(
+            session.id,
+            patchFromBackendSessionMeta(meta, session),
+        );
+    }
+
+    function hydrateBackendMessages(
+        session: ChatSession,
+        backendMessages: ChatHistoryMessage[],
+    ) {
+        const sessionMessages = () =>
+            cache.state.value.messages.filter(
+                (message) => message.sessionId === session.id,
+            );
+        const existingByBackendID = () =>
+            new Map(
+                sessionMessages()
+                    .filter(
+                        (message) =>
+                            typeof message.backendMessageId === 'number',
+                    )
+                    .map((message) => [message.backendMessageId, message]),
+            );
+        const claimedLocalMessageIds = new Set<string>();
+        for (const backend of backendMessages) {
+            const backendID = backend.id;
+            const role = backendRole(backend);
+            const payload =
+                backend.payload && typeof backend.payload === 'object'
+                    ? (backend.payload as Record<string, unknown>)
+                    : {};
+            const patch: Partial<ChatMessage> = {
+                backendMessageId: backendID,
+                sourceSessionKey: session.sessionKey,
+                runnerId:
+                    typeof payload.runner_id === 'string'
+                        ? payload.runner_id
+                        : session.runnerId,
+                runnerChatSessionId:
+                    typeof payload.runner_chat_session_id === 'string'
+                        ? payload.runner_chat_session_id
+                        : session.runnerChatSessionId,
+                runnerChatTurnId:
+                    typeof payload.runner_chat_turn_id === 'string'
+                        ? payload.runner_chat_turn_id
+                        : undefined,
+                status: 'complete',
+            };
+            const existing = existingByBackendID().get(backendID);
+            if (existing) {
+                updateMessage(existing.id, patch);
+                continue;
+            }
+            const localMatch = sessionMessages().find(
+                (message) =>
+                    !message.backendMessageId &&
+                    !claimedLocalMessageIds.has(message.id) &&
+                    message.role === role &&
+                    normalizeContent(message.content) ===
+                        normalizeContent(backend.content),
+            );
+            if (localMatch) {
+                claimedLocalMessageIds.add(localMatch.id);
+                updateMessage(localMatch.id, {
+                    ...patch,
+                    content: localMatch.content || backend.content,
+                    createdAt: localMatch.createdAt || msToIso(backend.created_at),
+                });
+                continue;
+            }
+            addMessage({
+                id: `backend_${backendID}`,
+                sessionId: session.id,
+                role,
+                content: backend.content,
+                status: 'complete',
+                createdAt: msToIso(backend.created_at),
+                ...patch,
+            });
+        }
+        touchSession(session.id);
+        cache.persist();
+    }
+
     return {
         sessions,
         activeSession,
@@ -336,5 +514,10 @@ export function useChatSessions() {
         clearSessionMessages,
         appendSystemMessage,
         messageCount,
+        setSessionRunnerMetadata,
+        bindRunnerChatSession,
+        syncBackendSessionMeta,
+        applyBackendSessionMeta,
+        hydrateBackendMessages,
     };
 }

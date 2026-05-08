@@ -94,6 +94,22 @@ function toAuthChallenge(
     };
 }
 
+const passthroughErrorCodes = new Set<string>([
+    'approval_required',
+    'terminal_unavailable',
+    'runner_missing',
+    'runner_auth_missing',
+    'unsupported_native_session',
+    'runner_chat_turn_active',
+    'runner_chat_session_not_found',
+    'runner_chat_turn_not_found',
+    'runner_chat_aborted',
+    'chat_session_not_found',
+    'invalid_fork_anchor',
+    'fork_anchor_incomplete',
+    'unsupported_native_fork',
+]);
+
 function mapError(
     status: number,
     payload?: string | Or3ApiErrorPayload,
@@ -108,10 +124,8 @@ function mapError(
         typeof payloadCode === 'string' ? payloadCode : undefined,
     );
     const code =
-        payloadCode === 'approval_required'
-            ? 'approval_required'
-            : payloadCode === 'terminal_unavailable'
-              ? 'terminal_unavailable'
+        typeof payloadCode === 'string' && passthroughErrorCodes.has(payloadCode)
+            ? (payloadCode as Or3AppError['code'])
               : challengeCode
                 ? challengeCode
                 : status === 401

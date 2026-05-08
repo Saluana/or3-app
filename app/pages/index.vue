@@ -2,6 +2,16 @@
     <div class="or3-chat-shell">
         <div class="or3-chat-shell__header">
             <AppHeader subtitle="CHAT" />
+            <UButton
+                icon="i-pixelarticons-list-box"
+                color="neutral"
+                variant="soft"
+                size="sm"
+                class="or3-chat-shell__history"
+                @click="openHistory"
+            >
+                History
+            </UButton>
         </div>
 
         <div
@@ -65,26 +75,44 @@
                 <AssistantComposer
                     v-model="draft"
                     v-model:mode="chatMode"
+                    v-model:selected-runner-id="selectedRunnerId"
                     :streaming="isStreaming"
+                    :runners="runners"
                     @send="sendWithMode"
                     @stop="stop"
                 />
             </div>
         </div>
 
+        <SessionHistoryPanel
+            v-model:open="historyOpen"
+            :sessions="historySessions"
+            :loading="historyLoading"
+            :error="historyError"
+            @refresh="refreshHistory"
+            @open-session="openHistorySession"
+            @rename-session="renameHistorySession"
+            @archive-session="archiveHistorySession"
+        />
+
         <BottomNav />
     </div>
 </template>
 
 <script setup lang="ts">
-import { nextTick, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import type { ChatSessionMeta } from '~/types/or3-api';
 
-const { messages, draft } = useChatSessions();
+const chat = useChatSessions();
+const { activeSession, messages, draft, messageCount, newSession, setSessionRunnerMetadata } = chat;
 const { isStreaming, chatMode, send, stop } = useAssistantStream();
+const { selectableRunners, defaultRunner, getRunner, refresh: refreshRunners } = useChatRunners();
+const sessionHistory = useSessionHistory();
 const router = useRouter();
 
 const scrollEl = ref<HTMLElement | null>(null);
 const autoScrollLocked = ref(true);
+const selectedRunnerId = ref('or3-intern');
 let lastScrollTop = 0;
 
 const RELEASE_DISTANCE_PX = 2;
@@ -102,16 +130,101 @@ function openFileEditor() {
     void router.push('/computer');
 }
 
+const runners = computed(() => selectableRunners.value);
+const historyOpen = sessionHistory.historyOpen;
+const historySessions = sessionHistory.sessions;
+const historyLoading = sessionHistory.loading;
+const historyError = sessionHistory.error;
+
+function openHistory() {
+    historyOpen.value = true;
+    void sessionHistory.refresh();
+}
+
+function refreshHistory(options: { q?: string; includeArchived?: boolean }) {
+    void sessionHistory.refresh(options);
+}
+
+function openHistorySession(session: ChatSessionMeta) {
+    void sessionHistory.openSession(session).then(() => {
+        selectedRunnerId.value = session.runner_id || 'or3-intern';
+    });
+}
+
+function renameHistorySession(session: ChatSessionMeta, title: string) {
+    void sessionHistory.rename(session.session_key, title);
+}
+
+function archiveHistorySession(session: ChatSessionMeta, archived: boolean) {
+    void sessionHistory.archive(session.session_key, archived);
+}
+
+function continuationModeForRunner(runnerId?: string | null) {
+    const runner = getRunner(runnerId || undefined);
+    const caps = runner?.chat_capabilities || runner?.supports?.chat;
+    return caps?.chatNativeSession ? 'native' : 'replay';
+}
+
+watch(
+    () => activeSession.value?.runnerId,
+    (runnerId) => {
+        selectedRunnerId.value = runnerId || defaultRunner.value?.id || 'or3-intern';
+    },
+    { immediate: true },
+);
+
+watch(selectedRunnerId, (runnerId, previous) => {
+    if (!activeSession.value) return;
+    if (!previous || runnerId === activeSession.value.runnerId) return;
+    const runner = getRunner(runnerId);
+    if (!runner) return;
+    if (messageCount(activeSession.value.id) > 0) {
+        const shouldSwitch = window.confirm(
+            'Start a new conversation for this runner? Existing conversations keep their original runner.',
+        );
+        if (!shouldSwitch) {
+            selectedRunnerId.value = activeSession.value.runnerId || 'or3-intern';
+            return;
+        }
+        const session = newSession('New conversation');
+        setSessionRunnerMetadata(session.id, {
+            runnerId,
+            runnerLabel: runner.display_name || runner.id,
+            runnerContinuationMode: continuationModeForRunner(runnerId),
+        });
+        return;
+    }
+    setSessionRunnerMetadata(activeSession.value.id, {
+        runnerId,
+        runnerLabel: runner.display_name || runner.id,
+        runnerContinuationMode: continuationModeForRunner(runnerId),
+    });
+});
+
 function sendWithMode(payload: Parameters<typeof send>[0]) {
+    const runner = getRunner(selectedRunnerId.value);
+    const sessionContinuationMode =
+        activeSession.value?.runnerContinuationMode ||
+        continuationModeForRunner(selectedRunnerId.value);
     if (typeof payload === 'string') {
         void send({
             text: payload,
             transportText: payload,
             mode: chatMode.value,
+            runnerId: selectedRunnerId.value,
+            runnerLabel: runner?.display_name || selectedRunnerId.value,
+            runnerContinuationMode: sessionContinuationMode,
         });
         return;
     }
-    void send({ ...payload, mode: payload.mode ?? chatMode.value });
+    void send({
+        ...payload,
+        mode: payload.mode ?? chatMode.value,
+        runnerId: payload.runnerId || selectedRunnerId.value,
+        runnerLabel: payload.runnerLabel || runner?.display_name || selectedRunnerId.value,
+        runnerContinuationMode:
+            payload.runnerContinuationMode || sessionContinuationMode,
+    });
 }
 
 function distanceFromBottom(el: HTMLElement) {
@@ -164,6 +277,8 @@ watch(
 onMounted(() => {
     // Land at the bottom on first paint when there's existing history.
     nextTick(() => scrollToBottom(false));
+    void refreshRunners();
+    void sessionHistory.refresh();
 });
 </script>
 
@@ -172,6 +287,17 @@ onMounted(() => {
     display: flex;
     justify-content: center;
     pointer-events: none;
+}
+
+.or3-chat-shell__header {
+    position: relative;
+}
+
+.or3-chat-shell__history {
+    position: absolute;
+    right: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
 }
 
 .or3-chat-empty__actions {

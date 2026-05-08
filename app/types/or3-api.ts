@@ -110,6 +110,19 @@ export interface AgentRunnerSupports {
     dangerousBypassFlag: boolean;
     stdinPrompt: boolean;
     maxTurns?: boolean;
+    chat?: RunnerChatCapabilities;
+}
+
+export type RunnerChatContinuationMode = 'replay' | 'native';
+
+export interface RunnerChatCapabilities {
+    chatSelectable?: boolean;
+    chatReplay?: boolean;
+    chatNativeSession?: boolean;
+    chatResume?: boolean;
+    chatSessionRefExtractable?: boolean;
+    streamToolEvents?: boolean;
+    supportsNativeFork?: boolean;
 }
 
 export interface AgentRunnerInfo {
@@ -127,6 +140,173 @@ export interface AgentRunnerInfo {
 
 export interface AgentRunnersResponse {
     runners: AgentRunnerInfo[];
+}
+
+export interface ChatRunnerInfo extends AgentRunnerInfo {
+    chat_capabilities?: RunnerChatCapabilities;
+    default_model?: string;
+    default_mode?: string;
+    default_isolation?: string;
+    default_cwd?: string;
+}
+
+export interface ChatRunnersResponse {
+    runners: ChatRunnerInfo[];
+}
+
+export type RunnerChatTurnStatus =
+    | 'queued'
+    | 'running'
+    | 'succeeded'
+    | 'failed'
+    | 'aborted'
+    | 'timed_out';
+
+export interface RunnerChatSession {
+    id: string;
+    app_session_key: string;
+    runner_id: AgentRunnerId;
+    continuation_mode: RunnerChatContinuationMode | string;
+    native_session_ref?: string;
+    model?: string;
+    mode?: string;
+    isolation?: string;
+    cwd?: string;
+    max_turns?: number;
+    meta?: unknown;
+    created_at: number;
+    updated_at: number;
+}
+
+export interface RunnerChatTurn {
+    id: string;
+    session_id: string;
+    sequence: number;
+    status: RunnerChatTurnStatus | string;
+    continuation_mode: RunnerChatContinuationMode | string;
+    requested_at: number;
+    started_at?: number;
+    completed_at?: number;
+    user_message?: string;
+    final_text?: string;
+    error?: string;
+    agent_cli_run_id?: string;
+    agent_cli_job_id?: string;
+    user_message_id?: number;
+    assistant_message_id?: number;
+    model?: string;
+    mode?: string;
+    isolation?: string;
+    cwd?: string;
+}
+
+export interface RunnerChatEvent {
+    id?: number;
+    turn_id: string;
+    seq: number;
+    ts?: number;
+    type: string;
+    stream?: string;
+    text?: string;
+    job_id?: string;
+    payload?: Record<string, unknown> | unknown;
+}
+
+export interface RunnerChatSessionRequest {
+    app_session_key: string;
+    runner_id: AgentRunnerId;
+    continuation_mode?: RunnerChatContinuationMode | string;
+    model?: string;
+    mode?: string;
+    isolation?: string;
+    cwd?: string;
+    max_turns?: number;
+}
+
+export interface RunnerChatTurnRequest {
+    user_message: string;
+    continuation_mode?: RunnerChatContinuationMode | string;
+    model?: string;
+    mode?: string;
+    isolation?: string;
+    cwd?: string;
+    max_turns?: number;
+    timeout_seconds?: number;
+    meta?: Record<string, unknown>;
+}
+
+export interface RunnerChatTurnStartResponse {
+    session_id: string;
+    turn_id: string;
+    job_id?: string;
+    status: RunnerChatTurnStatus | string;
+}
+
+export interface RunnerChatEventsResponse {
+    events: RunnerChatEvent[];
+}
+
+export interface ChatSessionMeta {
+    session_key: string;
+    host_id?: string;
+    title: string;
+    runner_id?: AgentRunnerId;
+    runner_label?: string;
+    runner_chat_session_id?: string;
+    runner_continuation_mode?: RunnerChatContinuationMode | string;
+    runner_model?: string;
+    runner_mode?: string;
+    runner_isolation?: string;
+    runner_cwd?: string;
+    message_count?: number;
+    last_message_preview?: string;
+    last_message_at?: number;
+    parent_session_key?: string;
+    fork_anchor_message_id?: number;
+    forked_from_runner_id?: AgentRunnerId | string;
+    fork_strategy?: string;
+    archived?: boolean;
+    created_at?: number;
+    updated_at?: number;
+}
+
+export interface ChatSessionListResponse {
+    sessions: ChatSessionMeta[];
+}
+
+export interface ChatSessionCreateRequest {
+    session_key: string;
+    title?: string;
+    runner_id?: AgentRunnerId;
+    runner_label?: string;
+}
+
+export interface ChatSessionUpdateRequest {
+    title?: string;
+    archived?: boolean;
+}
+
+export interface ChatSessionForkRequest {
+    new_session_key: string;
+    anchor_message_id: number;
+    target_runner_id?: AgentRunnerId | string;
+    title?: string;
+    allow_incomplete_anchor?: boolean;
+    fork_strategy?: string;
+}
+
+export interface ChatHistoryMessage {
+    id: number;
+    session_key: string;
+    role: 'user' | 'assistant' | 'system' | 'tool' | string;
+    content: string;
+    created_at: number;
+    payload?: Record<string, unknown> | unknown;
+}
+
+export interface ChatMessagePageResponse {
+    messages: ChatHistoryMessage[];
+    next_cursor?: number;
 }
 
 export type AgentRunMode = 'review' | 'safe_edit' | 'sandbox_auto';

@@ -3,6 +3,10 @@ import type {
     ApprovalRequest,
     JobEvent,
     JobSnapshot,
+    RunnerChatSession,
+    RunnerChatTurn,
+    RunnerChatTurnStartResponse,
+    RunnerChatEvent,
     ToolPolicy,
     TurnResponse,
 } from '~/types/or3-api';
@@ -24,6 +28,7 @@ import { useOr3Api } from './useOr3Api';
 const isStreaming = ref(false);
 const activeJobId = ref<string | null>(null);
 const chatMode = ref<'ask' | 'work' | 'admin'>('work');
+const serviceCapabilityCeilingHosts = new Set<string>();
 let controller: AbortController | null = null;
 let recoveryWatcherInstalled = false;
 let approvalHydrationWatcherInstalled = false;
@@ -84,6 +89,17 @@ const knownErrorCodes = new Set<Or3AppErrorCode>([
     'file_not_found',
     'path_forbidden',
     'terminal_unavailable',
+    'runner_missing',
+    'runner_auth_missing',
+    'unsupported_native_session',
+    'runner_chat_turn_active',
+    'runner_chat_session_not_found',
+    'runner_chat_turn_not_found',
+    'runner_chat_aborted',
+    'chat_session_not_found',
+    'invalid_fork_anchor',
+    'fork_anchor_incomplete',
+    'unsupported_native_fork',
     'unknown',
 ]);
 
@@ -114,15 +130,60 @@ function extractErrorCode(error: unknown): Or3AppErrorCode | undefined {
 function extractApprovalRequestId(error: unknown): string | number | undefined {
     if (!error || typeof error !== 'object') return undefined;
     const record = error as Record<string, unknown>;
-    const directId =
-        record.request_id ?? record.approval_id ?? record.approval_request_id;
-    if (typeof directId === 'string' || typeof directId === 'number') {
-        return directId;
+    const directApprovalId =
+        record.approval_id ?? record.approval_request_id;
+    if (
+        typeof directApprovalId === 'string' ||
+        typeof directApprovalId === 'number'
+    ) {
+        return directApprovalId;
+    }
+    const approvalState = String(
+        record.code ?? record.status ?? record.approval_status ?? '',
+    )
+        .trim()
+        .toLowerCase();
+    const requestId = record.request_id;
+    if (
+        approvalState === 'approval_required' &&
+        (typeof requestId === 'string' || typeof requestId === 'number')
+    ) {
+        return requestId;
     }
     if (record.cause && typeof record.cause === 'object') {
         return extractApprovalRequestId(record.cause);
     }
     return undefined;
+}
+
+function isServiceCapabilityCeilingError(error: unknown) {
+    const message = describeRequestError(error).toLowerCase();
+    return (
+        message.includes('requested tools exceed service capability ceiling') ||
+        message.includes('tool exceeds service capability ceiling')
+    );
+}
+
+function downgradeToolPolicyForServiceCapability(
+    policy?: ToolPolicy,
+): ToolPolicy | undefined {
+    if (!policy) return undefined;
+    if (policy.mode === 'admin' || policy.mode === 'work') {
+        return { mode: 'ask' };
+    }
+    return policy;
+}
+
+function rememberServiceCapabilityCeilingHost(hostId?: string | null) {
+    const normalized = hostId?.trim();
+    if (!normalized) return;
+    serviceCapabilityCeilingHosts.add(normalized);
+}
+
+function shouldPreemptivelyDowngradeToolPolicy(hostId?: string | null) {
+    const normalized = hostId?.trim();
+    if (!normalized) return false;
+    return serviceCapabilityCeilingHosts.has(normalized);
 }
 
 function showFailureToast(
@@ -191,6 +252,16 @@ function normalizePayload(
         replayToolCall: input.replayToolCall,
         continueMessageId: input.continueMessageId,
         suppressUserEcho: input.suppressUserEcho,
+        runnerId: input.runnerId,
+        runnerLabel: input.runnerLabel,
+        runnerChatSessionId: input.runnerChatSessionId,
+        runnerChatTurnId: input.runnerChatTurnId,
+        runnerContinuationMode: input.runnerContinuationMode,
+        runnerModel: input.runnerModel,
+        runnerMode: input.runnerMode,
+        runnerIsolation: input.runnerIsolation,
+        runnerCwd: input.runnerCwd,
+        runnerMaxTurns: input.runnerMaxTurns,
     };
 }
 
@@ -207,6 +278,16 @@ function retryPayloadForStorage(
         replayToolCall: payload.replayToolCall,
         continueMessageId: payload.continueMessageId,
         suppressUserEcho: payload.suppressUserEcho,
+        runnerId: payload.runnerId,
+        runnerLabel: payload.runnerLabel,
+        runnerChatSessionId: payload.runnerChatSessionId,
+        runnerChatTurnId: payload.runnerChatTurnId,
+        runnerContinuationMode: payload.runnerContinuationMode,
+        runnerModel: payload.runnerModel,
+        runnerMode: payload.runnerMode,
+        runnerIsolation: payload.runnerIsolation,
+        runnerCwd: payload.runnerCwd,
+        runnerMaxTurns: payload.runnerMaxTurns,
     };
 }
 
@@ -264,8 +345,16 @@ function truncateLogDetail(value: string, limit = 500) {
 
 function isApprovalRequiredPayload(payload?: Record<string, unknown>) {
     if (!payload) return false;
-    if (String(payload.code ?? '').trim() === 'approval_required') return true;
-    return extractApprovalRequestId(payload) !== undefined;
+    const state = String(payload.code ?? payload.status ?? '')
+        .trim()
+        .toLowerCase();
+    if (state === 'approval_required') return true;
+    return (
+        typeof payload.approval_id === 'string' ||
+        typeof payload.approval_id === 'number' ||
+        typeof payload.approval_request_id === 'string' ||
+        typeof payload.approval_request_id === 'number'
+    );
 }
 
 function parseJsonRecord(value?: string) {
@@ -404,6 +493,27 @@ function eventPayload(event: JobEvent | { event?: string; json?: unknown }) {
     return undefined;
 }
 
+function normalizeRunnerChatEvent(event: RunnerChatEvent | { event?: string; json?: unknown }) {
+    if ('json' in event) return event;
+    const runnerEvent = event as RunnerChatEvent;
+    const payload =
+        runnerEvent.payload && typeof runnerEvent.payload === 'object'
+            ? (runnerEvent.payload as Record<string, unknown>)
+            : {};
+    return {
+        event: runnerEvent.type,
+        json: {
+            ...payload,
+            type: runnerEvent.type,
+            sequence: runnerEvent.seq,
+            job_id: runnerEvent.job_id,
+            stream: runnerEvent.stream,
+            text: typeof runnerEvent.text === 'string' ? runnerEvent.text : payload.text,
+            chunk: typeof runnerEvent.text === 'string' ? runnerEvent.text : payload.chunk,
+        },
+    };
+}
+
 function eventName(event: JobEvent | { event?: string; json?: unknown }) {
     const payload = eventPayload(event);
     return String(
@@ -456,7 +566,7 @@ export function useAssistantStream() {
                 (message) =>
                     message.role === 'assistant' &&
                     message.status === 'streaming' &&
-                    Boolean(message.jobId) &&
+                    (Boolean(message.jobId) || Boolean(message.runnerChatTurnId)) &&
                     sessionIds.has(message.sessionId),
             )
             .sort(
@@ -465,9 +575,9 @@ export function useAssistantStream() {
                     Date.parse(right.createdAt || ''),
             )[0];
 
-        if (!pendingMessage?.jobId) return;
+        if (!pendingMessage?.jobId && !pendingMessage?.runnerChatTurnId) return;
 
-        const recoveryKey = `${hostId}:${pendingMessage.id}:${pendingMessage.jobId}`;
+        const recoveryKey = `${hostId}:${pendingMessage.id}:${pendingMessage.jobId || pendingMessage.runnerChatTurnId}`;
         if (recoveryAttempted.has(recoveryKey)) return;
 
         recoveryAttempted.add(recoveryKey);
@@ -487,6 +597,9 @@ export function useAssistantStream() {
                 followJobId: pendingMessage.jobId,
                 continueMessageId: pendingMessage.id,
                 suppressUserEcho: true,
+                runnerChatSessionId: pendingMessage.runnerChatSessionId,
+                runnerChatTurnId: pendingMessage.runnerChatTurnId,
+                runnerId: pendingMessage.runnerId,
             });
         } finally {
             recoveryAttempted.delete(recoveryKey);
@@ -561,12 +674,13 @@ export function useAssistantStream() {
                         (message) =>
                             message.role === 'assistant' &&
                             message.status === 'streaming' &&
-                            Boolean(message.jobId) &&
+                            (Boolean(message.jobId) ||
+                                Boolean(message.runnerChatTurnId)) &&
                             sessionIds.has(message.sessionId),
                     )
                     .map(
                         (message) =>
-                            `${message.id}:${message.jobId}:${message.status}`,
+                            `${message.id}:${message.jobId || message.runnerChatTurnId}:${message.status}`,
                     )
                     .join('|');
                 return `${hostId}:${tokenState}:${pending}`;
@@ -597,8 +711,9 @@ export function useAssistantStream() {
     async function send(message: string | AssistantSendPayload) {
         const payload = normalizePayload(message);
         const followJobId = payload.followJobId?.trim() || '';
+        const followRunnerTurnId = payload.runnerChatTurnId?.trim() || '';
         const text = payload.transportText || payload.text;
-        if ((!text && !followJobId) || isStreaming.value) return;
+        if ((!text && !followJobId && !followRunnerTurnId) || isStreaming.value) return;
 
         const storedRetryPayload = retryPayloadForStorage(payload);
 
@@ -610,6 +725,11 @@ export function useAssistantStream() {
                 content: payload.text,
                 attachments: payload.attachments,
                 status: 'complete',
+                runnerId: payload.runnerId ?? session.runnerId,
+                runnerLabel: payload.runnerLabel ?? session.runnerLabel,
+                runnerChatSessionId:
+                    payload.runnerChatSessionId ?? session.runnerChatSessionId,
+                sourceSessionKey: session.sessionKey,
             });
         }
         const existingAssistant = payload.continueMessageId
@@ -628,6 +748,11 @@ export function useAssistantStream() {
                   approvalState: undefined,
                   jobId: undefined,
                   retryPayload: storedRetryPayload,
+                  runnerId: payload.runnerId ?? session.runnerId,
+                  runnerLabel: payload.runnerLabel ?? session.runnerLabel,
+                  runnerChatSessionId:
+                      payload.runnerChatSessionId ?? session.runnerChatSessionId,
+                  sourceSessionKey: session.sessionKey,
               }),
               existingAssistant)
             : chat.addMessage({
@@ -640,6 +765,11 @@ export function useAssistantStream() {
                   toolCalls: [],
                   parts: [],
                   activityLog: [],
+                  runnerId: payload.runnerId ?? session.runnerId,
+                  runnerLabel: payload.runnerLabel ?? session.runnerLabel,
+                  runnerChatSessionId:
+                      payload.runnerChatSessionId ?? session.runnerChatSessionId,
+                  sourceSessionKey: session.sessionKey,
               });
         isStreaming.value = true;
         const activeController = new AbortController();
@@ -727,26 +857,34 @@ export function useAssistantStream() {
             appendTextPart(value);
             closeActiveTextPart();
         };
+        const activeHostId = activeHost.value?.id?.trim() || '';
+        const requestedToolPolicy =
+            payload.toolPolicy ?? modeToolPolicy(payload.mode);
+        const effectiveRequestedToolPolicy =
+            !payload.toolPolicy &&
+            shouldPreemptivelyDowngradeToolPolicy(activeHostId)
+                ? downgradeToolPolicyForServiceCapability(requestedToolPolicy)
+                : requestedToolPolicy;
+        const buildTurnRequest = (toolPolicy = requestedToolPolicy) => ({
+            session_key: session.sessionKey,
+            message: text,
+            ...(toolPolicy ? { tool_policy: toolPolicy } : {}),
+            ...(payload.approvalToken
+                ? { approval_token: payload.approvalToken }
+                : {}),
+            ...(payload.replayToolCall
+                ? {
+                      replay_tool_call: {
+                          name: payload.replayToolCall.name,
+                          arguments_json:
+                              payload.replayToolCall.arguments || '{}',
+                      },
+                  }
+                : {}),
+        });
         const turnRequest = followJobId
             ? null
-            : {
-                  session_key: session.sessionKey,
-                  message: text,
-                  tool_policy:
-                      payload.toolPolicy ?? modeToolPolicy(payload.mode),
-                  ...(payload.approvalToken
-                      ? { approval_token: payload.approvalToken }
-                      : {}),
-                  ...(payload.replayToolCall
-                      ? {
-                            replay_tool_call: {
-                                name: payload.replayToolCall.name,
-                                arguments_json:
-                                    payload.replayToolCall.arguments || '{}',
-                            },
-                        }
-                      : {}),
-              };
+            : buildTurnRequest(effectiveRequestedToolPolicy);
         const setToolCalls = (toolCalls: ChatToolCall[]) =>
             updateAssistant({ toolCalls });
         const addActivity = (entry: ChatActivityEntry) => {
@@ -911,6 +1049,11 @@ export function useAssistantStream() {
                 appendTextPart(delta);
                 sawVisibleOutput =
                     sawVisibleOutput || !!sanitizeAssistantText(delta);
+            }
+            if ((type === 'output' || type === 'runner_output') && delta) {
+                appendAssistantContent(delta.endsWith('\n') ? delta : `${delta}\n`);
+                appendTextPart(delta.endsWith('\n') ? delta : `${delta}\n`);
+                sawVisibleOutput = sawVisibleOutput || !!sanitizeAssistantText(delta);
             }
             const finalText = payload?.final_text;
             const assistantContent =
@@ -1177,13 +1320,67 @@ export function useAssistantStream() {
             applyJobSnapshot(snapshot);
             return snapshot;
         };
+        const fetchAndApplyRunnerTurn = async (sessionId?: string, turnId?: string | null) => {
+            if (!sessionId || !turnId) return null;
+            const turn = await api.request<RunnerChatTurn>(
+                `/internal/v1/runner-chat/sessions/${encodeURIComponent(sessionId)}/turns/${encodeURIComponent(turnId)}`,
+                { signal: activeController.signal },
+            );
+            if (turn.final_text?.trim() && !sawVisibleOutput) {
+                replaceAssistantContent(turn.final_text);
+                appendCompleteTextPart(turn.final_text);
+                sawVisibleOutput = true;
+            }
+            updateAssistant({
+                status:
+                    turn.status === 'failed' ||
+                    turn.status === 'aborted' ||
+                    turn.status === 'timed_out'
+                        ? 'failed'
+                        : 'complete',
+                error: turn.error,
+                backendMessageId: turn.assistant_message_id,
+                runnerChatTurnId: turn.id,
+                runnerChatSessionId: turn.session_id,
+                agentCliRunId: turn.agent_cli_run_id,
+                jobId: turn.agent_cli_job_id,
+            });
+            return turn;
+        };
+
+        const selectedRunnerId = payload.runnerId || session.runnerId || 'or3-intern';
+        const useRunnerChat = selectedRunnerId !== 'or3-intern';
+        let runnerChatTurnForRecovery:
+            | { sessionId: string; turnId: string }
+            | null = null;
 
         try {
             let sawStreamEvent = false;
             let streamEndedWithFailure = false;
             let streamedJobId: string | null = followJobId || null;
 
-            if (followJobId) {
+            if (followRunnerTurnId && payload.runnerChatSessionId) {
+                updateAssistant({
+                    runnerChatTurnId: followRunnerTurnId,
+                    runnerChatSessionId: payload.runnerChatSessionId,
+                });
+                runnerChatTurnForRecovery = {
+                    sessionId: payload.runnerChatSessionId,
+                    turnId: followRunnerTurnId,
+                };
+                for await (const event of api.stream(
+                    `/internal/v1/runner-chat/sessions/${encodeURIComponent(payload.runnerChatSessionId)}/turns/${encodeURIComponent(followRunnerTurnId)}/stream`,
+                    {
+                        method: 'GET',
+                        signal: activeController.signal,
+                    },
+                )) {
+                    sawStreamEvent = true;
+                    const result = applyEvent(normalizeRunnerChatEvent(event as unknown as RunnerChatEvent));
+                    streamEndedWithFailure = streamEndedWithFailure || result.failed;
+                }
+                await fetchAndApplyRunnerTurn(payload.runnerChatSessionId, followRunnerTurnId);
+            } else if (followJobId) {
                 activeJobId.value = followJobId;
                 updateAssistant({ jobId: followJobId });
                 for await (const event of api.stream(
@@ -1204,6 +1401,95 @@ export function useAssistantStream() {
                     streamEndedWithFailure =
                         streamEndedWithFailure || result.failed;
                 }
+            } else if (useRunnerChat) {
+                const desiredRunnerContinuationMode =
+                    payload.runnerContinuationMode ||
+                    session.runnerContinuationMode ||
+                    'replay';
+                const runnerSession = payload.runnerChatSessionId
+                    ? await api.request<RunnerChatSession>(
+                          `/internal/v1/runner-chat/sessions/${encodeURIComponent(payload.runnerChatSessionId)}`,
+                          { signal: activeController.signal },
+                      )
+                    : await api.request<RunnerChatSession>(
+                          '/internal/v1/runner-chat/sessions',
+                          {
+                              method: 'POST',
+                              signal: activeController.signal,
+                              body: {
+                                  app_session_key: session.sessionKey,
+                                  runner_id: selectedRunnerId,
+                                  continuation_mode:
+                                      desiredRunnerContinuationMode,
+                                  model: payload.runnerModel || session.runnerModel,
+                                  mode: payload.runnerMode || session.runnerMode,
+                                  isolation:
+                                      payload.runnerIsolation || session.runnerIsolation,
+                                  cwd: payload.runnerCwd || session.runnerCwd,
+                                  max_turns:
+                                      payload.runnerMaxTurns || undefined,
+                              },
+                          },
+                      );
+                const effectiveRunnerContinuationMode =
+                    desiredRunnerContinuationMode === 'native' &&
+                    !runnerSession.native_session_ref
+                        ? 'replay'
+                        : desiredRunnerContinuationMode;
+                chat.bindRunnerChatSession(session.id, runnerSession.id);
+                updateAssistant({
+                    runnerId: selectedRunnerId,
+                    runnerLabel: payload.runnerLabel ?? session.runnerLabel,
+                    runnerChatSessionId: runnerSession.id,
+                });
+                const started = await api.request<RunnerChatTurnStartResponse>(
+                    `/internal/v1/runner-chat/sessions/${encodeURIComponent(runnerSession.id)}/turns`,
+                    {
+                        method: 'POST',
+                        signal: activeController.signal,
+                        body: {
+                            user_message: text,
+                            continuation_mode:
+                                effectiveRunnerContinuationMode,
+                            model: payload.runnerModel || session.runnerModel,
+                            mode: payload.runnerMode || session.runnerMode,
+                            isolation:
+                                payload.runnerIsolation || session.runnerIsolation,
+                            cwd: payload.runnerCwd || session.runnerCwd,
+                            max_turns: payload.runnerMaxTurns || undefined,
+                        },
+                    },
+                );
+                streamedJobId = started.job_id ?? null;
+                if (streamedJobId) activeJobId.value = streamedJobId;
+                updateAssistant({
+                    jobId: streamedJobId ?? undefined,
+                    runnerChatSessionId: runnerSession.id,
+                    runnerChatTurnId: started.turn_id,
+                });
+                runnerChatTurnForRecovery = {
+                    sessionId: runnerSession.id,
+                    turnId: started.turn_id,
+                };
+                for await (const event of api.stream(
+                    `/internal/v1/runner-chat/sessions/${encodeURIComponent(runnerSession.id)}/turns/${encodeURIComponent(started.turn_id)}/stream`,
+                    {
+                        method: 'GET',
+                        signal: activeController.signal,
+                    },
+                )) {
+                    sawStreamEvent = true;
+                    const normalized = normalizeRunnerChatEvent(event as unknown as RunnerChatEvent);
+                    const jobId = eventJobId(normalized);
+                    if (jobId) {
+                        streamedJobId = jobId;
+                        activeJobId.value = jobId;
+                        updateAssistant({ jobId });
+                    }
+                    const result = applyEvent(normalized);
+                    streamEndedWithFailure = streamEndedWithFailure || result.failed;
+                }
+                await fetchAndApplyRunnerTurn(runnerSession.id, started.turn_id);
             } else {
                 for await (const event of api.stream('/internal/v1/turns', {
                     body: turnRequest,
@@ -1229,7 +1515,7 @@ export function useAssistantStream() {
                 }
             }
 
-            if (streamedJobId) {
+            if (streamedJobId && !useRunnerChat) {
                 try {
                     await fetchAndApplyJobSnapshot(streamedJobId);
                 } catch {
@@ -1267,11 +1553,78 @@ export function useAssistantStream() {
                 return;
             }
 
+            if (useRunnerChat) {
+                if (runnerChatTurnForRecovery) {
+                    try {
+                        await fetchAndApplyRunnerTurn(
+                            runnerChatTurnForRecovery.sessionId,
+                            runnerChatTurnForRecovery.turnId,
+                        );
+                        updateActivity((entry) => entry.status === 'running', {
+                            status: 'error',
+                        });
+                        const latest = readAssistant();
+                        if (latest?.status === 'failed') return;
+                    } catch {
+                        // Surface the original streaming failure below.
+                    }
+                }
+                const message = describeRequestError(streamError);
+                const details = describeRequestErrorDetails(streamError);
+                updateActivity((entry) => entry.status === 'running', {
+                    status: 'error',
+                });
+                updateAssistant({
+                    content: details ? `${message}\n\n${details}` : message,
+                    status: 'failed',
+                    error: message,
+                    errorCode: extractErrorCode(streamError),
+                    runnerChatSessionId:
+                        runnerChatTurnForRecovery?.sessionId ||
+                        readAssistant()?.runnerChatSessionId,
+                    runnerChatTurnId:
+                        runnerChatTurnForRecovery?.turnId ||
+                        readAssistant()?.runnerChatTurnId,
+                });
+                showFailureToast(
+                    toast,
+                    'Runner request failed',
+                    streamError,
+                );
+                return;
+            }
+
             try {
+                const fallbackTurnRequest =
+                    turnRequest &&
+                    !payload.toolPolicy &&
+                    isServiceCapabilityCeilingError(streamError)
+                        ? buildTurnRequest(
+                              downgradeToolPolicyForServiceCapability(
+                                  requestedToolPolicy,
+                              ),
+                          )
+                        : turnRequest;
+                if (isServiceCapabilityCeilingError(streamError)) {
+                    rememberServiceCapabilityCeilingHost(activeHostId);
+                }
+                if (
+                    fallbackTurnRequest !== turnRequest &&
+                    fallbackTurnRequest?.tool_policy?.mode === 'ask'
+                ) {
+                    addActivity(
+                        createActivity(
+                            'policy_adjusted',
+                            'Tool mode adjusted',
+                            'This host only allows safe OR3 tools, so the request retried in Ask mode.',
+                            'complete',
+                        ),
+                    );
+                }
                 const response = await api.request<TurnResponse>(
                     '/internal/v1/turns',
                     {
-                        body: turnRequest,
+                        body: fallbackTurnRequest,
                         signal: activeController.signal,
                     },
                 );
@@ -1303,7 +1656,7 @@ export function useAssistantStream() {
                                       ? 'unknown'
                                       : undefined,
                             approvalRequestId:
-                                response.request_id ?? response.approval_id,
+                                extractApprovalRequestId(response),
                             approvalState:
                                 response.status === 'approval_required'
                                     ? 'pending'
@@ -1334,8 +1687,7 @@ export function useAssistantStream() {
                                 : response.error
                                   ? 'unknown'
                                   : undefined,
-                        approvalRequestId:
-                            response.request_id ?? response.approval_id,
+                        approvalRequestId: extractApprovalRequestId(response),
                         approvalState:
                             response.status === 'approval_required'
                                 ? 'pending'
@@ -1375,6 +1727,20 @@ export function useAssistantStream() {
 
     async function stop() {
         const jobId = activeJobId.value;
+        const assistant = chat.messages.value.find(
+            (message) =>
+                message.role === 'assistant' && message.status === 'streaming',
+        );
+        if (assistant?.runnerChatTurnId) {
+            try {
+                await api.request(
+                    `/internal/v1/runner-chat/sessions/${encodeURIComponent(assistant.runnerChatSessionId || '')}/turns/${encodeURIComponent(assistant.runnerChatTurnId)}/abort`,
+                    { method: 'POST' },
+                );
+            } catch {
+                // Local abort below is still the authoritative UI fallback.
+            }
+        }
         if (jobId) {
             try {
                 await api.request(
