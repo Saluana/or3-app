@@ -158,9 +158,17 @@ export type RunnerChatTurnStatus =
     | 'queued'
     | 'running'
     | 'succeeded'
+    | 'approval_required'
     | 'failed'
     | 'aborted'
     | 'timed_out';
+
+export interface RunnerPermissionRequest {
+    runner_id?: string;
+    kind?: string;
+    access?: string;
+    target_path?: string;
+}
 
 export interface RunnerChatSession {
     id: string;
@@ -233,6 +241,8 @@ export interface RunnerChatTurnRequest {
     max_turns?: number;
     timeout_seconds?: number;
     meta?: Record<string, unknown>;
+    approval_token?: string;
+    runner_permission?: RunnerPermissionRequest;
 }
 
 export interface RunnerChatTurnStartResponse {

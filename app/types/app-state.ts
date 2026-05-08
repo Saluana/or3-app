@@ -76,6 +76,13 @@ export interface AssistantReplayToolCall {
     arguments?: string;
 }
 
+export interface AssistantRunnerPermission {
+    runnerId?: string;
+    kind?: string;
+    access?: string;
+    targetPath?: string;
+}
+
 export interface AssistantSendPayload {
     text: string;
     transportText?: string;
@@ -97,6 +104,7 @@ export interface AssistantSendPayload {
     runnerIsolation?: string;
     runnerCwd?: string;
     runnerMaxTurns?: number;
+    runnerPermission?: AssistantRunnerPermission;
 }
 
 export interface ChatMessagePart {

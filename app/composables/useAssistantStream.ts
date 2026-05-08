@@ -130,8 +130,7 @@ function extractErrorCode(error: unknown): Or3AppErrorCode | undefined {
 function extractApprovalRequestId(error: unknown): string | number | undefined {
     if (!error || typeof error !== 'object') return undefined;
     const record = error as Record<string, unknown>;
-    const directApprovalId =
-        record.approval_id ?? record.approval_request_id;
+    const directApprovalId = record.approval_id ?? record.approval_request_id;
     if (
         typeof directApprovalId === 'string' ||
         typeof directApprovalId === 'number'
@@ -262,6 +261,40 @@ function normalizePayload(
         runnerIsolation: input.runnerIsolation,
         runnerCwd: input.runnerCwd,
         runnerMaxTurns: input.runnerMaxTurns,
+        runnerPermission: normalizeRunnerPermissionPayload(
+            input.runnerPermission,
+        ),
+    };
+}
+
+function normalizeRunnerPermissionPayload(
+    value: unknown,
+): AssistantSendPayload['runnerPermission'] | undefined {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        return undefined;
+    }
+    const record = value as Record<string, unknown>;
+    const runnerId =
+        typeof record.runnerId === 'string'
+            ? record.runnerId.trim()
+            : typeof record.runner_id === 'string'
+              ? record.runner_id.trim()
+              : '';
+    const kind = typeof record.kind === 'string' ? record.kind.trim() : '';
+    const access =
+        typeof record.access === 'string' ? record.access.trim() : '';
+    const targetPath =
+        typeof record.targetPath === 'string'
+            ? record.targetPath.trim()
+            : typeof record.target_path === 'string'
+              ? record.target_path.trim()
+              : '';
+    if (!targetPath) return undefined;
+    return {
+        runnerId: runnerId || undefined,
+        kind: kind || undefined,
+        access: access || undefined,
+        targetPath,
     };
 }
 
@@ -288,6 +321,7 @@ function retryPayloadForStorage(
         runnerIsolation: payload.runnerIsolation,
         runnerCwd: payload.runnerCwd,
         runnerMaxTurns: payload.runnerMaxTurns,
+        runnerPermission: payload.runnerPermission,
     };
 }
 
@@ -493,7 +527,9 @@ function eventPayload(event: JobEvent | { event?: string; json?: unknown }) {
     return undefined;
 }
 
-function normalizeRunnerChatEvent(event: RunnerChatEvent | { event?: string; json?: unknown }) {
+function normalizeRunnerChatEvent(
+    event: RunnerChatEvent | { event?: string; json?: unknown },
+) {
     if ('json' in event) return event;
     const runnerEvent = event as RunnerChatEvent;
     const payload =
@@ -508,8 +544,14 @@ function normalizeRunnerChatEvent(event: RunnerChatEvent | { event?: string; jso
             sequence: runnerEvent.seq,
             job_id: runnerEvent.job_id,
             stream: runnerEvent.stream,
-            text: typeof runnerEvent.text === 'string' ? runnerEvent.text : payload.text,
-            chunk: typeof runnerEvent.text === 'string' ? runnerEvent.text : payload.chunk,
+            text:
+                typeof runnerEvent.text === 'string'
+                    ? runnerEvent.text
+                    : payload.text,
+            chunk:
+                typeof runnerEvent.text === 'string'
+                    ? runnerEvent.text
+                    : payload.chunk,
         },
     };
 }
@@ -566,7 +608,8 @@ export function useAssistantStream() {
                 (message) =>
                     message.role === 'assistant' &&
                     message.status === 'streaming' &&
-                    (Boolean(message.jobId) || Boolean(message.runnerChatTurnId)) &&
+                    (Boolean(message.jobId) ||
+                        Boolean(message.runnerChatTurnId)) &&
                     sessionIds.has(message.sessionId),
             )
             .sort(
@@ -713,7 +756,8 @@ export function useAssistantStream() {
         const followJobId = payload.followJobId?.trim() || '';
         const followRunnerTurnId = payload.runnerChatTurnId?.trim() || '';
         const text = payload.transportText || payload.text;
-        if ((!text && !followJobId && !followRunnerTurnId) || isStreaming.value) return;
+        if ((!text && !followJobId && !followRunnerTurnId) || isStreaming.value)
+            return;
 
         const storedRetryPayload = retryPayloadForStorage(payload);
 
@@ -751,7 +795,8 @@ export function useAssistantStream() {
                   runnerId: payload.runnerId ?? session.runnerId,
                   runnerLabel: payload.runnerLabel ?? session.runnerLabel,
                   runnerChatSessionId:
-                      payload.runnerChatSessionId ?? session.runnerChatSessionId,
+                      payload.runnerChatSessionId ??
+                      session.runnerChatSessionId,
                   sourceSessionKey: session.sessionKey,
               }),
               existingAssistant)
@@ -768,7 +813,8 @@ export function useAssistantStream() {
                   runnerId: payload.runnerId ?? session.runnerId,
                   runnerLabel: payload.runnerLabel ?? session.runnerLabel,
                   runnerChatSessionId:
-                      payload.runnerChatSessionId ?? session.runnerChatSessionId,
+                      payload.runnerChatSessionId ??
+                      session.runnerChatSessionId,
                   sourceSessionKey: session.sessionKey,
               });
         isStreaming.value = true;
@@ -1050,10 +1096,27 @@ export function useAssistantStream() {
                 sawVisibleOutput =
                     sawVisibleOutput || !!sanitizeAssistantText(delta);
             }
-            if ((type === 'output' || type === 'runner_output') && delta) {
-                appendAssistantContent(delta.endsWith('\n') ? delta : `${delta}\n`);
+            if (type === 'output' && delta) {
+                appendAssistantContent(
+                    delta.endsWith('\n') ? delta : `${delta}\n`,
+                );
                 appendTextPart(delta.endsWith('\n') ? delta : `${delta}\n`);
-                sawVisibleOutput = sawVisibleOutput || !!sanitizeAssistantText(delta);
+                sawVisibleOutput =
+                    sawVisibleOutput || !!sanitizeAssistantText(delta);
+            }
+            if (type === 'runner_output' && delta) {
+                addActivity(
+                    createActivity(
+                        payload?.stream === 'stderr'
+                            ? 'runner_stderr'
+                            : 'runner_output',
+                        payload?.stream === 'stderr'
+                            ? 'Runner warning'
+                            : 'Runner output',
+                        truncateLogDetail(delta),
+                        payload?.stream === 'stderr' ? 'error' : 'complete',
+                    ),
+                );
             }
             const finalText = payload?.final_text;
             const assistantContent =
@@ -1237,6 +1300,12 @@ export function useAssistantStream() {
             if (streamStatus === 'approval_required') {
                 completeRunningActivity(['queued', 'started', 'tool_call']);
                 const approvalRequestId = extractApprovalRequestId(payload);
+                const current = readAssistant();
+                const baseRetryPayload =
+                    current?.retryPayload ?? readAssistant()?.retryPayload;
+                const runnerPermission = normalizeRunnerPermissionPayload(
+                    payload?.runner_permission,
+                );
                 updateAssistant({
                     content:
                         readAssistant()?.content ||
@@ -1246,6 +1315,14 @@ export function useAssistantStream() {
                     errorCode: 'approval_required',
                     approvalRequestId,
                     approvalState: approvalRequestId ? 'pending' : undefined,
+                    retryPayload: baseRetryPayload
+                        ? {
+                              ...baseRetryPayload,
+                              ...(runnerPermission ? { runnerPermission } : {}),
+                              continueMessageId: assistant.id,
+                              suppressUserEcho: true,
+                          }
+                        : undefined,
                     jobId: eventJobId(event) ?? undefined,
                 });
                 return { failed: false, completed: true };
@@ -1320,7 +1397,10 @@ export function useAssistantStream() {
             applyJobSnapshot(snapshot);
             return snapshot;
         };
-        const fetchAndApplyRunnerTurn = async (sessionId?: string, turnId?: string | null) => {
+        const fetchAndApplyRunnerTurn = async (
+            sessionId?: string,
+            turnId?: string | null,
+        ) => {
             if (!sessionId || !turnId) return null;
             const turn = await api.request<RunnerChatTurn>(
                 `/internal/v1/runner-chat/sessions/${encodeURIComponent(sessionId)}/turns/${encodeURIComponent(turnId)}`,
@@ -1333,12 +1413,21 @@ export function useAssistantStream() {
             }
             updateAssistant({
                 status:
-                    turn.status === 'failed' ||
-                    turn.status === 'aborted' ||
-                    turn.status === 'timed_out'
-                        ? 'failed'
-                        : 'complete',
-                error: turn.error,
+                    turn.status === 'approval_required'
+                        ? 'attention'
+                        : turn.status === 'failed' ||
+                            turn.status === 'aborted' ||
+                            turn.status === 'timed_out'
+                          ? 'failed'
+                          : 'complete',
+                error:
+                    turn.status === 'approval_required'
+                        ? undefined
+                        : turn.error,
+                approvalState:
+                    turn.status === 'approval_required'
+                        ? 'pending'
+                        : readAssistant()?.approvalState,
                 backendMessageId: turn.assistant_message_id,
                 runnerChatTurnId: turn.id,
                 runnerChatSessionId: turn.session_id,
@@ -1348,11 +1437,13 @@ export function useAssistantStream() {
             return turn;
         };
 
-        const selectedRunnerId = payload.runnerId || session.runnerId || 'or3-intern';
+        const selectedRunnerId =
+            payload.runnerId || session.runnerId || 'or3-intern';
         const useRunnerChat = selectedRunnerId !== 'or3-intern';
-        let runnerChatTurnForRecovery:
-            | { sessionId: string; turnId: string }
-            | null = null;
+        let runnerChatTurnForRecovery: {
+            sessionId: string;
+            turnId: string;
+        } | null = null;
 
         try {
             let sawStreamEvent = false;
@@ -1376,10 +1467,18 @@ export function useAssistantStream() {
                     },
                 )) {
                     sawStreamEvent = true;
-                    const result = applyEvent(normalizeRunnerChatEvent(event as unknown as RunnerChatEvent));
-                    streamEndedWithFailure = streamEndedWithFailure || result.failed;
+                    const result = applyEvent(
+                        normalizeRunnerChatEvent(
+                            event as unknown as RunnerChatEvent,
+                        ),
+                    );
+                    streamEndedWithFailure =
+                        streamEndedWithFailure || result.failed;
                 }
-                await fetchAndApplyRunnerTurn(payload.runnerChatSessionId, followRunnerTurnId);
+                await fetchAndApplyRunnerTurn(
+                    payload.runnerChatSessionId,
+                    followRunnerTurnId,
+                );
             } else if (followJobId) {
                 activeJobId.value = followJobId;
                 updateAssistant({ jobId: followJobId });
@@ -1421,10 +1520,14 @@ export function useAssistantStream() {
                                   runner_id: selectedRunnerId,
                                   continuation_mode:
                                       desiredRunnerContinuationMode,
-                                  model: payload.runnerModel || session.runnerModel,
-                                  mode: payload.runnerMode || session.runnerMode,
+                                  model:
+                                      payload.runnerModel ||
+                                      session.runnerModel,
+                                  mode:
+                                      payload.runnerMode || session.runnerMode,
                                   isolation:
-                                      payload.runnerIsolation || session.runnerIsolation,
+                                      payload.runnerIsolation ||
+                                      session.runnerIsolation,
                                   cwd: payload.runnerCwd || session.runnerCwd,
                                   max_turns:
                                       payload.runnerMaxTurns || undefined,
@@ -1449,14 +1552,31 @@ export function useAssistantStream() {
                         signal: activeController.signal,
                         body: {
                             user_message: text,
-                            continuation_mode:
-                                effectiveRunnerContinuationMode,
+                            continuation_mode: effectiveRunnerContinuationMode,
                             model: payload.runnerModel || session.runnerModel,
                             mode: payload.runnerMode || session.runnerMode,
                             isolation:
-                                payload.runnerIsolation || session.runnerIsolation,
+                                payload.runnerIsolation ||
+                                session.runnerIsolation,
                             cwd: payload.runnerCwd || session.runnerCwd,
                             max_turns: payload.runnerMaxTurns || undefined,
+                            ...(payload.approvalToken
+                                ? { approval_token: payload.approvalToken }
+                                : {}),
+                            ...(payload.runnerPermission
+                                ? {
+                                      runner_permission: {
+                                          runner_id:
+                                              payload.runnerPermission.runnerId,
+                                          kind: payload.runnerPermission.kind,
+                                          access: payload.runnerPermission
+                                              .access,
+                                          target_path:
+                                              payload.runnerPermission
+                                                  .targetPath,
+                                      },
+                                  }
+                                : {}),
                         },
                     },
                 );
@@ -1479,7 +1599,9 @@ export function useAssistantStream() {
                     },
                 )) {
                     sawStreamEvent = true;
-                    const normalized = normalizeRunnerChatEvent(event as unknown as RunnerChatEvent);
+                    const normalized = normalizeRunnerChatEvent(
+                        event as unknown as RunnerChatEvent,
+                    );
                     const jobId = eventJobId(normalized);
                     if (jobId) {
                         streamedJobId = jobId;
@@ -1487,9 +1609,13 @@ export function useAssistantStream() {
                         updateAssistant({ jobId });
                     }
                     const result = applyEvent(normalized);
-                    streamEndedWithFailure = streamEndedWithFailure || result.failed;
+                    streamEndedWithFailure =
+                        streamEndedWithFailure || result.failed;
                 }
-                await fetchAndApplyRunnerTurn(runnerSession.id, started.turn_id);
+                await fetchAndApplyRunnerTurn(
+                    runnerSession.id,
+                    started.turn_id,
+                );
             } else {
                 for await (const event of api.stream('/internal/v1/turns', {
                     body: turnRequest,
@@ -1586,11 +1712,7 @@ export function useAssistantStream() {
                         runnerChatTurnForRecovery?.turnId ||
                         readAssistant()?.runnerChatTurnId,
                 });
-                showFailureToast(
-                    toast,
-                    'Runner request failed',
-                    streamError,
-                );
+                showFailureToast(toast, 'Runner request failed', streamError);
                 return;
             }
 

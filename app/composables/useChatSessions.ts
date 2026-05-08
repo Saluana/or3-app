@@ -52,7 +52,9 @@ function patchFromBackendSessionMeta(
         forkedFromRunnerId: meta.forked_from_runner_id || undefined,
         forkStrategy: meta.fork_strategy || undefined,
         archived: Boolean(meta.archived),
-        createdAt: meta.created_at ? msToIso(meta.created_at) : session.createdAt,
+        createdAt: meta.created_at
+            ? msToIso(meta.created_at)
+            : session.createdAt,
         updatedAt: meta.updated_at ? msToIso(meta.updated_at) : now(),
     };
 }
@@ -444,6 +446,11 @@ export function useChatSessions() {
                 backend.payload && typeof backend.payload === 'object'
                     ? (backend.payload as Record<string, unknown>)
                     : {};
+            const runnerPermissionPayload =
+                payload.runner_permission &&
+                typeof payload.runner_permission === 'object'
+                    ? (payload.runner_permission as Record<string, unknown>)
+                    : undefined;
             const patch: Partial<ChatMessage> = {
                 backendMessageId: backendID,
                 sourceSessionKey: session.sessionKey,
@@ -459,7 +466,85 @@ export function useChatSessions() {
                     typeof payload.runner_chat_turn_id === 'string'
                         ? payload.runner_chat_turn_id
                         : undefined,
-                status: 'complete',
+                approvalRequestId:
+                    typeof payload.approval_request_id === 'string' ||
+                    typeof payload.approval_request_id === 'number'
+                        ? payload.approval_request_id
+                        : typeof payload.approval_id === 'string' ||
+                            typeof payload.approval_id === 'number'
+                          ? payload.approval_id
+                          : undefined,
+                approvalState:
+                    payload.approval_state === 'pending'
+                        ? 'pending'
+                        : undefined,
+                retryPayload:
+                    payload.status === 'approval_required' &&
+                    typeof payload.user_message === 'string' &&
+                    payload.user_message.trim()
+                        ? {
+                              text: payload.user_message,
+                              transportText: payload.user_message,
+                              suppressUserEcho: true,
+                              runnerId:
+                                  typeof payload.runner_id === 'string'
+                                      ? payload.runner_id
+                                      : session.runnerId,
+                              runnerChatSessionId:
+                                  typeof payload.runner_chat_session_id ===
+                                  'string'
+                                      ? payload.runner_chat_session_id
+                                      : session.runnerChatSessionId,
+                              runnerContinuationMode:
+                                  typeof payload.continuation_mode === 'string'
+                                      ? payload.continuation_mode
+                                      : session.runnerContinuationMode,
+                              runnerModel:
+                                  typeof payload.model === 'string'
+                                      ? payload.model
+                                      : session.runnerModel,
+                              runnerMode:
+                                  typeof payload.mode === 'string'
+                                      ? payload.mode
+                                      : session.runnerMode,
+                              runnerIsolation:
+                                  typeof payload.isolation === 'string'
+                                      ? payload.isolation
+                                      : session.runnerIsolation,
+                              runnerCwd:
+                                  typeof payload.cwd === 'string'
+                                      ? payload.cwd
+                                      : session.runnerCwd,
+                              runnerPermission: runnerPermissionPayload
+                                  ? {
+                                        runnerId:
+                                            typeof runnerPermissionPayload.runner_id ===
+                                            'string'
+                                                ? runnerPermissionPayload.runner_id
+                                                : undefined,
+                                        kind:
+                                            typeof runnerPermissionPayload.kind ===
+                                            'string'
+                                                ? runnerPermissionPayload.kind
+                                                : undefined,
+                                        access:
+                                            typeof runnerPermissionPayload.access ===
+                                            'string'
+                                                ? runnerPermissionPayload.access
+                                                : undefined,
+                                        targetPath:
+                                            typeof runnerPermissionPayload.target_path ===
+                                            'string'
+                                                ? runnerPermissionPayload.target_path
+                                                : undefined,
+                                    }
+                                  : undefined,
+                          }
+                        : undefined,
+                status:
+                    payload.status === 'approval_required'
+                        ? 'attention'
+                        : 'complete',
             };
             const existing = existingByBackendID().get(backendID);
             if (existing) {
@@ -479,7 +564,8 @@ export function useChatSessions() {
                 updateMessage(localMatch.id, {
                     ...patch,
                     content: localMatch.content || backend.content,
-                    createdAt: localMatch.createdAt || msToIso(backend.created_at),
+                    createdAt:
+                        localMatch.createdAt || msToIso(backend.created_at),
                 });
                 continue;
             }
