@@ -85,23 +85,87 @@
                         v-if="message.attachments?.length"
                         class="or3-msg__attachments"
                     >
-                        <span
+                        <UPopover
                             v-for="attachment in message.attachments"
                             :key="attachment.id"
-                            class="or3-msg__attachment"
+                            class="inline-flex max-w-full min-w-0"
+                            :ui="{
+                                content:
+                                    'p-0 bg-white border border-(--or3-border) rounded-xl shadow-lg max-w-xs',
+                            }"
                         >
-                            <Icon
-                                :name="
-                                    attachment.kind === 'text'
-                                        ? 'i-pixelarticons-notebook'
-                                        : 'i-pixelarticons-paperclip'
-                                "
-                                class="size-3 shrink-0"
-                            />
-                            <span class="or3-msg__attachment-label">{{
-                                attachment.preview || attachment.name
-                            }}</span>
-                        </span>
+                            <span
+                                class="or3-msg__attachment"
+                                :title="attachmentTooltip(attachment)"
+                            >
+                                <span class="or3-msg__attachment-icon-wrap">
+                                    <Icon
+                                        :name="
+                                            attachment.kind === 'text'
+                                                ? 'i-pixelarticons-notebook'
+                                                : 'i-pixelarticons-paperclip'
+                                        "
+                                        class="size-3 shrink-0"
+                                    />
+                                </span>
+                                <span class="or3-msg__attachment-label">{{
+                                    attachment.name
+                                }}</span>
+                            </span>
+
+                            <template #content>
+                                <div class="p-3 space-y-2">
+                                    <div class="flex items-start gap-2.5">
+                                        <span
+                                            class="grid size-8 shrink-0 place-items-center rounded-lg bg-(--or3-green-soft) text-(--or3-green-dark)"
+                                        >
+                                            <Icon
+                                                :name="
+                                                    attachment.kind === 'text'
+                                                        ? 'i-pixelarticons-notebook'
+                                                        : 'i-pixelarticons-file'
+                                                "
+                                                class="size-4"
+                                            />
+                                        </span>
+                                        <div class="min-w-0 flex-1">
+                                            <p
+                                                class="text-sm font-semibold text-(--or3-text) truncate"
+                                            >
+                                                {{ attachment.name }}
+                                            </p>
+                                            <p
+                                                v-if="attachment.preview"
+                                                class="text-xs text-(--or3-text-muted) break-all"
+                                            >
+                                                {{ attachment.preview }}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div
+                                        v-if="attachment.mimeType"
+                                        class="text-xs text-(--or3-text-muted)"
+                                    >
+                                        <span class="font-medium">Type:</span>
+                                        {{ attachment.mimeType }}
+                                    </div>
+                                    <div
+                                        v-if="attachment.size"
+                                        class="text-xs text-(--or3-text-muted)"
+                                    >
+                                        <span class="font-medium">Size:</span>
+                                        {{ formatBytes(attachment.size) }}
+                                    </div>
+                                    <div
+                                        v-if="attachment.path"
+                                        class="text-xs text-(--or3-text-muted)"
+                                    >
+                                        <span class="font-medium">Path:</span>
+                                        <span class="break-all">{{ attachment.path }}</span>
+                                    </div>
+                                </div>
+                            </template>
+                        </UPopover>
                     </div>
                 </template>
                 <p
@@ -176,11 +240,16 @@
                         title="Fork conversation from this message"
                         @click="forkMessage"
                     >
-                        <Icon name="i-pixelarticons-git-branch" class="size-4" />
+                        <Icon
+                            name="i-pixelarticons-git-branch"
+                            class="size-4"
+                        />
                         <span>{{ forkBusy ? 'Forking…' : 'Fork' }}</span>
                     </button>
                     <button
-                        v-if="props.message.agentCliRunId || props.message.jobId"
+                        v-if="
+                            props.message.agentCliRunId || props.message.jobId
+                        "
                         type="button"
                         class="or3-msg__action"
                         aria-label="Open activity details"
@@ -250,7 +319,7 @@ import { useApprovals } from '../../composables/useApprovals';
 import { useAssistantStream } from '../../composables/useAssistantStream';
 import { useChatSessions } from '../../composables/useChatSessions';
 import { useSessionHistory } from '../../composables/useSessionHistory';
-import type { ChatMessage } from '../../types/app-state';
+import type { ChatAttachment, ChatMessage } from '../../types/app-state';
 import {
     approvalActionErrorMessage,
     approvalStatusFromError,
@@ -262,7 +331,8 @@ import { shouldRepairIncompleteMarkdownForStatus } from '../../utils/streamingMa
 
 const props = defineProps<{ message: ChatMessage }>();
 const toast = useToast();
-const { activeSession, messages, toggleMessagePin, updateMessage } = useChatSessions();
+const { activeSession, messages, toggleMessagePin, updateMessage } =
+    useChatSessions();
 const { isStreaming, send } = useAssistantStream();
 const sessionHistory = useSessionHistory();
 const router = useRouter();
@@ -443,7 +513,8 @@ async function retryMessage() {
 }
 
 async function forkMessage() {
-    if (!props.message.backendMessageId || forkBusy.value || isStreaming.value) return;
+    if (!props.message.backendMessageId || forkBusy.value || isStreaming.value)
+        return;
     forkBusy.value = true;
     try {
         const current = currentMessage();
@@ -468,7 +539,10 @@ async function forkMessage() {
             title: 'Fork failed',
             description:
                 error && typeof error === 'object' && 'message' in error
-                    ? String((error as { message?: unknown }).message || 'Could not fork this message.')
+                    ? String(
+                          (error as { message?: unknown }).message ||
+                              'Could not fork this message.',
+                      )
                     : 'Could not fork this message.',
             color: 'error',
             icon: 'i-pixelarticons-warning-box',
@@ -749,6 +823,28 @@ async function denyApproval() {
         approvalBusy.value = false;
     }
 }
+
+function formatBytes(size?: number): string {
+    if (!size) return '';
+    if (size < 1024) return `${size} B`;
+    const units = ['KB', 'MB', 'GB', 'TB'];
+    let value = size / 1024;
+    let unitIndex = 0;
+    while (value >= 1024 && unitIndex < units.length - 1) {
+        value /= 1024;
+        unitIndex += 1;
+    }
+    const precision = value >= 10 ? 0 : 1;
+    return `${value.toFixed(precision)} ${units[unitIndex]}`;
+}
+
+function attachmentTooltip(attachment: ChatAttachment): string {
+    const parts = [attachment.name];
+    if (attachment.preview && attachment.preview !== attachment.name) {
+        parts.push(attachment.preview);
+    }
+    return parts.join(' — ');
+}
 </script>
 
 <style scoped>
@@ -849,23 +945,62 @@ async function denyApproval() {
 .or3-msg__attachment {
     display: inline-flex;
     align-items: center;
-    gap: 0.375rem;
+    gap: 0.4rem;
     max-width: 100%;
     min-width: 0;
     overflow: hidden;
-    border-radius: 9999px;
-    border: 1px solid var(--or3-border);
-    background: rgba(255, 255, 255, 0.65);
-    padding: 0.25rem 0.625rem;
+    border-radius: 0.75rem;
+    border: 1px solid color-mix(in srgb, var(--or3-border) 70%, transparent);
+    background: color-mix(in srgb, var(--or3-surface) 85%, white 15%);
+    padding: 0.35rem 0.6rem;
     color: var(--or3-text);
-    font-size: 0.6875rem;
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--or3-border) 20%, transparent);
+    transition: box-shadow 0.15s ease, border-color 0.15s ease;
+    cursor: pointer;
+}
+
+.or3-msg__attachment:hover {
+    border-color: color-mix(in srgb, var(--or3-green) 30%, var(--or3-border) 70%);
+    box-shadow: 0 2px 6px color-mix(in srgb, var(--or3-border) 25%, transparent);
+}
+
+.or3-msg__attachment-icon-wrap {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.4rem;
+    height: 1.4rem;
+    border-radius: 0.45rem;
+    background: color-mix(in srgb, var(--or3-green-soft) 80%, white 20%);
+    color: var(--or3-green-dark);
+    flex-shrink: 0;
+}
+
+.or3-msg__attachment-icon-wrap :deep(svg),
+.or3-msg__attachment-icon-wrap :deep(.iconify) {
+    width: 0.75rem;
+    height: 0.75rem;
 }
 
 .or3-msg__attachment-label {
     min-width: 0;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--or3-text);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    line-height: 1.3;
+}
+
+.or3-msg--user .or3-msg__attachment {
+    max-width: min(100%, 20rem);
+    background: color-mix(in srgb, white 92%, var(--or3-green-soft) 8%);
+    border-color: color-mix(in srgb, var(--or3-green) 18%, var(--or3-border) 82%);
+}
+
+.or3-msg--user .or3-msg__attachment:hover {
+    border-color: color-mix(in srgb, var(--or3-green) 35%, var(--or3-border) 65%);
 }
 
 .or3-msg__notice {

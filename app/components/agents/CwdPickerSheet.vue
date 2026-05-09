@@ -36,7 +36,9 @@
                             <p class="or3-label or3-cwd-head__eyebrow">
                                 {{ headerEyebrow }}
                             </p>
-                            <h2 class="or3-cwd-head__title">{{ headerTitle }}</h2>
+                            <h2 class="or3-cwd-head__title">
+                                {{ headerTitle }}
+                            </h2>
                             <p class="or3-cwd-head__subtitle">
                                 {{ headerSubtitle }}
                             </p>
@@ -200,6 +202,57 @@
                         <!-- Root list -->
                         <template v-else-if="atRootList">
                             <div
+                                v-if="filteredFavorites.length > 0"
+                                class="or3-cwd-section"
+                            >
+                                <p class="or3-label or3-cwd-section__title">
+                                    Favorites
+                                </p>
+                                <button
+                                    v-for="favorite in filteredFavorites"
+                                    :key="`fav:${favorite.rootId}:${favorite.path}`"
+                                    type="button"
+                                    class="or3-cwd-row or3-cwd-row--root"
+                                    @click="openFavorite(favorite)"
+                                >
+                                    <span
+                                        class="or3-cwd-row__icon or3-cwd-row__icon--accent"
+                                    >
+                                        <Icon
+                                            name="i-pixelarticons-folder"
+                                            class="size-4"
+                                        />
+                                    </span>
+                                    <div class="or3-cwd-row__text">
+                                        <p class="or3-cwd-row__title">
+                                            {{ favorite.label }}
+                                        </p>
+                                        <p class="or3-cwd-row__meta">
+                                            {{
+                                                favoriteDirectoryDescription(
+                                                    favorite,
+                                                )
+                                            }}
+                                        </p>
+                                    </div>
+                                    <Icon
+                                        name="i-pixelarticons-chevron-right"
+                                        class="or3-cwd-row__chev"
+                                    />
+                                </button>
+                            </div>
+
+                            <p
+                                v-if="
+                                    filteredFavorites.length > 0 &&
+                                    filteredRoots.length > 0
+                                "
+                                class="or3-label or3-cwd-section__title or3-cwd-section__title--subsequent"
+                            >
+                                Approved areas
+                            </p>
+
+                            <div
                                 v-if="roots.length === 0"
                                 class="or3-cwd-empty"
                             >
@@ -223,35 +276,39 @@
                                     No matching approved areas.
                                 </p>
                             </div>
-                            <button
-                                v-for="root in filteredRoots"
+                            <div
                                 v-else
-                                :key="root.id"
-                                type="button"
-                                class="or3-cwd-row or3-cwd-row--root"
-                                @click="openRoot(root)"
+                                class="or3-cwd-section or3-cwd-section--no-title"
                             >
-                                <span
-                                    class="or3-cwd-row__icon or3-cwd-row__icon--accent"
+                                <button
+                                    v-for="root in filteredRoots"
+                                    :key="root.id"
+                                    type="button"
+                                    class="or3-cwd-row or3-cwd-row--root"
+                                    @click="openRoot(root)"
                                 >
+                                    <span
+                                        class="or3-cwd-row__icon or3-cwd-row__icon--accent"
+                                    >
+                                        <Icon
+                                            name="i-pixelarticons-folder"
+                                            class="size-4"
+                                        />
+                                    </span>
+                                    <div class="or3-cwd-row__text">
+                                        <p class="or3-cwd-row__title">
+                                            {{ root.label }}
+                                        </p>
+                                        <p class="or3-cwd-row__meta">
+                                            {{ root.path || root.id }}
+                                        </p>
+                                    </div>
                                     <Icon
-                                        name="i-pixelarticons-folder"
-                                        class="size-4"
+                                        name="i-pixelarticons-chevron-right"
+                                        class="or3-cwd-row__chev"
                                     />
-                                </span>
-                                <div class="or3-cwd-row__text">
-                                    <p class="or3-cwd-row__title">
-                                        {{ root.label }}
-                                    </p>
-                                    <p class="or3-cwd-row__meta">
-                                        {{ root.path || root.id }}
-                                    </p>
-                                </div>
-                                <Icon
-                                    name="i-pixelarticons-chevron-right"
-                                    class="or3-cwd-row__chev"
-                                />
-                            </button>
+                                </button>
+                            </div>
                         </template>
 
                         <!-- Directory list -->
@@ -261,7 +318,11 @@
                                 class="or3-cwd-empty"
                             >
                                 <Icon
-                                    :name="purpose === 'file' ? 'i-pixelarticons-file' : 'i-pixelarticons-folder'"
+                                    :name="
+                                        purpose === 'file'
+                                            ? 'i-pixelarticons-file'
+                                            : 'i-pixelarticons-folder'
+                                    "
                                     class="size-5 text-(--or3-text-muted)"
                                 />
                                 <p class="or3-cwd-empty__text">
@@ -269,7 +330,9 @@
                                 </p>
                             </div>
                             <div
-                                v-else-if="visibleSelectableEntries.length === 0"
+                                v-else-if="
+                                    visibleSelectableEntries.length === 0
+                                "
                                 class="or3-cwd-empty"
                             >
                                 <Icon
@@ -286,12 +349,18 @@
                                 :key="entry.path"
                                 type="button"
                                 class="or3-cwd-row"
-                                :class="{ 'or3-cwd-row--file': entry.type === 'file' }"
+                                :class="{
+                                    'or3-cwd-row--file': entry.type === 'file',
+                                }"
                                 @click="onEntryOpen(entry)"
                             >
                                 <span class="or3-cwd-row__icon">
                                     <Icon
-                                        :name="entry.type === 'directory' ? 'i-pixelarticons-folder' : 'i-pixelarticons-file'"
+                                        :name="
+                                            entry.type === 'directory'
+                                                ? 'i-pixelarticons-folder'
+                                                : 'i-pixelarticons-file'
+                                        "
                                         class="size-4"
                                     />
                                 </span>
@@ -307,7 +376,11 @@
                                     </p>
                                 </div>
                                 <Icon
-                                    :name="entry.type === 'directory' ? 'i-pixelarticons-chevron-right' : 'i-pixelarticons-check'"
+                                    :name="
+                                        entry.type === 'directory'
+                                            ? 'i-pixelarticons-chevron-right'
+                                            : 'i-pixelarticons-check'
+                                    "
                                     class="or3-cwd-row__chev"
                                 />
                             </button>
@@ -326,7 +399,11 @@
                             >SELECTED</span
                         >
                         <Icon
-                            :name="purpose === 'file' ? 'i-pixelarticons-file' : 'i-pixelarticons-folder'"
+                            :name="
+                                purpose === 'file'
+                                    ? 'i-pixelarticons-file'
+                                    : 'i-pixelarticons-folder'
+                            "
                             class="or3-cwd-foot__selected-icon"
                         />
                         <span
@@ -346,6 +423,27 @@
                             class="or3-cwd-foot__btn-up"
                             @click="navigateUp"
                         />
+                        <button
+                            v-if="!atRootList"
+                            type="button"
+                            class="or3-cwd-foot__btn-fav or3-focus-ring"
+                            :class="{ 'is-active': currentFolderIsFavorite }"
+                            :aria-label="
+                                currentFolderIsFavorite
+                                    ? 'Remove current folder from favorites'
+                                    : 'Add current folder to favorites'
+                            "
+                            :title="
+                                currentFolderIsFavorite
+                                    ? 'Remove current folder from favorites'
+                                    : 'Add current folder to favorites'
+                            "
+                            @click="toggleCurrentFolderFavorite"
+                        >
+                            <span aria-hidden="true" class="or3-cwd-foot__star"
+                                >★</span
+                            >
+                        </button>
                         <UButton
                             color="primary"
                             variant="solid"
@@ -376,6 +474,11 @@ import { useOr3Api } from '~/composables/useOr3Api';
 import { useAuthSession } from '~/composables/useAuthSession';
 import { useIsDesktop } from '~/composables/useViewport';
 import { useSheetSwipeDismiss } from '~/composables/useSheetSwipeDismiss';
+import {
+    favoriteDirectoryDescription,
+    useFavoriteDirectories,
+    type FavoriteDirectory,
+} from '~/composables/useFavoriteDirectories';
 
 const props = defineProps<{
     open: boolean;
@@ -386,19 +489,23 @@ const props = defineProps<{
 const emit = defineEmits<{
     'update:open': [value: boolean];
     select: [path: string];
-    selectFile: [file: {
-        rootId: string;
-        rootLabel?: string;
-        path: string;
-        name: string;
-        size?: number;
-        mimeType?: string;
-    }];
+    selectFile: [
+        file: {
+            rootId: string;
+            rootLabel?: string;
+            path: string;
+            name: string;
+            size?: number;
+            mimeType?: string;
+        },
+    ];
 }>();
 
 const api = useOr3Api();
 const authSession = useAuthSession();
 const isDesktop = useIsDesktop();
+const { favoriteDirectories, isFavorite, toggleFavorite } =
+    useFavoriteDirectories();
 
 const side = computed<'bottom' | 'right'>(() =>
     isDesktop.value ? 'right' : 'bottom',
@@ -471,7 +578,9 @@ const emptySearchText = computed(() =>
         : 'No matching folders in this directory.',
 );
 const selectedEmptyText = computed(() =>
-    purpose.value === 'file' ? 'Tap a file to add it' : 'Tap a folder to select',
+    purpose.value === 'file'
+        ? 'Tap a file to add it'
+        : 'Tap a folder to select',
 );
 const primaryActionLabel = computed(() =>
     purpose.value === 'file' ? 'Add current file' : 'Use this folder',
@@ -487,6 +596,21 @@ const filteredRoots = computed(() => {
             (value ?? '').toLowerCase().includes(query),
         ),
     );
+});
+
+const filteredFavorites = computed(() => {
+    const query = normalizedSearch.value;
+    if (!query) return favoriteDirectories.value;
+    return favoriteDirectories.value.filter((favorite) =>
+        [favorite.label, favorite.path, favorite.rootLabel].some((value) =>
+            (value ?? '').toLowerCase().includes(query),
+        ),
+    );
+});
+
+const currentFolderIsFavorite = computed(() => {
+    if (atRootList.value || !currentRootId.value) return false;
+    return isFavorite(currentRootId.value, currentPath.value || '.');
 });
 
 const visibleSelectableEntries = computed(() => {
@@ -705,6 +829,27 @@ function selectCurrent() {
     const path = buildFullPath();
     emit('select', path);
     emit('update:open', false);
+}
+
+function openFavorite(favorite: FavoriteDirectory) {
+    const root = roots.value.find(
+        (candidate) => candidate.id === favorite.rootId,
+    );
+    if (!root) return;
+    clearSearch();
+    currentRootId.value = root.id;
+    currentPath.value = favorite.path || '.';
+    listDirectory(root.id, favorite.path || '.');
+    syncDraftFromNav();
+}
+
+function toggleCurrentFolderFavorite() {
+    if (atRootList.value || !currentRoot.value) return;
+    toggleFavorite(
+        currentRoot.value.id,
+        currentPath.value || '.',
+        currentRoot.value.label,
+    );
 }
 
 function selectFile(entry: FileEntry) {
@@ -1115,8 +1260,60 @@ watch(
 .or3-cwd-foot__btn-up {
     flex: 0 0 auto;
 }
+.or3-cwd-foot__btn-fav {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 0.7rem;
+    background: var(--or3-surface-soft);
+    border: 1px solid color-mix(in srgb, var(--or3-border) 80%, transparent);
+    color: var(--or3-text-muted);
+    transition:
+        background 140ms ease,
+        color 140ms ease,
+        border-color 140ms ease;
+}
+.or3-cwd-foot__btn-fav:hover {
+    background: color-mix(in srgb, var(--or3-green-soft) 50%, transparent);
+    color: var(--or3-text);
+    border-color: color-mix(in srgb, var(--or3-green) 22%, transparent);
+}
+.or3-cwd-foot__btn-fav.is-active {
+    background: var(--or3-green-soft);
+    color: var(--or3-green-dark);
+    border-color: color-mix(in srgb, var(--or3-green) 30%, transparent);
+}
+.or3-cwd-foot__star {
+    font-size: 1.05rem;
+    line-height: 1;
+    opacity: 0.6;
+}
+.or3-cwd-foot__btn-fav.is-active .or3-cwd-foot__star {
+    opacity: 1;
+}
 .or3-cwd-foot__btn-primary {
     flex: 1 1 auto;
     justify-content: center;
+}
+
+/* ── Section titles in root list ────────────────────────────────── */
+.or3-cwd-section {
+    display: flex;
+    flex-direction: column;
+}
+.or3-cwd-section__title {
+    padding: 0.7rem 0.95rem 0.45rem;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--or3-text-muted);
+    background: color-mix(in srgb, var(--or3-surface) 70%, transparent);
+}
+.or3-cwd-section__title--subsequent {
+    border-top: 1px solid color-mix(in srgb, var(--or3-border) 70%, transparent);
 }
 </style>
