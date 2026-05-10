@@ -2,58 +2,69 @@
     <AppShell>
         <AppHeader subtitle="SCHEDULED TASKS" />
 
-        <div class="space-y-5">
-            <SurfaceCard class-name="or3-scheduled-hero" padded>
-                <div class="or3-scheduled-hero__copy">
-                    <span class="or3-scheduled-eyebrow">
-                        <Icon name="i-pixelarticons-clock" class="size-4" />
-                        Automation center
-                    </span>
-                    <h1 class="or3-scheduled-title">Schedule OR3 to work later.</h1>
-                    <p class="or3-scheduled-subtitle">
-                        Create, pause, run, and review recurring tasks without digging through advanced settings.
-                    </p>
-                    <div class="or3-scheduled-actions">
-                        <UButton
-                            color="primary"
-                            variant="solid"
-                            icon="i-pixelarticons-plus"
-                            :disabled="!cronAvailable"
-                            @click="startCreate"
-                        >
-                            New scheduled task
-                        </UButton>
-                        <UButton
-                            color="neutral"
-                            variant="soft"
-                            icon="i-pixelarticons-reload"
-                            :loading="cronLoading"
-                            @click="refreshAll"
-                        >
-                            Refresh
-                        </UButton>
+        <div class="space-y-6">
+            <!-- Hero -->
+            <SurfaceCard class-name="or3-sched-command-center space-y-5" padded>
+                <header class="or3-sched-hero">
+                    <div class="or3-sched-hero__copy">
+                        <p class="or3-sched-eyebrow">
+                            <Icon
+                                name="i-pixelarticons-clock"
+                                class="size-3.5"
+                                aria-hidden="true"
+                            />
+                            <span>Automation Center</span>
+                        </p>
+                        <h1 class="or3-sched-title">
+                            Your work,<br />
+                            <span class="or3-sched-title__accent">on autopilot.</span>
+                        </h1>
+                        <p class="or3-sched-sub">
+                            Create once, then let OR3 handle the rest&mdash;so you can focus on what matters.
+                        </p>
+                        <div class="or3-sched-actions">
+                            <UButton
+                                color="primary"
+                                variant="solid"
+                                icon="i-pixelarticons-plus"
+                                size="lg"
+                                :disabled="!cronAvailable"
+                                class="or3-sched-btn-primary"
+                                @click="startCreate"
+                            >
+                                Schedule task
+                            </UButton>
+                            <UButton
+                                color="neutral"
+                                variant="outline"
+                                icon="i-pixelarticons-reload"
+                                size="lg"
+                                :loading="cronLoading"
+                                class="or3-sched-btn-secondary"
+                                @click="refreshAll"
+                            >
+                                Refresh
+                            </UButton>
+                        </div>
                     </div>
-                </div>
-                <div class="or3-scheduled-hero__status">
-                    <StatusPill
-                        :label="cronAvailable ? 'scheduler online' : 'scheduler off'"
-                        :tone="cronAvailable ? 'green' : 'amber'"
-                        :pulse="cronAvailable"
-                    />
-                    <p class="mt-3 font-mono text-xs text-(--or3-text-muted)">
-                        {{ statusLine }}
-                    </p>
-                </div>
+                    <div class="or3-sched-stage" aria-hidden="true">
+                        <span class="or3-sched-stage__sparkle or3-sched-stage__sparkle--a" />
+                        <span class="or3-sched-stage__sparkle or3-sched-stage__sparkle--b" />
+                        <span class="or3-sched-stage__sparkle or3-sched-stage__sparkle--c" />
+                        <div class="or3-sched-stage__podium">
+                            <span class="or3-sched-stage__glow" />
+                            <RetroComputerMascot
+                                :size="152"
+                                src="/computer-icons/cron-job-guy.webp"
+                                sparkle
+                                class="or3-sched-stage__mascot"
+                            />
+                        </div>
+                    </div>
+                </header>
             </SurfaceCard>
 
-            <div class="grid gap-3 sm:grid-cols-4">
-                <SurfaceCard v-for="metric in metrics" :key="metric.label" class-name="or3-metric-card">
-                    <p class="or3-command text-[10px] uppercase tracking-[0.18em] text-(--or3-green-dark)">{{ metric.label }}</p>
-                    <p class="mt-2 font-mono text-2xl font-semibold text-(--or3-text)">{{ metric.value }}</p>
-                    <p class="mt-1 text-xs text-(--or3-text-muted)">{{ metric.detail }}</p>
-                </SurfaceCard>
-            </div>
-
+            <!-- Scheduler offline warning -->
             <SurfaceCard v-if="!cronAvailable" tone="caution" class-name="space-y-3">
                 <div class="flex items-start gap-3">
                     <Icon name="i-pixelarticons-warning-box" class="mt-0.5 size-5 shrink-0 text-(--or3-amber)" />
@@ -69,291 +80,153 @@
                 </UButton>
             </SurfaceCard>
 
-            <SurfaceCard v-if="formOpen" class-name="space-y-4" padded>
-                <div class="flex items-start justify-between gap-3">
-                    <div>
-                        <p class="or3-command text-[11px] uppercase tracking-[0.2em] text-(--or3-green-dark)">
-                            {{ editingId ? 'Edit scheduled task' : 'Create scheduled task' }}
-                        </p>
-                        <h2 class="mt-1 font-mono text-lg font-semibold text-(--or3-text)">{{ formTitle }}</h2>
-                    </div>
-                    <UButton color="neutral" variant="ghost" icon="i-pixelarticons-close" aria-label="Close form" @click="cancelForm" />
-                </div>
+            <!-- Tabs -->
+            <div v-if="cronAvailable" class="or3-sched-tabs">
+                <button
+                    v-for="tab in tabs"
+                    :key="tab.value"
+                    type="button"
+                    class="or3-sched-tab"
+                    :aria-pressed="activeTab === tab.value"
+                    @click="activeTab = tab.value"
+                >
+                    <Icon :name="tab.icon" class="or3-sched-tab__icon" />
+                    <span class="or3-sched-tab__label">{{ tab.label }}</span>
+                    <span class="or3-sched-tab__count">{{ tab.count }}</span>
+                </button>
+            </div>
 
-                <div class="grid gap-3 sm:grid-cols-2">
-                    <label class="or3-field sm:col-span-2">
-                        <span>Task name</span>
-                        <input v-model="form.name" class="or3-input" placeholder="Morning repo summary" />
-                    </label>
+            <!-- Loading -->
+            <div v-if="cronLoading" class="rounded-2xl border border-(--or3-border) bg-white/70 p-4 text-sm text-(--or3-text-muted)">
+                Loading…
+            </div>
 
-                    <label class="or3-field sm:col-span-2">
-                        <span>{{ form.target === 'agent_cli' ? 'What should the external agent do?' : 'What should OR3 do?' }}</span>
-                        <textarea
-                            v-model="form.message"
-                            class="or3-textarea"
-                            rows="5"
-                            placeholder="Check the repo for overnight changes, summarize open risks, and send me the top 3 actions."
-                        />
-                    </label>
+            <!-- Error -->
+            <div v-else-if="cronError" class="or3-sched-error">
+                <Icon name="i-pixelarticons-alert" class="size-4" />
+                <span>{{ cronError.message || 'Unable to load scheduled tasks.' }}</span>
+            </div>
 
-                    <label class="or3-field">
-                        <span>Target</span>
-                        <select v-model="form.target" class="or3-input">
-                            <option value="or3">OR3 turn</option>
-                            <option value="agent_cli">External agent</option>
-                        </select>
-                    </label>
-
-                    <label v-if="form.target === 'agent_cli'" class="or3-field">
-                        <span>Runner</span>
-                        <select v-model="form.runnerId" class="or3-input">
-                            <option value="" disabled>Select runner</option>
-                            <option v-for="runner in externalRunnerOptions" :key="runner.id" :value="runner.id">
-                                {{ runner.display_name || runner.id }}
-                            </option>
-                        </select>
-                    </label>
-
-                    <label class="or3-field">
-                        <span>Schedule</span>
-                        <select v-model="form.preset" class="or3-input">
-                            <option value="hourly">Every hour</option>
-                            <option value="daily">Every day at 9 AM</option>
-                            <option value="weekdays">Weekdays at 9 AM</option>
-                            <option value="weekly">Mondays at 9 AM</option>
-                            <option value="interval">Custom interval</option>
-                            <option value="once">One time</option>
-                            <option value="custom">Advanced cron expression</option>
-                        </select>
-                    </label>
-
-                    <label v-if="form.preset === 'interval'" class="or3-field">
-                        <span>Run every</span>
-                        <div class="grid grid-cols-[1fr_1.2fr] gap-2">
-                            <input v-model.number="form.intervalValue" class="or3-input" min="1" type="number" />
-                            <select v-model="form.intervalUnit" class="or3-input">
-                                <option value="minutes">minutes</option>
-                                <option value="hours">hours</option>
-                                <option value="days">days</option>
-                            </select>
-                        </div>
-                    </label>
-
-                    <label v-else-if="form.preset === 'once'" class="or3-field">
-                        <span>Run at</span>
-                        <input v-model="form.atLocal" class="or3-input" type="datetime-local" />
-                    </label>
-
-                    <label v-else-if="form.preset === 'custom'" class="or3-field">
-                        <span>Cron expression</span>
-                        <input v-model="form.cronExpr" class="or3-input font-mono" placeholder="0 9 * * 1-5" />
-                    </label>
-
-                    <div v-else class="or3-preview-box">
-                        <span>Preview</span>
-                        <p>{{ schedulePreview }}</p>
-                    </div>
-
-                    <label class="or3-field">
-                        <span>Session key</span>
-                        <input v-model="form.sessionKey" class="or3-input font-mono" placeholder="cron:default" />
-                    </label>
-
-                    <label v-if="form.target === 'or3'" class="or3-field">
-                        <span>Delivery channel</span>
-                        <input v-model="form.channel" class="or3-input" placeholder="optional, e.g. cli" />
-                    </label>
-
-                    <label v-if="form.target === 'or3'" class="or3-field sm:col-span-2">
-                        <span>Send to</span>
-                        <input v-model="form.to" class="or3-input" placeholder="optional destination/user/channel id" />
-                    </label>
-
-                    <template v-if="form.target === 'agent_cli'">
-                        <label class="or3-field">
-                            <span>Mode</span>
-                            <select v-model="form.mode" class="or3-input">
-                                <option value="review">Review only</option>
-                                <option value="safe_edit">Safe edit</option>
-                                <option value="sandbox_auto">Sandbox auto</option>
-                            </select>
-                        </label>
-
-                        <label class="or3-field">
-                            <span>Isolation</span>
-                            <select v-model="form.isolation" class="or3-input">
-                                <option value="host_readonly">Host read-only</option>
-                                <option value="host_workspace_write">Host workspace write</option>
-                                <option value="sandbox_workspace_write">Sandbox workspace write</option>
-                                <option value="sandbox_dangerous">Sandbox dangerous</option>
-                            </select>
-                        </label>
-
-                        <label class="or3-field">
-                            <span>Working directory</span>
-                            <button
-                                type="button"
-                                class="or3-cwd-trigger"
-                                @click="showCwdSlideover = true"
-                            >
-                                <span class="truncate">{{ cwdDisplayLabel }}</span>
-                                <Icon
-                                    name="i-pixelarticons-folder"
-                                    class="size-4 shrink-0 text-(--or3-text-muted)"
-                                />
-                            </button>
-                        </label>
-
-                        <label class="or3-field">
-                            <span>Model</span>
-                            <input v-model="form.model" class="or3-input" placeholder="runner default" />
-                        </label>
-
-                        <label class="or3-field">
-                            <span>Timeout seconds</span>
-                            <input v-model.number="form.timeoutSeconds" class="or3-input" min="1" type="number" placeholder="900" />
-                        </label>
-
-                        <label class="or3-field">
-                            <span>Max turns</span>
-                            <input v-model.number="form.maxTurns" class="or3-input" min="1" type="number" placeholder="optional" />
-                        </label>
-                    </template>
-                </div>
-
-                <div class="grid gap-2 sm:grid-cols-2">
-                    <label class="or3-toggle-row">
-                        <input v-model="form.enabled" type="checkbox" />
-                        <span>
-                            <strong>Enable immediately</strong>
-                            <small>The scheduler may run this task automatically.</small>
-                        </span>
-                    </label>
-                    <label class="or3-toggle-row">
-                        <input v-model="form.deleteAfterRun" type="checkbox" />
-                        <span>
-                            <strong>Delete after first run</strong>
-                            <small>Best for reminders and one-time tasks.</small>
-                        </span>
-                    </label>
-                </div>
-
-                <div v-if="formError" class="or3-error-box">
-                    <Icon name="i-pixelarticons-alert" class="size-4" />
-                    <span>{{ formError }}</span>
-                </div>
-
-                <div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-(--or3-border) bg-white/70 p-3">
-                    <p class="text-xs leading-5 text-(--or3-text-muted)">
-                        Review carefully: scheduled tasks can spend tokens and act while you are away.
-                    </p>
-                    <div class="flex gap-2">
-                        <UButton color="neutral" variant="soft" @click="cancelForm">Cancel</UButton>
-                        <UButton color="primary" variant="solid" :loading="cronSaving" icon="i-pixelarticons-check" @click="saveForm">
-                            {{ editingId ? 'Save changes' : 'Create task' }}
-                        </UButton>
-                    </div>
-                </div>
-            </SurfaceCard>
-
-            <section>
-                <SectionHeader title="Scheduled tasks">
-                    <template #action>
-                        <span v-if="cronLoading" class="flex items-center gap-1 font-mono text-[11px] text-(--or3-text-muted)">
-                            <Icon name="i-pixelarticons-loader" class="size-3 animate-spin" />
-                            Loading
-                        </span>
-                        <span v-else class="font-mono text-[11px] text-(--or3-text-muted)">{{ cronJobs.length }} total</span>
-                    </template>
-                </SectionHeader>
-
-                <div v-if="cronError" class="or3-error-box mb-3">
-                    <Icon name="i-pixelarticons-alert" class="size-4" />
-                    <span>{{ cronError.message || 'Unable to load scheduled tasks.' }}</span>
-                </div>
-
-                <div v-if="cronJobs.length" class="space-y-3">
-                    <SurfaceCard
-                        v-for="job in cronJobs"
-                        :key="job.id"
-                        class-name="or3-job-card"
+            <!-- Task list -->
+            <div v-else-if="filteredJobs.length" class="space-y-3">
+                <div
+                    v-for="job in filteredJobs"
+                    :key="job.id"
+                    class="or3-sched-card"
+                    role="button"
+                    tabindex="0"
+                    @click="startEdit(job)"
+                    @keydown.enter.prevent="startEdit(job)"
+                >
+                    <span
+                        class="or3-sched-card__icon"
+                        :class="`or3-sched-card__icon--${statusTone(job)}`"
                     >
-                        <div class="or3-job-card__main">
-                            <div class="or3-job-card__icon" :class="job.enabled ? 'or3-job-card__icon--active' : ''">
-                                <Icon :name="job.enabled ? 'i-pixelarticons-clock' : 'i-pixelarticons-pause'" class="size-5" />
-                            </div>
-                            <div class="min-w-0 flex-1">
-                                <div class="flex flex-wrap items-center gap-2">
-                                    <p class="truncate font-mono text-sm font-semibold text-(--or3-text)">{{ job.name || job.id }}</p>
-                                    <StatusPill :label="statusLabel(job)" :tone="statusTone(job)" />
-                                </div>
-                                <p class="mt-1 line-clamp-2 text-xs leading-5 text-(--or3-text-muted)">{{ jobPrompt(job) }}</p>
-                                <div class="mt-3 grid gap-2 text-xs sm:grid-cols-3">
-                                    <span class="or3-job-meta"><strong>Next</strong>{{ formatDate(job.state?.next_run_at_ms) }}</span>
-                                    <span class="or3-job-meta"><strong>Last</strong>{{ formatLastRun(job) }}</span>
-                                    <span class="or3-job-meta"><strong>Schedule</strong>{{ describeSchedule(job) }}</span>
-                                </div>
-                                <div v-if="job.payload?.kind === 'agent_cli_run'" class="mt-2 grid gap-2 text-xs sm:grid-cols-3">
-                                    <span class="or3-job-meta"><strong>Runner</strong>{{ agentRunnerLabel(job.payload?.agent_run?.runner_id) }}</span>
-                                    <span class="or3-job-meta"><strong>Mode</strong>{{ job.payload?.agent_run?.mode || 'review' }}</span>
-                                    <span class="or3-job-meta"><strong>Last run</strong>{{ job.state?.last_enqueued_run_id || 'Not enqueued' }}</span>
-                                </div>
-                                <p v-if="job.state?.last_error" class="mt-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
-                                    {{ job.state.last_error }}
-                                </p>
-                            </div>
-                        </div>
-                        <div class="or3-job-actions">
-                            <UButton size="xs" color="neutral" variant="soft" icon="i-pixelarticons-play" :loading="actionId === `${job.id}:run`" @click="run(job)">Run now</UButton>
-                            <UButton
-                                size="xs"
-                                :color="job.enabled ? 'warning' : 'success'"
-                                variant="soft"
-                                :icon="job.enabled ? 'i-pixelarticons-pause' : 'i-pixelarticons-play'"
-                                :loading="actionId === `${job.id}:toggle`"
-                                @click="toggle(job)"
+                        <Icon
+                            :name="job.payload?.kind === 'agent_cli_run' ? 'i-pixelarticons-terminal' : 'i-pixelarticons-calendar'"
+                            class="size-4.5"
+                        />
+                    </span>
+                    <div class="or3-sched-card__body">
+                        <div class="or3-sched-card__heading">
+                            <p class="or3-sched-card__title">{{ job.name || job.id }}</p>
+                            <span
+                                class="or3-sched-card__status"
+                                :class="`or3-sched-card__status--${statusTone(job)}`"
                             >
-                                {{ job.enabled ? 'Pause' : 'Resume' }}
-                            </UButton>
-                            <UButton size="xs" color="neutral" variant="ghost" icon="i-pixelarticons-edit" @click="startEdit(job)">Edit</UButton>
-                            <UButton size="xs" color="error" variant="ghost" icon="i-pixelarticons-trash" :loading="actionId === `${job.id}:delete`" @click="remove(job)">Delete</UButton>
+                                <span class="or3-sched-card__status-dot" />
+                                {{ statusLabel(job) }}
+                            </span>
                         </div>
-                    </SurfaceCard>
+                        <p class="or3-sched-card__desc">{{ jobPrompt(job) }}</p>
+                        <div class="or3-sched-card__chips">
+                            <span class="or3-sched-chip or3-sched-chip--schedule">
+                                <Icon name="i-pixelarticons-refresh" class="size-3.5" />
+                                {{ describeSchedule(job) }}
+                            </span>
+                            <span class="or3-sched-chip">
+                                <Icon
+                                    :name="job.payload?.kind === 'agent_cli_run' ? 'i-pixelarticons-chip' : 'i-pixelarticons-zap'"
+                                    class="size-3"
+                                />
+                                {{ job.payload?.kind === 'agent_cli_run' ? agentRunnerLabel(job.payload?.agent_run?.runner_id) : 'OR3 turn' }}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="or3-sched-card__menu" @click.stop>
+                        <UDropdownMenu
+                            :items="jobMenuItems(job)"
+                            :content="{ align: 'end', sideOffset: 6 }"
+                        >
+                            <UButton
+                                icon="i-pixelarticons-more-vertical"
+                                color="neutral"
+                                variant="ghost"
+                                size="sm"
+                                square
+                                :aria-label="`Actions for ${job.name || job.id}`"
+                            />
+                        </UDropdownMenu>
+                    </div>
                 </div>
+            </div>
 
-                <EmptyState
-                    v-else-if="cronAvailable && !cronLoading"
-                    icon="i-pixelarticons-clock"
-                    title="No scheduled tasks yet"
-                    description="Create your first recurring task for check-ins, reminders, summaries, and follow-up work."
-                />
-            </section>
+            <!-- Empty state -->
+            <div v-else-if="cronAvailable && !cronLoading" class="or3-sched-empty">
+                <span class="or3-sched-empty__icon">
+                    <Icon name="i-pixelarticons-calendar-search" class="size-5" />
+                </span>
+                <div class="or3-sched-empty__copy">
+                    <p class="or3-sched-empty__title">No scheduled tasks yet</p>
+                    <p class="or3-sched-empty__subtitle">
+                        Automate your recurring work and get time back for what matters.
+                    </p>
+                </div>
+                <UButton
+                    color="primary"
+                    variant="solid"
+                    icon="i-pixelarticons-plus"
+                    class="or3-sched-empty__btn"
+                    @click="startCreate"
+                >
+                    Create your first task
+                </UButton>
+            </div>
+
+            <!-- Tip -->
+            <div v-if="cronAvailable" class="or3-sched-tip">
+                <span class="or3-sched-tip__text">
+                    <Icon name="pixelarticons:lightbulb-on" class="size-4 text-(--or3-amber)" />
+                    <span><strong>Tip:</strong> Enable &ldquo;Delete after first run&rdquo; for one-time tasks.</span>
+                </span>
+                <NuxtLink to="/settings/section/automation" class="or3-sched-tip__link">
+                    Learn more
+                    <Icon name="i-pixelarticons-arrow-right" class="size-3.5" />
+                </NuxtLink>
+            </div>
         </div>
-        <CwdPickerSheet
-            v-model:open="showCwdSlideover"
-            :initial-path="form.cwd"
-            @select="onCwdSelected"
+
+        <ScheduledTaskFormSheet
+            v-model:open="formOpen"
+            :edit-job="editingJob"
+            @save="onSave"
         />
     </AppShell>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import type { AgentRunnerInfo, CronJob, CronSchedule } from '~/types/or3-api';
 import type { Or3AppError } from '~/types/app-state';
-import CwdPickerSheet from '~/components/agents/CwdPickerSheet.vue';
+import ScheduledTaskFormSheet from '~/components/scheduled/ScheduledTaskFormSheet.vue';
 
 const toast = useToast();
 const {
     cronJobs,
     cronStatus,
     cronLoading,
-    cronSaving,
     cronError,
     activeJobs,
-    pausedJobs,
-    erroredJobs,
-    nextJob,
     loadStatus,
     loadJobs,
     createJob,
@@ -369,62 +242,48 @@ const {
 } = useJobs();
 
 const formOpen = ref(false);
-const editingId = ref<string | null>(null);
-const formError = ref<string | null>(null);
+const editingJob = ref<CronJob | null>(null);
 const actionId = ref<string | null>(null);
-const showCwdSlideover = ref(false);
-
-const form = reactive({
-    name: '',
-    message: '',
-    target: 'or3' as 'or3' | 'agent_cli',
-    runnerId: '',
-    mode: 'review' as 'review' | 'safe_edit' | 'sandbox_auto',
-    isolation: 'host_readonly' as 'host_readonly' | 'host_workspace_write' | 'sandbox_workspace_write' | 'sandbox_dangerous',
-    cwd: '',
-    model: '',
-    timeoutSeconds: undefined as number | undefined,
-    maxTurns: undefined as number | undefined,
-    preset: 'daily' as 'hourly' | 'daily' | 'weekdays' | 'weekly' | 'interval' | 'once' | 'custom',
-    intervalValue: 1,
-    intervalUnit: 'hours' as 'minutes' | 'hours' | 'days',
-    atLocal: defaultAtLocal(),
-    cronExpr: '0 9 * * *',
-    sessionKey: 'cron:default',
-    channel: '',
-    to: '',
-    enabled: true,
-    deleteAfterRun: false,
-});
+const activeTab = ref<'upcoming' | 'active' | 'all'>('upcoming');
 
 const cronAvailable = computed(() => cronStatus.value?.available !== false && cronStatus.value?.enabled !== false);
-const formTitle = computed(() => editingId.value ? 'Update when and how this task runs.' : 'Describe the work, pick a schedule, and enable it when ready.');
-const schedulePreview = computed(() => describeScheduleFromPreset());
-const externalRunnerOptions = computed(() => {
-    const runners = (agentRunners.value ?? []).filter((runner) => runner.id !== 'or3-intern');
-    const available = runners.filter((runner) => runner.status === 'available');
-    return available.length ? available : runners;
-});
-const cwdDisplayLabel = computed(() => {
-    const path = form.cwd.trim();
-    if (!path) return 'Default working directory';
-    if (path.length > 44) return `...${path.slice(-41)}`;
-    return path;
-});
 
-const statusLine = computed(() => {
-    if (!cronStatus.value) return 'Checking scheduler status…';
-    if (!cronAvailable.value) return 'Cron is disabled or the running service does not expose cron management yet.';
-    const next = nextJob.value?.state?.next_run_at_ms ?? cronStatus.value.next_wake_at_ms;
-    return next ? `Next run ${formatDate(next)}` : 'No upcoming runs scheduled.';
-});
-
-const metrics = computed(() => [
-    { label: 'Active', value: activeJobs.value.length, detail: 'Enabled tasks waiting to run.' },
-    { label: 'Paused', value: pausedJobs.value.length, detail: 'Saved but not currently armed.' },
-    { label: 'Errors', value: erroredJobs.value.length, detail: 'Last run reported a failure.' },
-    { label: 'Next', value: nextJob.value ? formatShortDate(nextJob.value.state?.next_run_at_ms) : '—', detail: nextJob.value?.name || 'Nothing queued.' },
+const tabs = computed(() => [
+    {
+        label: 'Upcoming',
+        value: 'upcoming' as const,
+        icon: 'i-pixelarticons-clock',
+        count: upcomingJobs.value.length,
+    },
+    {
+        label: 'Active',
+        value: 'active' as const,
+        icon: 'i-pixelarticons-play',
+        count: activeJobs.value.length,
+    },
+    {
+        label: 'All',
+        value: 'all' as const,
+        icon: 'i-pixelarticons-inbox-all',
+        count: cronJobs.value.length,
+    },
 ]);
+
+const upcomingJobs = computed(() =>
+    activeJobs.value.filter((job) => job.state?.next_run_at_ms),
+);
+
+const filteredJobs = computed(() => {
+    switch (activeTab.value) {
+        case 'upcoming':
+            return upcomingJobs.value;
+        case 'active':
+            return activeJobs.value;
+        case 'all':
+        default:
+            return cronJobs.value;
+    }
+});
 
 onMounted(() => {
     void refreshAll();
@@ -444,81 +303,29 @@ async function refreshAll() {
 }
 
 function startCreate() {
-    resetForm();
+    editingJob.value = null;
     formOpen.value = true;
 }
 
 function startEdit(job: CronJob) {
-    resetForm();
-    editingId.value = job.id;
-    form.target = job.payload?.kind === 'agent_cli_run' ? 'agent_cli' : 'or3';
-    form.name = job.name || '';
-    form.message = job.payload?.kind === 'agent_cli_run' ? job.payload?.agent_run?.task || '' : job.payload?.message || '';
-    form.sessionKey = job.payload?.session_key || 'cron:default';
-    form.channel = job.payload?.channel || '';
-    form.to = job.payload?.to || '';
-    form.runnerId = job.payload?.agent_run?.runner_id || defaultRunnerId();
-    form.mode = (job.payload?.agent_run?.mode as typeof form.mode) || 'review';
-    form.isolation = (job.payload?.agent_run?.isolation as typeof form.isolation) || 'host_readonly';
-    form.cwd = job.payload?.agent_run?.cwd || '';
-    form.model = job.payload?.agent_run?.model || '';
-    form.timeoutSeconds = job.payload?.agent_run?.timeout_seconds || undefined;
-    form.maxTurns = job.payload?.agent_run?.max_turns || undefined;
-    form.enabled = job.enabled;
-    form.deleteAfterRun = Boolean(job.delete_after_run);
-    applyScheduleToForm(job.schedule);
+    editingJob.value = job;
     formOpen.value = true;
 }
 
-function cancelForm() {
-    resetForm();
-    formOpen.value = false;
-}
-
-function resetForm() {
-    editingId.value = null;
-    formError.value = null;
-    form.name = '';
-    form.message = '';
-    form.target = 'or3';
-    form.runnerId = defaultRunnerId();
-    form.mode = 'review';
-    form.isolation = 'host_readonly';
-    form.cwd = '';
-    form.model = '';
-    form.timeoutSeconds = undefined;
-    form.maxTurns = undefined;
-    form.preset = 'daily';
-    form.intervalValue = 1;
-    form.intervalUnit = 'hours';
-    form.atLocal = defaultAtLocal();
-    form.cronExpr = '0 9 * * *';
-    form.sessionKey = 'cron:default';
-    form.channel = '';
-    form.to = '';
-    form.enabled = true;
-    form.deleteAfterRun = false;
-}
-
-async function saveForm() {
-    formError.value = null;
-    const validation = validateForm();
-    if (validation) {
-        formError.value = validation;
-        return;
-    }
-    const job = buildJobPayload();
+async function onSave(payload: Partial<CronJob>, isEdit: boolean) {
     try {
-        if (editingId.value) {
-            await updateJob(editingId.value, job);
+        if (isEdit && editingJob.value) {
+            await updateJob(editingJob.value.id, payload);
             toast.add({ title: 'Scheduled task updated', color: 'success', icon: 'i-pixelarticons-check' });
         } else {
-            await createJob(job);
+            await createJob(payload);
             toast.add({ title: 'Scheduled task created', color: 'success', icon: 'i-pixelarticons-check' });
         }
-        cancelForm();
+        formOpen.value = false;
+        editingJob.value = null;
     } catch (error) {
-        formError.value = describeError(error, 'Unable to save scheduled task.');
+        const message = describeError(error, 'Unable to save scheduled task.');
+        toast.add({ title: 'Save failed', description: message, color: 'error' });
     }
 }
 
@@ -548,7 +355,7 @@ async function toggle(job: CronJob) {
 }
 
 async function remove(job: CronJob) {
-    if (!confirm(`Delete scheduled task “${job.name || job.id}”?`)) return;
+    if (!confirm(`Delete scheduled task "${job.name || job.id}"?`)) return;
     actionId.value = `${job.id}:delete`;
     try {
         await deleteJob(job.id);
@@ -560,97 +367,37 @@ async function remove(job: CronJob) {
     }
 }
 
-function validateForm() {
-    if (!form.name.trim()) return 'Give this scheduled task a name.';
-    if (!form.message.trim()) return form.target === 'agent_cli' ? 'Describe what the external agent should do when the task runs.' : 'Describe what OR3 should do when the task runs.';
-    if (form.target === 'agent_cli' && !form.runnerId.trim()) return 'Choose an external agent runner.';
-    if (form.preset === 'interval' && (!Number.isFinite(form.intervalValue) || form.intervalValue <= 0)) return 'Choose an interval greater than zero.';
-    if (form.preset === 'once' && Number.isNaN(Date.parse(form.atLocal))) return 'Choose a valid run date and time.';
-    if (form.preset === 'custom' && !form.cronExpr.trim()) return 'Enter a cron expression.';
-    return null;
-}
-
-function buildJobPayload(): Partial<CronJob> {
-    const payload = form.target === 'agent_cli'
-        ? {
-            kind: 'agent_cli_run',
-            session_key: form.sessionKey.trim() || undefined,
-            agent_run: {
-                runner_id: form.runnerId.trim(),
-                task: form.message.trim(),
-                mode: form.mode,
-                isolation: form.isolation,
-                cwd: form.cwd.trim() || undefined,
-                model: form.model.trim() || undefined,
-                timeout_seconds: positiveNumberOrUndefined(form.timeoutSeconds),
-                max_turns: positiveNumberOrUndefined(form.maxTurns),
+function jobMenuItems(job: CronJob) {
+    const isBusy = Boolean(actionId.value?.startsWith(`${job.id}:`));
+    return [
+        [
+            {
+                label: 'Run now',
+                icon: 'i-pixelarticons-play',
+                disabled: isBusy,
+                onSelect: () => run(job),
             },
-        }
-        : {
-            kind: 'agent_turn',
-            message: form.message.trim(),
-            deliver: Boolean(form.channel.trim() || form.to.trim()),
-            channel: form.channel.trim() || undefined,
-            to: form.to.trim() || undefined,
-            session_key: form.sessionKey.trim() || undefined,
-        };
-    return {
-        name: form.name.trim(),
-        enabled: form.enabled,
-        schedule: buildSchedule(),
-        payload,
-        delete_after_run: form.deleteAfterRun,
-    };
-}
-
-function buildSchedule(): CronSchedule {
-    switch (form.preset) {
-        case 'hourly':
-            return { kind: 'every', every_ms: 60 * 60 * 1000 };
-        case 'daily':
-            return { kind: 'cron', expr: '0 9 * * *' };
-        case 'weekdays':
-            return { kind: 'cron', expr: '0 9 * * 1-5' };
-        case 'weekly':
-            return { kind: 'cron', expr: '0 9 * * 1' };
-        case 'interval':
-            return { kind: 'every', every_ms: intervalToMs(form.intervalValue, form.intervalUnit) };
-        case 'once':
-            return { kind: 'at', at_ms: Date.parse(form.atLocal) };
-        case 'custom':
-            return { kind: 'cron', expr: form.cronExpr.trim() };
-    }
-}
-
-function applyScheduleToForm(schedule: CronSchedule) {
-    if (schedule.kind === 'at') {
-        form.preset = 'once';
-        form.atLocal = toLocalInput(schedule.at_ms || Date.now());
-        return;
-    }
-    if (schedule.kind === 'every') {
-        form.preset = 'interval';
-        const everyMs = schedule.every_ms || 60 * 60 * 1000;
-        if (everyMs % (24 * 60 * 60 * 1000) === 0) {
-            form.intervalUnit = 'days';
-            form.intervalValue = everyMs / (24 * 60 * 60 * 1000);
-        } else if (everyMs % (60 * 60 * 1000) === 0) {
-            form.intervalUnit = 'hours';
-            form.intervalValue = everyMs / (60 * 60 * 1000);
-        } else {
-            form.intervalUnit = 'minutes';
-            form.intervalValue = Math.max(1, Math.round(everyMs / (60 * 1000)));
-        }
-        return;
-    }
-    const expression = schedule.expr || '';
-    if (expression === '0 9 * * *') form.preset = 'daily';
-    else if (expression === '0 9 * * 1-5') form.preset = 'weekdays';
-    else if (expression === '0 9 * * 1') form.preset = 'weekly';
-    else {
-        form.preset = 'custom';
-        form.cronExpr = expression;
-    }
+            {
+                label: job.enabled ? 'Pause' : 'Resume',
+                icon: job.enabled ? 'i-pixelarticons-pause' : 'i-pixelarticons-play',
+                disabled: isBusy,
+                onSelect: () => toggle(job),
+            },
+        ],
+        [
+            {
+                label: 'Edit',
+                icon: 'i-pixelarticons-edit',
+                onSelect: () => startEdit(job),
+            },
+            {
+                label: 'Delete',
+                icon: 'i-pixelarticons-trash',
+                disabled: isBusy,
+                onSelect: () => remove(job),
+            },
+        ],
+    ];
 }
 
 function describeSchedule(job: CronJob) {
@@ -671,35 +418,11 @@ function agentRunnerLabel(id?: string) {
     return runner?.display_name || id;
 }
 
-function defaultRunnerId() {
-    return externalRunnerOptions.value[0]?.id?.toString() || '';
-}
-
-function positiveNumberOrUndefined(value?: number) {
-    return Number.isFinite(value) && Number(value) > 0 ? Number(value) : undefined;
-}
-
-function onCwdSelected(path: string) {
-    form.cwd = path;
-}
-
-function describeScheduleFromPreset() {
-    switch (form.preset) {
-        case 'hourly': return 'Runs every hour.';
-        case 'daily': return 'Runs every day at 9 AM.';
-        case 'weekdays': return 'Runs Monday through Friday at 9 AM.';
-        case 'weekly': return 'Runs every Monday at 9 AM.';
-        case 'interval': return `Runs every ${form.intervalValue} ${form.intervalUnit}.`;
-        case 'once': return `Runs once at ${formatDate(Date.parse(form.atLocal))}.`;
-        case 'custom': return form.cronExpr || 'Custom cron expression.';
-    }
-}
-
 function statusLabel(job: CronJob) {
     if (!job.enabled) return 'paused';
     if (job.state?.last_status === 'error') return 'error';
     if (job.state?.next_run_at_ms) return 'scheduled';
-    return 'enabled';
+    return 'active';
 }
 
 function statusTone(job: CronJob): 'green' | 'amber' | 'danger' | 'neutral' {
@@ -709,20 +432,9 @@ function statusTone(job: CronJob): 'green' | 'amber' | 'danger' | 'neutral' {
     return 'green';
 }
 
-function formatLastRun(job: CronJob) {
-    if (!job.state?.last_run_at_ms) return 'Never';
-    const suffix = job.state.last_status ? ` · ${job.state.last_status}` : '';
-    return `${formatDate(job.state.last_run_at_ms)}${suffix}`;
-}
-
 function formatDate(value?: number | null) {
     if (!value) return 'Not scheduled';
     return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
-}
-
-function formatShortDate(value?: number | null) {
-    if (!value) return '—';
-    return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric' }).format(new Date(value));
 }
 
 function formatDuration(ms: number) {
@@ -732,21 +444,6 @@ function formatDuration(ms: number) {
     return `${Math.round(ms / 1000)}s`;
 }
 
-function intervalToMs(value: number, unit: 'minutes' | 'hours' | 'days') {
-    const multiplier = unit === 'days' ? 24 * 60 * 60 * 1000 : unit === 'hours' ? 60 * 60 * 1000 : 60 * 1000;
-    return Math.max(1, value) * multiplier;
-}
-
-function defaultAtLocal() {
-    return toLocalInput(Date.now() + 60 * 60 * 1000);
-}
-
-function toLocalInput(value: number) {
-    const date = new Date(value);
-    date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
-    return date.toISOString().slice(0, 16);
-}
-
 function describeError(error: unknown, fallback: string) {
     const appError = error as Or3AppError | undefined;
     return appError?.message || fallback;
@@ -754,265 +451,548 @@ function describeError(error: unknown, fallback: string) {
 </script>
 
 <style scoped>
-.or3-scheduled-hero {
-    display: flex;
-    align-items: stretch;
-    justify-content: space-between;
-    gap: 1rem;
+/* ── Hero ───────────────────────────────────────────────────────── */
+.or3-sched-command-center {
+    position: relative;
     overflow: hidden;
     background:
-        radial-gradient(circle at 92% 12%, color-mix(in srgb, var(--or3-green-soft) 72%, transparent) 0%, transparent 34%),
+        radial-gradient(
+            120% 90% at 100% 0%,
+            color-mix(in srgb, var(--or3-green) 18%, transparent) 0%,
+            transparent 55%
+        ),
+        radial-gradient(
+            90% 70% at 0% 0%,
+            color-mix(in srgb, var(--or3-green) 8%, transparent) 0%,
+            transparent 60%
+        ),
         var(--or3-surface);
 }
 
-.or3-scheduled-hero__copy {
+.or3-sched-command-center::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image: radial-gradient(
+        color-mix(in srgb, var(--or3-green) 22%, transparent) 1px,
+        transparent 1px
+    );
+    background-size: 14px 14px;
+    background-position: top right;
+    mask-image: radial-gradient(
+        70% 60% at 100% 0%,
+        rgba(0, 0, 0, 0.55),
+        transparent 70%
+    );
+    opacity: 0.55;
+}
+
+.or3-sched-command-center > * {
+    position: relative;
+}
+
+.or3-sched-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 24px;
+    align-items: center;
+}
+
+.or3-sched-hero__copy {
+    min-width: 0;
+}
+
+.or3-sched-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family:
+        'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    color: var(--or3-green-dark);
+    text-transform: uppercase;
+}
+
+.or3-sched-title {
+    margin-top: 6px;
+    font-family: 'IBM Plex Serif', 'Georgia', ui-serif, serif;
+    font-size: clamp(1.65rem, 5vw, 2.15rem);
+    font-weight: 600;
+    line-height: 1.05;
+    letter-spacing: -0.01em;
+    color: var(--or3-text);
+}
+
+.or3-sched-title__accent {
+    display: inline;
+    color: var(--or3-green-dark);
+    font-style: italic;
+}
+
+.or3-sched-sub {
+    margin-top: 10px;
+    max-width: 32ch;
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: var(--or3-text-muted);
+}
+
+.or3-sched-actions {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.7rem;
+    margin-top: 1rem;
+}
+
+.or3-sched-actions :deep(button) {
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.or3-sched-btn-primary :deep(button),
+.or3-sched-btn-primary {
+    box-shadow: 0 6px 18px color-mix(in srgb, var(--or3-green) 28%, transparent);
+}
+
+.or3-sched-btn-secondary {
+    background: rgb(255 255 255 / 0.85);
+}
+
+.or3-sched-stage {
+    position: relative;
+    width: 192px;
+    height: 192px;
+    flex-shrink: 0;
+}
+
+.or3-sched-stage__podium {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.or3-sched-stage__glow {
+    position: absolute;
+    bottom: 28px;
+    left: 50%;
+    width: 130px;
+    height: 28px;
+    transform: translateX(-50%);
+    border-radius: 999px;
+    background: radial-gradient(
+        ellipse at center,
+        color-mix(in srgb, var(--or3-green) 55%, transparent) 0%,
+        transparent 70%
+    );
+    filter: blur(2px);
+}
+
+.or3-sched-stage__mascot {
+    position: relative;
+    z-index: 1;
+}
+
+.or3-sched-stage__sparkle {
+    position: absolute;
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: var(--or3-green);
+    opacity: 0.7;
+    box-shadow: 0 0 8px color-mix(in srgb, var(--or3-green) 60%, transparent);
+}
+
+.or3-sched-stage__sparkle--a {
+    top: 18px;
+    right: 30px;
+}
+
+.or3-sched-stage__sparkle--b {
+    top: 82px;
+    right: 6px;
+    width: 4px;
+    height: 4px;
+}
+
+.or3-sched-stage__sparkle--c {
+    top: 16px;
+    left: 46px;
+    width: 4px;
+    height: 4px;
+}
+
+@media (max-width: 560px) {
+    .or3-sched-hero {
+        gap: 16px;
+    }
+
+    .or3-sched-stage {
+        width: 144px;
+        height: 144px;
+    }
+
+    .or3-sched-stage__glow {
+        bottom: 16px;
+        width: 100px;
+        height: 22px;
+    }
+
+    .or3-sched-title {
+        font-size: 1.55rem;
+    }
+
+    .or3-sched-actions :deep(button) {
+        flex: 0 1 auto;
+    }
+}
+
+/* ── Tabs (underline style) ─────────────────────────────────────── */
+.or3-sched-tabs {
+    display: flex;
+    align-items: stretch;
+    gap: 0.25rem;
+    border-bottom: 1px solid var(--or3-border);
+    padding: 0 0.25rem;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.or3-sched-tabs::-webkit-scrollbar {
+    display: none;
+}
+
+.or3-sched-tab {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    flex-shrink: 0;
+    padding: 0.85rem 0.95rem;
+    margin-bottom: -1px;
+    border-bottom: 2px solid transparent;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--or3-text-muted);
+    background: transparent;
+    transition: color 140ms ease, border-color 140ms ease;
+    white-space: nowrap;
+}
+
+.or3-sched-tab:hover {
+    color: var(--or3-text);
+}
+
+.or3-sched-tab[aria-pressed='true'] {
+    color: var(--or3-green-dark);
+    border-bottom-color: var(--or3-green);
+    font-weight: 600;
+}
+
+.or3-sched-tab__icon {
+    width: 1rem;
+    height: 1rem;
+}
+
+.or3-sched-tab__count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.4rem;
+    height: 1.4rem;
+    padding: 0 0.45rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--or3-surface-soft) 80%, transparent);
+    color: var(--or3-text-muted);
+    font-size: 0.72rem;
+    font-weight: 600;
+    line-height: 1;
+}
+
+.or3-sched-tab[aria-pressed='true'] .or3-sched-tab__count {
+    background: var(--or3-green-soft);
+    color: var(--or3-green-dark);
+}
+
+/* ── Cards ──────────────────────────────────────────────────────── */
+.or3-sched-card {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 0.95rem;
+    align-items: flex-start;
+    border-radius: var(--or3-radius-card);
+    border: 1px solid var(--or3-border);
+    background: color-mix(in srgb, var(--or3-surface) 94%, white 6%);
+    box-shadow: var(--or3-shadow-soft);
+    padding: 1rem 1.1rem;
+    cursor: pointer;
+    transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.or3-sched-card:hover {
+    border-color: color-mix(in srgb, var(--or3-green) 35%, var(--or3-border) 65%);
+    box-shadow: 0 6px 22px rgba(42, 35, 25, 0.07);
+    transform: translateY(-1px);
+}
+
+.or3-sched-card:focus-visible {
+    outline: none;
+    border-color: var(--or3-green);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--or3-green-soft) 80%, transparent);
+}
+
+.or3-sched-card__icon {
+    display: grid;
+    place-items: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    flex-shrink: 0;
+    border-radius: 0.85rem;
+    border: 1px solid color-mix(in srgb, var(--or3-green) 18%, var(--or3-border) 82%);
+    background: var(--or3-green-soft);
+    color: var(--or3-green-dark);
+}
+
+.or3-sched-card__icon--amber {
+    background: var(--or3-amber-soft);
+    color: #8a5a08;
+    border-color: color-mix(in srgb, var(--or3-amber) 28%, transparent);
+}
+
+.or3-sched-card__icon--danger {
+    background: rgb(254 226 226);
+    color: rgb(153 27 27);
+    border-color: rgb(252 165 165);
+}
+
+.or3-sched-card__icon--neutral {
+    background: var(--or3-surface-soft);
+    color: var(--or3-text-muted);
+    border-color: var(--or3-border);
+}
+
+.or3-sched-card__body {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.or3-sched-card__heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    min-width: 0;
+}
+
+.or3-sched-card__title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.95rem;
+    font-weight: 700;
+    letter-spacing: -0.005em;
+    color: var(--or3-text);
+}
+
+.or3-sched-card__status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-shrink: 0;
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--or3-text-muted);
+    text-transform: capitalize;
+}
+
+.or3-sched-card__status-dot {
+    display: block;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 999px;
+    background: currentColor;
+    box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 18%, transparent);
+}
+
+.or3-sched-card__status--green {
+    color: var(--or3-green);
+}
+
+.or3-sched-card__status--amber {
+    color: var(--or3-amber);
+}
+
+.or3-sched-card__status--danger {
+    color: rgb(220 38 38);
+}
+
+.or3-sched-card__status--neutral {
+    color: var(--or3-text-muted);
+}
+
+.or3-sched-card__desc {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    font-size: 0.83rem;
+    line-height: 1.5;
+    color: var(--or3-text-muted);
+}
+
+.or3-sched-card__chips {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 0.25rem;
+}
+
+.or3-sched-card__menu {
+    display: flex;
+    align-items: flex-start;
+    flex-shrink: 0;
+}
+
+/* Chips */
+.or3-sched-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.3rem 0.65rem;
+    border-radius: 999px;
+    border: 1px solid var(--or3-border);
+    background: rgb(255 255 255 / 0.7);
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: var(--or3-text-muted);
+    white-space: nowrap;
+}
+
+.or3-sched-chip--schedule {
+    background: color-mix(in srgb, var(--or3-green-soft) 85%, white 15%);
+    border-color: color-mix(in srgb, var(--or3-green) 22%, transparent);
+    color: var(--or3-green-dark);
+}
+
+/* ── Empty state ────────────────────────────────────────────────── */
+.or3-sched-empty {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    border-radius: var(--or3-radius-card);
+    border: 1px dashed color-mix(in srgb, var(--or3-border) 80%, var(--or3-green) 20%);
+    background:
+        radial-gradient(circle at 12% 50%, color-mix(in srgb, var(--or3-green-soft) 35%, transparent) 0%, transparent 50%),
+        color-mix(in srgb, var(--or3-surface) 80%, white 20%);
+    padding: 1.1rem 1.25rem;
+}
+
+.or3-sched-empty__icon {
+    display: grid;
+    place-items: center;
+    width: 2.6rem;
+    height: 2.6rem;
+    flex-shrink: 0;
+    border-radius: 0.85rem;
+    background: var(--or3-green-soft);
+    color: var(--or3-green-dark);
+    border: 1px solid color-mix(in srgb, var(--or3-green) 22%, transparent);
+}
+
+.or3-sched-empty__copy {
     min-width: 0;
     flex: 1 1 auto;
 }
 
-.or3-scheduled-hero__status {
-    min-width: 10rem;
-    border-radius: 1rem;
-    border: 1px solid var(--or3-border);
-    background: rgb(255 255 255 / 0.66);
-    padding: 1rem;
-}
-
-.or3-scheduled-eyebrow {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
+.or3-sched-empty__title {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 0.72rem;
+    font-size: 0.95rem;
     font-weight: 700;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--or3-green-dark);
-}
-
-.or3-scheduled-title {
-    margin-top: 0.7rem;
-    max-width: 13ch;
-    font-family: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
-    font-size: clamp(2rem, 8vw, 3rem);
-    font-weight: 700;
-    line-height: 0.98;
-    letter-spacing: -0.04em;
     color: var(--or3-text);
 }
 
-.or3-scheduled-subtitle {
-    margin-top: 0.75rem;
-    max-width: 38rem;
+.or3-sched-empty__subtitle {
+    margin-top: 0.3rem;
+    font-size: 0.83rem;
+    line-height: 1.5;
     color: var(--or3-text-muted);
-    line-height: 1.65;
+    max-width: 38ch;
 }
 
-.or3-scheduled-actions {
-    margin-top: 1rem;
+.or3-sched-empty__btn {
+    flex-shrink: 0;
+}
+
+@media (max-width: 520px) {
+    .or3-sched-empty {
+        flex-wrap: wrap;
+    }
+    .or3-sched-empty__btn {
+        width: 100%;
+        justify-content: center;
+    }
+}
+
+/* ── Tip ────────────────────────────────────────────────────────── */
+.or3-sched-tip {
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.65rem;
-}
-
-.or3-metric-card {
-    min-height: 7rem;
-}
-
-.or3-field {
-    display: grid;
-    gap: 0.4rem;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 0.74rem;
-    font-weight: 700;
-    color: var(--or3-text);
-}
-
-.or3-input,
-.or3-textarea {
-    width: 100%;
-    border-radius: 1rem;
-    border: 1px solid var(--or3-border);
-    background: rgb(255 255 255 / 0.78);
-    padding: 0.75rem 0.9rem;
-    font-family: inherit;
-    font-size: 0.9rem;
-    font-weight: 500;
-    color: var(--or3-text);
-    outline: none;
-}
-
-.or3-textarea {
-    resize: vertical;
-    line-height: 1.55;
-}
-
-.or3-input:focus,
-.or3-textarea:focus {
-    border-color: var(--or3-green);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--or3-green-soft) 78%, transparent);
-}
-
-.or3-cwd-trigger {
-    display: flex;
-    width: 100%;
-    min-height: 2.9rem;
     align-items: center;
     justify-content: space-between;
-    gap: 0.65rem;
-    border-radius: 1rem;
-    border: 1px solid var(--or3-border);
-    background: rgb(255 255 255 / 0.78);
-    padding: 0.75rem 0.9rem;
-    font-family: inherit;
-    font-size: 0.9rem;
-    font-weight: 500;
-    color: var(--or3-text);
-    text-align: left;
-    outline: none;
-    transition:
-        border-color 140ms ease,
-        background 140ms ease,
-        box-shadow 140ms ease;
+    gap: 1rem;
+    flex-wrap: wrap;
+    border-radius: var(--or3-radius-control);
+    border: 1px solid color-mix(in srgb, var(--or3-amber) 22%, var(--or3-border) 78%);
+    background: color-mix(in srgb, var(--or3-amber-soft) 30%, var(--or3-surface) 70%);
+    padding: 0.75rem 1rem;
 }
 
-.or3-cwd-trigger:hover {
-    background: var(--or3-surface-soft);
-}
-
-.or3-cwd-trigger:focus-visible {
-    border-color: var(--or3-green);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--or3-green-soft) 78%, transparent);
-}
-
-.or3-preview-box {
-    display: grid;
-    align-content: center;
-    gap: 0.35rem;
-    border-radius: 1rem;
-    border: 1px dashed var(--or3-border);
-    background: rgb(255 255 255 / 0.62);
-    padding: 0.75rem 0.9rem;
+.or3-sched-tip__text {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
     font-size: 0.8rem;
     color: var(--or3-text-muted);
 }
 
-.or3-preview-box span {
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 0.68rem;
-    font-weight: 700;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
+.or3-sched-tip__text strong {
+    color: var(--or3-text);
+    font-weight: 600;
+}
+
+.or3-sched-tip__link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.78rem;
+    font-weight: 600;
     color: var(--or3-green-dark);
 }
 
-.or3-toggle-row {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.75rem;
-    border-radius: 1rem;
-    border: 1px solid var(--or3-border);
-    background: rgb(255 255 255 / 0.72);
-    padding: 0.85rem;
+.or3-sched-tip__link:hover {
+    text-decoration: underline;
+    text-underline-offset: 2px;
 }
 
-.or3-toggle-row strong,
-.or3-toggle-row small {
-    display: block;
-}
-
-.or3-toggle-row strong {
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 0.82rem;
-    color: var(--or3-text);
-}
-
-.or3-toggle-row small {
-    margin-top: 0.2rem;
-    font-size: 0.74rem;
-    line-height: 1.45;
-    color: var(--or3-text-muted);
-}
-
-.or3-error-box {
+/* ── Error ──────────────────────────────────────────────────────── */
+.or3-sched-error {
     display: flex;
     align-items: flex-start;
     gap: 0.5rem;
-    border-radius: 1rem;
+    border-radius: var(--or3-radius-card);
     border: 1px solid rgb(254 202 202);
     background: rgb(254 242 242 / 0.9);
     padding: 0.75rem 0.9rem;
     font-size: 0.8rem;
     color: rgb(153 27 27);
-}
-
-.or3-job-card {
-    display: grid;
-    gap: 1rem;
-}
-
-.or3-job-card__main {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.85rem;
-}
-
-.or3-job-card__icon {
-    display: grid;
-    place-items: center;
-    width: 2.6rem;
-    height: 2.6rem;
-    border-radius: 0.9rem;
-    border: 1px solid var(--or3-border);
-    background: white;
-    color: var(--or3-text-muted);
-}
-
-.or3-job-card__icon--active {
-    background: var(--or3-green-soft);
-    color: var(--or3-green-dark);
-}
-
-.or3-job-meta {
-    display: grid;
-    gap: 0.2rem;
-    min-width: 0;
-    border-radius: 0.85rem;
-    background: rgb(255 255 255 / 0.66);
-    padding: 0.55rem 0.65rem;
-    color: var(--or3-text-muted);
-}
-
-.or3-job-meta strong {
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 0.65rem;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--or3-text);
-}
-
-.or3-job-actions {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    gap: 0.5rem;
-}
-
-@media (max-width: 640px) {
-    .or3-scheduled-hero {
-        display: grid;
-    }
-
-    .or3-scheduled-hero__status {
-        min-width: 0;
-    }
-
-    .or3-job-card__main {
-        gap: 0.65rem;
-    }
-
-    .or3-job-actions {
-        justify-content: stretch;
-    }
 }
 </style>
