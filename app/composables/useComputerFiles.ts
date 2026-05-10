@@ -16,6 +16,12 @@ interface FileActionResponse {
   status?: string
 }
 
+interface FileUploadResponse {
+  path?: string
+  root_id?: string
+  status?: string
+}
+
 interface FileErrorPayload {
   code?: string
   error?: string
@@ -35,6 +41,19 @@ function sortEntries(items: FileEntry[]) {
     if (left.type !== right.type) return left.type === 'directory' ? -1 : 1
     return left.name.localeCompare(right.name, undefined, { numeric: true, sensitivity: 'base' })
   })
+}
+
+function normalizePortalPath(path?: string | null) {
+  const trimmed = String(path || '').trim().replace(/^\.\//, '').replace(/^\/+|\/+$/g, '')
+  return trimmed || '.'
+}
+
+function joinPortalPath(parent: string, child: string) {
+  const normalizedParent = normalizePortalPath(parent)
+  const normalizedChild = String(child || '').trim().replace(/^\.\//, '').replace(/^\/+|\/+$/g, '')
+  if (!normalizedChild) return normalizedParent
+  if (normalizedParent === '.') return normalizedChild
+  return `${normalizedParent}/${normalizedChild}`
 }
 
 async function readManualFetchError(response: Response) {
@@ -78,12 +97,16 @@ export function useComputerFiles() {
     return headers
   }
 
+  async function fetchRoots() {
+    return await authSession.retryWithAuth((onAuthChallenge) => api.request<{ items?: FileRoot[] } | FileRoot[]>('/internal/v1/files/roots', {
+      onAuthChallenge,
+    }), 'files-browse')
+  }
+
   async function loadRoots() {
     fileError.value = null
     try {
-      const response = await authSession.retryWithAuth((onAuthChallenge) => api.request<{ items?: FileRoot[] } | FileRoot[]>('/internal/v1/files/roots', {
-        onAuthChallenge,
-      }), 'files-browse')
+      const response = await fetchRoots()
       const nextRoots = Array.isArray(response) ? response : response.items ?? []
       roots.value = nextRoots
       if (!nextRoots.some((root) => root.id === currentRootId.value)) {
@@ -170,6 +193,38 @@ export function useComputerFiles() {
     return response
   }
 
+  async function createDirectoryAtPath(name: string, rootId = currentRootId.value, path = currentPath.value) {
+    fileError.value = null
+    return await authSession.retryWithAuth((onAuthChallenge) => api.request<FileActionResponse>('/internal/v1/files/mkdir', {
+      method: 'POST',
+      body: { root_id: rootId, path: normalizePortalPath(path), name },
+      onAuthChallenge,
+    }), 'files-create-folder')
+  }
+
+  async function ensureDirectoryPath(path: string, rootId = currentRootId.value) {
+    const normalizedPath = normalizePortalPath(path)
+    if (normalizedPath === '.') {
+      return { rootId, path: normalizedPath }
+    }
+
+    const segments = normalizedPath.split('/').filter(Boolean)
+    let parentPath = '.'
+
+    for (const segment of segments) {
+      const nextPath = joinPortalPath(parentPath, segment)
+      const existing = await statPath(rootId, nextPath)
+      if (!existing) {
+        await createDirectoryAtPath(segment, rootId, parentPath)
+      } else if (existing.type !== 'directory') {
+        throw new Error(`Cannot create folder inside ${nextPath} because that path is already a file.`)
+      }
+      parentPath = nextPath
+    }
+
+    return { rootId, path: normalizedPath }
+  }
+
   async function downloadFile(entry: Pick<FileEntry, 'path'>, rootId = currentRootId.value) {
     fileError.value = null
     const params = new URLSearchParams({ root_id: rootId, path: entry.path })
@@ -222,6 +277,45 @@ export function useComputerFiles() {
     }
   }
 
+  async function uploadFilesToPath(filesToUpload: FileList | File[], rootId = currentRootId.value, path = currentPath.value) {
+    if (!filesToUpload.length) return [] as FileUploadResponse[]
+    loadingFiles.value = true
+    fileError.value = null
+
+    try {
+      const selectedFiles = Array.from(filesToUpload)
+      const uploaded: FileUploadResponse[] = []
+      const normalizedPath = normalizePortalPath(path)
+
+      for (const file of selectedFiles) {
+        const response = await authSession.retryWithAuth(async () => {
+          const formData = new FormData()
+          formData.set('root_id', rootId)
+          formData.set('path', normalizedPath)
+          formData.set('file', file)
+
+          const response = await fetch(api.buildUrl('/internal/v1/files/upload'), {
+            method: 'POST',
+            headers: activeRequestHeaders({ Accept: 'application/json' }),
+            body: formData,
+          })
+
+          if (!response.ok) throw await readManualFetchError(response)
+          return await response.json().catch(() => ({ root_id: rootId, path: joinPortalPath(normalizedPath, file.name), status: 'uploaded' })) as FileUploadResponse
+        }, 'files-upload')
+
+        uploaded.push(response)
+      }
+
+      return uploaded
+    } catch (error: any) {
+      fileError.value = error?.message ?? 'Upload failed.'
+      throw error
+    } finally {
+      loadingFiles.value = false
+    }
+  }
+
   async function openDirectory(entry: FileEntry) {
     if (entry.type !== 'directory') return
     await listDirectory(currentRootId.value, entry.path)
@@ -243,13 +337,17 @@ export function useComputerFiles() {
     loadingFiles,
     searchingFiles,
     fileError,
+    fetchRoots,
     loadRoots,
     listDirectory,
     searchWorkspaceFiles,
     statPath,
     createDirectory,
+    createDirectoryAtPath,
+    ensureDirectoryPath,
     downloadFile,
     uploadFiles,
+    uploadFilesToPath,
     openDirectory,
     copyPath,
   }

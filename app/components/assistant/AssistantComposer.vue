@@ -251,6 +251,7 @@ import {
     useFileMentionSuggestions,
     type FileMentionSuggestionItem,
 } from '../../composables/useFileMentionSuggestions';
+import { useComputerFiles } from '../../composables/useComputerFiles';
 import type {
     AssistantSendPayload,
     ChatAttachment,
@@ -286,6 +287,7 @@ const emit = defineEmits<{
 
 interface DraftAttachment extends ChatAttachment {
     content?: string;
+    file?: File;
     thumbnailUrl?: string;
     objectUrl?: string;
 }
@@ -349,6 +351,8 @@ const {
     reset: resetMentionSearch,
 } = useFileMentionSuggestions();
 const { filterCommands, findCommand, runCommand } = useChatCommands();
+const { fetchRoots, ensureDirectoryPath, uploadFilesToPath } = useComputerFiles();
+const toast = useToast();
 
 const displayedAttachments = computed(() => [
     ...workspaceMentionAttachments.value,
@@ -640,12 +644,45 @@ function removeAttachment(id: string) {
 }
 
 function buildTransportText() {
+    return buildTransportTextForAttachments();
+}
+
+function localFileAttachments() {
+    return manualAttachments.value.filter(
+        (attachment) =>
+            attachment.kind === 'file' && attachment.source !== 'workspace',
+    );
+}
+
+function localTextAttachments() {
+    return manualAttachments.value.filter(
+        (attachment) => attachment.kind === 'text',
+    );
+}
+
+function workspaceFileAttachments(extraFiles: DraftAttachment[] = []) {
+    return [
+        ...workspaceMentionAttachments.value,
+        ...workspacePickedAttachments.value,
+        ...extraFiles,
+    ];
+}
+
+function payloadAttachments(extraWorkspaceFiles: DraftAttachment[] = []) {
+    return [
+        ...workspaceFileAttachments(extraWorkspaceFiles),
+        ...localTextAttachments(),
+        ...(extraWorkspaceFiles.length ? [] : localFileAttachments()),
+    ];
+}
+
+function buildTransportTextForAttachments(extraWorkspaceFiles: DraftAttachment[] = []) {
     const sections: string[] = [];
     const promptText = formState.text.trim();
     if (promptText) sections.push(promptText);
 
-    const textAttachments = manualAttachments.value.filter(
-        (attachment) => attachment.kind === 'text' && attachment.content,
+    const textAttachments = localTextAttachments().filter(
+        (attachment) => attachment.content,
     );
     if (textAttachments.length) {
         sections.push(
@@ -659,10 +696,7 @@ function buildTransportText() {
         );
     }
 
-    const workspaceAttachments = [
-        ...workspaceMentionAttachments.value,
-        ...workspacePickedAttachments.value,
-    ];
+    const workspaceAttachments = workspaceFileAttachments(extraWorkspaceFiles);
     if (workspaceAttachments.length) {
         sections.push(
             [
@@ -675,10 +709,7 @@ function buildTransportText() {
         );
     }
 
-    const localFiles = manualAttachments.value.filter(
-        (attachment) =>
-            attachment.kind === 'file' && attachment.source !== 'workspace',
-    );
+    const localFiles = extraWorkspaceFiles.length ? [] : localFileAttachments();
     if (localFiles.length) {
         sections.push(
             `Local files selected in or3-app (names only, contents not uploaded): ${localFiles.map((attachment) => attachment.name).join(', ')}`,
@@ -695,6 +726,77 @@ function visiblePayloadText() {
         return `Shared ${displayedAttachments.value[0]?.name || 'an attachment'} for context.`;
     }
     return `Shared ${displayedAttachments.value.length} attachments for context.`;
+}
+
+function createUploadBatchPath() {
+    const stamp = new Date()
+        .toISOString()
+        .replace(/[:.]/g, '-')
+        .replace('T', '_')
+        .replace('Z', '');
+    const suffix = Math.random().toString(36).slice(2, 8);
+    return `.uploads/${stamp}-${suffix}`;
+}
+
+function toPayloadAttachment(attachment: DraftAttachment): ChatAttachment {
+    const {
+        content: _content,
+        file: _file,
+        thumbnailUrl: _thumbnailUrl,
+        objectUrl: _objectUrl,
+        ...rest
+    } = attachment;
+    return rest;
+}
+
+async function stageLocalFilesForExternalRunner() {
+    const attachments = localFileAttachments().filter(
+        (attachment): attachment is DraftAttachment & { file: File } =>
+            attachment.file instanceof File,
+    );
+    if (!attachments.length || selectedRunnerId.value === 'or3-intern') {
+        return [] as DraftAttachment[];
+    }
+
+    const rootResponse = await fetchRoots();
+    const roots = Array.isArray(rootResponse)
+        ? rootResponse
+        : (rootResponse.items ?? []);
+    const workspaceRoot = roots.find((root) => root.id === 'workspace');
+    if (!workspaceRoot) {
+        throw new Error(
+            'This computer does not expose a writable workspace root for staging runner attachments.',
+        );
+    }
+    if (workspaceRoot.writable === false) {
+        throw new Error(
+            'The workspace root is read-only, so external runners cannot access uploaded attachments.',
+        );
+    }
+
+    const batchPath = createUploadBatchPath();
+    await ensureDirectoryPath(batchPath, workspaceRoot.id);
+    const uploads = await uploadFilesToPath(
+        attachments.map((attachment) => attachment.file),
+        workspaceRoot.id,
+        batchPath,
+    );
+
+    return attachments.map((attachment, index) => {
+        const uploaded = uploads[index];
+        const uploadedPath = uploaded?.path || `${batchPath}/${attachment.name}`;
+        return {
+            id: `${workspaceRoot.id}:${uploadedPath}`,
+            kind: 'file' as const,
+            source: 'workspace' as const,
+            name: attachment.name,
+            preview: uploadedPath,
+            mimeType: attachment.mimeType,
+            size: attachment.size,
+            path: uploadedPath,
+            rootId: workspaceRoot.id,
+        };
+    });
 }
 
 async function maybeRunSlashCommandFromInput() {
@@ -714,17 +816,29 @@ async function submit() {
     if (await maybeRunSlashCommandFromInput()) return;
     if (!canSend.value) return;
 
+    let stagedWorkspaceAttachments: DraftAttachment[] = [];
+    try {
+        stagedWorkspaceAttachments = await stageLocalFilesForExternalRunner();
+    } catch (error: any) {
+        toast.add({
+            title: 'Could not stage attachments',
+            description:
+                error?.message ||
+                'OR3 could not upload those files into the workspace for the external runner.',
+            color: 'error',
+            icon: 'i-pixelarticons-warning-box',
+        });
+        return;
+    }
+
+    const attachments = payloadAttachments(stagedWorkspaceAttachments);
+
     const payload: AssistantSendPayload = {
         text: visiblePayloadText(),
-        transportText: buildTransportText(),
-        attachments: displayedAttachments.value.map(
-            ({
-                content: _content,
-                thumbnailUrl: _thumbnailUrl,
-                objectUrl: _objectUrl,
-                ...attachment
-            }) => attachment,
+        transportText: buildTransportTextForAttachments(
+            stagedWorkspaceAttachments,
         ),
+        attachments: attachments.map(toPayloadAttachment),
         runnerId: selectedRunnerId.value,
         runnerLabel: runnerOptions.value.find(
             (runner) => runner.id === selectedRunnerId.value,
@@ -745,6 +859,7 @@ function addFiles(files: File[]) {
             id: attachmentId(),
             kind: 'file',
             name: file.name,
+            file,
             thumbnailUrl: objectUrl,
             objectUrl,
             preview: file.type
