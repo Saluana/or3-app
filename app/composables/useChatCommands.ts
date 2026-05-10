@@ -21,6 +21,73 @@ function recentConversationSummary(entries: Array<{ role: string; content: strin
     .join('\n')
 }
 
+function titleCase(value: string) {
+  return value
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+function formatBooleanAvailability(value: boolean | undefined, positive: string, negative = 'No') {
+  return value ? positive : negative
+}
+
+function formatHelpMarkdown(commands: ChatCommandDefinition[]) {
+  const lines = ['## Available local commands', '']
+
+  for (const command of commands) {
+    const aliases = command.aliases?.length
+      ? ` · aliases: ${command.aliases.map((alias) => `\`/${alias}\``).join(', ')}`
+      : ''
+    lines.push(`- **\`/${command.name}\`**${aliases}`)
+    lines.push(`  - ${command.description}`)
+  }
+
+  return lines.join('\n')
+}
+
+function formatSessionMarkdown(input: {
+  title: string
+  hostName: string
+  sessionKey: string
+  messageCount: number
+  activeJobState: string
+  createdAt: string
+}) {
+  return [
+    '## Session details',
+    '',
+    `- **Session:** ${input.title}`,
+    `- **Host:** ${input.hostName}`,
+    `- **Session key:** \`${input.sessionKey}\``,
+    `- **Messages:** ${input.messageCount}`,
+    `- **Active job:** ${input.activeJobState}`,
+    `- **Created:** ${input.createdAt}`,
+  ].join('\n')
+}
+
+function formatStatusMarkdown(input: {
+  health: string
+  readiness: string
+  execAvailable?: boolean
+  shellModeAvailable?: boolean
+  sandboxAvailable?: boolean
+}) {
+  return [
+    '## Local status',
+    '',
+    `- **Health:** ${titleCase(input.health || 'unknown')}`,
+    `- **Readiness:** ${titleCase(input.readiness || 'unknown')}`,
+    '',
+    '### Capabilities',
+    '',
+    `- **Exec available:** ${formatBooleanAvailability(input.execAvailable, 'Yes', 'No')}`,
+    `- **Shell mode:** ${formatBooleanAvailability(input.shellModeAvailable, 'Yes', 'No')}`,
+    `- **Sandbox:** ${formatBooleanAvailability(input.sandboxAvailable, 'Yes', 'No')}`,
+  ].join('\n')
+}
+
 export function useChatCommands() {
   const { activeHost } = useActiveHost()
   const chat = useChatSessions()
@@ -57,10 +124,7 @@ export function useChatCommands() {
     const session = chat.ensureSession()
     switch (command.id) {
       case 'help': {
-        const helpText = commands.value
-          .map((item) => `/${item.name}${item.aliases?.length ? ` (${item.aliases.map((alias) => `/${alias}`).join(', ')})` : ''} — ${item.description}`)
-          .join('\n')
-        chat.appendSystemMessage(`Available local commands:\n${helpText}`, session.id)
+        chat.appendSystemMessage(formatHelpMarkdown(commands.value), session.id)
         return { handled: true }
       }
       case 'clear': {
@@ -84,14 +148,14 @@ export function useChatCommands() {
           ? `${activeJob.status}: ${activeJob.title || activeJob.task || activeJob.job_id}`
           : 'none'
         chat.appendSystemMessage(
-          [
-            `Session: ${session.title}`,
-            `Host: ${hostName}`,
-            `Session key: ${session.sessionKey}`,
-            `Messages: ${chat.messageCount(session.id)}`,
-            `Active job: ${activeJobState}`,
-            `Created: ${new Date(session.createdAt).toLocaleString()}`,
-          ].join('\n'),
+          formatSessionMarkdown({
+            title: session.title,
+            hostName,
+            sessionKey: session.sessionKey,
+            messageCount: chat.messageCount(session.id),
+            activeJobState,
+            createdAt: new Date(session.createdAt).toLocaleString(),
+          }),
           session.id,
         )
         return { handled: true }
@@ -101,14 +165,16 @@ export function useChatCommands() {
         const health = status.health.value?.status || 'unknown'
         const ready = status.readiness.value?.status || 'unknown'
         const capabilities = status.capabilities.value
-        const parts = [
-          `Health: ${health}`,
-          `Readiness: ${ready}`,
-          `Exec available: ${capabilities?.execAvailable === true ? 'yes' : 'no'}`,
-          `Shell mode: ${capabilities?.shellModeAvailable === true ? 'yes' : 'no'}`,
-          `Sandbox: ${capabilities?.sandboxAvailable === true ? 'yes' : 'no'}`,
-        ]
-        chat.appendSystemMessage(parts.join('\n'), session.id)
+        chat.appendSystemMessage(
+          formatStatusMarkdown({
+            health,
+            readiness: ready,
+            execAvailable: capabilities?.execAvailable,
+            shellModeAvailable: capabilities?.shellModeAvailable,
+            sandboxAvailable: capabilities?.sandboxAvailable,
+          }),
+          session.id,
+        )
         return { handled: true }
       }
       case 'compact':
