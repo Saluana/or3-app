@@ -1,7 +1,7 @@
 <template>
     <USlideover v-model:open="open">
         <template #content>
-            <UCard class="or3-session-history">
+            <UCard class="or3-session-history bg-(--or3-background)">
                 <template #header>
                     <div class="or3-session-history__header">
                         <div>
@@ -21,10 +21,7 @@
 
                 <div class="or3-session-history__filters">
                     <UInput v-model="query" icon="i-pixelarticons-search" placeholder="Search sessions" />
-                    <label class="or3-session-history__archive">
-                        <input v-model="includeArchived" type="checkbox" />
-                        <span>Archived</span>
-                    </label>
+                    <UTabs v-model="historyView" :items="items" :content="false" class="w-full" />
                 </div>
 
                 <div v-if="loading" class="or3-session-history__empty">Loading sessions…</div>
@@ -42,6 +39,7 @@
                         <span class="or3-session-history__item-main">
                             <strong>{{ session.title || 'Untitled conversation' }}</strong>
                             <small>{{ session.runner_label || session.runner_id || 'OR3 Intern' }} · {{ session.message_count || 0 }} messages</small>
+                            <small class="flex items-center gap-1.5 mt-1.5" v-if="session.last_message_at"><UIcon name="i-pixelarticons-clock" /> {{ formatDate(session.last_message_at) }}</small>
                             <small v-if="session.parent_session_key">Forked from {{ session.parent_session_key }}</small>
                         </span>
                         <span class="or3-session-history__item-actions" @click.stop>
@@ -72,6 +70,15 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import type { ChatSessionMeta } from '../../types/or3-api';
+import type { TabsItem } from '@nuxt/ui';
+
+function formatDate(date: number) {
+    const d = new Date(date);
+    return d.toLocaleString(undefined, {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+    });
+}
 
 const props = withDefaults(
     defineProps<{
@@ -97,7 +104,23 @@ const emit = defineEmits<{
 }>();
 
 const query = ref('');
-const includeArchived = ref(false);
+
+const historyView = ref<'all' | 'archived'>('all');
+
+const items: TabsItem[] = [
+    {
+        label: 'All',
+        icon: 'i-pixelarticons-inbox-all',
+        value: 'all',
+    },
+    {
+        label: 'Archived',
+        icon: 'i-pixelarticons-archive',
+        value: 'archived',
+    },
+];
+
+const includeArchived = computed(() => historyView.value === 'archived');
 
 const open = computed({
     get: () => props.open,
@@ -107,7 +130,11 @@ const open = computed({
 const filteredSessions = computed(() => {
     const q = query.value.trim().toLowerCase();
     return props.sessions.filter((session) => {
-        if (!includeArchived.value && session.archived) return false;
+        if (historyView.value === 'archived') {
+            if (!session.archived) return false;
+        } else if (session.archived) {
+            return false;
+        }
         if (!q) return true;
         return [session.title, session.last_message_preview, session.runner_label, session.runner_id]
             .filter(Boolean)
@@ -118,7 +145,7 @@ const filteredSessions = computed(() => {
 });
 
 watch(
-    () => [open.value, query.value, includeArchived.value] as const,
+    () => [open.value, query.value, historyView.value] as const,
     ([isOpen]) => {
         if (!isOpen) return;
         emit('refresh', { q: query.value, includeArchived: includeArchived.value });
@@ -162,15 +189,6 @@ function renameSession(session: ChatSessionMeta) {
     display: grid;
     gap: 0.75rem;
     margin-bottom: 1rem;
-}
-
-.or3-session-history__archive {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    color: var(--or3-text-muted);
-    font-size: 0.85rem;
-    font-weight: 700;
 }
 
 .or3-session-history__list {

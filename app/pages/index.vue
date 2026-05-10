@@ -1,24 +1,36 @@
 <template>
     <div class="or3-chat-shell">
-        <div class="or3-chat-shell__header">
-            <AppHeader subtitle="CHAT" />
-            <UButton
-                icon="i-pixelarticons-list-box"
-                color="neutral"
-                variant="soft"
-                size="sm"
-                class="or3-chat-shell__history"
-                @click="openHistory"
-            >
-                History
-            </UButton>
+        <div class="or3-chat-shell__header bg-transparent!">
+            <header class="flex items-center justify-between gap-3 pb-5">
+                <!--<AppHeader subtitle="CHAT" />-->
+                <div class="flex items-center gap-3 outline-none or3-focus-ring rounded-2xl" aria-label="Go to chat home">
+                    <BrandMark size="lg" />
+                </div>
+                <div class="flex shrink-0 items-center gap-3 self-start">
+                                        <UButton @click="openHistory"
+                        class="or3-focus-ring or3-touch-target inline-flex size-12 items-center justify-center rounded-[1.35rem] border border-(--or3-border) bg-(--or3-surface) shadow-[0_1px_0_rgba(255,255,255,0.65)_inset,0_8px_20px_rgba(42,35,25,0.05)] transition hover:border-(--or3-green)/30 hover:bg-white/95"
+                        aria-label="Open chat history">
+                        <img src="/icons/chat-history.webp" alt="" class="or3-header-action-icon" />
+                    </UButton>
+                    <NuxtLink to="/approvals"
+                        class="or3-focus-ring or3-touch-target relative inline-flex size-12 items-center justify-center rounded-[1.35rem] border border-(--or3-border) bg-(--or3-surface) shadow-[0_1px_0_rgba(255,255,255,0.65)_inset,0_8px_20px_rgba(42,35,25,0.05)] transition hover:border-(--or3-green)/30 hover:bg-white/95"
+                        :aria-label="pendingCount ? `${pendingCount} approval requests waiting` : 'Open approval requests'">
+                        <img src="/computer-icons/security.png" alt=""
+                            class="or3-header-action-icon or3-header-action-icon--approvals" />
+                        <span v-if="pendingCount"
+                            class="absolute -right-1 -top-1 min-w-4.5 rounded-full bg-(--or3-amber) px-1.5 py-0.5 text-center text-[10px] font-semibold leading-none text-white shadow-sm">{{
+                                pendingCount > 99 ? '99+' : pendingCount }}</span>
+                    </NuxtLink>
+                    <NuxtLink to="/settings"
+                        class="or3-focus-ring or3-touch-target inline-flex size-12 items-center justify-center rounded-[1.35rem] border border-(--or3-border) bg-(--or3-surface) shadow-[0_1px_0_rgba(255,255,255,0.65)_inset,0_8px_20px_rgba(42,35,25,0.05)] transition hover:border-(--or3-green)/30 hover:bg-white/95"
+                        aria-label="Open settings">
+                        <img src="/computer-icons/settings.png" alt="" class="or3-header-action-icon" />
+                    </NuxtLink>
+                </div>
+            </header>
         </div>
 
-        <div
-            ref="scrollEl"
-            class="or3-chat-shell__body"
-            @scroll.passive="onChatScroll"
-        >
+        <div ref="scrollEl" class="or3-chat-shell__body" @scroll.passive="onChatScroll">
             <div class="or3-chat-shell__content">
                 <!-- Empty state hero (shown only when there are no messages yet) -->
                 <section v-if="!messages.length" class="or3-chat-empty">
@@ -30,25 +42,13 @@
                         Ask me about your computer, attach files for context, or
                         tap a quick prompt below to get started.
                     </p>
-                    <QuickPromptChips
-                        class="or3-chat-empty__chips"
-                        @select="onPromptSelect"
-                    />
+                    <QuickPromptChips class="or3-chat-empty__chips" @select="onPromptSelect" />
                     <div class="or3-chat-empty__actions">
-                        <UButton
-                            icon="i-pixelarticons-book"
-                            color="neutral"
-                            variant="soft"
-                            @click="openPromptGallery"
-                        >
+                        <UButton icon="i-pixelarticons-book" color="neutral" variant="soft" @click="openPromptGallery">
                             Open prompt library
                         </UButton>
-                        <UButton
-                            icon="i-pixelarticons-edit-box"
-                            color="neutral"
-                            variant="ghost"
-                            @click="openFileEditor"
-                        >
+                        <UButton icon="i-pixelarticons-edit-box" color="neutral" variant="ghost"
+                            @click="openFileEditor">
                             Edit workspace files
                         </UButton>
                     </div>
@@ -72,28 +72,14 @@
                 <div class="or3-chat-shell__status">
                     <AssistantStatusIndicator :active="isStreaming" />
                 </div>
-                <AssistantComposer
-                    v-model="draft"
-                    v-model:mode="chatMode"
-                    v-model:selected-runner-id="selectedRunnerId"
-                    :streaming="isStreaming"
-                    :runners="runners"
-                    @send="sendWithMode"
-                    @stop="stop"
-                />
+                <AssistantComposer v-model="draft" v-model:mode="chatMode" v-model:selected-runner-id="selectedRunnerId"
+                    :streaming="isStreaming" :runners="runners" @send="sendWithMode" @stop="stop" />
             </div>
         </div>
 
-        <SessionHistoryPanel
-            v-model:open="historyOpen"
-            :sessions="historySessions"
-            :loading="historyLoading"
-            :error="historyError"
-            @refresh="refreshHistory"
-            @open-session="openHistorySession"
-            @rename-session="renameHistorySession"
-            @archive-session="archiveHistorySession"
-        />
+        <SessionHistoryPanel v-model:open="historyOpen" :sessions="historySessions" :loading="historyLoading"
+            :error="historyError" @refresh="refreshHistory" @open-session="openHistorySession"
+            @rename-session="renameHistorySession" @archive-session="archiveHistorySession" />
 
         <BottomNav />
     </div>
@@ -109,6 +95,7 @@ const { isStreaming, chatMode, send, stop } = useAssistantStream();
 const { selectableRunners, defaultRunner, getRunner, refresh: refreshRunners } = useChatRunners();
 const sessionHistory = useSessionHistory();
 const router = useRouter();
+const { pendingCount, loadPendingCount, startPolling, stopPolling } = useApprovals();
 
 const scrollEl = ref<HTMLElement | null>(null);
 const autoScrollLocked = ref(true);
@@ -289,22 +276,25 @@ onMounted(() => {
     pointer-events: none;
 }
 
-.or3-chat-shell__header {
-    position: relative;
-}
-
-.or3-chat-shell__history {
-    position: absolute;
-    right: 1rem;
-    top: 50%;
-    transform: translateY(-50%);
-}
-
 .or3-chat-empty__actions {
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
     gap: 0.75rem;
     margin-top: 1rem;
+}
+
+.or3-header-action-icon {
+    display: block;
+    width: auto;
+    height: 22px;
+    max-width: 24px;
+    object-fit: contain;
+    image-rendering: pixelated;
+}
+
+.or3-header-action-icon--approvals {
+    height: 24px;
+    max-width: 22px;
 }
 </style>

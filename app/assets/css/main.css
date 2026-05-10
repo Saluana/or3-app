@@ -5,7 +5,7 @@
 
 :root {
   --or3-font-body: "IBM Plex Sans", sans-serif;
-  --or3-font-display: "IBM Plex Serif", "IBM Plex Sans", serif;
+  --or3-font-display: "VT323", "IBM Plex Serif", "IBM Plex Sans", serif;
   --or3-background: #f7f3ea;
   --or3-surface: #fffcf5;
   --or3-surface-soft: #f1eadf;
