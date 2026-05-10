@@ -247,19 +247,6 @@
                         <span>{{ forkBusy ? 'Forking…' : 'Fork' }}</span>
                     </button>
                     <button
-                        v-if="
-                            props.message.agentCliRunId || props.message.jobId
-                        "
-                        type="button"
-                        class="or3-msg__action"
-                        aria-label="Open activity details"
-                        title="Open activity details"
-                        @click="openActivity"
-                    >
-                        <Icon name="i-pixelarticons-list-box" class="size-4" />
-                        <span>Activity</span>
-                    </button>
-                    <button
                         v-if="showApprovalActions"
                         type="button"
                         class="or3-msg__action or3-msg__action--deny"
@@ -335,7 +322,6 @@ const { activeSession, messages, toggleMessagePin, updateMessage } =
     useChatSessions();
 const { isStreaming, send } = useAssistantStream();
 const sessionHistory = useSessionHistory();
-const router = useRouter();
 const { approve, deny, fetchApproval, consumeIssuedApprovalToken } =
     useApprovals();
 const copied = ref(false);
@@ -550,10 +536,6 @@ async function forkMessage() {
     } finally {
         forkBusy.value = false;
     }
-}
-
-function openActivity() {
-    void router.push('/activity');
 }
 
 async function retryApprovedRequest(

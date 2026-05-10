@@ -203,7 +203,7 @@ function renameSession(session: ChatSessionMeta) {
     gap: 0.75rem;
     border: 1px solid var(--or3-border);
     border-radius: 1rem;
-    background: color-mix(in srgb, white 92%, var(--or3-surface) 8%);
+    background: color-mix(in srgb, var(--or3-surface) 92%, white 8%);
     padding: 0.8rem;
     text-align: left;
 }

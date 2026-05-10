@@ -215,20 +215,183 @@ function createToolCall(name: string, args?: string): ChatToolCall {
     };
 }
 
+function previewValue(value: unknown, limit = 4_000) {
+    if (value === undefined || value === null) return '';
+    const text =
+        typeof value === 'string'
+            ? value
+            : JSON.stringify(value, null, 2) || String(value);
+    return text.length > limit ? `${text.slice(0, limit)}\n...` : text;
+}
+
 function createActivity(
     type: string,
     label: string,
     detail?: string,
     status: ChatActivityEntry['status'] = 'running',
+    id?: string,
 ): ChatActivityEntry {
     return {
-        id: `activity_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+        id:
+            id ||
+            `activity_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
         type,
         label,
         detail,
         status,
         createdAt: now(),
     };
+}
+
+function canonicalActivityStatus(
+    status: unknown,
+): ChatActivityEntry['status'] {
+    const normalized = String(status ?? '').toLowerCase();
+    if (
+        normalized === 'completed' ||
+        normalized === 'complete' ||
+        normalized === 'succeeded' ||
+        normalized === 'success'
+    ) {
+        return 'complete';
+    }
+    if (normalized === 'failed' || normalized === 'error') return 'error';
+    if (
+        normalized === 'declined' ||
+        normalized === 'denied' ||
+        normalized === 'attention' ||
+        normalized === 'requested'
+    ) {
+        return 'attention';
+    }
+    return 'running';
+}
+
+function canonicalActivityLabel(itemType: unknown, fallback?: unknown) {
+    const label = String(fallback ?? '').trim();
+    if (label) return label;
+    switch (String(itemType ?? 'unknown')) {
+        case 'command_execution':
+            return 'Command run';
+        case 'file_change':
+            return 'File change';
+        case 'mcp_tool_call':
+            return 'MCP tool call';
+        case 'web_search':
+            return 'Web search';
+        case 'collab_agent_tool_call':
+            return 'Subagent task';
+        case 'dynamic_tool_call':
+            return 'Tool call';
+        case 'plan':
+            return 'Plan updated';
+        case 'reasoning':
+            return 'Reasoning';
+        case 'assistant_message':
+            return 'Assistant message';
+        default:
+            return 'Runner activity';
+    }
+}
+
+function canonicalToolDisplayName(
+    itemType: unknown,
+    payload?: Record<string, unknown>,
+) {
+    const data =
+        payload?.data && typeof payload.data === 'object'
+            ? (payload.data as Record<string, unknown>)
+            : undefined;
+    for (const candidate of [
+        data?.tool,
+        data?.name,
+        data?.command,
+        data?.path,
+    ]) {
+        if (typeof candidate === 'string' && candidate.trim()) {
+            return candidate.trim();
+        }
+    }
+    const state =
+        data?.state && typeof data.state === 'object'
+            ? (data.state as Record<string, unknown>)
+            : undefined;
+    for (const candidate of [state?.title, state?.tool, state?.name]) {
+        if (typeof candidate === 'string' && candidate.trim()) {
+            return candidate.trim();
+        }
+    }
+    const directTitle = String(payload?.title ?? '').trim();
+    if (
+        directTitle &&
+        directTitle.toLowerCase() !== 'runner activity' &&
+        directTitle.toLowerCase() !== 'tool call' &&
+        directTitle.toLowerCase() !== 'tool'
+    ) {
+        return directTitle;
+    }
+    return canonicalActivityLabel(itemType, payload?.title);
+}
+
+function canonicalActivityDetail(payload?: Record<string, unknown>) {
+    if (!payload) return undefined;
+    for (const key of ['detail', 'delta', 'text', 'message', 'summary']) {
+        const value = payload[key];
+        if (typeof value === 'string' && value.trim()) {
+            return truncateLogDetail(value);
+        }
+    }
+    const data = payload.data;
+    if (data && typeof data === 'object') {
+        const record = data as Record<string, unknown>;
+        const state =
+            record.state && typeof record.state === 'object'
+                ? (record.state as Record<string, unknown>)
+                : undefined;
+        const command = record.command;
+        if (typeof command === 'string' && command.trim()) {
+            return truncateLogDetail(command);
+        }
+        for (const value of [state?.output, state?.error, state?.input]) {
+            if (typeof value === 'string' && value.trim()) {
+                return truncateLogDetail(value);
+            }
+            if (value && typeof value === 'object') {
+                return truncateLogDetail(JSON.stringify(value));
+            }
+        }
+    }
+    return undefined;
+}
+
+function canonicalActivityKey(
+    itemType: string,
+    label: string,
+    payload?: Record<string, unknown>,
+) {
+    const data =
+        payload?.data && typeof payload.data === 'object'
+            ? (payload.data as Record<string, unknown>)
+            : undefined;
+    const rawId =
+        data?.callID ??
+        data?.id ??
+        data?.messageID ??
+        payload?.id ??
+        `${itemType}:${label}`;
+    return `activity:${itemType}:${String(rawId)}`;
+}
+
+function isStructuredStdoutDiagnostic(payload?: Record<string, unknown>) {
+    if (payload?.stream !== 'stdout') return false;
+    const chunk = String(payload.chunk ?? '').trim();
+    if (!chunk.startsWith('{')) return false;
+    try {
+        const parsed = JSON.parse(chunk);
+        return Boolean(parsed && typeof parsed === 'object' && 'type' in parsed);
+    } catch {
+        return false;
+    }
 }
 
 function normalizePayload(
@@ -530,7 +693,12 @@ function eventPayload(event: JobEvent | { event?: string; json?: unknown }) {
 function normalizeRunnerChatEvent(
     event: RunnerChatEvent | { event?: string; json?: unknown },
 ) {
-    if ('json' in event) return event;
+    if ('json' in event) {
+        return {
+            ...event,
+            json: normalizeRunnerChatEventPayload(event.json),
+        };
+    }
     const runnerEvent = event as RunnerChatEvent;
     const payload =
         runnerEvent.payload && typeof runnerEvent.payload === 'object'
@@ -553,6 +721,41 @@ function normalizeRunnerChatEvent(
                     ? runnerEvent.text
                     : payload.chunk,
         },
+    };
+}
+
+function normalizeRunnerChatEventPayload(value: unknown) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        return value;
+    }
+    const outer = value as Record<string, unknown>;
+    const canonical =
+        outer.payload && typeof outer.payload === 'object' && !Array.isArray(outer.payload)
+            ? (outer.payload as Record<string, unknown>)
+            : undefined;
+    if (!canonical) return outer;
+
+    return {
+        ...outer,
+        ...canonical,
+        type:
+            typeof canonical.type === 'string' && canonical.type.trim()
+                ? canonical.type
+                : outer.type,
+        sequence: outer.sequence ?? outer.seq,
+        job_id: outer.job_id,
+        text:
+            typeof outer.text === 'string'
+                ? outer.text
+                : typeof canonical.text === 'string'
+                  ? canonical.text
+                  : undefined,
+        chunk:
+            typeof outer.text === 'string'
+                ? outer.text
+                : typeof canonical.chunk === 'string'
+                  ? canonical.chunk
+                  : undefined,
     };
 }
 
@@ -941,6 +1144,23 @@ export function useAssistantStream() {
                 ),
             });
         };
+        const upsertActivity = (entry: ChatActivityEntry) => {
+            const current = readAssistant();
+            const activityLog = [...(current?.activityLog ?? [])];
+            const index = activityLog.findIndex((item) => item.id === entry.id);
+            if (index === -1) {
+                updateAssistant({ activityLog: [...activityLog, entry].slice(-30) });
+                return;
+            }
+            const existing = activityLog[index];
+            activityLog[index] = {
+                ...existing,
+                ...entry,
+                detail: entry.detail || existing?.detail,
+                createdAt: existing?.createdAt || entry.createdAt,
+            };
+            updateAssistant({ activityLog });
+        };
         const updateActivity = (
             predicate: (entry: ChatActivityEntry) => boolean,
             patch: Partial<ChatActivityEntry>,
@@ -1105,6 +1325,9 @@ export function useAssistantStream() {
                     sawVisibleOutput || !!sanitizeAssistantText(delta);
             }
             if (type === 'runner_output' && delta) {
+                if (isStructuredStdoutDiagnostic(payload)) {
+                    return { failed: false, completed: false };
+                }
                 addActivity(
                     createActivity(
                         payload?.stream === 'stderr'
@@ -1117,6 +1340,184 @@ export function useAssistantStream() {
                         payload?.stream === 'stderr' ? 'error' : 'complete',
                     ),
                 );
+            }
+            if (type === 'content.delta' && delta) {
+                const streamKind = String(payload?.stream_kind ?? 'unknown');
+                if (streamKind === 'assistant_text') {
+                    appendAssistantContent(delta);
+                    appendTextPart(delta);
+                    sawVisibleOutput =
+                        sawVisibleOutput || !!sanitizeAssistantText(delta);
+                } else if (
+                    streamKind === 'reasoning_text' ||
+                    streamKind === 'reasoning_summary_text'
+                ) {
+                    updateAssistant({
+                        reasoningText: `${readAssistant()?.reasoningText || ''}${delta}`,
+                    });
+                } else {
+                    closeActiveTextPart();
+                    addActivity(
+                        createActivity(
+                            streamKind,
+                            streamKind === 'command_output'
+                                ? 'Command output'
+                                : streamKind === 'file_change_output'
+                                  ? 'File change output'
+                                  : 'Runner output',
+                            truncateLogDetail(delta),
+                            'complete',
+                        ),
+                    );
+                }
+            }
+            if (
+                type === 'item.started' ||
+                type === 'item.updated' ||
+                type === 'item.completed'
+            ) {
+                closeActiveTextPart();
+                const itemType = String(payload?.item_type ?? 'unknown');
+                const status = canonicalActivityStatus(
+                    payload?.status ??
+                        (type === 'item.completed'
+                            ? 'completed'
+                            : type === 'item.started'
+                              ? 'running'
+                              : undefined),
+                );
+                const label = canonicalActivityLabel(
+                    itemType,
+                    payload?.title,
+                );
+                const toolDisplayName = canonicalToolDisplayName(
+                    itemType,
+                    payload,
+                );
+                const activityId = canonicalActivityKey(
+                    itemType,
+                    toolDisplayName,
+                    payload,
+                );
+                upsertActivity(
+                    createActivity(
+                        itemType,
+                        toolDisplayName,
+                        canonicalActivityDetail(payload),
+                        status,
+                        activityId,
+                    ),
+                );
+                if (
+                    itemType !== 'assistant_message' &&
+                    itemType !== 'reasoning' &&
+                    itemType !== 'plan'
+                ) {
+                    const data =
+                        payload?.data && typeof payload.data === 'object'
+                            ? (payload.data as Record<string, unknown>)
+                            : {};
+                    const toolCallId = String(
+                        data.callID || data.id || payload?.id || `${itemType}:${toolDisplayName}`,
+                    );
+                    upsertPart({
+                        id: `tool:${toolCallId}`,
+                        type: 'tool',
+                        toolCallId,
+                        name: toolDisplayName,
+                        status,
+                        argumentsPreview: previewValue(
+                            data.command ?? data.arguments ?? data.input ??
+                                (data.state && typeof data.state === 'object'
+                                    ? (data.state as Record<string, unknown>)
+                                          .input
+                                    : '') ?? '',
+                            2_000,
+                        ),
+                        resultPreview: previewValue(
+                            data.result ?? data.output ??
+                                (data.state && typeof data.state === 'object'
+                                    ? (data.state as Record<string, unknown>)
+                                          .output
+                                    : '') ??
+                                payload?.detail ?? '',
+                            4_000,
+                        ),
+                        errorPreview:
+                            status === 'error'
+                                ? String(payload?.detail ?? data.error ?? '')
+                                : undefined,
+                    });
+                }
+            }
+            if (type === 'request.opened' || type === 'request.resolved') {
+                closeActiveTextPart();
+                const status =
+                    type === 'request.opened'
+                        ? 'attention'
+                        : canonicalActivityStatus(payload?.status);
+                addActivity(
+                    createActivity(
+                        String(payload?.request_type ?? 'runner_request'),
+                        String(
+                            payload?.title ||
+                                (type === 'request.opened'
+                                    ? 'Runner needs attention'
+                                    : 'Runner request resolved'),
+                        ),
+                        canonicalActivityDetail(payload),
+                        status,
+                    ),
+                );
+            }
+            if (type === 'turn.plan.updated' || type === 'turn.diff.updated') {
+                closeActiveTextPart();
+                addActivity(
+                    createActivity(
+                        type,
+                        type === 'turn.plan.updated'
+                            ? 'Plan updated'
+                            : 'Diff updated',
+                        canonicalActivityDetail(payload),
+                        'complete',
+                    ),
+                );
+            }
+            if (type === 'runtime.warning') {
+                addActivity(
+                    createActivity(
+                        'runtime_warning',
+                        'Runner warning',
+                        canonicalActivityDetail(payload),
+                        'attention',
+                    ),
+                );
+            }
+            if (type === 'runtime.error') {
+                addActivity(
+                    createActivity(
+                        'runtime_error',
+                        'Runner error',
+                        canonicalActivityDetail(payload),
+                        'error',
+                    ),
+                );
+            }
+            if (type === 'turn.completed') {
+                completeRunningActivity([
+                    'queued',
+                    'started',
+                    'tool_call',
+                    'command_execution',
+                    'file_change',
+                    'mcp_tool_call',
+                    'web_search',
+                    'collab_agent_tool_call',
+                    'dynamic_tool_call',
+                    'unknown',
+                ]);
+                updateAssistant({ status: 'complete' });
+                return { failed: false, completed: true };
             }
             const finalText = payload?.final_text;
             const assistantContent =
@@ -1154,8 +1555,9 @@ export function useAssistantStream() {
                     toolCallId,
                     name: String(payload?.name || 'tool'),
                     status: 'running',
-                    argumentsPreview: String(
+                    argumentsPreview: previewValue(
                         payload?.arguments_preview ?? payload?.arguments ?? '',
+                        2_000,
                     ),
                 });
             }
@@ -1188,8 +1590,9 @@ export function useAssistantStream() {
                         : toolError
                           ? 'error'
                           : 'complete',
-                    resultPreview: String(
+                    resultPreview: previewValue(
                         payload?.result_preview ?? payload?.result ?? '',
+                        4_000,
                     ),
                     errorPreview: toolError,
                     artifactId:
@@ -1328,8 +1731,24 @@ export function useAssistantStream() {
                 return { failed: false, completed: true };
             }
 
-            if (streamStatus === 'completed') {
-                completeRunningActivity(['queued', 'started', 'tool_call']);
+            if (
+                streamStatus === 'completed' ||
+                streamStatus === 'complete' ||
+                streamStatus === 'succeeded' ||
+                streamStatus === 'success'
+            ) {
+                completeRunningActivity([
+                    'queued',
+                    'started',
+                    'tool_call',
+                    'command_execution',
+                    'file_change',
+                    'mcp_tool_call',
+                    'web_search',
+                    'collab_agent_tool_call',
+                    'dynamic_tool_call',
+                    'unknown',
+                ]);
                 addActivity(
                     createActivity(
                         'completion',

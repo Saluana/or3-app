@@ -22,8 +22,8 @@ export default defineAppConfig({
             slots: {
                 root: 'rounded-2xl shadow-[var(--or3-shadow-soft)]',
                 content: 'focus:outline-none w-full rounded-2xl',
-                list: 'relative flex p-1 group rounded-2xl border border-[var(--or3-border)] bg-[var(--or3-surface)]',
-                            indicator: 'absolute transition-[translate,width] duration-200 rounded-2xl',
+                list: 'relative flex p-1 group rounded-2xl border border-[var(--or3-border)] or3-surface-color',
+                indicator: 'absolute transition-[translate,width] duration-200 rounded-2xl',
             }
         },
         // Buttons feel like soft pill controls, with a subtle press animation.

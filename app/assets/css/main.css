@@ -132,6 +132,10 @@ body:has(.or3-chat-shell),
   color: var(--or3-text);
 }
 
+.or3-surface-color {
+  background: color-mix(in srgb, var(--or3-surface) 92%, white 8%);
+}
+
 .or3-surface {
   background: color-mix(in srgb, var(--or3-surface) 92%, white 8%);
   border: 1px solid var(--or3-border);
@@ -156,7 +160,7 @@ body:has(.or3-chat-shell),
 h1,
 h2,
 h3 {
-  font-family: "IBM Plex Serif", "IBM Plex Sans", serif;
+  font-family: "JetBrains Mono", "IBM Plex Serif", "IBM Plex Sans", serif;
   font-weight: 600;
   letter-spacing: 0.01em;
 }

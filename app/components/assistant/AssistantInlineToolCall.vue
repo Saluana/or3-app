@@ -20,7 +20,7 @@
             </span>
             <div class="min-w-0 flex-1">
                 <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <span class="font-medium">{{ part.name || 'tool' }}</span>
+                    <span class="font-medium">{{ displayName }}</span>
                     <span
                         class="font-mono text-[11px] uppercase tracking-[0.14em] text-(--or3-text-muted)"
                     >
@@ -50,7 +50,7 @@
                 </p>
                 <pre
                     class="overflow-x-auto rounded-xl bg-(--or3-surface) px-3 py-2 whitespace-pre-wrap text-(--or3-text-muted)"
-                    >{{ pretty(part.argumentsPreview) }}</pre
+                    >{{ displayPreview(part.argumentsPreview) }}</pre
                 >
             </div>
             <div v-if="part.resultPreview">
@@ -61,7 +61,7 @@
                 </p>
                 <pre
                     class="overflow-x-auto rounded-xl bg-(--or3-surface) px-3 py-2 whitespace-pre-wrap text-(--or3-text-muted)"
-                    >{{ truncate(pretty(part.resultPreview), 800) }}</pre
+                    >{{ displayPreview(part.resultPreview) }}</pre
                 >
             </div>
             <div v-if="part.errorPreview">
@@ -115,7 +115,21 @@ const label = computed(() => {
     return 'DONE';
 });
 
+const displayName = computed(() =>
+    deriveDisplayName(
+        props.part.name,
+        props.part.argumentsPreview,
+        props.part.resultPreview,
+    ),
+);
+
 const subtitle = computed(() => {
+    const specific = describeToolAction(
+        props.part.name,
+        props.part.status,
+        props.part.argumentsPreview,
+    );
+    if (specific) return specific;
     if (props.part.status === 'running')
         return 'or3-intern is using this tool right now.';
     if (props.part.status === 'attention')
@@ -144,5 +158,75 @@ function pretty(value: string) {
 
 function truncate(value: string, limit: number) {
     return value.length > limit ? `${value.slice(0, limit)}\n...` : value;
+}
+
+function displayPreview(value: string, limit = 800) {
+    return truncate(pretty(value), limit);
+}
+
+function parsePreview(value?: string) {
+    if (!value) return undefined;
+    try {
+        const parsed = JSON.parse(value);
+        return parsed && typeof parsed === 'object'
+            ? (parsed as Record<string, unknown>)
+            : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+function describeToolAction(
+    name?: string,
+    status?: ChatMessagePart['status'],
+    argumentsPreview?: string,
+) {
+    const tool = String(name ?? '').trim().toLowerCase();
+    const parsed = parsePreview(argumentsPreview);
+    const url =
+        typeof parsed?.url === 'string'
+            ? parsed.url.trim()
+            : typeof parsed?.['source_url'] === 'string'
+              ? String(parsed.source_url).trim()
+              : '';
+    const command =
+        typeof parsed?.command === 'string'
+            ? parsed.command.trim()
+            : typeof parsed?.program === 'string'
+              ? String(parsed.program).trim()
+              : '';
+
+    if ((tool === 'webfetch' || tool === 'web_search') && url) {
+        return status === 'running' ? `Fetching ${url}` : `Fetched ${url}`;
+    }
+    if ((tool === 'exec' || tool === 'bash' || tool === 'command') && command) {
+        return status === 'running'
+            ? `Running ${command}`
+            : `Ran ${command}`;
+    }
+    return '';
+}
+
+function deriveDisplayName(
+    name?: string,
+    argumentsPreview?: string,
+    resultPreview?: string,
+) {
+    const normalized = String(name ?? '').trim();
+    if (
+        normalized &&
+        normalized.toLowerCase() !== 'runner activity' &&
+        normalized.toLowerCase() !== 'tool' &&
+        normalized.toLowerCase() !== 'tool call'
+    ) {
+        return normalized;
+    }
+    const parsed = parsePreview(argumentsPreview) || parsePreview(resultPreview);
+    if (!parsed) return normalized || 'tool';
+    if (typeof parsed.url === 'string' && parsed.url.trim()) return 'webfetch';
+    if (typeof parsed.command === 'string' && parsed.command.trim()) return 'command';
+    if (typeof parsed.program === 'string' && parsed.program.trim()) return 'command';
+    if (typeof parsed.path === 'string' && parsed.path.trim()) return 'file';
+    return normalized || 'tool';
 }
 </script>
