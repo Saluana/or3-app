@@ -3,6 +3,7 @@ import {
     extractReadableResultText,
     looksLikeJsonDocument,
     normalizeResultDisplayText,
+    parseStructuredResultPayload,
     shouldRenderResultAsMarkdown,
 } from '../../app/utils/or3/result-display';
 
@@ -35,6 +36,13 @@ describe('result display helpers', () => {
         expect(normalizeResultDisplayText(raw, 'gemini')).toBe(
             '## Summary\n\nAll tests passed.',
         );
+    });
+
+    it('repairs braceless Gemini object text from markdown rendering', () => {
+        const raw =
+            '"session_id":"abc","response":"Ready.","stats":{"tools":{"totalCalls":1}}}';
+        expect(normalizeResultDisplayText(raw, 'gemini')).toBe('Ready.');
+        expect(parseStructuredResultPayload(raw)?.session_id).toBe('abc');
     });
 
     it('extracts readable text from Codex JSONL output', () => {

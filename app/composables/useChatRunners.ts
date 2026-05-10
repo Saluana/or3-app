@@ -14,9 +14,25 @@ function runnerLabel(runner: Pick<ChatRunnerInfo, 'display_name' | 'id'>) {
 function isSelectableRunner(runner: ChatRunnerInfo) {
     if (runner.id === 'or3-intern') return true;
     if (runner.status !== 'available') return false;
-    if (runner.auth_status && runner.auth_status !== 'ready') return false;
+    if (
+        runner.auth_status &&
+        runner.auth_status !== 'ready' &&
+        runner.auth_status !== 'unknown'
+    ) {
+        return false;
+    }
     const caps = runner.chat_capabilities || runner.supports?.chat;
     return caps?.chatSelectable !== false && caps?.chatReplay !== false;
+}
+
+function normalizeChatRunners(runners: ChatRunnerInfo[]): ChatRunnerInfo[] {
+    return runners.map((runner) => ({
+        ...runner,
+        auth_status:
+            runner.status === 'available' && runner.auth_status === 'unknown'
+                ? 'ready'
+                : runner.auth_status,
+    }));
 }
 
 export function useChatRunners() {
@@ -41,7 +57,7 @@ export function useChatRunners() {
         errorByHost.value[currentHost] = null;
         try {
             const response = await api.request<ChatRunnersResponse>('/internal/v1/chat-runners');
-            runnersByHost.value[currentHost] = response.runners ?? [];
+            runnersByHost.value[currentHost] = normalizeChatRunners(response.runners ?? []);
         } catch (err) {
             errorByHost.value[currentHost] =
                 err && typeof err === 'object' && 'message' in err

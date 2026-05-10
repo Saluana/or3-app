@@ -264,10 +264,13 @@
                         </label>
                         <div class="relative">
                             <button
+                                ref="runnerButtonRef"
                                 type="button"
                                 class="or3-focus-ring flex w-full items-center justify-between gap-2 rounded-xl border border-(--or3-border) bg-(--or3-surface) px-3 py-2 text-sm text-(--or3-text) hover:bg-(--or3-surface-soft) disabled:cursor-not-allowed disabled:opacity-60"
                                 :disabled="props.disabled || props.loadingRunners"
-                                @click="showRunnerExpanded = !showRunnerExpanded"
+                                aria-haspopup="listbox"
+                                :aria-expanded="showRunnerExpanded"
+                                @click="toggleRunnerDropdown"
                             >
                                 <span class="truncate">{{
                                     runnerLabel(selectedRunner)
@@ -284,57 +287,6 @@
                                     ]"
                                 />
                             </button>
-                            <div
-                                v-if="showRunnerExpanded"
-                                class="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-xl border border-(--or3-border) bg-(--or3-surface) shadow-lg"
-                            >
-                                <button
-                                    v-for="runner in availableRunners"
-                                    :key="runner.id"
-                                    type="button"
-                                    class="or3-focus-ring flex w-full items-center gap-2 px-3 py-2 text-sm text-(--or3-text) transition hover:bg-(--or3-surface-soft)"
-                                    :class="{
-                                        'bg-(--or3-green-soft)/60 text-(--or3-green-dark)':
-                                            selectedRunner === runner.id,
-                                    }"
-                                    @click="
-                                        selectedRunner = runner.id;
-                                        showRunnerExpanded = false;
-                                    "
-                                >
-                                    <span class="truncate flex-1 text-left">{{
-                                        runner.label
-                                    }}</span>
-                                    <span
-                                        v-if="runner.auth_status === 'unknown'"
-                                        class="text-[10px] text-(--or3-amber)"
-                                        >Auth unverified</span
-                                    >
-                                </button>
-                                <template
-                                    v-if="unavailableRunners.length"
-                                >
-                                    <div
-                                        class="border-t border-(--or3-border) px-3 py-1.5 font-mono text-[10px] font-semibold text-(--or3-text-muted) uppercase tracking-wider"
-                                    >
-                                        Not available
-                                    </div>
-                                    <button
-                                        v-for="runner in unavailableRunners"
-                                        :key="runner.id"
-                                        type="button"
-                                        class="flex w-full items-center gap-2 px-3 py-2 text-sm text-(--or3-text-muted) cursor-not-allowed"
-                                        disabled
-                                    >
-                                        <span class="truncate flex-1 text-left">{{
-                                            runner.label
-                                        }}</span>
-                                        <span class="text-[10px] text-(--or3-text-muted)">{{
-                                            runner.disabledReason || runner.status
-                                        }}</span>
-                                    </button>
-                                </template>
-                            </div>
                         </div>
                     </div>
                     <!-- Mode selector (external runners only) -->
@@ -584,6 +536,59 @@
         </UForm>
     </SurfaceCard>
 
+    <Teleport to="body">
+        <div
+            v-if="showRunnerExpanded"
+            ref="runnerDropdownRef"
+            class="fixed z-[1000] max-h-[min(22rem,calc(100vh-1rem))] overflow-y-auto rounded-xl border border-(--or3-border) bg-(--or3-surface) shadow-lg"
+            :style="runnerDropdownStyle"
+            role="listbox"
+            aria-label="Agent runner"
+        >
+            <button
+                v-for="runner in availableRunners"
+                :key="runner.id"
+                type="button"
+                class="or3-focus-ring flex w-full items-center gap-2 px-3 py-2 text-sm text-(--or3-text) transition hover:bg-(--or3-surface-soft)"
+                :class="{
+                    'bg-(--or3-green-soft)/60 text-(--or3-green-dark)':
+                        selectedRunner === runner.id,
+                }"
+                role="option"
+                :aria-selected="selectedRunner === runner.id"
+                @click="selectRunner(runner.id)"
+            >
+                <span class="truncate flex-1 text-left">{{ runner.label }}</span>
+                <span
+                    v-if="runnerAuthBadge(runner)"
+                    class="text-[10px] text-(--or3-amber)"
+                    >{{ runnerAuthBadge(runner) }}</span
+                >
+            </button>
+            <template v-if="unavailableRunners.length">
+                <div
+                    class="border-t border-(--or3-border) px-3 py-1.5 font-mono text-[10px] font-semibold text-(--or3-text-muted) uppercase tracking-wider"
+                >
+                    Not available
+                </div>
+                <button
+                    v-for="runner in unavailableRunners"
+                    :key="runner.id"
+                    type="button"
+                    class="flex w-full items-center gap-2 px-3 py-2 text-sm text-(--or3-text-muted) cursor-not-allowed"
+                    disabled
+                >
+                    <span class="truncate flex-1 text-left">{{
+                        runner.label
+                    }}</span>
+                    <span class="text-[10px] text-(--or3-text-muted)">{{
+                        runner.disabledReason || runner.status
+                    }}</span>
+                </button>
+            </template>
+        </div>
+    </Teleport>
+
     <!-- CWD Picker Slideover -->
     <CwdPickerSheet
         v-model:open="showCwdSlideover"
@@ -595,6 +600,7 @@
 <script setup lang="ts">
 import {
     computed,
+    nextTick,
     onBeforeUnmount,
     onMounted,
     reactive,
@@ -691,6 +697,9 @@ const cwdText = ref('');
 const showRunnerExpanded = ref(false);
 const showModeExpanded = ref(false);
 const showCwdSlideover = ref(false);
+const runnerButtonRef = ref<HTMLButtonElement | null>(null);
+const runnerDropdownRef = ref<HTMLElement | null>(null);
+const runnerDropdownStyle = ref<Record<string, string>>({});
 
 interface DraftAttachment extends ChatAttachment {
     content?: string;
@@ -841,7 +850,10 @@ const runnerList = computed<RunnerOption[]>(() => {
             r.status === 'disabled_by_config' ||
             r.status === 'unsupported_version',
         disabledReason: r.disabled_reason || r.status,
-        auth_status: r.auth_status,
+        auth_status:
+            r.status === 'available' && r.auth_status === 'unknown'
+                ? 'ready'
+                : r.auth_status,
     }));
 });
 
@@ -897,6 +909,62 @@ const cwdDisplayLabel = computed(() => {
 
 function openCwdSlideover() {
     showCwdSlideover.value = true;
+}
+
+function updateRunnerDropdownPosition() {
+    const button = runnerButtonRef.value;
+    if (!button || typeof window === 'undefined') return;
+    const rect = button.getBoundingClientRect();
+    const gap = 4;
+    const maxHeight = Math.min(352, window.innerHeight - 16);
+    const spaceBelow = window.innerHeight - rect.bottom - gap - 8;
+    const openUp = spaceBelow < 180 && rect.top > spaceBelow;
+    const top = openUp
+        ? Math.max(8, rect.top - maxHeight - gap)
+        : Math.min(rect.bottom + gap, window.innerHeight - 8);
+
+    runnerDropdownStyle.value = {
+        left: `${Math.max(8, rect.left)}px`,
+        top: `${top}px`,
+        width: `${rect.width}px`,
+        maxHeight: `${maxHeight}px`,
+    };
+}
+
+async function toggleRunnerDropdown() {
+    showRunnerExpanded.value = !showRunnerExpanded.value;
+    if (showRunnerExpanded.value) {
+        await nextTick();
+        updateRunnerDropdownPosition();
+    }
+}
+
+function closeRunnerDropdown() {
+    showRunnerExpanded.value = false;
+}
+
+function selectRunner(runnerId: string) {
+    selectedRunner.value = runnerId;
+    closeRunnerDropdown();
+}
+
+function runnerAuthBadge(runner: RunnerOption) {
+    if (runner.auth_status === 'missing') return 'Auth missing';
+    if (runner.status === 'auth_unknown') return 'Auth check skipped';
+    return null;
+}
+
+function onDocumentPointerDown(event: PointerEvent) {
+    if (!showRunnerExpanded.value) return;
+    const target = event.target as Node | null;
+    if (!target) return;
+    if (runnerButtonRef.value?.contains(target)) return;
+    if (runnerDropdownRef.value?.contains(target)) return;
+    closeRunnerDropdown();
+}
+
+function onRunnerDropdownKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape') closeRunnerDropdown();
 }
 
 function onCwdSelected(path: string) {
@@ -1514,16 +1582,25 @@ onMounted(() => {
     dom?.addEventListener('dragover', onDragOver);
     dom?.addEventListener('dragleave', onDragLeave);
     dom?.addEventListener('drop', onDrop);
+    document.addEventListener('pointerdown', onDocumentPointerDown);
+    document.addEventListener('keydown', onRunnerDropdownKeydown);
+    window.addEventListener('resize', updateRunnerDropdownPosition);
+    window.addEventListener('scroll', updateRunnerDropdownPosition, true);
 });
 
 onBeforeUnmount(() => {
     closeMentionMenu();
+    closeRunnerDropdown();
     clearManualAttachments();
     const dom = editor.value?.view.dom;
     dom?.removeEventListener('dragenter', onDragEnter);
     dom?.removeEventListener('dragover', onDragOver);
     dom?.removeEventListener('dragleave', onDragLeave);
     dom?.removeEventListener('drop', onDrop);
+    document.removeEventListener('pointerdown', onDocumentPointerDown);
+    document.removeEventListener('keydown', onRunnerDropdownKeydown);
+    window.removeEventListener('resize', updateRunnerDropdownPosition);
+    window.removeEventListener('scroll', updateRunnerDropdownPosition, true);
     editor.value?.destroy();
 });
 

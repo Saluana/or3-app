@@ -1,25 +1,37 @@
 import { ref, watch } from 'vue';
-import type {
-    ApprovalRequest,
-    JobEvent,
-    JobSnapshot,
-    RunnerChatSession,
-    RunnerChatTurn,
-    RunnerChatTurnStartResponse,
-    RunnerChatEvent,
-    ToolPolicy,
-    TurnResponse,
-} from '~/types/or3-api';
+import type { ToolPolicy } from '~/types/or3-api';
 import type {
     AssistantSendPayload,
     AssistantReplayToolCall,
     ChatActivityEntry,
     ChatMessagePart,
     ChatToolCall,
-    Or3AppErrorCode,
 } from '~/types/app-state';
-import { formatApprovalSubjectPreview } from '~/utils/or3/approval-display';
+import {
+    createActivity,
+    createToolCall,
+    now,
+    sanitizeAssistantText,
+    truncateLogDetail,
+} from '~/utils/assistant-stream/activity';
+import {
+    pendingApprovalPlaceholderContent,
+} from '~/utils/assistant-stream/approval';
+import { createAssistantEventApplier } from '~/utils/assistant-stream/event-applier';
+import { downgradeToolPolicyForServiceCapability } from '~/utils/assistant-stream/errors';
+import {
+    fetchAndApplyJobSnapshot,
+    handleRunnerExecutionError,
+    recoverDirectExecutionError,
+    streamDirectTurn,
+    streamFollowJob,
+    streamFollowRunnerTurn,
+    streamRunnerChat,
+} from '~/utils/assistant-stream/execution';
+import { normalizeTurnEvent } from '~/utils/assistant-stream/events';
 import { normalizeApprovalRequest } from '~/utils/or3/approvals';
+import { normalizePayload, retryPayloadForStorage } from '~/utils/assistant-stream/payload';
+import { parseStructuredResultPayload } from '~/utils/or3/result-display';
 import { useChatSessions } from './useChatSessions';
 import { useActiveHost } from './useActiveHost';
 import { useLocalCache } from './useLocalCache';
@@ -35,142 +47,19 @@ let approvalHydrationWatcherInstalled = false;
 const recoveryAttempted = new Set<string>();
 const approvalHydrationInFlight = new Set<string>();
 
-function describeRequestError(error: unknown) {
-    if (error instanceof Error && error.message.trim()) return error.message;
-    if (error && typeof error === 'object' && 'message' in error) {
-        const message = String(
-            (error as { message?: unknown }).message ?? '',
-        ).trim();
-        if (message) return message;
-    }
-    return 'Request failed';
+function objectRecord(value: unknown): Record<string, unknown> | null {
+    return value && typeof value === 'object' && !Array.isArray(value)
+        ? (value as Record<string, unknown>)
+        : null;
 }
 
-function describeRequestErrorDetails(error: unknown) {
-    if (!error || typeof error !== 'object') return '';
-    const record = error as Record<string, unknown>;
-    const details = [
-        typeof record.code === 'string' ? `Code: ${record.code}` : '',
-        typeof record.status === 'number' ? `HTTP: ${record.status}` : '',
-        typeof record.request_id === 'string' ||
-        typeof record.request_id === 'number'
-            ? `Request: ${record.request_id}`
-            : '',
-    ].filter(Boolean);
-
-    if (record.cause instanceof Error && record.cause.message.trim()) {
-        details.push(`Cause: ${record.cause.message}`);
-    }
-
-    return details.join(' · ');
+function numberValue(value: unknown) {
+    return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 
-const knownErrorCodes = new Set<Or3AppErrorCode>([
-    'host_unreachable',
-    'auth_required',
-    'session_required',
-    'session_expired',
-    'passkey_required',
-    'step_up_required',
-    'auth_unsupported',
-    'forbidden',
-    'rate_limited',
-    'validation_failed',
-    'capability_unavailable',
-    'approval_required',
-    'stream_failed',
-    'provider_error',
-    'stream_error',
-    'validation_error',
-    'policy_error',
-    'tool_execution_error',
-    'tool_loop_limit',
-    'aborted',
-    'file_not_found',
-    'path_forbidden',
-    'terminal_unavailable',
-    'runner_missing',
-    'runner_auth_missing',
-    'unsupported_native_session',
-    'runner_chat_turn_active',
-    'runner_chat_session_not_found',
-    'runner_chat_turn_not_found',
-    'runner_chat_aborted',
-    'chat_session_not_found',
-    'invalid_fork_anchor',
-    'fork_anchor_incomplete',
-    'unsupported_native_fork',
-    'unknown',
-]);
-
-function extractErrorCode(error: unknown): Or3AppErrorCode | undefined {
-    if (!error || typeof error !== 'object') return undefined;
-    const record = error as Record<string, unknown>;
-    if (
-        typeof record.code === 'string' &&
-        knownErrorCodes.has(record.code as Or3AppErrorCode)
-    ) {
-        return record.code as Or3AppErrorCode;
-    }
-    if (
-        typeof record.public_code === 'string' &&
-        knownErrorCodes.has(record.public_code as Or3AppErrorCode)
-    ) {
-        return record.public_code as Or3AppErrorCode;
-    }
-    if (record.cause && typeof record.cause === 'object') {
-        const nestedCode: Or3AppErrorCode | undefined = extractErrorCode(
-            record.cause,
-        );
-        if (nestedCode) return nestedCode;
-    }
-    return undefined;
-}
-
-function extractApprovalRequestId(error: unknown): string | number | undefined {
-    if (!error || typeof error !== 'object') return undefined;
-    const record = error as Record<string, unknown>;
-    const directApprovalId = record.approval_id ?? record.approval_request_id;
-    if (
-        typeof directApprovalId === 'string' ||
-        typeof directApprovalId === 'number'
-    ) {
-        return directApprovalId;
-    }
-    const approvalState = String(
-        record.code ?? record.status ?? record.approval_status ?? '',
-    )
-        .trim()
-        .toLowerCase();
-    const requestId = record.request_id;
-    if (
-        approvalState === 'approval_required' &&
-        (typeof requestId === 'string' || typeof requestId === 'number')
-    ) {
-        return requestId;
-    }
-    if (record.cause && typeof record.cause === 'object') {
-        return extractApprovalRequestId(record.cause);
-    }
-    return undefined;
-}
-
-function isServiceCapabilityCeilingError(error: unknown) {
-    const message = describeRequestError(error).toLowerCase();
-    return (
-        message.includes('requested tools exceed service capability ceiling') ||
-        message.includes('tool exceeds service capability ceiling')
-    );
-}
-
-function downgradeToolPolicyForServiceCapability(
-    policy?: ToolPolicy,
-): ToolPolicy | undefined {
-    if (!policy) return undefined;
-    if (policy.mode === 'admin' || policy.mode === 'work') {
-        return { mode: 'ask' };
-    }
-    return policy;
+function compactJson(value: unknown) {
+    if (!value || typeof value !== 'object') return undefined;
+    return JSON.stringify(value);
 }
 
 function rememberServiceCapabilityCeilingHost(hostId?: string | null) {
@@ -185,606 +74,13 @@ function shouldPreemptivelyDowngradeToolPolicy(hostId?: string | null) {
     return serviceCapabilityCeilingHosts.has(normalized);
 }
 
-function showFailureToast(
-    toast: ReturnType<typeof useToast>,
-    title: string,
-    error: unknown,
-) {
-    const message = describeRequestError(error);
-    const details = describeRequestErrorDetails(error);
-
-    toast.add({
-        title,
-        description: details ? `${message}\n${details}` : message,
-        color: 'error',
-        icon: 'i-pixelarticons-warning-box',
-    });
-}
-
-function now() {
-    return new Date().toISOString();
-}
-
-function createToolCall(name: string, args?: string): ChatToolCall {
-    return {
-        id: `tool_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
-        name,
-        status: 'running',
-        arguments: args,
-        startedAt: now(),
-    };
-}
-
-function previewValue(value: unknown, limit = 4_000) {
-    if (value === undefined || value === null) return '';
-    const text =
-        typeof value === 'string'
-            ? value
-            : JSON.stringify(value, null, 2) || String(value);
-    return text.length > limit ? `${text.slice(0, limit)}\n...` : text;
-}
-
-function createActivity(
-    type: string,
-    label: string,
-    detail?: string,
-    status: ChatActivityEntry['status'] = 'running',
-    id?: string,
-): ChatActivityEntry {
-    return {
-        id:
-            id ||
-            `activity_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
-        type,
-        label,
-        detail,
-        status,
-        createdAt: now(),
-    };
-}
-
-function canonicalActivityStatus(
-    status: unknown,
-): ChatActivityEntry['status'] {
-    const normalized = String(status ?? '').toLowerCase();
-    if (
-        normalized === 'completed' ||
-        normalized === 'complete' ||
-        normalized === 'succeeded' ||
-        normalized === 'success'
-    ) {
-        return 'complete';
-    }
-    if (normalized === 'failed' || normalized === 'error') return 'error';
-    if (
-        normalized === 'declined' ||
-        normalized === 'denied' ||
-        normalized === 'attention' ||
-        normalized === 'requested'
-    ) {
-        return 'attention';
-    }
-    return 'running';
-}
-
-function canonicalActivityLabel(itemType: unknown, fallback?: unknown) {
-    const label = String(fallback ?? '').trim();
-    if (label) return label;
-    switch (String(itemType ?? 'unknown')) {
-        case 'command_execution':
-            return 'Command run';
-        case 'file_change':
-            return 'File change';
-        case 'mcp_tool_call':
-            return 'MCP tool call';
-        case 'web_search':
-            return 'Web search';
-        case 'collab_agent_tool_call':
-            return 'Subagent task';
-        case 'dynamic_tool_call':
-            return 'Tool call';
-        case 'plan':
-            return 'Plan updated';
-        case 'reasoning':
-            return 'Reasoning';
-        case 'assistant_message':
-            return 'Assistant message';
-        default:
-            return 'Runner activity';
-    }
-}
-
-function canonicalToolDisplayName(
-    itemType: unknown,
-    payload?: Record<string, unknown>,
-) {
-    const data =
-        payload?.data && typeof payload.data === 'object'
-            ? (payload.data as Record<string, unknown>)
-            : undefined;
-    for (const candidate of [
-        data?.tool,
-        data?.name,
-        data?.command,
-        data?.path,
-    ]) {
-        if (typeof candidate === 'string' && candidate.trim()) {
-            return candidate.trim();
-        }
-    }
-    const state =
-        data?.state && typeof data.state === 'object'
-            ? (data.state as Record<string, unknown>)
-            : undefined;
-    for (const candidate of [state?.title, state?.tool, state?.name]) {
-        if (typeof candidate === 'string' && candidate.trim()) {
-            return candidate.trim();
-        }
-    }
-    const directTitle = String(payload?.title ?? '').trim();
-    if (
-        directTitle &&
-        directTitle.toLowerCase() !== 'runner activity' &&
-        directTitle.toLowerCase() !== 'tool call' &&
-        directTitle.toLowerCase() !== 'tool'
-    ) {
-        return directTitle;
-    }
-    return canonicalActivityLabel(itemType, payload?.title);
-}
-
-function canonicalActivityDetail(payload?: Record<string, unknown>) {
-    if (!payload) return undefined;
-    for (const key of ['detail', 'delta', 'text', 'message', 'summary']) {
-        const value = payload[key];
-        if (typeof value === 'string' && value.trim()) {
-            return truncateLogDetail(value);
-        }
-    }
-    const data = payload.data;
-    if (data && typeof data === 'object') {
-        const record = data as Record<string, unknown>;
-        const state =
-            record.state && typeof record.state === 'object'
-                ? (record.state as Record<string, unknown>)
-                : undefined;
-        const command = record.command;
-        if (typeof command === 'string' && command.trim()) {
-            return truncateLogDetail(command);
-        }
-        for (const value of [state?.output, state?.error, state?.input]) {
-            if (typeof value === 'string' && value.trim()) {
-                return truncateLogDetail(value);
-            }
-            if (value && typeof value === 'object') {
-                return truncateLogDetail(JSON.stringify(value));
-            }
-        }
-    }
-    return undefined;
-}
-
-function canonicalActivityKey(
-    itemType: string,
-    label: string,
-    payload?: Record<string, unknown>,
-) {
-    const data =
-        payload?.data && typeof payload.data === 'object'
-            ? (payload.data as Record<string, unknown>)
-            : undefined;
-    const rawId =
-        data?.callID ??
-        data?.id ??
-        data?.messageID ??
-        payload?.id ??
-        `${itemType}:${label}`;
-    return `activity:${itemType}:${String(rawId)}`;
-}
-
-function isStructuredStdoutDiagnostic(payload?: Record<string, unknown>) {
-    if (payload?.stream !== 'stdout') return false;
-    const chunk = String(payload.chunk ?? '').trim();
-    if (!chunk.startsWith('{')) return false;
-    try {
-        const parsed = JSON.parse(chunk);
-        return Boolean(parsed && typeof parsed === 'object' && 'type' in parsed);
-    } catch {
-        return false;
-    }
-}
-
-function normalizePayload(
-    input: string | AssistantSendPayload,
-): AssistantSendPayload {
-    if (typeof input === 'string')
-        return {
-            text: input.trim(),
-            transportText: input.trim(),
-            attachments: [],
-        };
-    return {
-        text: input.text.trim(),
-        transportText: (input.transportText || input.text).trim(),
-        attachments: input.attachments ?? [],
-        mode: input.mode,
-        toolPolicy: input.toolPolicy,
-        approvalToken: input.approvalToken,
-        followJobId: input.followJobId,
-        replayToolCall: input.replayToolCall,
-        continueMessageId: input.continueMessageId,
-        suppressUserEcho: input.suppressUserEcho,
-        runnerId: input.runnerId,
-        runnerLabel: input.runnerLabel,
-        runnerChatSessionId: input.runnerChatSessionId,
-        runnerChatTurnId: input.runnerChatTurnId,
-        runnerContinuationMode: input.runnerContinuationMode,
-        runnerModel: input.runnerModel,
-        runnerMode: input.runnerMode,
-        runnerIsolation: input.runnerIsolation,
-        runnerCwd: input.runnerCwd,
-        runnerMaxTurns: input.runnerMaxTurns,
-        runnerPermission: normalizeRunnerPermissionPayload(
-            input.runnerPermission,
-        ),
-    };
-}
-
-function normalizeRunnerPermissionPayload(
-    value: unknown,
-): AssistantSendPayload['runnerPermission'] | undefined {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) {
-        return undefined;
-    }
-    const record = value as Record<string, unknown>;
-    const runnerId =
-        typeof record.runnerId === 'string'
-            ? record.runnerId.trim()
-            : typeof record.runner_id === 'string'
-              ? record.runner_id.trim()
-              : '';
-    const kind = typeof record.kind === 'string' ? record.kind.trim() : '';
-    const access =
-        typeof record.access === 'string' ? record.access.trim() : '';
-    const targetPath =
-        typeof record.targetPath === 'string'
-            ? record.targetPath.trim()
-            : typeof record.target_path === 'string'
-              ? record.target_path.trim()
-              : '';
-    if (!targetPath) return undefined;
-    return {
-        runnerId: runnerId || undefined,
-        kind: kind || undefined,
-        access: access || undefined,
-        targetPath,
-    };
-}
-
-function retryPayloadForStorage(
-    payload: AssistantSendPayload,
-): AssistantSendPayload {
-    return {
-        text: payload.text,
-        transportText: payload.transportText,
-        attachments: payload.attachments ?? [],
-        mode: payload.mode,
-        toolPolicy: payload.toolPolicy,
-        approvalToken: payload.approvalToken,
-        replayToolCall: payload.replayToolCall,
-        continueMessageId: payload.continueMessageId,
-        suppressUserEcho: payload.suppressUserEcho,
-        runnerId: payload.runnerId,
-        runnerLabel: payload.runnerLabel,
-        runnerChatSessionId: payload.runnerChatSessionId,
-        runnerChatTurnId: payload.runnerChatTurnId,
-        runnerContinuationMode: payload.runnerContinuationMode,
-        runnerModel: payload.runnerModel,
-        runnerMode: payload.runnerMode,
-        runnerIsolation: payload.runnerIsolation,
-        runnerCwd: payload.runnerCwd,
-        runnerMaxTurns: payload.runnerMaxTurns,
-        runnerPermission: payload.runnerPermission,
-    };
-}
-
 export function modeToolPolicy(
     mode?: AssistantSendPayload['mode'],
 ): ToolPolicy {
     return { mode: mode || chatMode.value || 'work' };
 }
-
-export type NormalizedTurnEvent = {
-    type: string;
-    payload?: Record<string, unknown>;
-    sequence?: number;
-    jobId?: string;
-};
-
-export function normalizeTurnEvent(
-    event: JobEvent | { event?: string; json?: unknown },
-): NormalizedTurnEvent {
-    const payload = eventPayload(event);
-    return {
-        type: eventName(event),
-        payload,
-        sequence: eventSequence(event),
-        jobId: eventJobId(event),
-    };
-}
-
-function sanitizeAssistantText(text: string) {
-    if (!text) return '';
-
-    return text
-        .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '')
-        .replace(/<tool_call[\s\S]*$/i, '')
-        .replace(/<\/tool_call>/gi, '')
-        .replace(/<function=[^>]*>/gi, '')
-        .replace(/<parameter=[^>]*>/gi, '')
-        .replace(/<function=[\s\S]*$/i, '')
-        .replace(/<parameter=[\s\S]*$/i, '')
-        .replace(
-            /<\s*[|｜]\s*DSML\s*[|｜]\s*tool_calls\s*>[\s\S]*?<\s*\/\s*[|｜]\s*DSML\s*[|｜]\s*tool_calls\s*>/gi,
-            '',
-        )
-        .replace(/<\s*[|｜]\s*DSML\s*[|｜]\s*tool_calls[\s\S]*$/i, '')
-        .replace(
-            /<\s*\/?\s*[|｜]\s*DSML\s*[|｜]\s*(?:invoke|parameter)[^>]*>/gi,
-            '',
-        )
-        .trim();
-}
-
-function truncateLogDetail(value: string, limit = 500) {
-    return value.length > limit ? `${value.slice(0, limit)}\n...` : value;
-}
-
-function isApprovalRequiredPayload(payload?: Record<string, unknown>) {
-    if (!payload) return false;
-    const state = String(payload.code ?? payload.status ?? '')
-        .trim()
-        .toLowerCase();
-    if (state === 'approval_required') return true;
-    return (
-        typeof payload.approval_id === 'string' ||
-        typeof payload.approval_id === 'number' ||
-        typeof payload.approval_request_id === 'string' ||
-        typeof payload.approval_request_id === 'number'
-    );
-}
-
-function parseJsonRecord(value?: string) {
-    if (!value) return undefined;
-    try {
-        const parsed = JSON.parse(value);
-        return parsed && typeof parsed === 'object'
-            ? (parsed as Record<string, unknown>)
-            : undefined;
-    } catch {
-        return undefined;
-    }
-}
-
-function quoteCommandPart(value: string) {
-    return /^[\w./:@%+=,-]+$/.test(value) ? value : JSON.stringify(value);
-}
-
-function formatCommandPreview(parts: unknown[]) {
-    const normalized = parts
-        .map((part) =>
-            typeof part === 'string' || typeof part === 'number'
-                ? String(part)
-                : typeof part === 'boolean'
-                  ? String(part)
-                  : '',
-        )
-        .filter(Boolean)
-        .map(quoteCommandPart);
-    return truncateLogDetail(normalized.join(' '), 180);
-}
-
-function firstNonEmptyString(
-    record: Record<string, unknown> | undefined,
-    ...keys: string[]
-) {
-    if (!record) return '';
-    for (const key of keys) {
-        const value = record[key];
-        if (typeof value === 'string' && value.trim()) return value.trim();
-    }
-    return '';
-}
-
-export function describeApprovalRequest(toolName: string, argsJson?: string) {
-    const args = parseJsonRecord(argsJson);
-    const normalizedTool = toolName.trim() || 'tool';
-    const cwd = firstNonEmptyString(args, 'cwd');
-
-    if (normalizedTool === 'exec') {
-        const program = firstNonEmptyString(args, 'program');
-        const command = firstNonEmptyString(args, 'command');
-        const rawArgs = Array.isArray(args?.args) ? args?.args : [];
-        const commandPreview = program
-            ? formatCommandPreview([program, ...rawArgs])
-            : command
-              ? rawArgs.length
-                  ? formatCommandPreview([command, ...rawArgs])
-                  : truncateLogDetail(command, 180)
-              : '';
-        const location = cwd ? `\n**Working directory:** \`${cwd}\`` : '';
-        return [
-            'Approval is needed before or3-intern can continue.',
-            '',
-            '**Tool:** `exec`',
-            commandPreview
-                ? `**Requested action:** Run the local command \`${commandPreview}\``
-                : '**Requested action:** Run a local command on this machine.',
-            location,
-            '',
-            'Approve if this is the command you expected. Deny it if you do not want this command to run.',
-        ]
-            .join('\n')
-            .replace(/\n{3,}/g, '\n\n');
-    }
-
-    if (normalizedTool === 'run_skill_script') {
-        const skillName = firstNonEmptyString(args, 'skillName', 'skill_name');
-        const commandName = firstNonEmptyString(
-            args,
-            'commandName',
-            'command_name',
-            'entrypoint',
-            'path',
-        );
-        return [
-            'Approval is needed before or3-intern can continue.',
-            '',
-            '**Tool:** `run_skill_script`',
-            `**Requested action:** Run ${
-                skillName ? `the skill \`${skillName}\`` : 'a skill script'
-            }${commandName ? ` using \`${commandName}\`` : ''}.`,
-            '',
-            'Approve if this is the skill action you expected. Deny it if it looks wrong.',
-        ].join('\n');
-    }
-
-    const path =
-        firstNonEmptyString(args, 'path', 'file', 'artifact_id') ||
-        firstNonEmptyString(args, 'url');
-    return [
-        'Approval is needed before or3-intern can continue.',
-        '',
-        `**Tool:** \`${normalizedTool}\``,
-        path
-            ? `**Requested action:** Use this tool with \`${truncateLogDetail(path, 140)}\`.`
-            : `**Requested action:** Use the \`${normalizedTool}\` tool with the current request.`,
-        '',
-        'Approve if this matches what you asked for. Deny it if it looks unexpected.',
-    ].join('\n');
-}
-
-function pendingApprovalPlaceholderContent(approval: ApprovalRequest) {
-    const preview = formatApprovalSubjectPreview({
-        type: approval.type,
-        domain: approval.domain,
-        subject: approval.subject,
-    });
-    if (!preview) {
-        return 'Approval is needed before or3-intern can continue.';
-    }
-    return [
-        'Approval is needed before or3-intern can continue.',
-        '',
-        `Requested action: ${preview}`,
-    ].join('\n');
-}
-
-function eventPayload(event: JobEvent | { event?: string; json?: unknown }) {
-    const json = 'json' in event ? event.json : undefined;
-    const data = 'data' in event ? event.data : undefined;
-    if (json && typeof json === 'object')
-        return json as Record<string, unknown>;
-    if (data && typeof data === 'object')
-        return data as Record<string, unknown>;
-    return undefined;
-}
-
-function normalizeRunnerChatEvent(
-    event: RunnerChatEvent | { event?: string; json?: unknown },
-) {
-    if ('json' in event) {
-        return {
-            ...event,
-            json: normalizeRunnerChatEventPayload(event.json),
-        };
-    }
-    const runnerEvent = event as RunnerChatEvent;
-    const payload =
-        runnerEvent.payload && typeof runnerEvent.payload === 'object'
-            ? (runnerEvent.payload as Record<string, unknown>)
-            : {};
-    return {
-        event: runnerEvent.type,
-        json: {
-            ...payload,
-            type: runnerEvent.type,
-            sequence: runnerEvent.seq,
-            job_id: runnerEvent.job_id,
-            stream: runnerEvent.stream,
-            text:
-                typeof runnerEvent.text === 'string'
-                    ? runnerEvent.text
-                    : payload.text,
-            chunk:
-                typeof runnerEvent.text === 'string'
-                    ? runnerEvent.text
-                    : payload.chunk,
-        },
-    };
-}
-
-function normalizeRunnerChatEventPayload(value: unknown) {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) {
-        return value;
-    }
-    const outer = value as Record<string, unknown>;
-    const canonical =
-        outer.payload && typeof outer.payload === 'object' && !Array.isArray(outer.payload)
-            ? (outer.payload as Record<string, unknown>)
-            : undefined;
-    if (!canonical) return outer;
-
-    return {
-        ...outer,
-        ...canonical,
-        type:
-            typeof canonical.type === 'string' && canonical.type.trim()
-                ? canonical.type
-                : outer.type,
-        sequence: outer.sequence ?? outer.seq,
-        job_id: outer.job_id,
-        text:
-            typeof outer.text === 'string'
-                ? outer.text
-                : typeof canonical.text === 'string'
-                  ? canonical.text
-                  : undefined,
-        chunk:
-            typeof outer.text === 'string'
-                ? outer.text
-                : typeof canonical.chunk === 'string'
-                  ? canonical.chunk
-                  : undefined,
-    };
-}
-
-function eventName(event: JobEvent | { event?: string; json?: unknown }) {
-    const payload = eventPayload(event);
-    return String(
-        ('event' in event ? event.event : '') ||
-            ('type' in event ? event.type : '') ||
-            payload?.type ||
-            '',
-    );
-}
-
-function eventSequence(event: JobEvent | { event?: string; json?: unknown }) {
-    if ('sequence' in event && typeof event.sequence === 'number')
-        return event.sequence;
-    const payload = eventPayload(event);
-    return typeof payload?.sequence === 'number' ? payload.sequence : undefined;
-}
-
-function eventJobId(event: JobEvent | { event?: string; json?: unknown }) {
-    const payload = eventPayload(event);
-    return typeof payload?.job_id === 'string' ? payload.job_id : undefined;
-}
-
-function responseJobId(response: Response) {
-    const header = response.headers.get('X-Or3-Job-Id')?.trim();
-    return header || null;
-}
+export { normalizeTurnEvent };
+export type { NormalizedTurnEvent } from '~/utils/assistant-stream/events';
 
 export function useAssistantStream() {
     const api = useOr3Api();
@@ -1268,6 +564,100 @@ export function useAssistantStream() {
                 ),
             );
         };
+        const applyRunnerStructuredResult = (
+            value?: string | null,
+            runnerId?: string,
+        ) => {
+            const payload = parseStructuredResultPayload(value);
+            if (!payload) return;
+
+            const stats = objectRecord(payload.stats);
+            const modelStats = objectRecord(stats?.models);
+            const tools = objectRecord(stats?.tools);
+            const toolsByName = objectRecord(tools?.byName);
+
+            if (modelStats && Object.keys(modelStats).length) {
+                const details = Object.entries(modelStats)
+                    .map(([model, entry]) => {
+                        const record = objectRecord(entry);
+                        const api = objectRecord(record?.api);
+                        const tokens = objectRecord(record?.tokens);
+                        const requests = numberValue(api?.totalRequests);
+                        const errors = numberValue(api?.totalErrors);
+                        const totalTokens = numberValue(tokens?.total);
+                        return `${model}: ${requests} request${requests === 1 ? '' : 's'}, ${errors} error${errors === 1 ? '' : 's'}, ${totalTokens.toLocaleString()} tokens`;
+                    })
+                    .join('\n');
+                addActivity(
+                    createActivity(
+                        'runner_stats',
+                        `${runnerId === 'gemini' ? 'Gemini' : 'Runner'} model usage`,
+                        details || undefined,
+                        'complete',
+                    ),
+                );
+            }
+
+            if (!toolsByName) return;
+
+            const current = readAssistant();
+            const existing = current?.toolCalls ?? [];
+            const nextToolCalls = [...existing];
+
+            for (const [name, entry] of Object.entries(toolsByName)) {
+                const record = objectRecord(entry);
+                if (!record) continue;
+                const failCount = numberValue(record.fail);
+                const successCount = numberValue(record.success);
+                const count = numberValue(record.count);
+                const status: ChatToolCall['status'] =
+                    failCount > 0 ? 'error' : 'complete';
+                const args = compactJson({
+                    calls: count,
+                    decisions: record.decisions,
+                });
+                const result =
+                    status === 'complete'
+                        ? `${successCount || count} successful call${(successCount || count) === 1 ? '' : 's'}`
+                        : undefined;
+                const error =
+                    status === 'error'
+                        ? `${failCount} failed call${failCount === 1 ? '' : 's'}`
+                        : undefined;
+                const id = `runner-tool:${runnerId || 'runner'}:${name}`;
+                const existingIndex = nextToolCalls.findIndex(
+                    (call) => call.id === id,
+                );
+                const call: ChatToolCall = {
+                    id,
+                    name,
+                    status,
+                    arguments: args,
+                    result,
+                    error,
+                    startedAt: now(),
+                    completedAt: now(),
+                };
+                if (existingIndex === -1) {
+                    nextToolCalls.push(call);
+                } else {
+                    nextToolCalls[existingIndex] = {
+                        ...nextToolCalls[existingIndex],
+                        ...call,
+                    };
+                }
+                addActivity(
+                    createActivity(
+                        'tool_result',
+                        `Tool result: ${name}`,
+                        error || result,
+                        status,
+                    ),
+                );
+            }
+
+            setToolCalls(nextToolCalls);
+        };
         const findReplayableToolCall = (
             name: string,
         ): AssistantReplayToolCall | undefined => {
@@ -1278,583 +668,50 @@ export function useAssistantStream() {
             if (!match) return undefined;
             return { name: match.name, arguments: match.arguments };
         };
-        const applyEvent = (
-            event: JobEvent | { event?: string; json?: unknown },
-            source: 'stream' | 'snapshot' = 'stream',
-        ) => {
-            const payload = eventPayload(event);
-            const type = eventName(event);
-            if (!type) return { failed: false, completed: false };
-
-            const seq = eventSequence(event);
-            const seqKey = seq !== undefined ? `seq:${seq}` : '';
-            const payloadKey = `${type}:${JSON.stringify(payload ?? {})}`;
-            if (seqKey && appliedEventSequenceKeys.has(seqKey))
-                return { failed: false, completed: false };
-            if (
-                source === 'snapshot' &&
-                streamedEventPayloadKeys.has(payloadKey)
-            )
-                return { failed: false, completed: false };
-            if (seqKey) appliedEventSequenceKeys.add(seqKey);
-            if (source === 'stream') streamedEventPayloadKeys.add(payloadKey);
-
-            const delta = String(
-                payload?.delta ?? payload?.text ?? payload?.content ?? '',
-            );
-            if (type === 'queued' || type === 'started') {
-                addActivity(
-                    createActivity(
-                        type,
-                        type === 'queued' ? 'Queued turn' : 'Started turn',
-                    ),
-                );
-            }
-            if (type === 'text_delta' && delta) {
-                appendAssistantContent(delta);
-                appendTextPart(delta);
-                sawVisibleOutput =
-                    sawVisibleOutput || !!sanitizeAssistantText(delta);
-            }
-            if (type === 'output' && delta) {
-                appendAssistantContent(
-                    delta.endsWith('\n') ? delta : `${delta}\n`,
-                );
-                appendTextPart(delta.endsWith('\n') ? delta : `${delta}\n`);
-                sawVisibleOutput =
-                    sawVisibleOutput || !!sanitizeAssistantText(delta);
-            }
-            if (type === 'runner_output' && delta) {
-                if (isStructuredStdoutDiagnostic(payload)) {
-                    return { failed: false, completed: false };
-                }
-                addActivity(
-                    createActivity(
-                        payload?.stream === 'stderr'
-                            ? 'runner_stderr'
-                            : 'runner_output',
-                        payload?.stream === 'stderr'
-                            ? 'Runner warning'
-                            : 'Runner output',
-                        truncateLogDetail(delta),
-                        payload?.stream === 'stderr' ? 'error' : 'complete',
-                    ),
-                );
-            }
-            if (type === 'content.delta' && delta) {
-                const streamKind = String(payload?.stream_kind ?? 'unknown');
-                if (streamKind === 'assistant_text') {
-                    appendAssistantContent(delta);
-                    appendTextPart(delta);
-                    sawVisibleOutput =
-                        sawVisibleOutput || !!sanitizeAssistantText(delta);
-                } else if (
-                    streamKind === 'reasoning_text' ||
-                    streamKind === 'reasoning_summary_text'
-                ) {
-                    updateAssistant({
-                        reasoningText: `${readAssistant()?.reasoningText || ''}${delta}`,
-                    });
-                } else {
-                    closeActiveTextPart();
-                    addActivity(
-                        createActivity(
-                            streamKind,
-                            streamKind === 'command_output'
-                                ? 'Command output'
-                                : streamKind === 'file_change_output'
-                                  ? 'File change output'
-                                  : 'Runner output',
-                            truncateLogDetail(delta),
-                            'complete',
-                        ),
-                    );
-                }
-            }
-            if (
-                type === 'item.started' ||
-                type === 'item.updated' ||
-                type === 'item.completed'
-            ) {
-                closeActiveTextPart();
-                const itemType = String(payload?.item_type ?? 'unknown');
-                const status = canonicalActivityStatus(
-                    payload?.status ??
-                        (type === 'item.completed'
-                            ? 'completed'
-                            : type === 'item.started'
-                              ? 'running'
-                              : undefined),
-                );
-                const label = canonicalActivityLabel(
-                    itemType,
-                    payload?.title,
-                );
-                const toolDisplayName = canonicalToolDisplayName(
-                    itemType,
-                    payload,
-                );
-                const activityId = canonicalActivityKey(
-                    itemType,
-                    toolDisplayName,
-                    payload,
-                );
-                upsertActivity(
-                    createActivity(
-                        itemType,
-                        toolDisplayName,
-                        canonicalActivityDetail(payload),
-                        status,
-                        activityId,
-                    ),
-                );
-                if (
-                    itemType !== 'assistant_message' &&
-                    itemType !== 'reasoning' &&
-                    itemType !== 'plan'
-                ) {
-                    const data =
-                        payload?.data && typeof payload.data === 'object'
-                            ? (payload.data as Record<string, unknown>)
-                            : {};
-                    const toolCallId = String(
-                        data.callID || data.id || payload?.id || `${itemType}:${toolDisplayName}`,
-                    );
-                    upsertPart({
-                        id: `tool:${toolCallId}`,
-                        type: 'tool',
-                        toolCallId,
-                        name: toolDisplayName,
-                        status,
-                        argumentsPreview: previewValue(
-                            data.command ?? data.arguments ?? data.input ??
-                                (data.state && typeof data.state === 'object'
-                                    ? (data.state as Record<string, unknown>)
-                                          .input
-                                    : '') ?? '',
-                            2_000,
-                        ),
-                        resultPreview: previewValue(
-                            data.result ?? data.output ??
-                                (data.state && typeof data.state === 'object'
-                                    ? (data.state as Record<string, unknown>)
-                                          .output
-                                    : '') ??
-                                payload?.detail ?? '',
-                            4_000,
-                        ),
-                        errorPreview:
-                            status === 'error'
-                                ? String(payload?.detail ?? data.error ?? '')
-                                : undefined,
-                    });
-                }
-            }
-            if (type === 'request.opened' || type === 'request.resolved') {
-                closeActiveTextPart();
-                const status =
-                    type === 'request.opened'
-                        ? 'attention'
-                        : canonicalActivityStatus(payload?.status);
-                addActivity(
-                    createActivity(
-                        String(payload?.request_type ?? 'runner_request'),
-                        String(
-                            payload?.title ||
-                                (type === 'request.opened'
-                                    ? 'Runner needs attention'
-                                    : 'Runner request resolved'),
-                        ),
-                        canonicalActivityDetail(payload),
-                        status,
-                    ),
-                );
-            }
-            if (type === 'turn.plan.updated' || type === 'turn.diff.updated') {
-                closeActiveTextPart();
-                addActivity(
-                    createActivity(
-                        type,
-                        type === 'turn.plan.updated'
-                            ? 'Plan updated'
-                            : 'Diff updated',
-                        canonicalActivityDetail(payload),
-                        'complete',
-                    ),
-                );
-            }
-            if (type === 'runtime.warning') {
-                addActivity(
-                    createActivity(
-                        'runtime_warning',
-                        'Runner warning',
-                        canonicalActivityDetail(payload),
-                        'attention',
-                    ),
-                );
-            }
-            if (type === 'runtime.error') {
-                addActivity(
-                    createActivity(
-                        'runtime_error',
-                        'Runner error',
-                        canonicalActivityDetail(payload),
-                        'error',
-                    ),
-                );
-            }
-            if (type === 'turn.completed') {
-                completeRunningActivity([
-                    'queued',
-                    'started',
-                    'tool_call',
-                    'command_execution',
-                    'file_change',
-                    'mcp_tool_call',
-                    'web_search',
-                    'collab_agent_tool_call',
-                    'dynamic_tool_call',
-                    'unknown',
-                ]);
-                updateAssistant({ status: 'complete' });
-                return { failed: false, completed: true };
-            }
-            const finalText = payload?.final_text;
-            const assistantContent =
-                typeof payload?.content === 'string' ? payload.content : '';
-            const assistantText =
-                typeof finalText === 'string' && finalText.trim()
-                    ? finalText
-                    : type === 'assistant'
-                      ? assistantContent
-                      : '';
-            if (assistantText.trim()) {
-                replaceAssistantContent(assistantText);
-                if (!hasVisibleTextPart()) {
-                    appendCompleteTextPart(assistantText);
-                }
-                sawVisibleOutput =
-                    sawVisibleOutput || !!sanitizeAssistantText(assistantText);
-            }
-            if (type === 'tool_call') {
-                closeActiveTextPart();
-                const toolCallId = String(
-                    payload?.tool_call_id ||
-                        payload?.id ||
-                        `${payload?.name || 'tool'}:${payload?.arguments || ''}`,
-                );
-                addToolCall(
-                    String(payload?.name || 'tool'),
-                    typeof payload?.arguments === 'string'
-                        ? payload.arguments
-                        : undefined,
-                );
-                upsertPart({
-                    id: `tool:${toolCallId}`,
-                    type: 'tool',
-                    toolCallId,
-                    name: String(payload?.name || 'tool'),
-                    status: 'running',
-                    argumentsPreview: previewValue(
-                        payload?.arguments_preview ?? payload?.arguments ?? '',
-                        2_000,
-                    ),
-                });
-            }
-            if (type === 'tool_result') {
-                closeActiveTextPart();
-                const toolName = String(payload?.name || 'tool');
-                const toolCallId = String(
-                    payload?.tool_call_id || payload?.id || toolName,
-                );
-                const approvalRequired = isApprovalRequiredPayload(payload);
-                const toolError =
-                    typeof payload?.error === 'string'
-                        ? payload.error
-                        : undefined;
-                resolveToolCall(
-                    toolName,
-                    typeof payload?.result === 'string'
-                        ? payload.result
-                        : undefined,
-                    toolError,
-                    approvalRequired ? 'attention' : undefined,
-                );
-                upsertPart({
-                    id: `tool:${toolCallId}`,
-                    type: 'tool',
-                    toolCallId,
-                    name: toolName,
-                    status: approvalRequired
-                        ? 'attention'
-                        : toolError
-                          ? 'error'
-                          : 'complete',
-                    resultPreview: previewValue(
-                        payload?.result_preview ?? payload?.result ?? '',
-                        4_000,
-                    ),
-                    errorPreview: toolError,
-                    artifactId:
-                        typeof payload?.artifact_id === 'string'
-                            ? payload.artifact_id
-                            : undefined,
-                    publicCode:
-                        typeof payload?.public_code === 'string'
-                            ? payload.public_code
-                            : typeof payload?.code === 'string'
-                              ? payload.code
-                              : undefined,
-                });
-                const approvalRequestId = extractApprovalRequestId(payload);
-                if (approvalRequestId) {
-                    sawVisibleOutput = true;
-                    const current = readAssistant();
-                    const replayToolCall = findReplayableToolCall(toolName);
-                    const baseRetryPayload =
-                        current?.retryPayload ?? readAssistant()?.retryPayload;
-                    const approvalMessage = describeApprovalRequest(
-                        toolName,
-                        replayToolCall?.arguments,
-                    );
-                    const content =
-                        current?.content?.trim() &&
-                        !current.content.includes('**Tool:**')
-                            ? `${current.content.trim()}\n\n${approvalMessage}`
-                            : approvalMessage;
-                    if (!hasTextPartContent(approvalMessage)) {
-                        appendCompleteTextPart(approvalMessage);
-                    }
-                    addActivity(
-                        createActivity(
-                            'approval_required',
-                            'Waiting for approval',
-                            approvalMessage,
-                            'attention',
-                        ),
-                    );
-                    updateAssistant({
-                        status: 'attention',
-                        error: undefined,
-                        approvalRequestId,
-                        approvalState: 'pending',
-                        errorCode: 'approval_required',
-                        retryPayload: baseRetryPayload
-                            ? {
-                                  ...baseRetryPayload,
-                                  ...(replayToolCall ? { replayToolCall } : {}),
-                                  continueMessageId: assistant.id,
-                                  suppressUserEcho: true,
-                              }
-                            : undefined,
-                        content,
-                    });
-                }
-            }
-            if (
-                type === 'reasoning_delta' &&
-                typeof payload?.content === 'string'
-            ) {
-                updateAssistant({
-                    reasoningText: `${readAssistant()?.reasoningText || ''}${payload.content}`,
-                });
-            }
-            if (type === 'runtime_error') {
-                addActivity(
-                    createActivity(
-                        'runtime_error',
-                        'Runtime error',
-                        String(payload?.message || 'Unknown runtime error'),
-                        'error',
-                    ),
-                );
-            }
-
-            const streamError = String(
-                payload?.error ?? payload?.message ?? '',
-            ).trim();
-            const streamStatus = String(payload?.status ?? '').trim();
-            const approvalRequired = isApprovalRequiredPayload(payload);
-            if (
-                !approvalRequired &&
-                (streamError ||
-                    streamStatus === 'failed' ||
-                    streamStatus === 'aborted')
-            ) {
-                const failureText =
-                    streamError ||
-                    sanitizeAssistantText(rawAssistantContent) ||
-                    readAssistant()?.content ||
-                    'or3-intern could not finish this request.';
-                updateAssistant({
-                    content: failureText,
-                    status: 'failed',
-                    error: streamError || `Turn ${streamStatus || 'failed'}`,
-                    errorCode: extractErrorCode(payload),
-                    approvalRequestId: extractApprovalRequestId(payload),
-                    approvalState: extractApprovalRequestId(payload)
-                        ? 'pending'
-                        : undefined,
-                    jobId: eventJobId(event) ?? undefined,
-                });
-                return { failed: true, completed: false };
-            }
-
-            if (streamStatus === 'approval_required') {
-                completeRunningActivity(['queued', 'started', 'tool_call']);
-                const approvalRequestId = extractApprovalRequestId(payload);
-                const current = readAssistant();
-                const baseRetryPayload =
-                    current?.retryPayload ?? readAssistant()?.retryPayload;
-                const runnerPermission = normalizeRunnerPermissionPayload(
-                    payload?.runner_permission,
-                );
-                updateAssistant({
-                    content:
-                        readAssistant()?.content ||
-                        'Approval is needed before or3-intern can continue.',
-                    status: 'attention',
-                    error: undefined,
-                    errorCode: 'approval_required',
-                    approvalRequestId,
-                    approvalState: approvalRequestId ? 'pending' : undefined,
-                    retryPayload: baseRetryPayload
-                        ? {
-                              ...baseRetryPayload,
-                              ...(runnerPermission ? { runnerPermission } : {}),
-                              continueMessageId: assistant.id,
-                              suppressUserEcho: true,
-                          }
-                        : undefined,
-                    jobId: eventJobId(event) ?? undefined,
-                });
-                return { failed: false, completed: true };
-            }
-
-            if (
-                streamStatus === 'completed' ||
-                streamStatus === 'complete' ||
-                streamStatus === 'succeeded' ||
-                streamStatus === 'success'
-            ) {
-                completeRunningActivity([
-                    'queued',
-                    'started',
-                    'tool_call',
-                    'command_execution',
-                    'file_change',
-                    'mcp_tool_call',
-                    'web_search',
-                    'collab_agent_tool_call',
-                    'dynamic_tool_call',
-                    'unknown',
-                ]);
-                addActivity(
-                    createActivity(
-                        'completion',
-                        'Completed turn',
-                        typeof payload?.final_text === 'string' &&
-                            payload.final_text.trim()
-                            ? undefined
-                            : readAssistant()?.toolCalls?.length
-                              ? 'Tool work completed without a final assistant message.'
-                              : 'No final text was included in the completion event.',
-                        'complete',
-                    ),
-                );
-                updateAssistant({ status: 'complete' });
-                return { failed: false, completed: true };
-            }
-
-            return { failed: false, completed: false };
-        };
-        const applyJobSnapshot = (snapshot: JobSnapshot) => {
-            activeJobId.value = snapshot.job_id;
-            updateAssistant({ jobId: snapshot.job_id });
-            for (const event of snapshot.events ?? [])
-                applyEvent(event, 'snapshot');
-            const snapshotText =
-                snapshot.final_text?.trim() || snapshot.error?.trim() || '';
-            if (snapshotText && !sawVisibleOutput) {
-                replaceAssistantContent(snapshotText);
-                appendCompleteTextPart(snapshotText);
-                sawVisibleOutput =
-                    sawVisibleOutput || !!sanitizeAssistantText(snapshotText);
-            }
-            updateAssistant({
-                status:
-                    snapshot.status === 'approval_required'
-                        ? 'attention'
-                        : snapshot.error ||
-                            snapshot.status === 'failed' ||
-                            snapshot.status === 'aborted'
-                          ? 'failed'
-                          : 'complete',
-                error:
-                    snapshot.status === 'approval_required'
-                        ? undefined
-                        : snapshot.error,
-                errorCode:
-                    snapshot.status === 'approval_required'
-                        ? 'approval_required'
-                        : readAssistant()?.errorCode,
-                approvalState:
-                    snapshot.status === 'approval_required'
-                        ? 'pending'
-                        : readAssistant()?.approvalState,
-                jobId: snapshot.job_id,
-            });
-        };
-        const fetchAndApplyJobSnapshot = async (jobId?: string | null) => {
-            if (!jobId) return null;
-            const snapshot = await api.request<JobSnapshot>(
-                `/internal/v1/jobs/${encodeURIComponent(jobId)}`,
-                {
-                    signal: activeController.signal,
+        const { applyEvent } = createAssistantEventApplier({
+            assistantId: assistant.id,
+            readAssistant,
+            updateAssistant,
+            appendAssistantContent,
+            replaceAssistantContent,
+            upsertPart,
+            appendTextPart,
+            appendCompleteTextPart,
+            closeActiveTextPart,
+            hasVisibleTextPart,
+            hasTextPartContent,
+            addActivity,
+            upsertActivity,
+            updateActivity,
+            completeRunningActivity,
+            addToolCall,
+            resolveToolCall,
+            findReplayableToolCall,
+            setSawVisibleOutput(value) {
+                sawVisibleOutput = value;
+            },
+            rawAssistantContent: () => rawAssistantContent,
+        });
+        const runFetchAndApplyJobSnapshot = (jobId?: string | null) =>
+            fetchAndApplyJobSnapshot(jobId, {
+                api,
+                activeController,
+                activeJobId,
+                readAssistant,
+                updateAssistant,
+                updateActivity,
+                completeRunningActivity,
+                addActivity,
+                applyEvent,
+                replaceAssistantContent,
+                appendCompleteTextPart,
+                sawVisibleOutput: () => sawVisibleOutput,
+                setSawVisibleOutput(value: boolean) {
+                    sawVisibleOutput = value;
                 },
-            );
-            applyJobSnapshot(snapshot);
-            return snapshot;
-        };
-        const fetchAndApplyRunnerTurn = async (
-            sessionId?: string,
-            turnId?: string | null,
-        ) => {
-            if (!sessionId || !turnId) return null;
-            const turn = await api.request<RunnerChatTurn>(
-                `/internal/v1/runner-chat/sessions/${encodeURIComponent(sessionId)}/turns/${encodeURIComponent(turnId)}`,
-                { signal: activeController.signal },
-            );
-            if (turn.final_text?.trim() && !sawVisibleOutput) {
-                replaceAssistantContent(turn.final_text);
-                appendCompleteTextPart(turn.final_text);
-                sawVisibleOutput = true;
-            }
-            updateAssistant({
-                status:
-                    turn.status === 'approval_required'
-                        ? 'attention'
-                        : turn.status === 'failed' ||
-                            turn.status === 'aborted' ||
-                            turn.status === 'timed_out'
-                          ? 'failed'
-                          : 'complete',
-                error:
-                    turn.status === 'approval_required'
-                        ? undefined
-                        : turn.error,
-                approvalState:
-                    turn.status === 'approval_required'
-                        ? 'pending'
-                        : readAssistant()?.approvalState,
-                backendMessageId: turn.assistant_message_id,
-                runnerChatTurnId: turn.id,
-                runnerChatSessionId: turn.session_id,
-                agentCliRunId: turn.agent_cli_run_id,
-                jobId: turn.agent_cli_job_id,
+                sanitizeAssistantText,
+                applyRunnerStructuredResult,
             });
-            return turn;
-        };
 
         const selectedRunnerId =
             payload.runnerId || session.runnerId || 'or3-intern';
@@ -1865,204 +722,62 @@ export function useAssistantStream() {
         } | null = null;
 
         try {
-            let sawStreamEvent = false;
-            let streamEndedWithFailure = false;
-            let streamedJobId: string | null = followJobId || null;
+            const executionContext = {
+                api,
+                activeController,
+                activeJobId,
+                readAssistant,
+                updateAssistant,
+                updateActivity,
+                completeRunningActivity,
+                addActivity,
+                applyEvent,
+                replaceAssistantContent,
+                appendCompleteTextPart,
+                sawVisibleOutput: () => sawVisibleOutput,
+                setSawVisibleOutput(value: boolean) {
+                    sawVisibleOutput = value;
+                },
+                sanitizeAssistantText,
+                applyRunnerStructuredResult,
+            };
 
-            if (followRunnerTurnId && payload.runnerChatSessionId) {
-                updateAssistant({
-                    runnerChatTurnId: followRunnerTurnId,
-                    runnerChatSessionId: payload.runnerChatSessionId,
-                });
-                runnerChatTurnForRecovery = {
-                    sessionId: payload.runnerChatSessionId,
-                    turnId: followRunnerTurnId,
-                };
-                for await (const event of api.stream(
-                    `/internal/v1/runner-chat/sessions/${encodeURIComponent(payload.runnerChatSessionId)}/turns/${encodeURIComponent(followRunnerTurnId)}/stream`,
-                    {
-                        method: 'GET',
-                        signal: activeController.signal,
-                    },
-                )) {
-                    sawStreamEvent = true;
-                    const result = applyEvent(
-                        normalizeRunnerChatEvent(
-                            event as unknown as RunnerChatEvent,
-                        ),
-                    );
-                    streamEndedWithFailure =
-                        streamEndedWithFailure || result.failed;
-                }
-                await fetchAndApplyRunnerTurn(
-                    payload.runnerChatSessionId,
-                    followRunnerTurnId,
-                );
-            } else if (followJobId) {
-                activeJobId.value = followJobId;
-                updateAssistant({ jobId: followJobId });
-                for await (const event of api.stream(
-                    `/internal/v1/jobs/${encodeURIComponent(followJobId)}/stream`,
-                    {
-                        method: 'GET',
-                        signal: activeController.signal,
-                        onOpen(response) {
-                            const jobId =
-                                responseJobId(response) || followJobId;
-                            activeJobId.value = jobId;
-                            updateAssistant({ jobId });
-                        },
-                    },
-                )) {
-                    sawStreamEvent = true;
-                    const result = applyEvent(event);
-                    streamEndedWithFailure =
-                        streamEndedWithFailure || result.failed;
-                }
-            } else if (useRunnerChat) {
-                const desiredRunnerContinuationMode =
-                    payload.runnerContinuationMode ||
-                    session.runnerContinuationMode ||
-                    'replay';
-                const runnerSession = payload.runnerChatSessionId
-                    ? await api.request<RunnerChatSession>(
-                          `/internal/v1/runner-chat/sessions/${encodeURIComponent(payload.runnerChatSessionId)}`,
-                          { signal: activeController.signal },
-                      )
-                    : await api.request<RunnerChatSession>(
-                          '/internal/v1/runner-chat/sessions',
-                          {
-                              method: 'POST',
-                              signal: activeController.signal,
-                              body: {
-                                  app_session_key: session.sessionKey,
-                                  runner_id: selectedRunnerId,
-                                  continuation_mode:
-                                      desiredRunnerContinuationMode,
-                                  model:
-                                      payload.runnerModel ||
-                                      session.runnerModel,
-                                  mode:
-                                      payload.runnerMode || session.runnerMode,
-                                  isolation:
-                                      payload.runnerIsolation ||
-                                      session.runnerIsolation,
-                                  cwd: payload.runnerCwd || session.runnerCwd,
-                                  max_turns:
-                                      payload.runnerMaxTurns || undefined,
-                              },
-                          },
-                      );
-                const effectiveRunnerContinuationMode =
-                    desiredRunnerContinuationMode === 'native' &&
-                    !runnerSession.native_session_ref
-                        ? 'replay'
-                        : desiredRunnerContinuationMode;
-                chat.bindRunnerChatSession(session.id, runnerSession.id);
-                updateAssistant({
-                    runnerId: selectedRunnerId,
-                    runnerLabel: payload.runnerLabel ?? session.runnerLabel,
-                    runnerChatSessionId: runnerSession.id,
-                });
-                const started = await api.request<RunnerChatTurnStartResponse>(
-                    `/internal/v1/runner-chat/sessions/${encodeURIComponent(runnerSession.id)}/turns`,
-                    {
-                        method: 'POST',
-                        signal: activeController.signal,
-                        body: {
-                            user_message: text,
-                            continuation_mode: effectiveRunnerContinuationMode,
-                            model: payload.runnerModel || session.runnerModel,
-                            mode: payload.runnerMode || session.runnerMode,
-                            isolation:
-                                payload.runnerIsolation ||
-                                session.runnerIsolation,
-                            cwd: payload.runnerCwd || session.runnerCwd,
-                            max_turns: payload.runnerMaxTurns || undefined,
-                            ...(payload.approvalToken
-                                ? { approval_token: payload.approvalToken }
-                                : {}),
-                            ...(payload.runnerPermission
-                                ? {
-                                      runner_permission: {
-                                          runner_id:
-                                              payload.runnerPermission.runnerId,
-                                          kind: payload.runnerPermission.kind,
-                                          access: payload.runnerPermission
-                                              .access,
-                                          target_path:
-                                              payload.runnerPermission
-                                                  .targetPath,
-                                      },
-                                  }
-                                : {}),
-                        },
-                    },
-                );
-                streamedJobId = started.job_id ?? null;
-                if (streamedJobId) activeJobId.value = streamedJobId;
-                updateAssistant({
-                    jobId: streamedJobId ?? undefined,
-                    runnerChatSessionId: runnerSession.id,
-                    runnerChatTurnId: started.turn_id,
-                });
-                runnerChatTurnForRecovery = {
-                    sessionId: runnerSession.id,
-                    turnId: started.turn_id,
-                };
-                for await (const event of api.stream(
-                    `/internal/v1/runner-chat/sessions/${encodeURIComponent(runnerSession.id)}/turns/${encodeURIComponent(started.turn_id)}/stream`,
-                    {
-                        method: 'GET',
-                        signal: activeController.signal,
-                    },
-                )) {
-                    sawStreamEvent = true;
-                    const normalized = normalizeRunnerChatEvent(
-                        event as unknown as RunnerChatEvent,
-                    );
-                    const jobId = eventJobId(normalized);
-                    if (jobId) {
-                        streamedJobId = jobId;
-                        activeJobId.value = jobId;
-                        updateAssistant({ jobId });
-                    }
-                    const result = applyEvent(normalized);
-                    streamEndedWithFailure =
-                        streamEndedWithFailure || result.failed;
-                }
-                await fetchAndApplyRunnerTurn(
-                    runnerSession.id,
-                    started.turn_id,
-                );
-            } else {
-                for await (const event of api.stream('/internal/v1/turns', {
-                    body: turnRequest,
-                    signal: activeController.signal,
-                    onOpen(response) {
-                        const jobId = responseJobId(response);
-                        if (!jobId) return;
-                        streamedJobId = jobId;
-                        activeJobId.value = jobId;
-                        updateAssistant({ jobId });
-                    },
-                })) {
-                    sawStreamEvent = true;
-                    const jobId = eventJobId(event);
-                    if (jobId) {
-                        streamedJobId = jobId;
-                        activeJobId.value = jobId;
-                        updateAssistant({ jobId });
-                    }
-                    const result = applyEvent(event);
-                    streamEndedWithFailure =
-                        streamEndedWithFailure || result.failed;
-                }
-            }
+            const execution = followRunnerTurnId && payload.runnerChatSessionId
+                ? await streamFollowRunnerTurn({
+                      ...executionContext,
+                      runnerChatSessionId: payload.runnerChatSessionId,
+                      runnerChatTurnId: followRunnerTurnId,
+                  })
+                : followJobId
+                  ? await streamFollowJob({
+                        ...executionContext,
+                        followJobId,
+                    })
+                  : useRunnerChat
+                    ? await streamRunnerChat({
+                          ...executionContext,
+                          chat,
+                          session,
+                          payload,
+                          text,
+                          selectedRunnerId,
+                      })
+                    : await streamDirectTurn({
+                          ...executionContext,
+                          turnRequest,
+                      });
+
+            const {
+                sawStreamEvent,
+                streamEndedWithFailure,
+                streamedJobId,
+                runnerChatTurnForRecovery: executionRecoveryRef,
+            } = execution;
+            runnerChatTurnForRecovery = executionRecoveryRef;
 
             if (streamedJobId && !useRunnerChat) {
                 try {
-                    await fetchAndApplyJobSnapshot(streamedJobId);
+                    await runFetchAndApplyJobSnapshot(streamedJobId);
                 } catch {
                     // Streaming already gave us the best available live state.
                 }
@@ -2099,167 +814,58 @@ export function useAssistantStream() {
             }
 
             if (useRunnerChat) {
-                if (runnerChatTurnForRecovery) {
-                    try {
-                        await fetchAndApplyRunnerTurn(
-                            runnerChatTurnForRecovery.sessionId,
-                            runnerChatTurnForRecovery.turnId,
-                        );
-                        updateActivity((entry) => entry.status === 'running', {
-                            status: 'error',
-                        });
-                        const latest = readAssistant();
-                        if (latest?.status === 'failed') return;
-                    } catch {
-                        // Surface the original streaming failure below.
-                    }
-                }
-                const message = describeRequestError(streamError);
-                const details = describeRequestErrorDetails(streamError);
-                updateActivity((entry) => entry.status === 'running', {
-                    status: 'error',
+                await handleRunnerExecutionError({
+                    api,
+                    activeController,
+                    activeJobId,
+                    readAssistant,
+                    updateAssistant,
+                    updateActivity,
+                    completeRunningActivity,
+                    addActivity,
+                    applyEvent,
+                    replaceAssistantContent,
+                    appendCompleteTextPart,
+                    sawVisibleOutput: () => sawVisibleOutput,
+                    setSawVisibleOutput(value) {
+                        sawVisibleOutput = value;
+                    },
+                    sanitizeAssistantText,
+                    applyRunnerStructuredResult,
+                    toast,
+                    streamError,
+                    runnerChatTurnForRecovery,
                 });
-                updateAssistant({
-                    content: details ? `${message}\n\n${details}` : message,
-                    status: 'failed',
-                    error: message,
-                    errorCode: extractErrorCode(streamError),
-                    runnerChatSessionId:
-                        runnerChatTurnForRecovery?.sessionId ||
-                        readAssistant()?.runnerChatSessionId,
-                    runnerChatTurnId:
-                        runnerChatTurnForRecovery?.turnId ||
-                        readAssistant()?.runnerChatTurnId,
-                });
-                showFailureToast(toast, 'Runner request failed', streamError);
                 return;
             }
 
-            try {
-                const fallbackTurnRequest =
-                    turnRequest &&
-                    !payload.toolPolicy &&
-                    isServiceCapabilityCeilingError(streamError)
-                        ? buildTurnRequest(
-                              downgradeToolPolicyForServiceCapability(
-                                  requestedToolPolicy,
-                              ),
-                          )
-                        : turnRequest;
-                if (isServiceCapabilityCeilingError(streamError)) {
-                    rememberServiceCapabilityCeilingHost(activeHostId);
-                }
-                if (
-                    fallbackTurnRequest !== turnRequest &&
-                    fallbackTurnRequest?.tool_policy?.mode === 'ask'
-                ) {
-                    addActivity(
-                        createActivity(
-                            'policy_adjusted',
-                            'Tool mode adjusted',
-                            'This host only allows safe OR3 tools, so the request retried in Ask mode.',
-                            'complete',
-                        ),
-                    );
-                }
-                const response = await api.request<TurnResponse>(
-                    '/internal/v1/turns',
-                    {
-                        body: fallbackTurnRequest,
-                        signal: activeController.signal,
-                    },
-                );
-                activeJobId.value = response.job_id;
-                if (response.job_id) {
-                    try {
-                        await fetchAndApplyJobSnapshot(response.job_id);
-                    } catch {
-                        replaceAssistantContent(
-                            response.final_text ||
-                                response.error ||
-                                'The turn completed without text.',
-                        );
-                        updateAssistant({
-                            status:
-                                response.status === 'approval_required'
-                                    ? 'attention'
-                                    : response.error
-                                      ? 'failed'
-                                      : 'complete',
-                            error:
-                                response.status === 'approval_required'
-                                    ? undefined
-                                    : response.error,
-                            errorCode:
-                                response.status === 'approval_required'
-                                    ? 'approval_required'
-                                    : response.error
-                                      ? 'unknown'
-                                      : undefined,
-                            approvalRequestId:
-                                extractApprovalRequestId(response),
-                            approvalState:
-                                response.status === 'approval_required'
-                                    ? 'pending'
-                                    : undefined,
-                            jobId: response.job_id,
-                        });
-                    }
-                } else {
-                    replaceAssistantContent(
-                        response.final_text ||
-                            response.error ||
-                            'The turn completed without text.',
-                    );
-                    updateAssistant({
-                        status:
-                            response.status === 'approval_required'
-                                ? 'attention'
-                                : response.error
-                                  ? 'failed'
-                                  : 'complete',
-                        error:
-                            response.status === 'approval_required'
-                                ? undefined
-                                : response.error,
-                        errorCode:
-                            response.status === 'approval_required'
-                                ? 'approval_required'
-                                : response.error
-                                  ? 'unknown'
-                                  : undefined,
-                        approvalRequestId: extractApprovalRequestId(response),
-                        approvalState:
-                            response.status === 'approval_required'
-                                ? 'pending'
-                                : undefined,
-                        jobId: response.job_id,
-                    });
-                }
-                completeRunningActivity(['queued', 'started', 'tool_call']);
-            } catch (error) {
-                const primaryError = error || streamError;
-                const message = describeRequestError(primaryError);
-                const details = describeRequestErrorDetails(primaryError);
-                const approvalRequestId =
-                    extractApprovalRequestId(primaryError);
-                updateActivity((entry) => entry.status === 'running', {
-                    status: 'error',
-                });
-                updateAssistant({
-                    content: details ? `${message}\n\n${details}` : message,
-                    status: 'failed',
-                    error: message,
-                    errorCode: extractErrorCode(primaryError),
-                    approvalRequestId,
-                    approvalState: approvalRequestId ? 'pending' : undefined,
-                });
-                showFailureToast(
-                    toast,
-                    'or3-intern request failed',
-                    primaryError,
-                );
-            }
+            await recoverDirectExecutionError({
+                api,
+                activeController,
+                activeJobId,
+                readAssistant,
+                updateAssistant,
+                updateActivity,
+                completeRunningActivity,
+                addActivity,
+                applyEvent,
+                replaceAssistantContent,
+                appendCompleteTextPart,
+                sawVisibleOutput: () => sawVisibleOutput,
+                setSawVisibleOutput(value) {
+                    sawVisibleOutput = value;
+                },
+                sanitizeAssistantText,
+                toast,
+                streamError,
+                payload,
+                turnRequest,
+                requestedToolPolicy,
+                activeHostId,
+                rememberServiceCapabilityCeilingHost,
+                buildTurnRequest,
+                fetchAndApplyJobSnapshot: runFetchAndApplyJobSnapshot,
+            });
         } finally {
             isStreaming.value = false;
             if (controller === activeController) controller = null;

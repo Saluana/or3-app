@@ -101,8 +101,15 @@ function builtinInternRunner(): AgentRunnerInfo {
 }
 
 function normalizeRunnerList(runners: AgentRunnerInfo[]): AgentRunnerInfo[] {
-    const hasIntern = runners.some((r) => r.id === 'or3-intern');
-    return hasIntern ? runners : [builtinInternRunner(), ...runners];
+    const normalized = runners.map((runner) => ({
+        ...runner,
+        auth_status:
+            runner.status === 'available' && runner.auth_status === 'unknown'
+                ? 'ready'
+                : runner.auth_status,
+    }));
+    const hasIntern = normalized.some((r) => r.id === 'or3-intern');
+    return hasIntern ? normalized : [builtinInternRunner(), ...normalized];
 }
 
 function hostJobSummaries(cache: ReturnType<typeof useLocalCache>) {

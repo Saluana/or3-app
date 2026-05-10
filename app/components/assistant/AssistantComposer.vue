@@ -407,7 +407,9 @@ const runnerOptions = computed(() => {
         const selectable =
             runner.id === 'or3-intern' ||
             (runner.status === 'available' &&
-                (!runner.auth_status || runner.auth_status === 'ready') &&
+                (!runner.auth_status ||
+                    runner.auth_status === 'ready' ||
+                    runner.auth_status === 'unknown') &&
                 caps?.chatSelectable !== false &&
                 caps?.chatReplay !== false);
         const reason =

@@ -111,6 +111,20 @@ describe('useJobs', () => {
     expect(ids).toContain('codex')
   })
 
+  it('treats available runners with unknown auth checks as ready', async () => {
+    const cache = useLocalCache()
+    cache.updateHost({ id: 'alpha', name: 'Alpha', baseUrl: 'http://alpha.test', token: 'alpha-token' })
+    cache.setActiveHost('alpha')
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      runners: [{ id: 'gemini', display_name: 'Gemini CLI', status: 'available', auth_status: 'unknown', supports: { modelFlag: true, maxTurns: false, structuredOutput: false, streamingJson: false, permissionsMode: true, safeSandboxFlag: false, dangerousBypassFlag: false, stdinPrompt: true } }],
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })))
+
+    const { agentRunners, loadAgentRunners } = useJobs()
+    await loadAgentRunners()
+    const gemini = agentRunners.value.find((runner) => runner.id === 'gemini')
+    expect(gemini?.auth_status).toBe('ready')
+  })
+
   it('falls back to or3-intern only on runner endpoint 404', async () => {
     const cache = useLocalCache()
     cache.updateHost({ id: 'alpha', name: 'Alpha', baseUrl: 'http://alpha.test', token: 'alpha-token' })

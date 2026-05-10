@@ -21,6 +21,13 @@ export function extractReadableResultText(
     try {
         consider(JSON.parse(trimmed));
     } catch {
+        for (const candidate of jsonRepairCandidates(trimmed)) {
+            try {
+                consider(JSON.parse(candidate));
+            } catch {
+                continue;
+            }
+        }
         for (const document of splitJsonDocuments(trimmed)) {
             try {
                 consider(JSON.parse(document));
@@ -31,6 +38,22 @@ export function extractReadableResultText(
     }
 
     return bestCandidate || null;
+}
+
+export function parseStructuredResultPayload(
+    text: string | null | undefined,
+): Record<string, unknown> | null {
+    const trimmed = (text ?? '').trim();
+    if (!trimmed) return null;
+    for (const candidate of [trimmed, ...jsonRepairCandidates(trimmed)]) {
+        try {
+            const parsed = JSON.parse(candidate);
+            return asObject(parsed);
+        } catch {
+            continue;
+        }
+    }
+    return null;
 }
 
 export function normalizeResultDisplayText(
@@ -71,7 +94,11 @@ export function shouldRenderResultAsMarkdown(
 function extractCandidate(
     payload: unknown,
     runnerId?: string,
+    depth = 0,
 ): { score: number; text: string } {
+    if (depth > 4) {
+        return { score: 0, text: '' };
+    }
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
         return { score: 0, text: '' };
     }
@@ -79,17 +106,23 @@ function extractCandidate(
 
     switch (runnerId) {
         case 'gemini':
-            if (asText(obj.response)) {
-                return { score: 100, text: asText(obj.response)! };
+            if (extractDisplayText(obj.response, runnerId, depth + 1)) {
+                return {
+                    score: 100,
+                    text: extractDisplayText(obj.response, runnerId, depth + 1)!,
+                };
             }
             break;
         case 'claude':
             if (
                 obj.type === 'result' &&
                 obj.subtype === 'success' &&
-                asText(obj.result)
+                extractDisplayText(obj.result, runnerId, depth + 1)
             ) {
-                return { score: 100, text: asText(obj.result)! };
+                return {
+                    score: 100,
+                    text: extractDisplayText(obj.result, runnerId, depth + 1)!,
+                };
             }
             if (obj.type === 'assistant') {
                 const assistant = extractClaudeAssistantText(obj.message);
@@ -124,17 +157,26 @@ function extractCandidate(
             break;
     }
 
-    if (obj.type === 'result' && asText(obj.response)) {
-        return { score: 92, text: asText(obj.response)! };
+    if (obj.type === 'result' && extractDisplayText(obj.response, runnerId, depth + 1)) {
+        return {
+            score: 92,
+            text: extractDisplayText(obj.response, runnerId, depth + 1)!,
+        };
     }
-    if (obj.type === 'result' && asText(obj.result)) {
-        return { score: 88, text: asText(obj.result)! };
+    if (obj.type === 'result' && extractDisplayText(obj.result, runnerId, depth + 1)) {
+        return {
+            score: 88,
+            text: extractDisplayText(obj.result, runnerId, depth + 1)!,
+        };
     }
     if (
         (obj.type === 'assistant_message' || obj.type === 'assistant') &&
-        asText(obj.message)
+        extractDisplayText(obj.message, runnerId, depth + 1)
     ) {
-        return { score: 90, text: asText(obj.message)! };
+        return {
+            score: 90,
+            text: extractDisplayText(obj.message, runnerId, depth + 1)!,
+        };
     }
     if (obj.type === 'text') {
         const partText = extractPartText(obj.part);
@@ -142,29 +184,128 @@ function extractCandidate(
             return { score: 84, text: partText };
         }
     }
-    if (obj.type === 'assistant' && asText(obj.content)) {
-        return { score: 85, text: asText(obj.content)! };
+    if (obj.type === 'assistant' && extractDisplayText(obj.content, runnerId, depth + 1)) {
+        return {
+            score: 85,
+            text: extractDisplayText(obj.content, runnerId, depth + 1)!,
+        };
     }
     if (
         obj.type === 'message' &&
         (obj.role === 'assistant' || obj.role === 'model')
     ) {
-        if (asText(obj.message))
-            return { score: 80, text: asText(obj.message)! };
-        if (asText(obj.content))
-            return { score: 78, text: asText(obj.content)! };
-        if (asText(obj.text)) return { score: 75, text: asText(obj.text)! };
+        if (extractDisplayText(obj.message, runnerId, depth + 1))
+            return {
+                score: 80,
+                text: extractDisplayText(obj.message, runnerId, depth + 1)!,
+            };
+        if (extractDisplayText(obj.content, runnerId, depth + 1))
+            return {
+                score: 78,
+                text: extractDisplayText(obj.content, runnerId, depth + 1)!,
+            };
+        if (extractDisplayText(obj.text, runnerId, depth + 1))
+            return {
+                score: 75,
+                text: extractDisplayText(obj.text, runnerId, depth + 1)!,
+            };
     }
 
     const item = asObject(obj.item);
-    if (item?.type === 'agent_message' && asText(item.text)) {
-        return { score: 90, text: asText(item.text)! };
+    if (item?.type === 'agent_message' && extractDisplayText(item.text, runnerId, depth + 1)) {
+        return {
+            score: 90,
+            text: extractDisplayText(item.text, runnerId, depth + 1)!,
+        };
     }
-    if (asText(obj.response)) return { score: 70, text: asText(obj.response)! };
-    if (obj.type !== 'tool_result' && asText(obj.result)) {
-        return { score: 68, text: asText(obj.result)! };
+    if (extractDisplayText(obj.response, runnerId, depth + 1)) {
+        return {
+            score: 70,
+            text: extractDisplayText(obj.response, runnerId, depth + 1)!,
+        };
+    }
+    if (obj.type !== 'tool_result' && extractDisplayText(obj.result, runnerId, depth + 1)) {
+        return {
+            score: 68,
+            text: extractDisplayText(obj.result, runnerId, depth + 1)!,
+        };
     }
     return { score: 0, text: '' };
+}
+
+function extractDisplayText(
+    value: unknown,
+    runnerId?: string,
+    depth = 0,
+): string | null {
+    if (depth > 4) return null;
+
+    if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!trimmed) return null;
+
+        const nested = extractDisplayTextFromSerialized(
+            trimmed,
+            runnerId,
+            depth + 1,
+        );
+        return nested || trimmed;
+    }
+
+    if (Array.isArray(value)) {
+        const joined = value
+            .map((item) => extractDisplayText(item, runnerId, depth + 1))
+            .filter((item): item is string => !!item)
+            .join('\n\n')
+            .trim();
+        return joined || null;
+    }
+
+    if (value && typeof value === 'object') {
+        const nested = extractCandidate(value, runnerId, depth + 1).text.trim();
+        return nested || null;
+    }
+
+    return null;
+}
+
+function extractDisplayTextFromSerialized(
+    text: string,
+    runnerId?: string,
+    depth = 0,
+): string | null {
+    if (depth > 4) return null;
+
+    const candidates = [
+        text,
+        ...jsonRepairCandidates(text),
+        ...splitJsonDocuments(text),
+    ];
+
+    for (const candidate of candidates) {
+        try {
+            const parsed = JSON.parse(candidate);
+            const extracted = extractCandidate(parsed, runnerId, depth + 1).text.trim();
+            if (extracted) return extracted;
+        } catch {
+            continue;
+        }
+    }
+
+    return null;
+}
+
+function jsonRepairCandidates(text: string): string[] {
+    const candidates: string[] = [];
+    const trimmed = text.trim();
+    if (
+        trimmed.startsWith('"') &&
+        trimmed.includes('":') &&
+        !trimmed.startsWith('"{')
+    ) {
+        candidates.push(`{${trimmed}`);
+    }
+    return candidates;
 }
 
 function extractClaudeAssistantText(value: unknown): string {

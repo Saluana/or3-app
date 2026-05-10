@@ -113,4 +113,18 @@ describe('useChatRunners', () => {
         expect(chatRunners.ensureSelectable('missing-runner')?.id).toBe('or3-intern');
         expect(chatRunners.selectableRunners.value.map((runner) => runner.id)).toEqual(['or3-intern', 'claude']);
     });
+
+    it('keeps Gemini selectable when auth readiness is unknown but the runner is available', async () => {
+        const { chatRunners } = await loadComposable(async () => ({
+            runners: [
+                makeRunner('or3-intern'),
+                makeRunner('gemini', 'available', 'unknown'),
+            ],
+        }));
+
+        await chatRunners.refresh();
+
+        expect(chatRunners.selectableRunners.value.map((runner) => runner.id)).toEqual(['or3-intern', 'gemini']);
+        expect(chatRunners.getRunner('gemini')?.auth_status).toBe('ready');
+    });
 });

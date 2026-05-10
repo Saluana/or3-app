@@ -163,6 +163,14 @@ function renameSession(session: ChatSessionMeta) {
 <style scoped>
 .or3-session-history {
     min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+}
+
+.or3-session-history :deep([data-slot="body"]) {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
 }
 
 .or3-session-history__header {
