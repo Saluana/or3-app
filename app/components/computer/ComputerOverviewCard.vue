@@ -60,6 +60,15 @@
                 <p class="or3-overview__message">
                     {{ statusMessage }}
                 </p>
+                <div
+                    v-if="mcpSummary"
+                    class="mt-3 flex flex-wrap items-center gap-2"
+                >
+                    <span class="or3-overview__mcp-pill">
+                        <Icon name="i-pixelarticons-puzzle" class="size-4" />
+                        {{ mcpSummary }}
+                    </span>
+                </div>
             </div>
         </div>
 
@@ -151,6 +160,16 @@ const statusMessage = computed(() => {
     if (props.health)
         return 'Connection trouble — check that or3-intern is running on your computer.';
     return 'Reaching your computer…';
+});
+
+const mcpSummary = computed(() => {
+    const servers = props.capabilities?.mcpServers ?? [];
+    if (!servers.length) return '';
+    const enabled = props.capabilities?.enabledMcpServers?.length ?? servers.length;
+    const connected = servers.filter((server) => server.connected).length;
+    const tools = servers.reduce((sum, server) => sum + (server.toolCount || 0), 0);
+    if (tools > 0) return `${tools} MCP tools from ${connected}/${servers.length} servers`;
+    return `${enabled}/${servers.length} MCP servers enabled`;
 });
 </script>
 
@@ -359,6 +378,20 @@ const statusMessage = computed(() => {
     font-size: 1rem;
     line-height: 1.75;
     color: var(--or3-text-muted);
+}
+
+.or3-overview__mcp-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    border: 1px solid var(--or3-border);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.72);
+    padding: 0.35rem 0.65rem;
+    color: var(--or3-green-dark);
+    font-family: var(--font-mono);
+    font-size: 0.76rem;
+    font-weight: 700;
 }
 
 .or3-overview__tabs {

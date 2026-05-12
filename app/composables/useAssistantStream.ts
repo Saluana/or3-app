@@ -15,6 +15,7 @@ import {
     truncateLogDetail,
 } from '~/utils/assistant-stream/activity';
 import {
+    describeApprovalRequest,
     pendingApprovalPlaceholderContent,
 } from '~/utils/assistant-stream/approval';
 import { createAssistantEventApplier } from '~/utils/assistant-stream/event-applier';
@@ -79,6 +80,7 @@ export function modeToolPolicy(
 ): ToolPolicy {
     return { mode: mode || chatMode.value || 'work' };
 }
+export { describeApprovalRequest };
 export { normalizeTurnEvent };
 export type { NormalizedTurnEvent } from '~/utils/assistant-stream/events';
 

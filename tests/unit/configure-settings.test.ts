@@ -2,11 +2,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useConfigure } from '../../app/composables/useConfigure'
 import { useLocalCache } from '../../app/composables/useLocalCache'
 import { useSimpleSettings } from '../../app/composables/settings/useSimpleSettings'
+import { useMCP } from '../../app/composables/useMCP'
 import { useSkills } from '../../app/composables/useSkills'
 
 describe('settings configure mappings', () => {
   afterEach(() => {
     useSimpleSettings().reset()
+    useMCP().resetMCPServers()
     useSkills().resetSkills()
     useLocalCache().clearAll()
     sessionStorage.clear()
@@ -194,5 +196,41 @@ describe('settings configure mappings', () => {
 
     await expect(skillApi.updateSkill('demo', { enabled: false, apiKey: 'secret' })).resolves.toMatchObject({ ok: true })
     expect(skillApi.skills.value[0]?.disabled).toBe(true)
+  })
+
+  it('manages MCP servers through the add-ons API', async () => {
+    useLocalCache().updateHost({ id: 'host-1', name: 'Host', baseUrl: 'http://127.0.0.1:9100', token: 'paired-token', pairedToken: 'paired-token' })
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      const url = String(_url)
+      if (url.endsWith('/internal/v1/mcp/servers') && (!init?.method || init.method === 'GET')) {
+        return new Response(JSON.stringify({
+          servers: [{ name: 'local', config: { enabled: true, transport: 'stdio', command: 'mcp-local' }, status: { connected: true, toolCount: 1, tools: ['mcp_local_echo'] } }],
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (url.endsWith('/internal/v1/mcp/servers') && init?.method === 'POST') {
+        expect(JSON.parse(init.body as string)).toMatchObject({
+          name: 'local',
+          config: { enabled: true, transport: 'stdio', command: 'mcp-local' },
+        })
+        return new Response(JSON.stringify({ ok: true, restartRequired: true }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (url.endsWith('/internal/v1/mcp/servers/local/test')) {
+        return new Response(JSON.stringify({ ok: true, toolCount: 1, tools: [{ name: 'mcp_local_echo' }] }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (url.endsWith('/internal/v1/mcp/servers/local') && init?.method === 'DELETE') {
+        return new Response(JSON.stringify({ ok: true, restartRequired: true }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      return new Response('{}', { status: 404, headers: { 'Content-Type': 'application/json' } })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const mcpApi = useMCP()
+    await mcpApi.loadMCPServers()
+    expect(mcpApi.mcpServers.value[0]?.status?.toolCount).toBe(1)
+
+    await expect(mcpApi.saveMCPServer('local', { enabled: true, transport: 'stdio', command: 'mcp-local' })).resolves.toMatchObject({ ok: true })
+    expect(mcpApi.mcpRestartRequired.value).toBe(true)
+    await expect(mcpApi.testMCPServer('local')).resolves.toMatchObject({ ok: true, toolCount: 1 })
+    await expect(mcpApi.deleteMCPServer('local')).resolves.toMatchObject({ ok: true })
   })
 })

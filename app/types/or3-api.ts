@@ -585,8 +585,67 @@ export interface CapabilitiesResponse {
     execAvailable?: boolean;
     shellModeAvailable?: boolean;
     sandboxAvailable?: boolean;
-    mcpServers?: unknown[];
+    enabledMcpServers?: CapabilitiesMCPServerInfo[];
+    mcpServers?: CapabilitiesMCPServerInfo[];
     [key: string]: unknown;
+}
+
+export type MCPTransport = 'stdio' | 'sse' | 'streamable-http' | string;
+
+export interface MCPServerConfig {
+    enabled: boolean;
+    transport: MCPTransport;
+    command?: string;
+    args?: string[];
+    env?: Record<string, string>;
+    childEnvAllowlist?: string[];
+    url?: string;
+    headers?: Record<string, string>;
+    toolTimeoutSeconds?: number;
+    connectTimeoutSeconds?: number;
+    allowInsecureHttp?: boolean;
+}
+
+export interface MCPServerStatus {
+    connected: boolean;
+    toolCount: number;
+    tools?: string[];
+    lastError?: string;
+}
+
+export interface MCPServerDetail {
+    name: string;
+    config: MCPServerConfig;
+    status?: MCPServerStatus;
+}
+
+export interface MCPServersResponse {
+    servers: MCPServerDetail[];
+}
+
+export interface MCPServerSaveResponse {
+    ok: boolean;
+    config_path?: string;
+    restartRequired?: boolean;
+}
+
+export interface MCPServerToolInfo {
+    name: string;
+    description?: string;
+}
+
+export interface MCPServerTestResult {
+    ok: boolean;
+    toolCount?: number;
+    tools?: MCPServerToolInfo[];
+    error?: string;
+}
+
+export interface CapabilitiesMCPServerInfo {
+    name: string;
+    transport: string;
+    toolCount: number;
+    connected: boolean;
 }
 
 export interface AppBootstrapWarning {

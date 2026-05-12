@@ -111,6 +111,17 @@
                     </p>
                 </NuxtLink>
                 <NuxtLink
+                    to="/settings/addons"
+                    class="or3-focus-ring rounded-xl border border-(--or3-border) bg-white/70 p-3 text-sm hover:bg-(--or3-green-soft)"
+                >
+                    <p class="font-mono font-semibold text-(--or3-text)">
+                        Add-ons
+                    </p>
+                    <p class="mt-0.5 text-xs text-(--or3-text-muted)">
+                        Manage MCP servers and external tools.
+                    </p>
+                </NuxtLink>
+                <NuxtLink
                     to="/scheduled"
                     class="or3-focus-ring rounded-xl border border-(--or3-border) bg-white/70 p-3 text-sm hover:bg-(--or3-green-soft)"
                 >
