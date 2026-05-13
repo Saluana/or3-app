@@ -52,38 +52,6 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 advancedKeys: ['provider.kind', 'provider.apiBase'],
             },
             {
-                key: 'provider-openai-key',
-                label: 'OpenAI key',
-                description: 'Use OpenAI for chat, agents, summaries, or embeddings.',
-                kind: 'secret',
-                fieldRefs: [
-                    { section: 'provider', field: 'openaiApiKey' },
-                    { section: 'provider', field: 'apiKey' },
-                ],
-                advancedKeys: ['provider.openaiApiKey', 'provider.apiKey'],
-                warningLevel: 'medium',
-            },
-            {
-                key: 'provider-openrouter-key',
-                label: 'OpenRouter key',
-                description: 'Use OpenRouter alongside OpenAI for selected roles or fallbacks.',
-                kind: 'secret',
-                fieldRefs: [{ section: 'provider', field: 'openrouterApiKey' }],
-                advancedKeys: ['provider.openrouterApiKey'],
-                warningLevel: 'medium',
-            },
-            {
-                key: 'provider-custom-base',
-                label: 'Custom provider URL',
-                description: 'OpenAI-compatible API base for a local or custom provider.',
-                kind: 'text',
-                fieldRefs: [
-                    { section: 'provider', field: 'customApiBase' },
-                    { section: 'provider', field: 'apiBase' },
-                ],
-                advancedKeys: ['provider.customApiBase', 'provider.apiBase'],
-            },
-            {
                 key: 'provider-manager',
                 label: 'Provider cards',
                 description: 'Add OpenAI-compatible providers and check which providers have keys.',

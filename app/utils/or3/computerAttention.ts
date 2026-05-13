@@ -202,6 +202,48 @@ export function getBootstrapWarningGuidance(
         };
     }
 
+    if (code === 'integration_quarantined') {
+        return {
+            title: 'One integration was turned off',
+            summary: message,
+            detail:
+                'OR3 kept the core service running, but disabled an incomplete channel or MCP integration until its settings are fixed.',
+            action: { href: '/settings/advanced', label: 'Review settings' },
+            secondaryAction: {
+                href: '/settings/health',
+                label: 'Open health report',
+            },
+        };
+    }
+
+    if (code === 'legacy_context_mode') {
+        return {
+            title: 'This host is using legacy context settings',
+            summary: message,
+            detail:
+                'Older config files did not include the context section. OR3 still works, but advanced context budget settings may not apply until the config is saved again.',
+            action: { href: '/settings/advanced', label: 'Review context' },
+            secondaryAction: {
+                href: '/settings/health',
+                label: 'Open health report',
+            },
+        };
+    }
+
+    if (code === 'embedding_fingerprint_mismatch') {
+        return {
+            title: 'Memory search needs a refresh',
+            summary: message,
+            detail:
+                'The embedding provider or model changed after memory vectors were built. Rebuild embeddings so recalled notes and documents stay relevant.',
+            action: { href: '/memory', label: 'Open memory tools' },
+            secondaryAction: {
+                href: '/settings/health',
+                label: 'Open health report',
+            },
+        };
+    }
+
     if (code.includes('pair') || normalize(message).includes('pair')) {
         return {
             title: 'The pairing details need to be checked',

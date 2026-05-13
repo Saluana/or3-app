@@ -95,6 +95,17 @@ function toAuthChallenge(
 }
 
 const passthroughErrorCodes = new Set<string>([
+    'unauthorized',
+    'not_found',
+    'method_not_allowed',
+    'forbidden',
+    'rate_limited',
+    'validation_failed',
+    'capability_unavailable',
+    'request_too_large',
+    'conflict',
+    'timeout',
+    'request_failed',
     'approval_required',
     'terminal_unavailable',
     'runner_missing',
@@ -123,9 +134,11 @@ function mapError(
     const challengeCode = normalizeChallengeCode(
         typeof payloadCode === 'string' ? payloadCode : undefined,
     );
+    const normalizedPayloadCode =
+        typeof payloadCode === 'string' ? payloadCode.trim() : '';
     const code =
-        typeof payloadCode === 'string' && passthroughErrorCodes.has(payloadCode)
-            ? (payloadCode as Or3AppError['code'])
+        normalizedPayloadCode && passthroughErrorCodes.has(normalizedPayloadCode)
+            ? (normalizedPayloadCode as Or3AppError['code'])
               : challengeCode
                 ? challengeCode
                 : status === 401
