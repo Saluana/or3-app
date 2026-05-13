@@ -207,6 +207,10 @@ export interface Or3AppState {
 export type Or3AppErrorCode =
     | 'host_unreachable'
     | 'auth_required'
+    | 'missing_token'
+    | 'invalid_token'
+    | 'token_replay'
+    | 'auth_rate_limited'
     | 'session_required'
     | 'session_expired'
     | 'passkey_required'

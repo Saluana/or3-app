@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { useLocalCache } from '../../app/composables/useLocalCache'
 import { useOr3Api } from '../../app/composables/useOr3Api'
+import { extractErrorCode } from '../../app/utils/assistant-stream/errors'
 
 describe('useOr3Api', () => {
 	afterEach(() => {
@@ -98,5 +99,62 @@ describe('useOr3Api', () => {
 
     const api = useOr3Api()
     await expect(api.request('/internal/v1/health', { requireAuth: false })).resolves.toEqual({ status: 'ok' })
+  })
+
+  it('keeps app request payloads snake_case', async () => {
+    const cache = useLocalCache()
+    cache.clearAll()
+    cache.updateHost({ id: 'test', name: 'Test Mac', baseUrl: 'http://127.0.0.1:9100/', token: 'secret' })
+
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      expect(String(_url)).toBe('http://127.0.0.1:9100/internal/v1/subagents')
+      expect(JSON.parse(String(init?.body))).toEqual({
+        parent_session_key: 'main',
+        task: 'summarize',
+        timeout_seconds: 30,
+        tool_policy: { mode: 'allow', allowed_tools: ['files.read'] },
+      })
+      expect(String(init?.body)).not.toContain('parentSessionKey')
+      expect(String(init?.body)).not.toContain('timeoutSeconds')
+      expect(String(init?.body)).not.toContain('toolPolicy')
+      return new Response(JSON.stringify({ job_id: 'job_1' }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const api = useOr3Api()
+    await expect(api.request('/internal/v1/subagents', {
+      method: 'POST',
+      body: {
+        parent_session_key: 'main',
+        task: 'summarize',
+        timeout_seconds: 30,
+        tool_policy: { mode: 'allow', allowed_tools: ['files.read'] },
+      },
+    })).resolves.toEqual({ job_id: 'job_1' })
+  })
+
+  it('passes structured service error codes through', async () => {
+    const cache = useLocalCache()
+    cache.clearAll()
+    cache.updateHost({ id: 'test', name: 'Test Mac', baseUrl: 'http://127.0.0.1:9100/', token: 'secret' })
+
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      error: 'token missing',
+      code: 'missing_token',
+      request_id: 'req_1',
+    }), { status: 401, headers: { 'Content-Type': 'application/json' } })))
+
+    const api = useOr3Api()
+    await expect(api.request('/internal/v1/health')).rejects.toMatchObject({
+      code: 'missing_token',
+      request_id: 'req_1',
+      status: 401,
+    })
+  })
+
+  it('recognizes lower-case auth service error codes centrally', () => {
+    for (const code of ['missing_token', 'invalid_token', 'token_replay', 'auth_rate_limited']) {
+      expect(extractErrorCode({ code })).toBe(code)
+    }
   })
 })
