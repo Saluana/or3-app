@@ -443,6 +443,13 @@ import type {
 import McpInfoHint from '~/components/settings/McpInfoHint.vue';
 import { useIsDesktop } from '~/composables/useViewport';
 import { useSheetSwipeDismiss } from '~/composables/useSheetSwipeDismiss';
+import {
+    envTextToMap,
+    headerTextToMap,
+    mapToEnvText,
+    mapToHeaderText,
+    splitCommandArgs,
+} from '~/utils/mcpFormParsing';
 
 const props = defineProps<{
     open: boolean;
@@ -512,42 +519,10 @@ function resetForm(server?: MCPServerDetail) {
     form.args = (config?.args ?? []).join(' ');
     form.url = config?.url ?? '';
     form.allowInsecureHttp = Boolean(config?.allowInsecureHttp);
-    form.env = mapToText(config?.env);
-    form.headers = mapToText(config?.headers);
+    form.env = mapToEnvText(config?.env);
+    form.headers = mapToHeaderText(config?.headers);
     form.connectTimeoutSeconds = String(config?.connectTimeoutSeconds ?? 10);
     form.toolTimeoutSeconds = String(config?.toolTimeoutSeconds ?? 30);
-}
-
-function mapToText(values?: Record<string, string>) {
-    return Object.entries(values ?? {})
-        .map(([key, value]) => `${key}=${value}`)
-        .join('\n');
-}
-
-function textToMap(value: string) {
-    const out: Record<string, string> = {};
-    for (const raw of value.split(/\n/)) {
-        const line = raw.trim();
-        if (!line) continue;
-        const idx = line.indexOf('=');
-        if (idx > 0) {
-            out[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
-        }
-    }
-    return Object.keys(out).length ? out : undefined;
-}
-
-function headerTextToMap(value: string) {
-    const out: Record<string, string> = {};
-    for (const raw of value.split(/\n/)) {
-        const line = raw.trim();
-        if (!line) continue;
-        const idx = line.indexOf(':');
-        if (idx > 0) {
-            out[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
-        }
-    }
-    return Object.keys(out).length ? out : undefined;
 }
 
 function buildConfig(): MCPServerConfig {
@@ -556,16 +531,11 @@ function buildConfig(): MCPServerConfig {
         enabled: form.enabled,
         transport: isLocal ? 'stdio' : 'streamablehttp',
         command: isLocal ? form.command.trim() : '',
-        args: isLocal
-            ? form.args
-                  .split(/\s+/)
-                  .map((p) => p.trim())
-                  .filter(Boolean)
-            : [],
+        args: isLocal ? splitCommandArgs(form.args) : [],
         childEnvAllowlist: [],
         url: isLocal ? '' : form.url.trim(),
         allowInsecureHttp: !isLocal && form.allowInsecureHttp,
-        env: textToMap(form.env),
+        env: envTextToMap(form.env),
         headers: headerTextToMap(form.headers),
         connectTimeoutSeconds: Number(form.connectTimeoutSeconds) || 10,
         toolTimeoutSeconds: Number(form.toolTimeoutSeconds) || 30,
