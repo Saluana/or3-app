@@ -1,6 +1,8 @@
 import type { Or3AppError } from '~/types/app-state';
 import type { AuthChallengeCode, AuthChallengeError } from '~/types/auth';
 import type { Or3SseEvent } from '~/types/or3-api';
+import { createLogger } from '~/utils/logger';
+import { getActiveTraceId } from '~/utils/logTrace';
 import { readSseStream } from '~/utils/or3/sse';
 import { useActiveHost } from './useActiveHost';
 import { resolveHostAuthTokens } from './useSecureHostTokens';
@@ -197,6 +199,7 @@ async function readError(response: Response) {
 
 export function useOr3Api() {
     const { activeHost } = useActiveHost();
+    const logger = createLogger('api');
 
     function buildUrl(path: string, explicitBaseUrl?: string) {
         const baseUrl = explicitBaseUrl || activeHost.value?.baseUrl;
@@ -243,6 +246,8 @@ export function useOr3Api() {
         if (authToken && requiresAuth)
             headers.Authorization = `Bearer ${authToken}`;
         if (sessionToken) headers['X-Or3-Session'] = sessionToken;
+        const traceId = getActiveTraceId();
+        if (traceId && !headers['X-Trace-Id']) headers['X-Trace-Id'] = traceId;
 
         let response: Response;
         try {
@@ -258,6 +263,11 @@ export function useOr3Api() {
                 signal: options.signal,
             });
         } catch (error) {
+            logger.error('request:network_error', 'Could not reach host', {
+                path,
+                method: options.method || (options.body === undefined ? 'GET' : 'POST'),
+                error: error instanceof Error ? error.message : String(error),
+            });
             throw {
                 code: 'host_unreachable',
                 message: 'Could not reach the selected computer.',
@@ -277,6 +287,18 @@ export function useOr3Api() {
                     });
                 }
             }
+            logger.warn('request:error_response', 'Request returned an error response', {
+                path,
+                status: response.status,
+                requestId:
+                    response.headers.get('X-Request-Id') ||
+                    (typeof payload === 'object' ? payload.request_id : undefined),
+                responseTraceId:
+                    response.headers.get('X-Trace-Id') ||
+                    (typeof payload === 'object' && typeof payload.trace_id === 'string'
+                        ? payload.trace_id
+                        : undefined),
+            });
             throw mapError(response.status, payload);
         }
         if (response.status === 204) return undefined as T;
@@ -309,6 +331,8 @@ export function useOr3Api() {
         if (authToken && requiresAuth)
             headers.Authorization = `Bearer ${authToken}`;
         if (sessionToken) headers['X-Or3-Session'] = sessionToken;
+        const traceId = getActiveTraceId();
+        if (traceId && !headers['X-Trace-Id']) headers['X-Trace-Id'] = traceId;
 
         let response: Response;
         try {
@@ -322,6 +346,11 @@ export function useOr3Api() {
                 signal: options.signal,
             });
         } catch (error) {
+            logger.error('stream:network_error', 'Could not reach host stream', {
+                path,
+                method: options.method || 'POST',
+                error: error instanceof Error ? error.message : String(error),
+            });
             throw {
                 code: 'host_unreachable',
                 message: 'Could not reach the selected computer.',
@@ -342,6 +371,18 @@ export function useOr3Api() {
                     return;
                 }
             }
+            logger.warn('stream:error_response', 'Stream returned an error response', {
+                path,
+                status: response.status,
+                requestId:
+                    response.headers.get('X-Request-Id') ||
+                    (typeof payload === 'object' ? payload.request_id : undefined),
+                responseTraceId:
+                    response.headers.get('X-Trace-Id') ||
+                    (typeof payload === 'object' && typeof payload.trace_id === 'string'
+                        ? payload.trace_id
+                        : undefined),
+            });
             throw mapError(response.status, payload);
         }
         if (options.onOpen) await options.onOpen(response);
@@ -351,7 +392,23 @@ export function useOr3Api() {
                 message: 'The service did not return a stream.',
             } satisfies Or3AppError;
 
-        yield* readSseStream(response.body);
+        logger.info('stream:open', 'SSE stream opened', {
+            path,
+            status: response.status,
+            requestId: response.headers.get('X-Request-Id') || undefined,
+            responseTraceId: response.headers.get('X-Trace-Id') || undefined,
+        });
+        try {
+            yield* readSseStream(response.body);
+        } catch (error) {
+            logger.error('stream:error', 'SSE stream failed while reading', {
+                path,
+                error: error instanceof Error ? error.message : String(error),
+            });
+            throw error;
+        } finally {
+            logger.info('stream:close', 'SSE stream closed', { path });
+        }
     }
 
     return { request, stream, buildUrl, normalizeBaseUrl };

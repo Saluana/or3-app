@@ -156,7 +156,10 @@ import { useRoute, useRouter } from '#app'
 import { useComputerFiles } from '~/composables/useComputerFiles'
 import { useTerminalPrefs } from '~/composables/useTerminalPrefs'
 import { useTerminalSession } from '~/composables/useTerminalSession'
+import { createLogger } from '~/utils/logger'
 import TerminalSurface from '~/components/computer/terminal/TerminalSurface.vue'
+
+const logger = createLogger('terminal')
 
 const route = useRoute()
 const router = useRouter()
@@ -284,7 +287,10 @@ const menuItems = computed(() => {
 })
 
 function logTerminalActionError(action: string, error: unknown) {
-  console.error(`[terminal] ${action} failed`, error)
+  logger.error('action:failed', `${action} failed`, {
+    action,
+    error: error instanceof Error ? error.message : String(error),
+  })
 }
 
 async function refreshRoots() {

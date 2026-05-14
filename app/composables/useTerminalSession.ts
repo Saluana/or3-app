@@ -1,6 +1,9 @@
 import { computed, ref } from 'vue'
 import type { CreateTerminalSessionRequest, TerminalSessionSnapshot } from '~/types/or3-api'
+import { createLogger } from '~/utils/logger'
 import { useOr3Api } from './useOr3Api'
+
+const logger = createLogger('terminal')
 
 const terminalSessionStorageKey = 'or3:terminal-session'
 
@@ -180,7 +183,7 @@ export function useTerminalSession() {
       if (isMethodNotAllowed(error)) {
         sessionListingUnsupported.value = true
         activeSessions.value = []
-        console.warn('[terminal] active session listing is unavailable on this or3-intern build')
+        logger.warn('sessions:list_unsupported', 'Active terminal session listing is unavailable')
         return activeSessions.value
       }
       throw error

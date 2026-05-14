@@ -174,7 +174,7 @@
                     v-if="message.error"
                     class="mt-2 text-xs text-(--or3-danger)"
                 >
-                    {{ message.error || "Message failed" }}
+                    {{ message.error || 'Message failed' }}
                 </p>
 
                 <div
@@ -199,7 +199,7 @@
                             "
                             class="size-4"
                         />
-                        <span>{{ copied ? "Copied" : "Copy" }}</span>
+                        <span>{{ copied ? 'Copied' : 'Copy' }}</span>
                     </button>
                     <button
                         type="button"
@@ -219,7 +219,7 @@
                                 message.pinned ? 'text-(--or3-green-dark)' : '',
                             ]"
                         />
-                        <span>{{ message.pinned ? "Saved" : "Save" }}</span>
+                        <span>{{ message.pinned ? 'Saved' : 'Save' }}</span>
                     </button>
                     <button
                         v-if="canRetry"
@@ -246,7 +246,7 @@
                             name="i-pixelarticons-git-branch"
                             class="size-4"
                         />
-                        <span>{{ forkBusy ? "Forking…" : "Fork" }}</span>
+                        <span>{{ forkBusy ? 'Forking…' : 'Fork' }}</span>
                     </button>
                     <button
                         v-if="showApprovalActions"
@@ -302,21 +302,21 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
-import { useToast } from "@nuxt/ui/composables";
-import { useApprovals } from "../../composables/useApprovals";
-import { useAssistantStream } from "../../composables/useAssistantStream";
-import { useChatSessions } from "../../composables/useChatSessions";
-import { useSessionHistory } from "../../composables/useSessionHistory";
-import type { ChatAttachment, ChatMessage } from "../../types/app-state";
+import { computed, ref, watch } from 'vue';
+import { useToast } from '@nuxt/ui/composables';
+import { useApprovals } from '../../composables/useApprovals';
+import { useAssistantStream } from '../../composables/useAssistantStream';
+import { useChatSessions } from '../../composables/useChatSessions';
+import { useSessionHistory } from '../../composables/useSessionHistory';
+import type { ChatAttachment, ChatMessage } from '../../types/app-state';
 import {
     approvalActionErrorMessage,
     approvalStatusFromError,
     canContinueApprovedRequest,
     resolvedApprovalMessage,
     resolvedApprovalState,
-} from "../../utils/assistantApproval";
-import { shouldRepairIncompleteMarkdownForStatus } from "../../utils/streamingMarkdown";
+} from '../../utils/assistantApproval';
+import { shouldRepairIncompleteMarkdownForStatus } from '../../utils/streamingMarkdown';
 
 const props = defineProps<{ message: ChatMessage }>();
 const toast = useToast();
@@ -351,65 +351,65 @@ const copyText = computed(() => props.message.content.trim());
 const canCopy = computed(() => Boolean(copyText.value));
 const orderedParts = computed(() =>
     (props.message.parts ?? []).filter((part) => {
-        if (part.type === "text") return Boolean(part.content?.trim());
+        if (part.type === 'text') return Boolean(part.content?.trim());
         return Boolean(part.name || part.toolCallId);
     }),
 );
 const hasOrderedParts = computed(() => orderedParts.value.length > 0);
 const canRetry = computed(
     () =>
-        props.message.role === "assistant" &&
-        props.message.status === "failed" &&
+        props.message.role === 'assistant' &&
+        props.message.status === 'failed' &&
         !!props.message.retryPayload,
 );
 const canFork = computed(
     () =>
-        props.message.status === "complete" &&
-        typeof props.message.backendMessageId === "number" &&
+        props.message.status === 'complete' &&
+        typeof props.message.backendMessageId === 'number' &&
         !props.message.approvalRequestId,
 );
 const showApprovalActions = computed(
     () =>
-        props.message.role === "assistant" &&
-        props.message.approvalState === "pending" &&
+        props.message.role === 'assistant' &&
+        props.message.approvalState === 'pending' &&
         !!props.message.approvalRequestId,
 );
 const approvalNeedsAttention = computed(() =>
-    ["pending", "retrying", "failed"].includes(
-        String(props.message.approvalState ?? ""),
+    ['pending', 'retrying', 'failed'].includes(
+        String(props.message.approvalState ?? ''),
     ),
 );
 const approvalNotice = computed(() => {
     switch (props.message.approvalState) {
-        case "pending":
+        case 'pending':
             return {
-                icon: "i-pixelarticons-shield",
-                text: "Waiting for approval. Review the requested action below, then approve or deny it.",
+                icon: 'i-pixelarticons-shield',
+                text: 'Waiting for approval. Review the requested action below, then approve or deny it.',
             };
-        case "retrying":
+        case 'retrying':
             return {
-                icon: "i-pixelarticons-clock",
-                text: "Approved. Retrying the exact tool call now.",
+                icon: 'i-pixelarticons-clock',
+                text: 'Approved. Retrying the exact tool call now.',
             };
-        case "failed":
+        case 'failed':
             return {
-                icon: "i-pixelarticons-warning-box",
-                text: "Approval was handled, but the retry did not finish. The error below has the details.",
+                icon: 'i-pixelarticons-warning-box',
+                text: 'Approval was handled, but the retry did not finish. The error below has the details.',
             };
-        case "denied":
+        case 'denied':
             return {
-                icon: "i-pixelarticons-close-box",
-                text: "Approval denied. The tool call was not run.",
+                icon: 'i-pixelarticons-close-box',
+                text: 'Approval denied. The tool call was not run.',
             };
-        case "canceled":
+        case 'canceled':
             return {
-                icon: "i-pixelarticons-close-box",
-                text: "Approval canceled. The tool call was not run.",
+                icon: 'i-pixelarticons-close-box',
+                text: 'Approval canceled. The tool call was not run.',
             };
-        case "expired":
+        case 'expired':
             return {
-                icon: "i-pixelarticons-warning-box",
-                text: "Approval expired before it was used. Start the request again if it is still needed.",
+                icon: 'i-pixelarticons-warning-box',
+                text: 'Approval expired before it was used. Start the request again if it is still needed.',
             };
         default:
             return null;
@@ -417,22 +417,22 @@ const approvalNotice = computed(() => {
 });
 const approvalMetaLabel = computed(() => {
     switch (props.message.approvalState) {
-        case "pending":
-            return "Approval needed";
-        case "retrying":
-            return "Retrying approved tool";
-        case "failed":
-            return "Approval retry failed";
-        case "approved":
-            return "Approved";
-        case "denied":
-            return "Denied";
-        case "canceled":
-            return "Canceled";
-        case "expired":
-            return "Expired";
+        case 'pending':
+            return 'Approval needed';
+        case 'retrying':
+            return 'Retrying approved tool';
+        case 'failed':
+            return 'Approval retry failed';
+        case 'approved':
+            return 'Approved';
+        case 'denied':
+            return 'Denied';
+        case 'canceled':
+            return 'Canceled';
+        case 'expired':
+            return 'Expired';
         default:
-            return "";
+            return '';
     }
 });
 const hasMeta = computed(
@@ -443,13 +443,13 @@ const hasMeta = computed(
 );
 
 const timestamp = computed(() => {
-    if (!props.message.createdAt) return "";
+    if (!props.message.createdAt) return '';
     try {
         const d = new Date(props.message.createdAt);
-        if (Number.isNaN(d.getTime())) return "";
-        return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+        if (Number.isNaN(d.getTime())) return '';
+        return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     } catch {
-        return "";
+        return '';
     }
 });
 
@@ -458,13 +458,13 @@ async function writeClipboard(value: string) {
         await navigator.clipboard.writeText(value);
         return;
     }
-    const ta = document.createElement("textarea");
+    const ta = document.createElement('textarea');
     ta.value = value;
-    ta.style.position = "fixed";
-    ta.style.opacity = "0";
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
     document.body.appendChild(ta);
     ta.select();
-    document.execCommand("copy");
+    document.execCommand('copy');
     document.body.removeChild(ta);
 }
 
@@ -480,10 +480,10 @@ async function copyMessage() {
         }, 1500);
     } catch {
         toast.add({
-            title: "Copy failed",
-            description: "The message could not be copied to the clipboard.",
-            color: "error",
-            icon: "i-pixelarticons-warning-box",
+            title: 'Copy failed',
+            description: 'The message could not be copied to the clipboard.',
+            color: 'error',
+            icon: 'i-pixelarticons-warning-box',
         });
     }
 }
@@ -491,12 +491,12 @@ async function copyMessage() {
 function togglePin() {
     const pinned = toggleMessagePin(props.message.id);
     toast.add({
-        title: pinned ? "Message pinned" : "Message unpinned",
+        title: pinned ? 'Message pinned' : 'Message unpinned',
         description: pinned
-            ? "This message will stay marked in the conversation."
-            : "This message is no longer pinned.",
-        color: pinned ? "success" : "neutral",
-        icon: pinned ? "i-pixelarticons-bookmark" : "i-pixelarticons-close-box",
+            ? 'This message will stay marked in the conversation.'
+            : 'This message is no longer pinned.',
+        color: pinned ? 'success' : 'neutral',
+        icon: pinned ? 'i-pixelarticons-bookmark' : 'i-pixelarticons-close-box',
     });
 }
 
@@ -516,29 +516,29 @@ async function forkMessage() {
                 current.sourceSessionKey ||
                 props.message.sourceSessionKey ||
                 activeSession.value?.sessionKey ||
-                "",
+                '',
             anchorMessageId: props.message.backendMessageId,
             targetRunnerId: props.message.runnerId,
-            title: "Forked conversation",
+            title: 'Forked conversation',
         });
         toast.add({
-            title: "Conversation forked",
-            description: "Opened a new conversation from this message.",
-            color: "success",
-            icon: "i-pixelarticons-git-branch",
+            title: 'Conversation forked',
+            description: 'Opened a new conversation from this message.',
+            color: 'success',
+            icon: 'i-pixelarticons-git-branch',
         });
     } catch (error) {
         toast.add({
-            title: "Fork failed",
+            title: 'Fork failed',
             description:
-                error && typeof error === "object" && "message" in error
+                error && typeof error === 'object' && 'message' in error
                     ? String(
                           (error as { message?: unknown }).message ||
-                              "Could not fork this message.",
+                              'Could not fork this message.',
                       )
-                    : "Could not fork this message.",
-            color: "error",
-            icon: "i-pixelarticons-warning-box",
+                    : 'Could not fork this message.',
+            color: 'error',
+            icon: 'i-pixelarticons-warning-box',
         });
     } finally {
         forkBusy.value = false;
@@ -571,8 +571,8 @@ async function retryApprovedRequest(
         approvalToken: token,
     };
     updateMessage(message.id, {
-        approvalState: "retrying",
-        status: "attention",
+        approvalState: 'retrying',
+        status: 'attention',
         retryPayload,
         error: undefined,
     });
@@ -581,13 +581,13 @@ async function retryApprovedRequest(
 
     const latest = currentMessage();
     const waitingAgain =
-        latest.approvalState === "pending" && !!latest.approvalRequestId;
+        latest.approvalState === 'pending' && !!latest.approvalRequestId;
     const retryFailed =
-        latest.approvalState === "failed" || latest.status === "failed";
+        latest.approvalState === 'failed' || latest.status === 'failed';
     if (!waitingAgain && !retryFailed) {
         markApprovalResolved(
             requestId,
-            "approved",
+            'approved',
             message.sourceSessionKey || activeSession.value?.sessionKey,
         );
     }
@@ -610,14 +610,14 @@ async function followApprovedResumeJob(
         return false;
     }
     const retryPayload = {
-        ...(message.retryPayload ?? { text: "", transportText: "" }),
+        ...(message.retryPayload ?? { text: '', transportText: '' }),
         followJobId: jobId,
         continueMessageId: message.id,
         suppressUserEcho: true,
     };
     updateMessage(message.id, {
-        approvalState: "retrying",
-        status: "attention",
+        approvalState: 'retrying',
+        status: 'attention',
         retryPayload: message.retryPayload,
         error: undefined,
     });
@@ -626,13 +626,13 @@ async function followApprovedResumeJob(
 
     const latest = currentMessage();
     const waitingAgain =
-        latest.approvalState === "pending" && !!latest.approvalRequestId;
+        latest.approvalState === 'pending' && !!latest.approvalRequestId;
     const retryFailed =
-        latest.approvalState === "failed" || latest.status === "failed";
+        latest.approvalState === 'failed' || latest.status === 'failed';
     if (!waitingAgain && !retryFailed) {
         markApprovalResolved(
             requestId,
-            "approved",
+            'approved',
             message.sourceSessionKey || activeSession.value?.sessionKey,
         );
     }
@@ -641,6 +641,17 @@ async function followApprovedResumeJob(
 
 function approvalErrorMessage(error: unknown) {
     return approvalActionErrorMessage(error);
+}
+
+function approvalGrantedMessage(remember: boolean, continues: boolean) {
+    if (remember) {
+        return continues
+            ? 'The request was approved and remembered. OR3 is continuing now.'
+            : 'The request was approved and matching future requests were saved.';
+    }
+    return continues
+        ? 'The request was approved. OR3 is continuing now.'
+        : 'The request was approved.';
 }
 
 async function resolveStaleApprovalAction(error: unknown) {
@@ -666,13 +677,13 @@ async function resolveStaleApprovalAction(error: unknown) {
         description,
     );
     toast.add({
-        title: "Approval already handled",
+        title: 'Approval already handled',
         description,
-        color: state === "approved" ? "success" : "neutral",
+        color: state === 'approved' ? 'success' : 'neutral',
         icon:
-            state === "approved"
-                ? "i-pixelarticons-check"
-                : "i-pixelarticons-info-box",
+            state === 'approved'
+                ? 'i-pixelarticons-check'
+                : 'i-pixelarticons-info-box',
     });
     return true;
 }
@@ -682,18 +693,26 @@ async function approveApproval(remember = false) {
     if (!message.approvalRequestId || approvalBusy.value) return;
     approvalBusy.value = true;
     let retryAttempted = false;
+    let approvalGranted = false;
     try {
         const approval = await approve(
             message.approvalRequestId,
             remember,
             remember
-                ? "approved and remembered from chat"
-                : "approved from chat",
+                ? 'approved and remembered from chat'
+                : 'approved from chat',
         );
+        approvalGranted = true;
         const approvalToken =
             consumeIssuedApprovalToken(message.approvalRequestId) ??
             approval.token;
         retryAttempted = Boolean(approval.resume_job_id || approvalToken);
+        toast.add({
+            title: 'Approval granted',
+            description: approvalGrantedMessage(remember, retryAttempted),
+            color: 'success',
+            icon: 'i-pixelarticons-check',
+        });
         const retried = approval.resume_job_id
             ? await followApprovedResumeJob(approval.resume_job_id, {
                   allowWhileApprovalBusy: true,
@@ -706,44 +725,26 @@ async function approveApproval(remember = false) {
         if (!retried) {
             markApprovalResolved(
                 message.approvalRequestId,
-                "approved",
+                'approved',
                 message.sourceSessionKey || activeSession.value?.sessionKey,
             );
         }
-        const latest = currentMessage();
-        const waitingAgain =
-            latest.approvalState === "pending" && !!latest.approvalRequestId;
-        toast.add({
-            title: "Approval granted",
-            description: waitingAgain
-                ? "The request was approved. Another approval is needed to continue."
-                : approval.resume_job_id
-                  ? remember
-                      ? "The request was approved, remembered, and resumed."
-                      : "The request was approved and resumed."
-                  : retried
-                    ? remember
-                        ? "The request was approved, remembered, and retried."
-                        : "The request was approved and retried."
-                    : remember
-                      ? "The request was approved and matching future requests were saved."
-                      : "The request was approved.",
-            color: "success",
-            icon: "i-pixelarticons-check",
-        });
     } catch (error) {
-        if (await resolveStaleApprovalAction(error)) return;
+        if (!approvalGranted && (await resolveStaleApprovalAction(error)))
+            return;
         const message = approvalErrorMessage(error);
         updateMessage(currentMessage().id, {
-            approvalState: retryAttempted ? "failed" : "pending",
-            status: retryAttempted ? "failed" : "attention",
+            approvalState: retryAttempted ? 'failed' : 'pending',
+            status: retryAttempted ? 'failed' : 'attention',
             error: message,
         });
         toast.add({
-            title: "Approval failed",
+            title: approvalGranted
+                ? 'Approval retry failed'
+                : 'Approval failed',
             description: message,
-            color: "error",
-            icon: "i-pixelarticons-warning-box",
+            color: 'error',
+            icon: 'i-pixelarticons-warning-box',
         });
     } finally {
         approvalBusy.value = false;
@@ -760,7 +761,7 @@ watch(
     () => {
         const message = currentMessage();
         if (
-            message.approvalState !== "pending" ||
+            message.approvalState !== 'pending' ||
             !message.approvalRequestId ||
             !message.retryPayload ||
             approvalBusy.value ||
@@ -770,8 +771,8 @@ watch(
         }
         void retryApprovedRequest().catch((error) => {
             updateMessage(currentMessage().id, {
-                approvalState: "failed",
-                status: "failed",
+                approvalState: 'failed',
+                status: 'failed',
                 error: approvalErrorMessage(error),
             });
         });
@@ -786,31 +787,31 @@ async function denyApproval() {
         await deny(props.message.approvalRequestId);
         markApprovalResolved(
             props.message.approvalRequestId,
-            "denied",
+            'denied',
             props.message.sourceSessionKey || activeSession.value?.sessionKey,
         );
         toast.add({
-            title: "Approval denied",
-            description: "The request was denied.",
-            color: "neutral",
-            icon: "i-pixelarticons-close-box",
+            title: 'Approval denied',
+            description: 'The request was denied.',
+            color: 'neutral',
+            icon: 'i-pixelarticons-close-box',
         });
     } catch (error) {
         if (await resolveStaleApprovalAction(error)) return;
         const message =
             error instanceof Error && error.message
                 ? error.message
-                : "Could not deny this request.";
+                : 'Could not deny this request.';
         updateMessage(props.message.id, {
-            approvalState: "pending",
-            status: "attention",
+            approvalState: 'pending',
+            status: 'attention',
             error: message,
         });
         toast.add({
-            title: "Deny failed",
+            title: 'Deny failed',
             description: message,
-            color: "error",
-            icon: "i-pixelarticons-warning-box",
+            color: 'error',
+            icon: 'i-pixelarticons-warning-box',
         });
     } finally {
         approvalBusy.value = false;
@@ -818,9 +819,9 @@ async function denyApproval() {
 }
 
 function formatBytes(size?: number): string {
-    if (!size) return "";
+    if (!size) return '';
     if (size < 1024) return `${size} B`;
-    const units = ["KB", "MB", "GB", "TB"];
+    const units = ['KB', 'MB', 'GB', 'TB'];
     let value = size / 1024;
     let unitIndex = 0;
     while (value >= 1024 && unitIndex < units.length - 1) {
@@ -836,7 +837,7 @@ function attachmentTooltip(attachment: ChatAttachment): string {
     if (attachment.preview && attachment.preview !== attachment.name) {
         parts.push(attachment.preview);
     }
-    return parts.join(" — ");
+    return parts.join(' — ');
 }
 </script>
 

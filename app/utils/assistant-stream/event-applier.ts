@@ -6,7 +6,7 @@ import type {
     ChatToolCall,
 } from "~/types/app-state";
 import type { JobEvent } from "~/types/or3-api";
-import { useChatRuntimeLog } from "~/composables/useChatRuntimeLog";
+import { createLogger } from "~/utils/logger";
 import {
     canonicalActivityDetail,
     canonicalActivityKey,
@@ -61,7 +61,7 @@ interface AssistantEventApplierOptions {
 export function createAssistantEventApplier(
     options: AssistantEventApplierOptions,
 ) {
-    const runtimeLog = useChatRuntimeLog();
+    const logger = createLogger("stream");
     const appliedEventSequenceKeys = new Set<string>();
     const streamedEventPayloadKeys = new Set<string>();
 
@@ -93,14 +93,14 @@ export function createAssistantEventApplier(
         const seqKey = seq !== undefined ? `seq:${seq}` : "";
         const payloadKey = `${type}:${JSON.stringify(payload ?? {})}`;
         if (seqKey && appliedEventSequenceKeys.has(seqKey)) {
-            runtimeLog.add("stream", "event:skip_sequence", undefined, {
+            logger.debug("event:skip_sequence", "Duplicate event sequence skipped", {
                 type,
                 sequence: seq,
             });
             return { failed: false, completed: false };
         }
         if (source === "snapshot" && streamedEventPayloadKeys.has(payloadKey)) {
-            runtimeLog.add("stream", "event:skip_replay", undefined, {
+            logger.debug("event:skip_replay", "Snapshot replay event skipped", {
                 type,
                 sequence: seq,
             });
@@ -108,7 +108,7 @@ export function createAssistantEventApplier(
         }
         if (seqKey) appliedEventSequenceKeys.add(seqKey);
         if (source === "stream") streamedEventPayloadKeys.add(payloadKey);
-        runtimeLog.add("stream", "event:apply", undefined, {
+        logger.debug("event:apply", "Stream event applied", {
             type,
             source,
             sequence: seq,
@@ -602,7 +602,7 @@ export function createAssistantEventApplier(
                     error: "or3-intern completed without a final assistant message.",
                     errorCode: "empty_final_text",
                 });
-                runtimeLog.add("stream", "completion:empty_final_text", undefined, {
+                logger.warn("completion:empty_final_text", "Completion had no final assistant text", {
                     jobId: eventJobId(event),
                     hasToolWork,
                     source,

@@ -120,6 +120,9 @@ import { useActiveHost } from '~/composables/useActiveHost';
 import { useComputerStatus } from '~/composables/useComputerStatus';
 import { useSettingsSnapshots } from '~/composables/settings/useSettingsSnapshots';
 import { useSimpleSettings } from '~/composables/settings/useSimpleSettings';
+import { createLogger } from '~/utils/logger';
+
+const logger = createLogger('settings');
 
 const { activeHost } = useActiveHost();
 const computerStatus = useComputerStatus();
@@ -197,7 +200,9 @@ async function refreshConnectionStats() {
     try {
         await computerStatus.refreshStatus();
     } catch (err) {
-        console.error('[settings] connection stats failed', err);
+        logger.error('connection_stats:failed', 'Connection stats refresh failed', {
+            error: err instanceof Error ? err.message : String(err),
+        });
     }
 }
 
@@ -222,7 +227,9 @@ async function undoLast() {
         simple.reset();
         await simple.ensureLoaded();
     } catch (err) {
-        console.error('[settings] undo failed', err);
+        logger.error('undo:failed', 'Settings undo failed', {
+            error: err instanceof Error ? err.message : String(err),
+        });
     } finally {
         undoing.value = false;
     }

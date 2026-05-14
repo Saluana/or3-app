@@ -8,6 +8,7 @@ import {
     normalizeApprovalAllowlist,
     normalizeApprovalRequest,
 } from '~/utils/or3/approvals';
+import { createLogger } from '~/utils/logger';
 import { useOr3Api } from './useOr3Api';
 
 const approvals = ref<ApprovalRequest[]>([]);
@@ -69,6 +70,7 @@ async function withApprovalAction<T>(
 
 export function useApprovals() {
     const api = useOr3Api();
+    const logger = createLogger('approvals');
 
     const pendingApprovals = computed(() =>
         approvals.value.filter((item) => item.status === 'pending'),
@@ -140,6 +142,10 @@ export function useApprovals() {
 
     async function approve(id: number | string, allowlist = false, note = '') {
         return withApprovalAction(id, 'approve', async () => {
+            logger.info('approve:start', 'Approval approve requested', {
+                approvalId: id,
+                remember: allowlist,
+            });
             const response = await api.request<ApprovalActionResponse>(
                 `/internal/v1/approvals/${id}/approve`,
                 {
@@ -153,6 +159,10 @@ export function useApprovals() {
                     response.token,
                 );
             }
+            logger.info('approve:complete', 'Approval approve completed', {
+                approvalId: response.request_id ?? id,
+                issuedToken: Boolean(response.token),
+            });
             await Promise.all([
                 reloadApprovals(),
                 loadAllowlists(),
@@ -164,6 +174,9 @@ export function useApprovals() {
 
     async function deny(id: number | string, note = '') {
         return withApprovalAction(id, 'deny', async () => {
+            logger.info('deny:start', 'Approval deny requested', {
+                approvalId: id,
+            });
             const response = await api.request<ApprovalActionResponse>(
                 `/internal/v1/approvals/${id}/deny`,
                 {
@@ -172,6 +185,9 @@ export function useApprovals() {
                 },
             );
             consumeIssuedApprovalToken(response.request_id ?? id);
+            logger.info('deny:complete', 'Approval deny completed', {
+                approvalId: response.request_id ?? id,
+            });
             await Promise.all([reloadApprovals(), loadPendingCount()]);
             return response;
         });
@@ -179,6 +195,9 @@ export function useApprovals() {
 
     async function cancel(id: number | string, note = '') {
         return withApprovalAction(id, 'cancel', async () => {
+            logger.info('cancel:start', 'Approval cancel requested', {
+                approvalId: id,
+            });
             const response = await api.request<ApprovalActionResponse>(
                 `/internal/v1/approvals/${id}/cancel`,
                 {
@@ -187,6 +206,9 @@ export function useApprovals() {
                 },
             );
             consumeIssuedApprovalToken(response.request_id ?? id);
+            logger.info('cancel:complete', 'Approval cancel completed', {
+                approvalId: response.request_id ?? id,
+            });
             await Promise.all([reloadApprovals(), loadPendingCount()]);
             return response;
         });
@@ -206,10 +228,12 @@ export function useApprovals() {
     }
 
     async function expirePending() {
+        logger.info('expire:start', 'Expiring pending approvals');
         await api.request('/internal/v1/approvals/expire', {
             method: 'POST',
             body: {},
         });
+        logger.info('expire:complete', 'Pending approvals expired');
         await Promise.all([reloadApprovals(), loadPendingCount()]);
     }
 

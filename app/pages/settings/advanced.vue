@@ -80,82 +80,62 @@
             </SurfaceCard>
 
             <SurfaceCard class-name="space-y-3">
-                <div class="flex items-center justify-between gap-3">
+                <div class="flex flex-wrap items-center justify-between gap-3">
                     <div class="min-w-0">
                         <p
                             class="or3-command text-[11px] uppercase tracking-[0.2em] text-(--or3-green-dark)"
                         >
-                            Chat runtime log
+                            Observability
                         </p>
                         <p
                             class="mt-1 text-xs leading-5 text-(--or3-text-muted)"
                         >
-                            Recent stream, approval, and tool reducer events.
+                            Runtime events, trace IDs, and service logs.
                         </p>
                     </div>
-                    <div class="flex shrink-0 items-center gap-2">
+                    <div class="flex flex-wrap items-center justify-end gap-3">
+                        <label
+                            class="flex items-center gap-2 font-mono text-xs text-(--or3-text)"
+                        >
+                            <USwitch
+                                :model-value="debugLogging"
+                                color="primary"
+                                @update:model-value="setDebugLogging"
+                            />
+                            Debug
+                        </label>
                         <UButton
-                            label="Copy"
-                            icon="i-pixelarticons-copy"
+                            label="Export all"
+                            icon="i-pixelarticons-download"
                             size="xs"
                             variant="soft"
                             color="neutral"
-                            @click="copyChatRuntimeLog"
+                            @click="copyAllLogs"
                         />
-                        <UButton
-                            label="Clear"
-                            icon="i-pixelarticons-close"
-                            size="xs"
-                            variant="ghost"
-                            color="neutral"
-                            @click="clearChatRuntimeLog"
-                        />
-                    </div>
-                </div>
-                <div
-                    class="max-h-56 overflow-auto rounded-2xl border border-(--or3-border) bg-white/70"
-                >
-                    <div
-                        v-if="!latestChatRuntimeEntries.length"
-                        class="px-4 py-3 text-xs text-(--or3-text-muted)"
-                    >
-                        No chat runtime events recorded yet.
-                    </div>
-                    <div
-                        v-for="entry in latestChatRuntimeEntries.slice(0, 30)"
-                        :key="entry.id"
-                        class="border-b border-(--or3-border) px-4 py-2 last:border-b-0"
-                    >
-                        <div class="flex flex-wrap items-center gap-2">
-                            <code
-                                class="rounded bg-(--or3-green-soft) px-1.5 py-0.5 font-mono text-[10px] text-(--or3-green-dark)"
-                                >{{ entry.area }}</code
-                            >
-                            <span
-                                class="font-mono text-xs font-semibold text-(--or3-text)"
-                            >
-                                {{ entry.event }}
-                            </span>
-                            <span
-                                class="font-mono text-[10px] text-(--or3-text-muted)"
-                            >
-                                {{ entry.createdAt }}
-                            </span>
-                        </div>
-                        <p
-                            v-if="entry.detail"
-                            class="mt-1 text-xs text-(--or3-text-muted)"
-                        >
-                            {{ entry.detail }}
-                        </p>
-                        <pre
-                            v-if="entry.data"
-                            class="mt-1 whitespace-pre-wrap break-all font-mono text-[10px] leading-4 text-(--or3-text-muted)"
-                            >{{ JSON.stringify(entry.data, null, 2) }}</pre
-                        >
                     </div>
                 </div>
             </SurfaceCard>
+
+            <SettingsLogViewer
+                title="App Events"
+                subtitle="Recent stream, approval, and tool reducer events."
+                :entries="latestChatRuntimeEntries"
+                empty-text="No app events recorded yet."
+                @clear="clearChatRuntimeLog"
+            />
+
+            <SettingsLogViewer
+                title="Server Events"
+                subtitle="Live or3-intern service logs from the paired computer."
+                :entries="latestServerLogEntries"
+                empty-text="No server events received yet."
+                :streaming="serverLogsStreaming"
+                :error="serverLogsError"
+                connectable
+                @connect="connectServerLogStream"
+                @disconnect="disconnectServerLogStream"
+                @clear="clearServerLogs"
+            />
 
             <!-- Search -->
             <div class="relative">
@@ -445,9 +425,15 @@ import { useRouter } from "vue-router";
 import { useConfigure } from "../../composables/useConfigure";
 import { useActiveHost } from "../../composables/useActiveHost";
 import { useChatRuntimeLog } from "../../composables/useChatRuntimeLog";
+import { useServerLogs } from "../../composables/useServerLogs";
+import {
+    isDebugLoggingEnabled,
+    setDebugLoggingEnabled,
+} from "../../utils/logger";
 
 const router = useRouter();
 const searchTerm = ref("");
+const debugLogging = ref(false);
 
 type FilterKey =
     | "connection"
@@ -472,6 +458,15 @@ const {
     exportText: chatRuntimeExportText,
     clear: clearChatRuntimeLog,
 } = useChatRuntimeLog();
+const {
+    latestEntries: latestServerLogEntries,
+    exportText: serverLogExportText,
+    isStreaming: serverLogsStreaming,
+    error: serverLogsError,
+    connect: connectServerLogs,
+    disconnect: disconnectServerLogs,
+    clear: clearServerLogs,
+} = useServerLogs();
 
 const filters: Array<{ key: FilterKey; label: string }> = [
     { key: "connection", label: "Connection" },
@@ -693,11 +688,36 @@ function onGroupClick(group: SettingsGroup) {
     });
 }
 
-async function copyChatRuntimeLog() {
-    await navigator.clipboard?.writeText(chatRuntimeExportText.value);
+function connectServerLogStream() {
+    connectServerLogs({ level: debugLogging.value ? "debug" : "info" });
+}
+
+function disconnectServerLogStream() {
+    disconnectServerLogs();
+}
+
+function setDebugLogging(value: boolean) {
+    debugLogging.value = Boolean(value);
+    setDebugLoggingEnabled(debugLogging.value);
+    if (serverLogsStreaming.value) connectServerLogStream();
+}
+
+async function copyAllLogs() {
+    await navigator.clipboard?.writeText(
+        JSON.stringify(
+            {
+                app: JSON.parse(chatRuntimeExportText.value),
+                server: JSON.parse(serverLogExportText.value),
+            },
+            null,
+            2,
+        ),
+    );
 }
 
 onMounted(async () => {
+    debugLogging.value = isDebugLoggingEnabled();
+    if (activeHost.value?.token) connectServerLogStream();
     await loadSections();
     // Build the searchable field index in the background. Errors here are
     // non-fatal; section-level search still works without it.

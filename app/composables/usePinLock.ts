@@ -2,7 +2,10 @@ import { gcm } from '@noble/ciphers/aes.js';
 import { pbkdf2 } from '@noble/hashes/pbkdf2.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { computed, readonly, ref } from 'vue';
+import { createLogger } from '~/utils/logger';
 import type { HostTokenRecord } from './useSecureHostTokens';
+
+const logger = createLogger('pin_lock');
 
 const PIN_LOCK_CONFIG_KEY = 'or3-app:v1:pin-lock-config';
 const PIN_LOCKOUT_KEY = 'or3-app:v1:pin-lockout';
@@ -619,7 +622,7 @@ export async function unlock(
     } catch (err) {
         recordFailedAttempt();
         const message = err instanceof Error ? err.message : String(err);
-        console.error('[pin-lock] unlock failed:', err);
+        logger.error('unlock:failed', 'PIN unlock failed', { error: message });
         return {
             success: false,
             error:
@@ -645,7 +648,9 @@ export function encryptAndStore(
         syncReactiveState();
         return true;
     } catch (err) {
-        console.error('[pin-lock] persist failed:', err);
+        logger.error('persist:failed', 'PIN token persistence failed', {
+            error: err instanceof Error ? err.message : String(err),
+        });
         return false;
     }
 }
@@ -685,7 +690,7 @@ export async function enable(
         return { success: true };
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        console.error('[pin-lock] enable failed:', err);
+        logger.error('enable:failed', 'PIN lock enable failed', { error: message });
         return {
             success: false,
             error: `PIN lock setup failed. ${message || 'Please try again.'}`,
@@ -743,7 +748,7 @@ export async function disable(
     } catch (err) {
         recordFailedAttempt();
         const message = err instanceof Error ? err.message : String(err);
-        console.error('[pin-lock] disable failed:', err);
+        logger.error('disable:failed', 'PIN lock disable failed', { error: message });
         return {
             success: false,
             error:
@@ -811,7 +816,7 @@ export async function changePin(
     } catch (err) {
         recordFailedAttempt();
         const message = err instanceof Error ? err.message : String(err);
-        console.error('[pin-lock] change-pin failed:', err);
+        logger.error('change_pin:failed', 'PIN change failed', { error: message });
         return {
             success: false,
             error:

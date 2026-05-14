@@ -1,4 +1,7 @@
 import type { Or3SseEvent } from '~/types/or3-api'
+import { createLogger } from '~/utils/logger'
+
+const logger = createLogger('sse')
 
 export function parseSseChunk(chunk: string): Or3SseEvent[] {
   return chunk
@@ -31,7 +34,12 @@ export function parseSseBlock(block: string): Or3SseEvent {
   if (event.data) {
     try {
       event.json = JSON.parse(event.data)
-    } catch {
+    } catch (error) {
+      logger.warn('parse:invalid_json', 'SSE data was not valid JSON', {
+        event: event.event,
+        preview: event.data.slice(0, 300),
+        error: error instanceof Error ? error.message : String(error),
+      })
       event.json = undefined
     }
   }
