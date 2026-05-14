@@ -93,14 +93,16 @@ export function createAssistantEventApplier(
         const seqKey = seq !== undefined ? `seq:${seq}` : '';
         const payloadKey = `${type}:${JSON.stringify(payload ?? {})}`;
         if (seqKey && appliedEventSequenceKeys.has(seqKey)) {
-            logger.debug(
-                'event:skip_sequence',
-                'Duplicate event sequence skipped',
-                {
-                    type,
-                    sequence: seq,
-                },
-            );
+            if (source !== 'snapshot') {
+                logger.debug(
+                    'event:skip_sequence',
+                    'Duplicate event sequence skipped',
+                    {
+                        type,
+                        sequence: seq,
+                    },
+                );
+            }
             return { failed: false, completed: false };
         }
         if (source === 'snapshot' && streamedEventPayloadKeys.has(payloadKey)) {
