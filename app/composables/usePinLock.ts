@@ -690,7 +690,9 @@ export async function enable(
         return { success: true };
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        logger.error('enable:failed', 'PIN lock enable failed', { error: message });
+        logger.error('enable:failed', 'PIN lock enable failed', {
+            error: message,
+        });
         return {
             success: false,
             error: `PIN lock setup failed. ${message || 'Please try again.'}`,
@@ -748,7 +750,9 @@ export async function disable(
     } catch (err) {
         recordFailedAttempt();
         const message = err instanceof Error ? err.message : String(err);
-        logger.error('disable:failed', 'PIN lock disable failed', { error: message });
+        logger.error('disable:failed', 'PIN lock disable failed', {
+            error: message,
+        });
         return {
             success: false,
             error:
@@ -816,7 +820,9 @@ export async function changePin(
     } catch (err) {
         recordFailedAttempt();
         const message = err instanceof Error ? err.message : String(err);
-        logger.error('change_pin:failed', 'PIN change failed', { error: message });
+        logger.error('change_pin:failed', 'PIN change failed', {
+            error: message,
+        });
         return {
             success: false,
             error:

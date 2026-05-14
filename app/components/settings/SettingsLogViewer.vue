@@ -2,10 +2,15 @@
     <SurfaceCard class-name="space-y-3">
         <div class="flex flex-wrap items-start justify-between gap-3">
             <div class="min-w-0">
-                <p class="or3-command text-[11px] uppercase tracking-[0.2em] text-(--or3-green-dark)">
+                <p
+                    class="or3-command text-[11px] uppercase tracking-[0.2em] text-(--or3-green-dark)"
+                >
                     {{ title }}
                 </p>
-                <p v-if="subtitle" class="mt-1 text-xs leading-5 text-(--or3-text-muted)">
+                <p
+                    v-if="subtitle"
+                    class="mt-1 text-xs leading-5 text-(--or3-text-muted)"
+                >
                     {{ subtitle }}
                 </p>
                 <p v-if="error" class="mt-1 text-xs text-(--or3-danger)">
@@ -16,7 +21,11 @@
                 <UButton
                     v-if="connectable"
                     :label="streaming ? 'Disconnect' : 'Connect'"
-                    :icon="streaming ? 'i-pixelarticons-close' : 'i-pixelarticons-play'"
+                    :icon="
+                        streaming
+                            ? 'i-pixelarticons-close'
+                            : 'i-pixelarticons-play'
+                    "
                     size="xs"
                     variant="soft"
                     color="neutral"
@@ -47,7 +56,11 @@
                 :key="level.value"
                 type="button"
                 class="or3-focus-ring rounded-full border px-3 py-1 font-mono text-[11px] font-semibold uppercase tracking-wide transition"
-                :class="selectedLevel === level.value ? 'border-(--or3-green) bg-(--or3-green-soft) text-(--or3-green-dark)' : 'border-(--or3-border) bg-white/70 text-(--or3-text-muted)'"
+                :class="
+                    selectedLevel === level.value
+                        ? 'border-(--or3-green) bg-(--or3-green-soft) text-(--or3-green-dark)'
+                        : 'border-(--or3-border) bg-white/70 text-(--or3-text-muted)'
+                "
                 @click="selectedLevel = level.value"
             >
                 {{ level.label }}
@@ -66,8 +79,13 @@
             />
         </div>
 
-        <div class="max-h-72 overflow-auto rounded-xl border border-(--or3-border) bg-white/70">
-            <div v-if="!filteredEntries.length" class="px-4 py-3 text-xs text-(--or3-text-muted)">
+        <div
+            class="max-h-72 overflow-auto rounded-xl border border-(--or3-border) bg-white/70"
+        >
+            <div
+                v-if="!filteredEntries.length"
+                class="px-4 py-3 text-xs text-(--or3-text-muted)"
+            >
                 {{ emptyText }}
             </div>
             <details
@@ -75,30 +93,46 @@
                 :key="entry.id"
                 class="group border-b border-(--or3-border) px-4 py-2 last:border-b-0"
             >
-                <summary class="or3-focus-ring flex cursor-pointer list-none flex-wrap items-center gap-2 rounded-md py-1">
-                    <span class="rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase" :class="levelClass(entryLevel(entry))">
+                <summary
+                    class="or3-focus-ring flex cursor-pointer list-none flex-wrap items-center gap-2 rounded-md py-1"
+                >
+                    <span
+                        class="rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase"
+                        :class="levelClass(entryLevel(entry))"
+                    >
                         {{ entryLevel(entry) }}
                     </span>
-                    <code class="rounded bg-(--or3-green-soft) px-1.5 py-0.5 font-mono text-[10px] text-(--or3-green-dark)">
+                    <code
+                        class="rounded bg-(--or3-green-soft) px-1.5 py-0.5 font-mono text-[10px] text-(--or3-green-dark)"
+                    >
                         {{ entryComponent(entry) }}
                     </code>
-                    <span class="min-w-0 flex-1 truncate font-mono text-xs font-semibold text-(--or3-text)">
+                    <span
+                        class="min-w-0 flex-1 truncate font-mono text-xs font-semibold text-(--or3-text)"
+                    >
                         {{ entryName(entry) }}
                     </span>
                     <span class="font-mono text-[10px] text-(--or3-text-muted)">
                         {{ entryTime(entry) }}
                     </span>
                 </summary>
-                <p v-if="entryMessage(entry)" class="mt-1 text-xs leading-5 text-(--or3-text-muted)">
+                <p
+                    v-if="entryMessage(entry)"
+                    class="mt-1 text-xs leading-5 text-(--or3-text-muted)"
+                >
                     {{ entryMessage(entry) }}
                 </p>
-                <div v-if="entryTrace(entry)" class="mt-1 font-mono text-[10px] text-(--or3-text-muted)">
+                <div
+                    v-if="entryTrace(entry)"
+                    class="mt-1 font-mono text-[10px] text-(--or3-text-muted)"
+                >
                     trace={{ entryTrace(entry) }}
                 </div>
                 <pre
                     v-if="entryPayload(entry)"
                     class="mt-2 whitespace-pre-wrap break-all rounded-lg bg-(--or3-surface-muted) p-2 font-mono text-[10px] leading-4 text-(--or3-text-muted)"
-                >{{ entryPayload(entry) }}</pre>
+                    >{{ entryPayload(entry) }}</pre
+                >
             </details>
         </div>
     </SurfaceCard>
@@ -196,9 +230,18 @@ const filteredEntries = computed(() => {
     const component = componentQuery.value.trim().toLowerCase();
     const trace = traceQuery.value.trim().toLowerCase();
     return props.entries.filter((entry) => {
-        if (selectedLevel.value !== 'all' && entryLevel(entry) !== selectedLevel.value) return false;
-        if (component && !entryComponent(entry).toLowerCase().includes(component)) return false;
-        if (trace && !entryTrace(entry).toLowerCase().includes(trace)) return false;
+        if (
+            selectedLevel.value !== 'all' &&
+            entryLevel(entry) !== selectedLevel.value
+        )
+            return false;
+        if (
+            component &&
+            !entryComponent(entry).toLowerCase().includes(component)
+        )
+            return false;
+        if (trace && !entryTrace(entry).toLowerCase().includes(trace))
+            return false;
         return true;
     });
 });
@@ -211,6 +254,8 @@ function levelClass(level: LogLevel) {
 }
 
 async function copyFiltered() {
-    await navigator.clipboard?.writeText(JSON.stringify(filteredEntries.value, null, 2));
+    await navigator.clipboard?.writeText(
+        JSON.stringify(filteredEntries.value, null, 2),
+    );
 }
 </script>

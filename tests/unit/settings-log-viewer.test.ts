@@ -31,7 +31,11 @@ function mountViewer() {
         global: {
             stubs: {
                 SurfaceCard: { template: '<section><slot /></section>' },
-                UButton: { template: '<button type="button"><slot />{{ label }}</button>', props: ['label'] },
+                UButton: {
+                    template:
+                        '<button type="button"><slot />{{ label }}</button>',
+                    props: ['label'],
+                },
             },
         },
     });
@@ -43,7 +47,9 @@ describe('SettingsLogViewer', () => {
         expect(wrapper.text()).toContain('stream:open');
         expect(wrapper.text()).toContain('action:failed');
 
-        const errorButton = wrapper.findAll('button').find((button) => button.text() === 'Error');
+        const errorButton = wrapper
+            .findAll('button')
+            .find((button) => button.text() === 'Error');
         await errorButton?.trigger('click');
         expect(wrapper.text()).not.toContain('stream:open');
         expect(wrapper.text()).toContain('action:failed');
@@ -51,7 +57,9 @@ describe('SettingsLogViewer', () => {
         await wrapper.findAll('input')[0].setValue('api');
         expect(wrapper.text()).toContain('No events');
 
-        const allButton = wrapper.findAll('button').find((button) => button.text() === 'All');
+        const allButton = wrapper
+            .findAll('button')
+            .find((button) => button.text() === 'All');
         await allButton?.trigger('click');
         expect(wrapper.text()).toContain('stream:open');
 

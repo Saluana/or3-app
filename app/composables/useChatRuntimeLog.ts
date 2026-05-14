@@ -1,7 +1,7 @@
-import { computed, ref } from "vue";
-import { getActiveTraceId } from "~/utils/logTrace";
+import { computed, ref } from 'vue';
+import { getActiveTraceId } from '~/utils/logTrace';
 
-export type ChatRuntimeLogLevel = "debug" | "info" | "warn" | "error";
+export type ChatRuntimeLogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 export interface ChatRuntimeLogEntry {
     id: string;
@@ -22,21 +22,21 @@ function createId() {
 }
 
 function redactValue(value: unknown): unknown {
-    if (typeof value === "string") {
+    if (typeof value === 'string') {
         return value.length > 500 ? `${value.slice(0, 500)}\n...` : value;
     }
-    if (!value || typeof value !== "object") return value;
+    if (!value || typeof value !== 'object') return value;
     if (Array.isArray(value)) return value.slice(0, 20).map(redactValue);
     const out: Record<string, unknown> = {};
     for (const [key, child] of Object.entries(value)) {
         const normalized = key.toLowerCase();
         if (
-            normalized.includes("token") ||
-            normalized.includes("secret") ||
-            normalized.includes("password") ||
-            normalized.includes("authorization")
+            normalized.includes('token') ||
+            normalized.includes('secret') ||
+            normalized.includes('password') ||
+            normalized.includes('authorization')
         ) {
-            out[key] = "[redacted]";
+            out[key] = '[redacted]';
             continue;
         }
         out[key] = redactValue(child);
@@ -50,14 +50,14 @@ export function useChatRuntimeLog() {
         event: string,
         detail?: string,
         data?: Record<string, unknown>,
-        level: ChatRuntimeLogLevel = "info",
+        level: ChatRuntimeLogLevel = 'info',
         traceId?: string,
     ) {
         const normalizedTraceId =
             traceId?.trim() ||
             getActiveTraceId() ||
-            (typeof data?.traceId === "string" ? data.traceId.trim() : "") ||
-            (typeof data?.trace_id === "string" ? data.trace_id.trim() : "") ||
+            (typeof data?.traceId === 'string' ? data.traceId.trim() : '') ||
+            (typeof data?.trace_id === 'string' ? data.trace_id.trim() : '') ||
             undefined;
         entries.value = [
             ...entries.value,

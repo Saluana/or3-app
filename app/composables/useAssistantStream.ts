@@ -282,13 +282,17 @@ export function useAssistantStream() {
             }
 
             if (useRunnerChat) {
-                logger.error('send:runner_error', 'Runner chat execution failed', {
-                    sessionKey: session.sessionKey,
-                    error:
-                        streamError instanceof Error
-                            ? streamError.message
-                            : String(streamError),
-                });
+                logger.error(
+                    'send:runner_error',
+                    'Runner chat execution failed',
+                    {
+                        sessionKey: session.sessionKey,
+                        error:
+                            streamError instanceof Error
+                                ? streamError.message
+                                : String(streamError),
+                    },
+                );
                 const executionContext = buildExecutionContext();
                 await handleRunnerExecutionError({
                     ...executionContext,

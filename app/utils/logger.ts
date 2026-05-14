@@ -1,7 +1,8 @@
-import { useChatRuntimeLog, type ChatRuntimeLogLevel } from "~/composables/useChatRuntimeLog";
 import {
-    getActiveTraceId,
-} from "~/utils/logTrace";
+    useChatRuntimeLog,
+    type ChatRuntimeLogLevel,
+} from '~/composables/useChatRuntimeLog';
+import { getActiveTraceId } from '~/utils/logTrace';
 
 type LogMethod = (
     event: string,
@@ -24,21 +25,21 @@ const logLevelOrder: Record<ChatRuntimeLogLevel, number> = {
 };
 
 function storageLogLevel(): ChatRuntimeLogLevel {
-    if (typeof window === "undefined" || !window.localStorage) return "info";
+    if (typeof window === 'undefined' || !window.localStorage) return 'info';
     try {
-        const value = window.localStorage.getItem("or3.logLevel")?.trim();
+        const value = window.localStorage.getItem('or3.logLevel')?.trim();
         if (
-            value === "debug" ||
-            value === "info" ||
-            value === "warn" ||
-            value === "error"
+            value === 'debug' ||
+            value === 'info' ||
+            value === 'warn' ||
+            value === 'error'
         ) {
             return value;
         }
     } catch {
         // Local storage may be unavailable in private or embedded contexts.
     }
-    return "info";
+    return 'info';
 }
 
 function shouldLog(level: ChatRuntimeLogLevel) {
@@ -46,19 +47,19 @@ function shouldLog(level: ChatRuntimeLogLevel) {
 }
 
 function consoleMethod(level: ChatRuntimeLogLevel) {
-    if (level === "debug") return console.debug;
-    if (level === "info") return console.info;
-    if (level === "warn") return console.warn;
+    if (level === 'debug') return console.debug;
+    if (level === 'info') return console.info;
+    if (level === 'warn') return console.warn;
     return console.error;
 }
 
 export function setDebugLoggingEnabled(enabled: boolean) {
-    if (typeof window === "undefined" || !window.localStorage) return;
+    if (typeof window === 'undefined' || !window.localStorage) return;
     try {
         if (enabled) {
-            window.localStorage.setItem("or3.logLevel", "debug");
+            window.localStorage.setItem('or3.logLevel', 'debug');
         } else {
-            window.localStorage.setItem("or3.logLevel", "info");
+            window.localStorage.setItem('or3.logLevel', 'info');
         }
     } catch {
         // Runtime logging should never make settings pages fail.
@@ -66,7 +67,7 @@ export function setDebugLoggingEnabled(enabled: boolean) {
 }
 
 export function isDebugLoggingEnabled() {
-    return storageLogLevel() === "debug";
+    return storageLogLevel() === 'debug';
 }
 
 export function createLogger(component: string): AppLogger {
@@ -79,34 +80,41 @@ export function createLogger(component: string): AppLogger {
         if (!shouldLog(level)) return;
         const traceId =
             getActiveTraceId() ||
-            (typeof data?.traceId === "string" ? data.traceId.trim() : "") ||
-            (typeof data?.trace_id === "string" ? data.trace_id.trim() : "") ||
+            (typeof data?.traceId === 'string' ? data.traceId.trim() : '') ||
+            (typeof data?.trace_id === 'string' ? data.trace_id.trim() : '') ||
             undefined;
         const payload = traceId ? { ...data, traceId } : data;
-        useChatRuntimeLog().add(component, event, detail, payload, level, traceId);
+        useChatRuntimeLog().add(
+            component,
+            event,
+            detail,
+            payload,
+            level,
+            traceId,
+        );
 
         if (import.meta.dev) {
             consoleMethod(level).call(
                 console,
                 `[${component}] ${event}`,
-                detail ?? "",
-                payload ?? "",
+                detail ?? '',
+                payload ?? '',
             );
         }
     };
 
     return {
         debug(event, detail, data) {
-            write("debug", event, detail, data);
+            write('debug', event, detail, data);
         },
         info(event, detail, data) {
-            write("info", event, detail, data);
+            write('info', event, detail, data);
         },
         warn(event, detail, data) {
-            write("warn", event, detail, data);
+            write('warn', event, detail, data);
         },
         error(event, detail, data) {
-            write("error", event, detail, data);
+            write('error', event, detail, data);
         },
     };
 }

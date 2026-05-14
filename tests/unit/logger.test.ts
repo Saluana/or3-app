@@ -1,9 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { useChatRuntimeLog } from '../../app/composables/useChatRuntimeLog';
-import {
-    createLogger,
-    setDebugLoggingEnabled,
-} from '../../app/utils/logger';
+import { createLogger, setDebugLoggingEnabled } from '../../app/utils/logger';
 import { clearActiveTraceId, setActiveTraceId } from '../../app/utils/logTrace';
 
 describe('createLogger', () => {
@@ -28,7 +25,11 @@ describe('createLogger', () => {
             detail: 'started',
             traceId: 'trace-a',
         });
-        expect(entry.data).toMatchObject({ token: '[redacted]', count: 1, traceId: 'trace-a' });
+        expect(entry.data).toMatchObject({
+            token: '[redacted]',
+            count: 1,
+            traceId: 'trace-a',
+        });
     });
 
     it('gates debug logs behind the debug logging setting', () => {

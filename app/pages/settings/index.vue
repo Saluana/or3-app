@@ -200,9 +200,13 @@ async function refreshConnectionStats() {
     try {
         await computerStatus.refreshStatus();
     } catch (err) {
-        logger.error('connection_stats:failed', 'Connection stats refresh failed', {
-            error: err instanceof Error ? err.message : String(err),
-        });
+        logger.error(
+            'connection_stats:failed',
+            'Connection stats refresh failed',
+            {
+                error: err instanceof Error ? err.message : String(err),
+            },
+        );
     }
 }
 

@@ -15,9 +15,7 @@ export interface Or3ApiRequestOptions {
     acceptSse?: boolean;
     requireAuth?: boolean;
     preferPairedToken?: boolean;
-    onOpen?:
-        | ((response: Response) => Promise<void> | void)
-        | undefined;
+    onOpen?: ((response: Response) => Promise<void> | void) | undefined;
     onAuthChallenge?: (
         challenge: AuthChallengeError,
     ) => Promise<boolean | void> | boolean | void;
@@ -148,23 +146,24 @@ function mapError(
     const normalizedPayloadCode =
         typeof payloadCode === 'string' ? payloadCode.trim() : '';
     const code =
-        normalizedPayloadCode && passthroughErrorCodes.has(normalizedPayloadCode)
+        normalizedPayloadCode &&
+        passthroughErrorCodes.has(normalizedPayloadCode)
             ? (normalizedPayloadCode as Or3AppError['code'])
-              : challengeCode
-                ? challengeCode
-                : status === 401
-                  ? 'auth_required'
-                  : status === 403
-                    ? 'forbidden'
-                    : status === 404
-                      ? 'file_not_found'
-                      : status === 429
-                        ? 'rate_limited'
-                        : status === 400
-                          ? 'validation_failed'
-                          : status === 503
-                            ? 'capability_unavailable'
-                            : 'unknown';
+            : challengeCode
+              ? challengeCode
+              : status === 401
+                ? 'auth_required'
+                : status === 403
+                  ? 'forbidden'
+                  : status === 404
+                    ? 'file_not_found'
+                    : status === 429
+                      ? 'rate_limited'
+                      : status === 400
+                        ? 'validation_failed'
+                        : status === 503
+                          ? 'capability_unavailable'
+                          : 'unknown';
 
     return {
         ...(typeof payload === 'object' ? payload : {}),
@@ -265,7 +264,9 @@ export function useOr3Api() {
         } catch (error) {
             logger.error('request:network_error', 'Could not reach host', {
                 path,
-                method: options.method || (options.body === undefined ? 'GET' : 'POST'),
+                method:
+                    options.method ||
+                    (options.body === undefined ? 'GET' : 'POST'),
                 error: error instanceof Error ? error.message : String(error),
             });
             throw {
@@ -287,18 +288,25 @@ export function useOr3Api() {
                     });
                 }
             }
-            logger.warn('request:error_response', 'Request returned an error response', {
-                path,
-                status: response.status,
-                requestId:
-                    response.headers.get('X-Request-Id') ||
-                    (typeof payload === 'object' ? payload.request_id : undefined),
-                responseTraceId:
-                    response.headers.get('X-Trace-Id') ||
-                    (typeof payload === 'object' && typeof payload.trace_id === 'string'
-                        ? payload.trace_id
-                        : undefined),
-            });
+            logger.warn(
+                'request:error_response',
+                'Request returned an error response',
+                {
+                    path,
+                    status: response.status,
+                    requestId:
+                        response.headers.get('X-Request-Id') ||
+                        (typeof payload === 'object'
+                            ? payload.request_id
+                            : undefined),
+                    responseTraceId:
+                        response.headers.get('X-Trace-Id') ||
+                        (typeof payload === 'object' &&
+                        typeof payload.trace_id === 'string'
+                            ? payload.trace_id
+                            : undefined),
+                },
+            );
             throw mapError(response.status, payload);
         }
         if (response.status === 204) return undefined as T;
@@ -346,11 +354,16 @@ export function useOr3Api() {
                 signal: options.signal,
             });
         } catch (error) {
-            logger.error('stream:network_error', 'Could not reach host stream', {
-                path,
-                method: options.method || 'POST',
-                error: error instanceof Error ? error.message : String(error),
-            });
+            logger.error(
+                'stream:network_error',
+                'Could not reach host stream',
+                {
+                    path,
+                    method: options.method || 'POST',
+                    error:
+                        error instanceof Error ? error.message : String(error),
+                },
+            );
             throw {
                 code: 'host_unreachable',
                 message: 'Could not reach the selected computer.',
@@ -371,18 +384,25 @@ export function useOr3Api() {
                     return;
                 }
             }
-            logger.warn('stream:error_response', 'Stream returned an error response', {
-                path,
-                status: response.status,
-                requestId:
-                    response.headers.get('X-Request-Id') ||
-                    (typeof payload === 'object' ? payload.request_id : undefined),
-                responseTraceId:
-                    response.headers.get('X-Trace-Id') ||
-                    (typeof payload === 'object' && typeof payload.trace_id === 'string'
-                        ? payload.trace_id
-                        : undefined),
-            });
+            logger.warn(
+                'stream:error_response',
+                'Stream returned an error response',
+                {
+                    path,
+                    status: response.status,
+                    requestId:
+                        response.headers.get('X-Request-Id') ||
+                        (typeof payload === 'object'
+                            ? payload.request_id
+                            : undefined),
+                    responseTraceId:
+                        response.headers.get('X-Trace-Id') ||
+                        (typeof payload === 'object' &&
+                        typeof payload.trace_id === 'string'
+                            ? payload.trace_id
+                            : undefined),
+                },
+            );
             throw mapError(response.status, payload);
         }
         if (options.onOpen) await options.onOpen(response);

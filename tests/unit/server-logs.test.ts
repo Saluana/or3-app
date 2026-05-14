@@ -44,7 +44,11 @@ describe('useServerLogs', () => {
         });
 
         const logs = useServerLogs();
-        logs.connect({ level: 'warn', component: 'service_turn', traceId: 'trace-a' });
+        logs.connect({
+            level: 'warn',
+            component: 'service_turn',
+            traceId: 'trace-a',
+        });
         await waitForMicrotasks();
 
         expect(logs.entries.value).toHaveLength(1);
@@ -59,9 +63,16 @@ describe('useServerLogs', () => {
 
     it('disconnect aborts the active stream', async () => {
         let signal: AbortSignal | undefined;
-        stream.mockImplementation(async function* (_path: string, options: { signal?: AbortSignal }) {
+        stream.mockImplementation(async function* (
+            _path: string,
+            options: { signal?: AbortSignal },
+        ) {
             signal = options.signal;
-            await new Promise<void>((resolve) => options.signal?.addEventListener('abort', () => resolve(), { once: true }));
+            await new Promise<void>((resolve) =>
+                options.signal?.addEventListener('abort', () => resolve(), {
+                    once: true,
+                }),
+            );
         });
 
         const logs = useServerLogs();

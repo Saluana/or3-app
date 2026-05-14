@@ -33,7 +33,8 @@ let reconnectAttempt = 0;
 let manualDisconnect = false;
 
 function normalizeLevel(value: unknown): ServerLogLevel {
-    if (value === 'debug' || value === 'warn' || value === 'error') return value;
+    if (value === 'debug' || value === 'warn' || value === 'error')
+        return value;
     return 'info';
 }
 
@@ -43,7 +44,10 @@ function normalizeServerLogEntry(value: unknown): ServerLogEntry | null {
     const message = String(raw.message ?? '').trim();
     if (!message) return null;
     return {
-        id: String(raw.id ?? `serverlog_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`),
+        id: String(
+            raw.id ??
+                `serverlog_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+        ),
         timestamp: String(raw.timestamp ?? new Date().toISOString()),
         level: normalizeLevel(raw.level),
         component: String(raw.component ?? 'service').trim() || 'service',
@@ -60,7 +64,8 @@ function normalizeServerLogEntry(value: unknown): ServerLogEntry | null {
 function buildQuery(filters: ServerLogFilters) {
     const params = new URLSearchParams();
     if (filters.level) params.set('level', filters.level);
-    if (filters.component?.trim()) params.set('component', filters.component.trim());
+    if (filters.component?.trim())
+        params.set('component', filters.component.trim());
     if (filters.traceId?.trim()) params.set('trace_id', filters.traceId.trim());
     if (filters.session?.trim()) params.set('session', filters.session.trim());
     const query = params.toString();
@@ -87,13 +92,18 @@ export function useServerLogs() {
         controller = activeController;
         isStreaming.value = true;
         error.value = null;
-        logger.info('connect:start', 'Server log stream connecting', { ...filters });
+        logger.info('connect:start', 'Server log stream connecting', {
+            ...filters,
+        });
         try {
             const suffix = buildQuery(filters);
-            for await (const event of api.stream(`/internal/v1/logs/stream${suffix}`, {
-                method: 'GET',
-                signal: activeController.signal,
-            })) {
+            for await (const event of api.stream(
+                `/internal/v1/logs/stream${suffix}`,
+                {
+                    method: 'GET',
+                    signal: activeController.signal,
+                },
+            )) {
                 if (event.event && event.event !== 'log') continue;
                 const entry = normalizeServerLogEntry(event.json);
                 if (entry) pushEntry(entry);
@@ -101,9 +111,14 @@ export function useServerLogs() {
             reconnectAttempt = 0;
         } catch (streamError) {
             if (activeController.signal.aborted || manualDisconnect) return;
-            const message = streamError instanceof Error ? streamError.message : String(streamError);
+            const message =
+                streamError instanceof Error
+                    ? streamError.message
+                    : String(streamError);
             error.value = message;
-            logger.warn('connect:error', 'Server log stream disconnected', { error: message });
+            logger.warn('connect:error', 'Server log stream disconnected', {
+                error: message,
+            });
             scheduleReconnect();
         } finally {
             if (controller === activeController) {
@@ -116,7 +131,10 @@ export function useServerLogs() {
     function scheduleReconnect() {
         if (manualDisconnect || reconnectTimer) return;
         reconnectAttempt += 1;
-        const delay = Math.min(30000, 1000 * 2 ** Math.min(reconnectAttempt - 1, 5));
+        const delay = Math.min(
+            30000,
+            1000 * 2 ** Math.min(reconnectAttempt - 1, 5),
+        );
         reconnectTimer = setTimeout(() => {
             reconnectTimer = null;
             if (!manualDisconnect) void runConnection(activeFilters.value);
