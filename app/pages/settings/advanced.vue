@@ -39,8 +39,8 @@
                             >
                                 {{
                                     activeHost?.token
-                                        ? `Connected to ${activeHost.name || 'My Computer'}`
-                                        : 'No computer paired'
+                                        ? `Connected to ${activeHost.name || "My Computer"}`
+                                        : "No computer paired"
                                 }}
                             </p>
                             <StatusPill
@@ -55,8 +55,8 @@
                         >
                             {{
                                 activeHost?.token
-                                    ? 'Your or3-intern app is connected and ready.'
-                                    : 'Pair this app to your computer to get started.'
+                                    ? "Your or3-intern app is connected and ready."
+                                    : "Pair this app to your computer to get started."
                             }}
                         </p>
                     </div>
@@ -76,6 +76,84 @@
                         class="shrink-0 rounded-full"
                         to="/settings/pair"
                     />
+                </div>
+            </SurfaceCard>
+
+            <SurfaceCard class-name="space-y-3">
+                <div class="flex items-center justify-between gap-3">
+                    <div class="min-w-0">
+                        <p
+                            class="or3-command text-[11px] uppercase tracking-[0.2em] text-(--or3-green-dark)"
+                        >
+                            Chat runtime log
+                        </p>
+                        <p
+                            class="mt-1 text-xs leading-5 text-(--or3-text-muted)"
+                        >
+                            Recent stream, approval, and tool reducer events.
+                        </p>
+                    </div>
+                    <div class="flex shrink-0 items-center gap-2">
+                        <UButton
+                            label="Copy"
+                            icon="i-pixelarticons-copy"
+                            size="xs"
+                            variant="soft"
+                            color="neutral"
+                            @click="copyChatRuntimeLog"
+                        />
+                        <UButton
+                            label="Clear"
+                            icon="i-pixelarticons-close"
+                            size="xs"
+                            variant="ghost"
+                            color="neutral"
+                            @click="clearChatRuntimeLog"
+                        />
+                    </div>
+                </div>
+                <div
+                    class="max-h-56 overflow-auto rounded-2xl border border-(--or3-border) bg-white/70"
+                >
+                    <div
+                        v-if="!latestChatRuntimeEntries.length"
+                        class="px-4 py-3 text-xs text-(--or3-text-muted)"
+                    >
+                        No chat runtime events recorded yet.
+                    </div>
+                    <div
+                        v-for="entry in latestChatRuntimeEntries.slice(0, 30)"
+                        :key="entry.id"
+                        class="border-b border-(--or3-border) px-4 py-2 last:border-b-0"
+                    >
+                        <div class="flex flex-wrap items-center gap-2">
+                            <code
+                                class="rounded bg-(--or3-green-soft) px-1.5 py-0.5 font-mono text-[10px] text-(--or3-green-dark)"
+                                >{{ entry.area }}</code
+                            >
+                            <span
+                                class="font-mono text-xs font-semibold text-(--or3-text)"
+                            >
+                                {{ entry.event }}
+                            </span>
+                            <span
+                                class="font-mono text-[10px] text-(--or3-text-muted)"
+                            >
+                                {{ entry.createdAt }}
+                            </span>
+                        </div>
+                        <p
+                            v-if="entry.detail"
+                            class="mt-1 text-xs text-(--or3-text-muted)"
+                        >
+                            {{ entry.detail }}
+                        </p>
+                        <pre
+                            v-if="entry.data"
+                            class="mt-1 whitespace-pre-wrap break-all font-mono text-[10px] leading-4 text-(--or3-text-muted)"
+                            >{{ JSON.stringify(entry.data, null, 2) }}</pre
+                        >
+                    </div>
                 </div>
             </SurfaceCard>
 
@@ -362,83 +440,96 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue';
-import { useRouter } from 'vue-router';
-import { useConfigure } from '../../composables/useConfigure';
-import { useActiveHost } from '../../composables/useActiveHost';
+import { computed, nextTick, onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
+import { useConfigure } from "../../composables/useConfigure";
+import { useActiveHost } from "../../composables/useActiveHost";
+import { useChatRuntimeLog } from "../../composables/useChatRuntimeLog";
 
 const router = useRouter();
-const searchTerm = ref('');
+const searchTerm = ref("");
 
 type FilterKey =
-    | 'connection'
-    | 'security'
-    | 'safety'
-    | 'agent-behavior'
-    | 'knowledge'
-    | 'advanced';
-const activeFilter = ref<FilterKey>('connection');
+    | "connection"
+    | "security"
+    | "safety"
+    | "agent-behavior"
+    | "knowledge"
+    | "advanced";
+const activeFilter = ref<FilterKey>("connection");
 
-const { sections, configureError, loadSections, fieldsBySection, allFieldsLoading, loadAllFields } = useConfigure();
+const {
+    sections,
+    configureError,
+    loadSections,
+    fieldsBySection,
+    allFieldsLoading,
+    loadAllFields,
+} = useConfigure();
 const { activeHost } = useActiveHost();
+const {
+    latestEntries: latestChatRuntimeEntries,
+    exportText: chatRuntimeExportText,
+    clear: clearChatRuntimeLog,
+} = useChatRuntimeLog();
 
 const filters: Array<{ key: FilterKey; label: string }> = [
-    { key: 'connection', label: 'Connection' },
-    { key: 'security', label: 'Security' },
-    { key: 'safety', label: 'Safety' },
-    { key: 'agent-behavior', label: 'Agent behavior' },
-    { key: 'knowledge', label: 'Knowledge' },
-    { key: 'advanced', label: 'Advanced' },
+    { key: "connection", label: "Connection" },
+    { key: "security", label: "Security" },
+    { key: "safety", label: "Safety" },
+    { key: "agent-behavior", label: "Agent behavior" },
+    { key: "knowledge", label: "Knowledge" },
+    { key: "advanced", label: "Advanced" },
 ];
 
 const groups = [
     {
-        key: 'connection',
-        label: 'Connection',
+        key: "connection",
+        label: "Connection",
         description:
-            'Pair devices, review the current computer, and jump back into device trust.',
-        icon: 'i-pixelarticons-link',
-        route: '/settings/pair',
+            "Pair devices, review the current computer, and jump back into device trust.",
+        icon: "i-pixelarticons-link",
+        route: "/settings/pair",
     },
     {
-        key: 'security',
-        label: 'Security',
+        key: "security",
+        label: "Security",
         description:
-            'Manage passkeys, signed-in sessions, and owner verification state.',
-        icon: 'i-pixelarticons-shield',
-        route: '/settings/security',
+            "Manage passkeys, signed-in sessions, and owner verification state.",
+        icon: "i-pixelarticons-shield",
+        route: "/settings/security",
     },
     {
-        key: 'safety',
-        label: 'Safety',
+        key: "safety",
+        label: "Safety",
         description:
-            'Control hardening, session posture, and host protection behavior.',
-        icon: 'i-pixelarticons-shield',
+            "Control hardening, session posture, and host protection behavior.",
+        icon: "i-pixelarticons-shield",
         route: null,
     },
     {
-        key: 'agent-behavior',
-        label: 'Agent Behavior',
+        key: "agent-behavior",
+        label: "Agent Behavior",
         description:
-            'Tune providers, runtime behavior, tools, skills, and automation.',
-        icon: 'i-pixelarticons-robot',
+            "Tune providers, runtime behavior, tools, skills, and automation.",
+        icon: "i-pixelarticons-robot",
         route: null,
     },
     {
-        key: 'knowledge',
-        label: 'Knowledge',
+        key: "knowledge",
+        label: "Knowledge",
         description:
-            'Adjust workspace, storage, indexing, and context-related settings.',
-        icon: 'i-pixelarticons-book-open',
+            "Adjust workspace, storage, indexing, and context-related settings.",
+        icon: "i-pixelarticons-book-open",
         route: null,
     },
     {
-        key: 'advanced',
-        label: 'Advanced',
+        key: "advanced",
+        label: "Advanced",
         description:
-            'Open the low-level section editor when you need direct host controls.',
-        icon: 'i-pixelarticons-settings-cog-2',
-        route: '/settings/service',
+            "Open the low-level section editor when you need direct host controls.",
+        icon: "i-pixelarticons-settings-cog-2",
+        route: "/settings/service",
     },
 ] satisfies Array<{
     key: FilterKey;
@@ -450,59 +541,59 @@ const groups = [
 
 // Sections promoted to the "Quick settings" grid (shown only on Essentials).
 const QUICK_KEYS: Record<FilterKey, string[]> = {
-    connection: ['workspace', 'storage', 'service'],
-    security: ['security', 'session', 'service'],
-    safety: ['security', 'hardening', 'session'],
-    'agent-behavior': ['provider', 'runtime', 'skills', 'automation'],
-    knowledge: ['workspace', 'storage', 'docindex', 'context'],
-    advanced: ['service', 'hardening', 'tools'],
+    connection: ["workspace", "storage", "service"],
+    security: ["security", "session", "service"],
+    safety: ["security", "hardening", "session"],
+    "agent-behavior": ["provider", "runtime", "skills", "automation"],
+    knowledge: ["workspace", "storage", "docindex", "context"],
+    advanced: ["service", "hardening", "tools"],
 };
 
 // Filter membership for chips. `null` means all sections.
 const FILTER_MAP: Record<FilterKey, string[] | null> = {
-    connection: ['workspace', 'storage', 'service', 'session'],
-    security: ['security', 'session', 'service'],
-    safety: ['security', 'hardening', 'session', 'service'],
-    'agent-behavior': [
-        'provider',
-        'runtime',
-        'context',
-        'skills',
-        'docindex',
-        'tools',
-        'automation',
-        'channels',
+    connection: ["workspace", "storage", "service", "session"],
+    security: ["security", "session", "service"],
+    safety: ["security", "hardening", "session", "service"],
+    "agent-behavior": [
+        "provider",
+        "runtime",
+        "context",
+        "skills",
+        "docindex",
+        "tools",
+        "automation",
+        "channels",
     ],
-    knowledge: ['workspace', 'storage', 'docindex', 'context'],
-    advanced: ['hardening', 'context', 'docindex', 'tools', 'service'],
+    knowledge: ["workspace", "storage", "docindex", "context"],
+    advanced: ["hardening", "context", "docindex", "tools", "service"],
 };
 
 // Retro-style icons for each known section key.
 const ICON_MAP: Record<string, string> = {
-    provider: 'i-pixelarticons-cpu',
-    workspace: 'i-pixelarticons-folder',
-    storage: 'i-pixelarticons-database',
-    security: 'i-pixelarticons-shield',
-    channels: 'i-pixelarticons-message-text',
-    automation: 'i-pixelarticons-zap',
-    runtime: 'i-pixelarticons-analytics',
-    tools: 'i-pixelarticons-tool-case',
-    docindex: 'i-pixelarticons-book-open',
-    skills: 'i-pixelarticons-sparkle',
-    session: 'i-pixelarticons-users',
-    service: 'i-pixelarticons-monitor',
-    context: 'i-pixelarticons-card-stack',
-    hardening: 'i-pixelarticons-lock',
+    provider: "i-pixelarticons-cpu",
+    workspace: "i-pixelarticons-folder",
+    storage: "i-pixelarticons-database",
+    security: "i-pixelarticons-shield",
+    channels: "i-pixelarticons-message-text",
+    automation: "i-pixelarticons-zap",
+    runtime: "i-pixelarticons-analytics",
+    tools: "i-pixelarticons-tool-case",
+    docindex: "i-pixelarticons-book-open",
+    skills: "i-pixelarticons-sparkle",
+    session: "i-pixelarticons-users",
+    service: "i-pixelarticons-monitor",
+    context: "i-pixelarticons-card-stack",
+    hardening: "i-pixelarticons-lock",
 };
 
 function iconFor(key: string) {
-    return ICON_MAP[key] ?? 'i-pixelarticons-settings-cog-2';
+    return ICON_MAP[key] ?? "i-pixelarticons-settings-cog-2";
 }
 
 function matchesSearch(text: string | undefined | null) {
     const query = searchTerm.value.trim().toLowerCase();
     if (!query) return true;
-    return String(text ?? '')
+    return String(text ?? "")
         .toLowerCase()
         .includes(query);
 }
@@ -527,7 +618,7 @@ const quickSections = computed(() => {
 const activeFilterLabel = computed(
     () =>
         filters.find((filter) => filter.key === activeFilter.value)?.label ??
-        'Selected',
+        "Selected",
 );
 
 const listSections = computed(() => {
@@ -569,8 +660,8 @@ const fieldMatches = computed(() => {
                 field.placeholder,
                 field.emptyHint,
             ]
-                .map((value) => String(value ?? '').toLowerCase())
-                .join(' \u0001 ');
+                .map((value) => String(value ?? "").toLowerCase())
+                .join(" \u0001 ");
             if (haystack.includes(query)) {
                 results.push({ sectionKey, sectionLabel, field });
                 if (results.length >= FIELD_MATCH_LIMIT) return results;
@@ -597,9 +688,13 @@ function onGroupClick(group: SettingsGroup) {
     }
     // Otherwise, scroll the highlights/list into view so it's clear something happened.
     nextTick(() => {
-        const el = document.getElementById('settings-highlights');
-        el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        const el = document.getElementById("settings-highlights");
+        el?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
+}
+
+async function copyChatRuntimeLog() {
+    await navigator.clipboard?.writeText(chatRuntimeExportText.value);
 }
 
 onMounted(async () => {

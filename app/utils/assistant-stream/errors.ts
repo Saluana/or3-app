@@ -21,6 +21,7 @@ const knownErrorCodes = new Set<Or3AppErrorCode>([
     'stream_failed',
     'provider_error',
     'stream_error',
+    'empty_final_text',
     'validation_error',
     'policy_error',
     'tool_execution_error',

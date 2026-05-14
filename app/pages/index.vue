@@ -3,38 +3,66 @@
         <div class="or3-chat-shell__header bg-transparent!">
             <header class="flex items-center justify-between gap-3 pb-5">
                 <!--<AppHeader subtitle="CHAT" />-->
-                <div class="flex items-center gap-3 outline-none or3-focus-ring rounded-2xl" aria-label="Go to chat home">
+                <div
+                    class="flex items-center gap-3 outline-none or3-focus-ring rounded-2xl"
+                    aria-label="Go to chat home"
+                >
                     <BrandMark size="lg" />
                 </div>
                 <div class="flex shrink-0 items-center gap-3 self-start">
-                                        <UButton @click="openHistory"
+                    <UButton
+                        @click="openHistory"
                         class="or3-focus-ring or3-touch-target inline-flex size-12 items-center justify-center rounded-[1.35rem] border border-(--or3-border) bg-(--or3-surface) shadow-[0_1px_0_rgba(255,255,255,0.65)_inset,0_8px_20px_rgba(42,35,25,0.05)] transition hover:border-(--or3-green)/30 hover:bg-white/95"
-                        aria-label="Open chat history">
-                        <img src="/icons/chat-history.webp" alt="" class="or3-header-action-icon" />
+                        aria-label="Open chat history"
+                    >
+                        <img
+                            src="/icons/chat-history.webp"
+                            alt=""
+                            class="or3-header-action-icon"
+                        />
                     </UButton>
-                    <button type="button"
+                    <button
+                        type="button"
                         class="or3-focus-ring or3-touch-target relative inline-flex size-12 items-center justify-center rounded-[1.35rem] border border-(--or3-border) bg-(--or3-surface) shadow-[0_1px_0_rgba(255,255,255,0.65)_inset,0_8px_20px_rgba(42,35,25,0.05)] transition hover:border-(--or3-green)/30 hover:bg-white/95"
-                        :aria-label="pendingCount ? `${pendingCount} approval requests waiting` : 'Open approval requests'"
-                        @click="approvalsOpen = true">
-                        <img src="/computer-icons/security.png" alt=""
-                            class="or3-header-action-icon or3-header-action-icon--approvals" />
-                        <span v-if="pendingCount"
-                            class="absolute -right-1 -top-1 min-w-4.5 rounded-full bg-(--or3-amber) px-1.5 py-0.5 text-center text-[10px] font-semibold leading-none text-white shadow-sm">{{
-                                pendingCount > 99 ? '99+' : pendingCount }}</span>
+                        :aria-label="
+                            pendingCount
+                                ? `${pendingCount} approval requests waiting`
+                                : 'Open approval requests'
+                        "
+                        @click="approvalsOpen = true"
+                    >
+                        <img
+                            src="/computer-icons/security.png"
+                            alt=""
+                            class="or3-header-action-icon or3-header-action-icon--approvals"
+                        />
+                        <span
+                            v-if="pendingCount"
+                            class="absolute -right-1 -top-1 min-w-4.5 rounded-full bg-(--or3-amber) px-1.5 py-0.5 text-center text-[10px] font-semibold leading-none text-white shadow-sm"
+                            >{{
+                                pendingCount > 99 ? '99+' : pendingCount
+                            }}</span
+                        >
                     </button>
-                    <NuxtLink to="/settings"
+                    <NuxtLink
+                        to="/settings"
                         class="or3-focus-ring or3-touch-target inline-flex size-12 items-center justify-center rounded-[1.35rem] border border-(--or3-border) bg-(--or3-surface) shadow-[0_1px_0_rgba(255,255,255,0.65)_inset,0_8px_20px_rgba(42,35,25,0.05)] transition hover:border-(--or3-green)/30 hover:bg-white/95"
-                        aria-label="Open settings">
-                        <img src="/computer-icons/settings.png" alt="" class="or3-header-action-icon" />
+                        aria-label="Open settings"
+                    >
+                        <img
+                            src="/computer-icons/settings.png"
+                            alt=""
+                            class="or3-header-action-icon"
+                        />
                     </NuxtLink>
                 </div>
             </header>
         </div>
 
-        <div ref="scrollEl" class="or3-chat-shell__body" @scroll.passive="onChatScroll">
-            <div class="or3-chat-shell__content">
+        <div class="or3-chat-shell__body">
+            <div v-if="!messages.length" class="or3-chat-shell__content">
                 <!-- Empty state hero (shown only when there are no messages yet) -->
-                <section v-if="!messages.length" class="or3-chat-empty">
+                <section class="or3-chat-empty">
                     <div class="or3-chat-empty__avatar">
                         <RetroIcon name="i-pixelarticons-sparkles" size="lg" />
                     </div>
@@ -43,24 +71,39 @@
                         Ask me about your computer, attach files for context, or
                         tap a quick prompt below to get started.
                     </p>
-                    <QuickPromptChips class="or3-chat-empty__chips" @select="onPromptSelect" />
+                    <QuickPromptChips
+                        class="or3-chat-empty__chips"
+                        @select="onPromptSelect"
+                    />
                     <div class="or3-chat-empty__actions">
-                        <UButton icon="i-pixelarticons-book" color="neutral" variant="soft" @click="openPromptGallery">
+                        <UButton
+                            icon="i-pixelarticons-book"
+                            color="neutral"
+                            variant="soft"
+                            @click="openPromptGallery"
+                        >
                             Open prompt library
                         </UButton>
-                        <UButton icon="i-pixelarticons-edit-box" color="neutral" variant="ghost"
-                            @click="openFileEditor">
+                        <UButton
+                            icon="i-pixelarticons-edit-box"
+                            color="neutral"
+                            variant="ghost"
+                            @click="openFileEditor"
+                        >
                             Edit workspace files
                         </UButton>
                     </div>
                 </section>
-
-                <!-- Conversation thread -->
-                <ol v-else class="or3-chat-thread" role="list">
-                    <li v-for="m in messages" :key="m.id">
-                        <ChatMessage :message="m" />
-                    </li>
-                </ol>
+            </div>
+            <div
+                v-else
+                class="or3-chat-shell__content or3-chat-shell__content--virtualized"
+            >
+                <ChatMessageList
+                    :key="activeSession?.id ?? 'active-thread'"
+                    :messages="messages"
+                    class="or3-chat-shell__message-list"
+                />
             </div>
         </div>
 
@@ -73,14 +116,28 @@
                 <div class="or3-chat-shell__status">
                     <AssistantStatusIndicator :active="isStreaming" />
                 </div>
-                <AssistantComposer v-model="draft" v-model:mode="chatMode" v-model:selected-runner-id="selectedRunnerId"
-                    :streaming="isStreaming" :runners="runners" @send="sendWithMode" @stop="stop" />
+                <AssistantComposer
+                    v-model="draft"
+                    v-model:mode="chatMode"
+                    v-model:selected-runner-id="selectedRunnerId"
+                    :streaming="isStreaming"
+                    :runners="runners"
+                    @send="sendWithMode"
+                    @stop="stop"
+                />
             </div>
         </div>
 
-        <SessionHistoryPanel v-model:open="historyOpen" :sessions="historySessions" :loading="historyLoading"
-            :error="historyError" @refresh="refreshHistory" @open-session="openHistorySession"
-            @rename-session="renameHistorySession" @archive-session="archiveHistorySession" />
+        <SessionHistoryPanel
+            v-model:open="historyOpen"
+            :sessions="historySessions"
+            :loading="historyLoading"
+            :error="historyError"
+            @refresh="refreshHistory"
+            @open-session="openHistorySession"
+            @rename-session="renameHistorySession"
+            @archive-session="archiveHistorySession"
+        />
 
         <ApprovalsSlideover v-model:open="approvalsOpen" />
 
@@ -89,25 +146,32 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import type { ChatSessionMeta } from '~/types/or3-api';
 
 const chat = useChatSessions();
-const { activeSession, messages, draft, messageCount, newSession, setSessionRunnerMetadata } = chat;
+const {
+    activeSession,
+    messages,
+    draft,
+    messageCount,
+    newSession,
+    setSessionRunnerMetadata,
+} = chat;
 const { isStreaming, chatMode, send, stop } = useAssistantStream();
-const { selectableRunners, defaultRunner, getRunner, refresh: refreshRunners } = useChatRunners();
+const {
+    selectableRunners,
+    defaultRunner,
+    getRunner,
+    refresh: refreshRunners,
+} = useChatRunners();
 const sessionHistory = useSessionHistory();
 const router = useRouter();
-const { pendingCount, loadPendingCount, startPolling, stopPolling } = useApprovals();
+const { pendingCount, loadPendingCount, startPolling, stopPolling } =
+    useApprovals();
 
-const scrollEl = ref<HTMLElement | null>(null);
-const autoScrollLocked = ref(true);
 const selectedRunnerId = ref('or3-intern');
 const approvalsOpen = ref(false);
-let lastScrollTop = 0;
-
-const RELEASE_DISTANCE_PX = 2;
-const RELATCH_DISTANCE_PX = 24;
 
 function onPromptSelect(value: string) {
     draft.value = value;
@@ -159,7 +223,8 @@ function continuationModeForRunner(runnerId?: string | null) {
 watch(
     () => activeSession.value?.runnerId,
     (runnerId) => {
-        selectedRunnerId.value = runnerId || defaultRunner.value?.id || 'or3-intern';
+        selectedRunnerId.value =
+            runnerId || defaultRunner.value?.id || 'or3-intern';
     },
     { immediate: true },
 );
@@ -174,7 +239,8 @@ watch(selectedRunnerId, (runnerId, previous) => {
             'Start a new conversation for this runner? Existing conversations keep their original runner.',
         );
         if (!shouldSwitch) {
-            selectedRunnerId.value = activeSession.value.runnerId || 'or3-intern';
+            selectedRunnerId.value =
+                activeSession.value.runnerId || 'or3-intern';
             return;
         }
         const session = newSession('New conversation');
@@ -212,62 +278,16 @@ function sendWithMode(payload: Parameters<typeof send>[0]) {
         ...payload,
         mode: payload.mode ?? chatMode.value,
         runnerId: payload.runnerId || selectedRunnerId.value,
-        runnerLabel: payload.runnerLabel || runner?.display_name || selectedRunnerId.value,
+        runnerLabel:
+            payload.runnerLabel ||
+            runner?.display_name ||
+            selectedRunnerId.value,
         runnerContinuationMode:
             payload.runnerContinuationMode || sessionContinuationMode,
     });
 }
 
-function distanceFromBottom(el: HTMLElement) {
-    return el.scrollHeight - el.scrollTop - el.clientHeight;
-}
-
-function onChatScroll() {
-    const el = scrollEl.value;
-    if (!el) return;
-    const distance = distanceFromBottom(el);
-    const delta = el.scrollTop - lastScrollTop;
-    lastScrollTop = el.scrollTop;
-
-    if (delta < 0 && distance > RELEASE_DISTANCE_PX) {
-        autoScrollLocked.value = false;
-        return;
-    }
-    if (delta > 0 && distance <= RELATCH_DISTANCE_PX) {
-        autoScrollLocked.value = true;
-    }
-}
-
-function scrollToBottom(smooth = true) {
-    const el = scrollEl.value;
-    if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
-    lastScrollTop = el.scrollTop;
-}
-
-// Auto-scroll on new messages and during streaming, but only nudge while the
-// user is already near the bottom — never yank them up while they're reading.
-watch(
-    () => messages.value.length,
-    async () => {
-        if (!autoScrollLocked.value) return;
-        await nextTick();
-        scrollToBottom(true);
-    },
-);
-
-watch(
-    () => messages.value[messages.value.length - 1]?.content,
-    async () => {
-        if (!autoScrollLocked.value) return;
-        await nextTick();
-        scrollToBottom(false);
-    },
-);
-
 onMounted(() => {
-    // Land at the bottom on first paint when there's existing history.
-    nextTick(() => scrollToBottom(false));
     void refreshRunners();
     void sessionHistory.refresh();
 });

@@ -4,6 +4,7 @@ import {
     modeToolPolicy,
     normalizeTurnEvent,
 } from '../../app/composables/useAssistantStream';
+import { previewValue } from '../../app/utils/assistant-stream/activity';
 
 describe('assistant stream hardening helpers', () => {
     it('builds mode-derived tool policy payloads', () => {
@@ -35,5 +36,18 @@ describe('assistant stream hardening helpers', () => {
                 public_code: 'tool_execution_error',
             },
         });
+    });
+
+    it('redacts token-shaped values from activity previews', () => {
+        const preview = previewValue({
+            stdout:
+                'token: ya29.a0AQvPyExampleSecret\nAuthorization: Bearer abc.def.ghi',
+            access_token: 'plain-secret',
+        });
+
+        expect(preview).toContain('[redacted]');
+        expect(preview).not.toContain('ya29.a0AQvPyExampleSecret');
+        expect(preview).not.toContain('abc.def.ghi');
+        expect(preview).not.toContain('plain-secret');
     });
 });

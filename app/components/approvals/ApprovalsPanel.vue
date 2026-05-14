@@ -15,9 +15,7 @@
                     >
                         {{ heroTitle }}
                     </p>
-                    <p
-                        class="mt-1.5 text-sm leading-6 text-(--or3-text-muted)"
-                    >
+                    <p class="mt-1.5 text-sm leading-6 text-(--or3-text-muted)">
                         or3-intern pauses before risky actions.
                         <br class="hidden sm:inline" />
                         Review and decide what happens next.
@@ -31,9 +29,7 @@
         </section>
 
         <!-- Filter chips row -->
-        <div
-            class="-mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-1"
-        >
+        <div class="-mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-1">
             <button
                 v-for="option in filters"
                 :key="option.value"
@@ -42,11 +38,7 @@
                 :aria-pressed="selectedFilter === option.value"
                 @click="changeFilter(option.value)"
             >
-                <Icon
-                    v-if="option.icon"
-                    :name="option.icon"
-                    class="size-4"
-                />
+                <Icon v-if="option.icon" :name="option.icon" class="size-4" />
                 <span>{{ option.label }}</span>
                 <span
                     v-if="option.value === 'pending' && pendingCount"
@@ -131,9 +123,7 @@
                     >
                         All clear!
                     </p>
-                    <p
-                        class="mt-1 text-sm leading-6 text-(--or3-text-muted)"
-                    >
+                    <p class="mt-1 text-sm leading-6 text-(--or3-text-muted)">
                         No pending requests right now.
                         <br class="hidden sm:inline" />
                         You're all caught up.
@@ -161,22 +151,22 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue';
-import { useRouter } from 'vue-router';
-import { useToast } from '@nuxt/ui/composables';
-import type { ApprovalRequest } from '~/types/or3-api';
-import { useApprovals } from '~/composables/useApprovals';
-import { useAssistantStream } from '~/composables/useAssistantStream';
-import { useChatSessions } from '~/composables/useChatSessions';
-import { approvalActionErrorMessage } from '~/utils/assistantApproval';
-import { formatApprovalSubjectPreview } from '~/utils/or3/approval-display';
+import { computed, nextTick, ref, watch } from "vue";
+import { useRouter } from "vue-router";
+import { useToast } from "@nuxt/ui/composables";
+import type { ApprovalRequest } from "~/types/or3-api";
+import { useApprovals } from "~/composables/useApprovals";
+import { useAssistantStream } from "~/composables/useAssistantStream";
+import { useChatSessions } from "~/composables/useChatSessions";
+import { approvalActionErrorMessage } from "~/utils/assistantApproval";
+import { formatApprovalSubjectPreview } from "~/utils/or3/approval-display";
 
 const filters = [
-    { label: 'Waiting', value: 'pending', icon: '' },
-    { label: 'Expired', value: 'expired', icon: '' },
-    { label: 'Approved', value: 'approved', icon: '' },
-    { label: 'Denied', value: 'denied', icon: '' },
-    { label: 'Saved Rules', value: 'saved', icon: 'i-pixelarticons-bookmark' },
+    { label: "Waiting", value: "pending", icon: "" },
+    { label: "Expired", value: "expired", icon: "" },
+    { label: "Approved", value: "approved", icon: "" },
+    { label: "Denied", value: "denied", icon: "" },
+    { label: "Saved Rules", value: "saved", icon: "i-pixelarticons-bookmark" },
 ];
 
 const props = withDefaults(
@@ -194,10 +184,12 @@ const {
     activeSession,
     activateSessionByKey,
     ensureApprovalMessage,
+    markApprovalResolved,
+    messages,
     updateMessage,
 } = useChatSessions();
 const { send } = useAssistantStream();
-const selectedFilter = ref('pending');
+const selectedFilter = ref("pending");
 const detailOpen = ref(false);
 const approvalActionBusy = ref(false);
 const busyId = ref<number | string | null>(null);
@@ -221,32 +213,32 @@ const {
 } = useApprovals();
 
 const heroTitle = computed(() => {
-    if (selectedFilter.value === 'saved') return 'Saved approval rules';
-    if (selectedFilter.value === 'expired') return 'Expired approval requests';
-    if (selectedFilter.value === 'approved') return 'Approved requests';
-    if (selectedFilter.value === 'denied') return 'Denied requests';
+    if (selectedFilter.value === "saved") return "Saved approval rules";
+    if (selectedFilter.value === "expired") return "Expired approval requests";
+    if (selectedFilter.value === "approved") return "Approved requests";
+    if (selectedFilter.value === "denied") return "Denied requests";
     if (!pendingCount.value) return "You're all caught up";
-    if (pendingCount.value === 1) return '1 request needs your approval';
+    if (pendingCount.value === 1) return "1 request needs your approval";
     return `${pendingCount.value} requests need your approval`;
 });
 
 const emptyDescription = computed(() => {
     switch (selectedFilter.value) {
-        case 'pending':
+        case "pending":
             return "You're all caught up. New requests will pop up here when or3-intern needs the okay.";
-        case 'expired':
-            return 'Expired requests move here automatically after they time out.';
-        case 'approved':
-            return 'Approved requests will show up here after you allow them.';
-        case 'denied':
-            return 'Denied requests will show up here after you block them.';
+        case "expired":
+            return "Expired requests move here automatically after they time out.";
+        case "approved":
+            return "Approved requests will show up here after you allow them.";
+        case "denied":
+            return "Denied requests will show up here after you block them.";
         default:
-            return 'Try a different filter above.';
+            return "Try a different filter above.";
     }
 });
 
 async function refreshApprovalView() {
-    if (selectedFilter.value !== 'saved') {
+    if (selectedFilter.value !== "saved") {
         await reloadApprovals();
     }
     await loadPendingCount();
@@ -266,10 +258,10 @@ async function handleApprovalActionFailure(error: unknown, fallback: string) {
     const message = approvalActionErrorMessage(error, fallback);
     approvalsError.value = message;
     toast.add({
-        title: 'Approval update failed',
+        title: "Approval update failed",
         description: message,
-        color: 'error',
-        icon: 'i-pixelarticons-warning-box',
+        color: "error",
+        icon: "i-pixelarticons-warning-box",
     });
 }
 
@@ -280,15 +272,15 @@ function approvalPlaceholderContent(approval?: ApprovalRequest | null) {
               domain: approval.domain,
               subject: approval.subject,
           })
-        : '';
+        : "";
     if (!preview) {
-        return 'Approval is needed before or3-intern can continue.';
+        return "Approval is needed before or3-intern can continue.";
     }
     return [
-        'Approval is needed before or3-intern can continue.',
-        '',
+        "Approval is needed before or3-intern can continue.",
+        "",
         `Requested action: ${preview}`,
-    ].join('\n');
+    ].join("\n");
 }
 
 async function followApprovalResumeJob(
@@ -305,45 +297,55 @@ async function followApprovalResumeJob(
         response?.session_key?.trim() ||
         approval?.requester_session_id?.trim() ||
         activeSession.value?.sessionKey?.trim() ||
-        '';
+        "";
     if (targetSessionKey) {
-        activateSessionByKey(targetSessionKey, 'Approval follow-up');
+        activateSessionByKey(targetSessionKey, "Approval follow-up");
     }
     const targetMessage = ensureApprovalMessage({
         approvalRequestId:
             response?.request_id ??
             approval?.id ??
             response?.resume_job_id ??
-            '',
+            "",
         sessionKey: targetSessionKey || undefined,
         content: approvalPlaceholderContent(approval),
         createdAt: approval?.created_at,
-        status: 'attention',
-        approvalState: 'retrying',
+        status: "attention",
+        approvalState: "retrying",
     });
     if (targetMessage) {
         updateMessage(targetMessage.id, {
-            approvalState: 'retrying',
-            status: 'attention',
+            approvalState: "retrying",
+            status: "attention",
             error: undefined,
         });
     }
-    if (router.currentRoute.value.path !== '/') {
-        await router.push('/');
+    if (router.currentRoute.value.path !== "/") {
+        await router.push("/");
         await nextTick();
     }
     await send({
-        text: '',
-        transportText: '',
+        text: "",
+        transportText: "",
         followJobId: jobId,
         continueMessageId: targetMessage?.id,
         suppressUserEcho: true,
     });
+    const latest = targetMessage
+        ? messages.value.find((message) => message.id === targetMessage.id)
+        : null;
+    if (!(latest?.approvalState === "pending" && latest.approvalRequestId)) {
+        markApprovalResolved(
+            response?.request_id ?? approval?.id,
+            "approved",
+            targetSessionKey || undefined,
+        );
+    }
 }
 
 async function changeFilter(filter: string) {
     selectedFilter.value = filter;
-    if (filter === 'saved') {
+    if (filter === "saved") {
         await loadAllowlists();
         return;
     }
@@ -366,14 +368,14 @@ async function handleQuickApprove(
             approval.id,
             remember,
             remember
-                ? 'approved and remembered from mobile'
-                : 'approved from mobile',
+                ? "approved and remembered from mobile"
+                : "approved from mobile",
         );
         await followApprovalResumeJob(response, approval);
     } catch (error) {
         await handleApprovalActionFailure(
             error,
-            'Could not approve this request.',
+            "Could not approve this request.",
         );
     } finally {
         busyId.value = null;
@@ -384,11 +386,16 @@ async function handleQuickDeny(approval: ApprovalRequest) {
     busyId.value = approval.id;
     approvalsError.value = null;
     try {
-        await deny(approval.id, 'denied from mobile');
+        await deny(approval.id, "denied from mobile");
+        markApprovalResolved(
+            approval.id,
+            "denied",
+            approval.requester_session_id,
+        );
     } catch (error) {
         await handleApprovalActionFailure(
             error,
-            'Could not deny this request.',
+            "Could not deny this request.",
         );
     } finally {
         busyId.value = null;
@@ -405,15 +412,15 @@ async function handleApprove(remember: boolean) {
             approval.id,
             remember,
             remember
-                ? 'approved and remembered from mobile'
-                : 'approved from mobile',
+                ? "approved and remembered from mobile"
+                : "approved from mobile",
         );
         await followApprovalResumeJob(response, approval);
         detailOpen.value = false;
     } catch (error) {
         await handleApprovalActionFailure(
             error,
-            'Could not approve this request.',
+            "Could not approve this request.",
         );
     } finally {
         approvalActionBusy.value = false;
@@ -425,12 +432,17 @@ async function handleDeny() {
     approvalActionBusy.value = true;
     approvalsError.value = null;
     try {
-        await deny(selectedApproval.value.id, 'denied from mobile');
+        await deny(selectedApproval.value.id, "denied from mobile");
+        markApprovalResolved(
+            selectedApproval.value.id,
+            "denied",
+            selectedApproval.value.requester_session_id,
+        );
         detailOpen.value = false;
     } catch (error) {
         await handleApprovalActionFailure(
             error,
-            'Could not deny this request.',
+            "Could not deny this request.",
         );
     } finally {
         approvalActionBusy.value = false;
@@ -442,12 +454,12 @@ async function handleCancel() {
     approvalActionBusy.value = true;
     approvalsError.value = null;
     try {
-        await cancel(selectedApproval.value.id, 'canceled from mobile');
+        await cancel(selectedApproval.value.id, "canceled from mobile");
         detailOpen.value = false;
     } catch (error) {
         await handleApprovalActionFailure(
             error,
-            'Could not cancel this request.',
+            "Could not cancel this request.",
         );
     } finally {
         approvalActionBusy.value = false;
@@ -458,7 +470,10 @@ watch(
     () => props.open,
     (isOpen) => {
         if (!isOpen && isOpen !== undefined) return;
-        void Promise.all([loadApprovals(selectedFilter.value), loadAllowlists()]);
+        void Promise.all([
+            loadApprovals(selectedFilter.value),
+            loadAllowlists(),
+        ]);
     },
     { immediate: true },
 );
@@ -523,7 +538,7 @@ watch(
     line-height: 1;
 }
 
-.or3-chip[aria-pressed='true'] .or3-chip__count {
+.or3-chip[aria-pressed="true"] .or3-chip__count {
     background: white;
     color: var(--or3-green-dark);
 }
