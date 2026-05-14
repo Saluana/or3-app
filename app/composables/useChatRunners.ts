@@ -1,11 +1,17 @@
 import { computed, ref, watch } from 'vue';
-import type { AgentRunnerId, ChatRunnerInfo, ChatRunnersResponse } from '~/types/or3-api';
+import type {
+    AgentRunnerId,
+    ChatRunnerInfo,
+    ChatRunnersResponse,
+} from '~/types/or3-api';
 import { useActiveHost } from './useActiveHost';
 import { useOr3Api } from './useOr3Api';
+import { createLogger } from '~/utils/logger';
 
 const runnersByHost = ref<Record<string, ChatRunnerInfo[]>>({});
 const loadingByHost = ref<Record<string, boolean>>({});
 const errorByHost = ref<Record<string, string | null>>({});
+const logger = createLogger('chat_runners');
 
 function runnerLabel(runner: Pick<ChatRunnerInfo, 'display_name' | 'id'>) {
     return runner.display_name || runner.id;
@@ -40,12 +46,16 @@ export function useChatRunners() {
     const { activeHost } = useActiveHost();
     const hostId = computed(() => activeHost.value?.id || 'local');
     const runners = computed(() => runnersByHost.value[hostId.value] ?? []);
-    const selectableRunners = computed(() => runners.value.filter(isSelectableRunner));
+    const selectableRunners = computed(() =>
+        runners.value.filter(isSelectableRunner),
+    );
     const loading = computed(() => Boolean(loadingByHost.value[hostId.value]));
     const error = computed(() => errorByHost.value[hostId.value] ?? null);
     const defaultRunner = computed(
         () =>
-            selectableRunners.value.find((runner) => runner.id === 'or3-intern') ??
+            selectableRunners.value.find(
+                (runner) => runner.id === 'or3-intern',
+            ) ??
             selectableRunners.value[0] ??
             runners.value.find((runner) => runner.id === 'or3-intern') ??
             null,
@@ -55,14 +65,32 @@ export function useChatRunners() {
         const currentHost = hostId.value;
         loadingByHost.value[currentHost] = true;
         errorByHost.value[currentHost] = null;
+        logger.info('refresh:start', 'Chat runner discovery started', {
+            hostId: currentHost,
+        });
         try {
-            const response = await api.request<ChatRunnersResponse>('/internal/v1/chat-runners');
-            runnersByHost.value[currentHost] = normalizeChatRunners(response.runners ?? []);
+            const response = await api.request<ChatRunnersResponse>(
+                '/internal/v1/chat-runners',
+            );
+            const normalized = normalizeChatRunners(response.runners ?? []);
+            runnersByHost.value[currentHost] = normalized;
+            logger.info('refresh:complete', 'Chat runner discovery completed', {
+                hostId: currentHost,
+                runnerCount: normalized.length,
+                selectableCount: normalized.filter(isSelectableRunner).length,
+            });
         } catch (err) {
             errorByHost.value[currentHost] =
                 err && typeof err === 'object' && 'message' in err
-                    ? String((err as { message?: unknown }).message || 'Runner discovery failed')
+                    ? String(
+                          (err as { message?: unknown }).message ||
+                              'Runner discovery failed',
+                      )
                     : 'Runner discovery failed';
+            logger.warn('refresh:error', 'Chat runner discovery failed', {
+                hostId: currentHost,
+                error: errorByHost.value[currentHost],
+            });
             if (!runnersByHost.value[currentHost]?.length) {
                 runnersByHost.value[currentHost] = [
                     {
@@ -80,9 +108,17 @@ export function useChatRunners() {
                             stdinPrompt: false,
                             chat: { chatSelectable: true, chatReplay: true },
                         },
-                        chat_capabilities: { chatSelectable: true, chatReplay: true },
+                        chat_capabilities: {
+                            chatSelectable: true,
+                            chatReplay: true,
+                        },
                     },
                 ];
+                logger.info(
+                    'refresh:fallback',
+                    'Fell back to the built-in OR3 runner',
+                    { hostId: currentHost },
+                );
             }
         } finally {
             loadingByHost.value[currentHost] = false;

@@ -80,6 +80,7 @@
         </div>
 
         <div
+            ref="listViewport"
             class="max-h-72 overflow-auto rounded-xl border border-(--or3-border) bg-white/70"
         >
             <div
@@ -89,7 +90,7 @@
                 {{ emptyText }}
             </div>
             <details
-                v-for="entry in filteredEntries.slice(0, limit)"
+                v-for="entry in paginatedEntries"
                 :key="entry.id"
                 class="group border-b border-(--or3-border) px-4 py-2 last:border-b-0"
             >
@@ -135,11 +136,55 @@
                 >
             </details>
         </div>
+
+        <div
+            v-if="filteredEntries.length"
+            class="flex flex-wrap items-center justify-between gap-2"
+        >
+            <p class="font-mono text-[11px] text-(--or3-text-muted)">
+                Showing {{ visibleStart }}-{{ visibleEnd }} of
+                {{ filteredEntries.length }}
+            </p>
+            <div
+                v-if="pageCount > 1"
+                class="flex items-center gap-2 font-mono text-[11px]"
+            >
+                <button
+                    type="button"
+                    class="or3-focus-ring rounded-full border px-3 py-1 transition"
+                    :class="
+                        currentPage === 1
+                            ? 'cursor-not-allowed border-(--or3-border) bg-white/50 text-(--or3-text-muted)/60'
+                            : 'border-(--or3-border) bg-white/70 text-(--or3-text) hover:bg-(--or3-green-soft)'
+                    "
+                    :disabled="currentPage === 1"
+                    @click="goToPage(currentPage - 1)"
+                >
+                    Newer
+                </button>
+                <span class="text-(--or3-text-muted)">
+                    Page {{ currentPage }} / {{ pageCount }}
+                </span>
+                <button
+                    type="button"
+                    class="or3-focus-ring rounded-full border px-3 py-1 transition"
+                    :class="
+                        currentPage === pageCount
+                            ? 'cursor-not-allowed border-(--or3-border) bg-white/50 text-(--or3-text-muted)/60'
+                            : 'border-(--or3-border) bg-white/70 text-(--or3-text) hover:bg-(--or3-green-soft)'
+                    "
+                    :disabled="currentPage === pageCount"
+                    @click="goToPage(currentPage + 1)"
+                >
+                    Older
+                </button>
+            </div>
+        </div>
     </SurfaceCard>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 type LevelFilter = LogLevel | 'all';
@@ -189,6 +234,8 @@ const emit = defineEmits<{
 const selectedLevel = ref<LevelFilter>('all');
 const componentQuery = ref('');
 const traceQuery = ref('');
+const currentPage = ref(1);
+const listViewport = ref<HTMLElement | null>(null);
 const levelOptions: Array<{ value: LevelFilter; label: string }> = [
     { value: 'all', label: 'All' },
     { value: 'debug', label: 'Debug' },
@@ -246,6 +293,38 @@ const filteredEntries = computed(() => {
     });
 });
 
+const pageSize = computed(() => Math.max(1, props.limit));
+const pageCount = computed(() =>
+    Math.max(1, Math.ceil(filteredEntries.value.length / pageSize.value)),
+);
+const paginatedEntries = computed(() => {
+    const start = (currentPage.value - 1) * pageSize.value;
+    return filteredEntries.value.slice(start, start + pageSize.value);
+});
+const visibleStart = computed(() => {
+    if (!filteredEntries.value.length) return 0;
+    return (currentPage.value - 1) * pageSize.value + 1;
+});
+const visibleEnd = computed(() => {
+    if (!filteredEntries.value.length) return 0;
+    return Math.min(
+        currentPage.value * pageSize.value,
+        filteredEntries.value.length,
+    );
+});
+
+watch([selectedLevel, componentQuery, traceQuery, pageSize], () => {
+    currentPage.value = 1;
+});
+
+watch(
+    pageCount,
+    (count) => {
+        if (currentPage.value > count) currentPage.value = count;
+    },
+    { immediate: true },
+);
+
 function levelClass(level: LogLevel) {
     if (level === 'error') return 'bg-red-100 text-red-800';
     if (level === 'warn') return 'bg-amber-100 text-amber-800';
@@ -257,5 +336,13 @@ async function copyFiltered() {
     await navigator.clipboard?.writeText(
         JSON.stringify(filteredEntries.value, null, 2),
     );
+}
+
+async function goToPage(page: number) {
+    const nextPage = Math.min(Math.max(1, page), pageCount.value);
+    if (nextPage === currentPage.value) return;
+    currentPage.value = nextPage;
+    await nextTick();
+    listViewport.value?.scrollTo?.({ top: 0, behavior: 'auto' });
 }
 </script>

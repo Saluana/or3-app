@@ -80,62 +80,36 @@
             </SurfaceCard>
 
             <SurfaceCard class-name="space-y-3">
-                <div class="flex flex-wrap items-center justify-between gap-3">
-                    <div class="min-w-0">
+                <div class="flex items-start gap-3">
+                    <Icon
+                        name="i-pixelarticons-monitor"
+                        class="mt-0.5 size-5 shrink-0 text-(--or3-green)"
+                    />
+                    <div class="min-w-0 flex-1">
                         <p
-                            class="or3-command text-[11px] uppercase tracking-[0.2em] text-(--or3-green-dark)"
+                            class="font-mono text-base font-semibold text-(--or3-text)"
                         >
                             Observability
                         </p>
                         <p
-                            class="mt-1 text-xs leading-5 text-(--or3-text-muted)"
+                            class="mt-1 text-sm leading-6 text-(--or3-text-muted)"
                         >
-                            Runtime events, trace IDs, and service logs.
+                            Open live app events, trace IDs, and paired-host
+                            service logs on a dedicated page.
                         </p>
                     </div>
-                    <div class="flex flex-wrap items-center justify-end gap-3">
-                        <label
-                            class="flex items-center gap-2 font-mono text-xs text-(--or3-text)"
-                        >
-                            <USwitch
-                                :model-value="debugLogging"
-                                color="primary"
-                                @update:model-value="setDebugLogging"
-                            />
-                            Debug
-                        </label>
-                        <UButton
-                            label="Export all"
-                            icon="i-pixelarticons-download"
-                            size="xs"
-                            variant="soft"
-                            color="neutral"
-                            @click="copyAllLogs"
-                        />
-                    </div>
+                </div>
+                <div class="flex items-center justify-end">
+                    <UButton
+                        label="Open observability"
+                        icon="i-pixelarticons-chevron-right"
+                        color="neutral"
+                        variant="soft"
+                        size="sm"
+                        to="/settings/observability"
+                    />
                 </div>
             </SurfaceCard>
-
-            <SettingsLogViewer
-                title="App Events"
-                subtitle="Recent stream, approval, and tool reducer events."
-                :entries="latestChatRuntimeEntries"
-                empty-text="No app events recorded yet."
-                @clear="clearChatRuntimeLog"
-            />
-
-            <SettingsLogViewer
-                title="Server Events"
-                subtitle="Live or3-intern service logs from the paired computer."
-                :entries="latestServerLogEntries"
-                empty-text="No server events received yet."
-                :streaming="serverLogsStreaming"
-                :error="serverLogsError"
-                connectable
-                @connect="connectServerLogStream"
-                @disconnect="disconnectServerLogStream"
-                @clear="clearServerLogs"
-            />
 
             <!-- Search -->
             <div class="relative">
@@ -424,16 +398,9 @@ import { computed, nextTick, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useConfigure } from '../../composables/useConfigure';
 import { useActiveHost } from '../../composables/useActiveHost';
-import { useChatRuntimeLog } from '../../composables/useChatRuntimeLog';
-import { useServerLogs } from '../../composables/useServerLogs';
-import {
-    isDebugLoggingEnabled,
-    setDebugLoggingEnabled,
-} from '../../utils/logger';
 
 const router = useRouter();
 const searchTerm = ref('');
-const debugLogging = ref(false);
 
 type FilterKey =
     | 'connection'
@@ -453,20 +420,6 @@ const {
     loadAllFields,
 } = useConfigure();
 const { activeHost } = useActiveHost();
-const {
-    latestEntries: latestChatRuntimeEntries,
-    exportText: chatRuntimeExportText,
-    clear: clearChatRuntimeLog,
-} = useChatRuntimeLog();
-const {
-    latestEntries: latestServerLogEntries,
-    exportText: serverLogExportText,
-    isStreaming: serverLogsStreaming,
-    error: serverLogsError,
-    connect: connectServerLogs,
-    disconnect: disconnectServerLogs,
-    clear: clearServerLogs,
-} = useServerLogs();
 
 const filters: Array<{ key: FilterKey; label: string }> = [
     { key: 'connection', label: 'Connection' },
@@ -688,36 +641,7 @@ function onGroupClick(group: SettingsGroup) {
     });
 }
 
-function connectServerLogStream() {
-    connectServerLogs({ level: debugLogging.value ? 'debug' : 'info' });
-}
-
-function disconnectServerLogStream() {
-    disconnectServerLogs();
-}
-
-function setDebugLogging(value: boolean) {
-    debugLogging.value = Boolean(value);
-    setDebugLoggingEnabled(debugLogging.value);
-    if (serverLogsStreaming.value) connectServerLogStream();
-}
-
-async function copyAllLogs() {
-    await navigator.clipboard?.writeText(
-        JSON.stringify(
-            {
-                app: JSON.parse(chatRuntimeExportText.value),
-                server: JSON.parse(serverLogExportText.value),
-            },
-            null,
-            2,
-        ),
-    );
-}
-
 onMounted(async () => {
-    debugLogging.value = isDebugLoggingEnabled();
-    if (activeHost.value?.token) connectServerLogStream();
     await loadSections();
     // Build the searchable field index in the background. Errors here are
     // non-fatal; section-level search still works without it.
