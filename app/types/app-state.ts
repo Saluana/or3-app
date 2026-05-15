@@ -1,3 +1,5 @@
+import type { ToolPolicy } from './or3-api';
+
 export interface Or3HostProfile {
     id: string;
     name: string;
@@ -19,6 +21,22 @@ export interface ChatSession {
     title: string;
     createdAt: string;
     updatedAt: string;
+    runnerId?: string;
+    runnerLabel?: string;
+    runnerChatSessionId?: string;
+    runnerChatTurnId?: string;
+    runnerContinuationMode?: 'replay' | 'native' | string;
+    runnerModel?: string;
+    runnerMode?: string;
+    runnerIsolation?: string;
+    runnerCwd?: string;
+    backendMessageCount?: number;
+    lastMessagePreview?: string;
+    parentSessionKey?: string;
+    forkAnchorMessageId?: number;
+    forkedFromRunnerId?: string;
+    forkStrategy?: string;
+    archived?: boolean;
 }
 
 export interface ChatToolCall {
@@ -58,14 +76,49 @@ export interface AssistantReplayToolCall {
     arguments?: string;
 }
 
+export interface AssistantRunnerPermission {
+    runnerId?: string;
+    kind?: string;
+    access?: string;
+    targetPath?: string;
+}
+
 export interface AssistantSendPayload {
     text: string;
     transportText?: string;
     attachments?: ChatAttachment[];
+    mode?: 'ask' | 'work' | 'admin';
+    toolPolicy?: ToolPolicy;
     approvalToken?: string;
+    followJobId?: string;
     replayToolCall?: AssistantReplayToolCall;
     continueMessageId?: string;
     suppressUserEcho?: boolean;
+    runnerId?: string;
+    runnerLabel?: string;
+    runnerChatSessionId?: string;
+    runnerChatTurnId?: string;
+    runnerContinuationMode?: 'replay' | 'native' | string;
+    runnerModel?: string;
+    runnerMode?: string;
+    runnerIsolation?: string;
+    runnerCwd?: string;
+    runnerMaxTurns?: number;
+    runnerPermission?: AssistantRunnerPermission;
+}
+
+export interface ChatMessagePart {
+    id: string;
+    type: 'text' | 'tool';
+    content?: string;
+    toolCallId?: string;
+    name?: string;
+    status?: ChatToolCall['status'];
+    argumentsPreview?: string;
+    resultPreview?: string;
+    errorPreview?: string;
+    artifactId?: string;
+    publicCode?: string;
 }
 
 export interface ChatMessage {
@@ -77,6 +130,14 @@ export interface ChatMessage {
     createdAt: string;
     pinned?: boolean;
     jobId?: string;
+    backendMessageId?: number;
+    sourceMessageId?: string;
+    sourceSessionKey?: string;
+    runnerId?: string;
+    runnerLabel?: string;
+    runnerChatSessionId?: string;
+    runnerChatTurnId?: string;
+    agentCliRunId?: string;
     error?: string;
     errorCode?: Or3AppErrorCode;
     approvalRequestId?: number | string;
@@ -91,6 +152,7 @@ export interface ChatMessage {
     retryPayload?: AssistantSendPayload;
     reasoningText?: string;
     toolCalls?: ChatToolCall[];
+    parts?: ChatMessagePart[];
     activityLog?: ChatActivityEntry[];
     attachments?: ChatAttachment[];
 }
@@ -115,6 +177,20 @@ export interface RecentJobSummary {
     finished_at?: string;
     artifact_id?: string;
     source?: 'local' | 'persisted' | 'live';
+    /** External CLI delegation fields */
+    runner_id?: string;
+    runner_label?: string;
+    mode?: string;
+    isolation?: string;
+    model?: string;
+    cwd?: string;
+    stdout_preview?: string;
+    stderr_preview?: string;
+    output_preview?: string;
+    error_preview?: string;
+    raw_events?: unknown[];
+    structured_events?: unknown[];
+    output_truncated?: boolean;
 }
 
 export interface Or3AppState {
@@ -131,17 +207,36 @@ export interface Or3AppState {
 export type Or3AppErrorCode =
     | 'host_unreachable'
     | 'auth_required'
+    | 'missing_token'
+    | 'invalid_token'
+    | 'token_replay'
+    | 'auth_rate_limited'
     | 'session_required'
     | 'session_expired'
     | 'passkey_required'
     | 'step_up_required'
     | 'auth_unsupported'
     | 'forbidden'
+    | 'unauthorized'
+    | 'not_found'
+    | 'method_not_allowed'
     | 'rate_limited'
     | 'validation_failed'
     | 'capability_unavailable'
+    | 'request_too_large'
+    | 'conflict'
+    | 'timeout'
+    | 'request_failed'
     | 'approval_required'
     | 'stream_failed'
+    | 'provider_error'
+    | 'stream_error'
+    | 'empty_final_text'
+    | 'validation_error'
+    | 'policy_error'
+    | 'tool_execution_error'
+    | 'tool_loop_limit'
+    | 'aborted'
     | 'file_not_found'
     | 'file_conflict'
     | 'file_read_only'
@@ -150,6 +245,17 @@ export type Or3AppErrorCode =
     | 'invalid_file_target'
     | 'path_forbidden'
     | 'terminal_unavailable'
+    | 'runner_missing'
+    | 'runner_auth_missing'
+    | 'unsupported_native_session'
+    | 'runner_chat_turn_active'
+    | 'runner_chat_session_not_found'
+    | 'runner_chat_turn_not_found'
+    | 'runner_chat_aborted'
+    | 'chat_session_not_found'
+    | 'invalid_fork_anchor'
+    | 'fork_anchor_incomplete'
+    | 'unsupported_native_fork'
     | 'unknown';
 
 export interface Or3AppError {

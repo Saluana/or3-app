@@ -1,6 +1,6 @@
 <template>
     <nav
-        class="or3-nav-shell or3-bottom-nav-safe or3-bottom-nav"
+        class="or3-nav-shell or3-bottom-nav-safe or3-bottom-nav z-50"
         :class="isKeyboardOpen ? 'or3-bottom-nav--keyboard-open' : ''"
         :aria-hidden="isKeyboardOpen ? 'true' : undefined"
         aria-label="Primary"
@@ -115,8 +115,9 @@ function isActive(to: string) {
     z-index: 50;
     display: flex;
     justify-content: stretch;
-    padding: 0;
+    padding: 0 0 var(--or3-bottom-nav-offset);
     pointer-events: none;
+    background: var(--or3-surface, #faf4df);
 }
 
 .or3-nav-chassis {
@@ -127,14 +128,11 @@ function isActive(to: string) {
     align-items: stretch;
     gap: 0;
     padding: 0.2rem 0.5rem 0.25rem;
-    min-height: 60px;
+    min-height: var(--or3-bottom-nav-height);
     border-radius: 0;
     background: var(--or3-surface, #faf4df);
     border-top: 1px solid var(--or3-border, #d4cab1);
-    border-bottom: 1px solid var(--or3-border, #d4cab1);
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.78),
-        inset 0 -1px 0 rgba(120, 100, 60, 0.08);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
 }
 
 .or3-nav-chassis::before {

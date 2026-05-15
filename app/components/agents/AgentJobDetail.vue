@@ -22,10 +22,10 @@
                             <p
                                 class="or3-label text-[11px] font-semibold tracking-[0.18em] text-(--or3-text-muted)"
                             >
-                                AGENT TASK
+                                {{ isCli ? 'EXTERNAL CLI TASK' : 'AGENT TASK' }}
                             </p>
                             <h2
-                                class="mt-1 wrap-break-word font-mono text-base font-semibold leading-snug text-(--or3-text)"
+                                class="mt-1 line-clamp-3 wrap-break-word font-mono text-base font-semibold leading-snug text-(--or3-text)"
                             >
                                 {{ title }}
                             </h2>
@@ -115,7 +115,7 @@
                                 TASK
                             </p>
                             <p
-                                class="mt-2 wrap-break-word rounded-2xl border border-(--or3-border) bg-(--or3-surface-soft) px-3 py-2.5 font-mono text-[12px] leading-5 text-(--or3-text)"
+                                class="mt-2 max-h-44 overflow-y-auto wrap-break-word rounded-2xl border border-(--or3-border) bg-(--or3-surface-soft) px-3 py-2.5 font-mono text-[12px] leading-5 text-(--or3-text)"
                             >
                                 {{ taskText }}
                             </p>
@@ -258,15 +258,24 @@
                             <div
                                 class="mt-2 overflow-hidden rounded-2xl border-l-4 border-(--or3-green) bg-(--or3-surface-soft)"
                             >
-                                <pre
+                                <div
                                     :class="[
-                                        'overflow-y-auto px-4 py-3 font-mono text-[12px] leading-5 text-(--or3-text) whitespace-pre-wrap',
+                                        'overflow-y-auto px-4 py-3 text-(--or3-text)',
                                         fullResultAvailable
                                             ? 'max-h-112'
                                             : 'max-h-80',
                                     ]"
-                                    >{{ displayedResultText }}</pre
                                 >
+                                    <StreamingMarkdown
+                                        v-if="renderResultAsMarkdown"
+                                        :content="displayedResultText"
+                                    />
+                                    <pre
+                                        v-else
+                                        class="font-mono text-[12px] leading-5 whitespace-pre-wrap"
+                                        >{{ displayedResultText }}</pre
+                                    >
+                                </div>
                             </div>
                         </section>
 
@@ -420,11 +429,180 @@
                             v-else-if="
                                 isTerminal &&
                                 !liveLoadFailed &&
-                                !toolCalls.length
+                                !toolCalls.length &&
+                                !isCli
                             "
                             class="rounded-2xl border border-dashed border-(--or3-border) bg-(--or3-surface-soft) px-3 py-2 font-mono text-[11px] text-(--or3-text-muted)"
                         >
                             No tool calls were recorded for this run.
+                        </section>
+
+                        <!-- CLI OUTPUT (external CLI jobs) -->
+                        <section v-if="isCli && hasCliOutput">
+                            <div
+                                class="flex items-center justify-between gap-2"
+                            >
+                                <p
+                                    class="or3-label text-[11px] font-semibold tracking-[0.18em] text-(--or3-text-muted)"
+                                >
+                                    CLI OUTPUT
+                                    <span
+                                        v-if="props.job?.output_truncated"
+                                        class="ml-2 rounded-full bg-(--or3-amber)/10 px-2 py-0.5 font-mono text-[10px] font-medium text-(--or3-amber)"
+                                    >
+                                        Truncated
+                                    </span>
+                                </p>
+                                <div class="flex items-center gap-1">
+                                    <button
+                                        type="button"
+                                        class="or3-focus-ring inline-flex items-center gap-1 rounded-full px-2 py-1 font-mono text-[11px] font-medium transition"
+                                        :class="
+                                            cliOutputFilter === 'stdout'
+                                                ? 'bg-(--or3-green-soft) text-(--or3-green-dark)'
+                                                : 'text-(--or3-text-muted) hover:bg-(--or3-surface-soft) hover:text-(--or3-text)'
+                                        "
+                                        @click="cliOutputFilter = 'stdout'"
+                                    >
+                                        stdout
+                                    </button>
+                                    <button
+                                        v-if="props.job?.stderr_preview"
+                                        type="button"
+                                        class="or3-focus-ring inline-flex items-center gap-1 rounded-full px-2 py-1 font-mono text-[11px] font-medium transition"
+                                        :class="
+                                            cliOutputFilter === 'stderr'
+                                                ? 'bg-(--or3-danger)/10 text-(--or3-danger)'
+                                                : 'text-(--or3-text-muted) hover:bg-(--or3-surface-soft) hover:text-(--or3-text)'
+                                        "
+                                        @click="cliOutputFilter = 'stderr'"
+                                    >
+                                        stderr
+                                    </button>
+                                    <button
+                                        v-if="
+                                            props.job?.stdout_preview &&
+                                            props.job?.stderr_preview
+                                        "
+                                        type="button"
+                                        class="or3-focus-ring inline-flex items-center gap-1 rounded-full px-2 py-1 font-mono text-[11px] font-medium transition"
+                                        :class="
+                                            cliOutputFilter === 'all'
+                                                ? 'bg-(--or3-surface) text-(--or3-text)'
+                                                : 'text-(--or3-text-muted) hover:bg-(--or3-surface-soft) hover:text-(--or3-text)'
+                                        "
+                                        @click="cliOutputFilter = 'all'"
+                                    >
+                                        All
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="or3-focus-ring inline-flex items-center gap-1 rounded-full px-2 py-1 font-mono text-[11px] font-medium text-(--or3-text-muted) transition hover:bg-(--or3-surface-soft) hover:text-(--or3-text)"
+                                        @click="copyCliOutput"
+                                    >
+                                        <Icon
+                                            :name="
+                                                cliOutputCopied
+                                                    ? 'i-pixelarticons-check'
+                                                    : 'i-pixelarticons-copy'
+                                            "
+                                            class="size-3"
+                                        />
+                                        {{
+                                            cliOutputCopied ? 'Copied' : 'Copy'
+                                        }}
+                                    </button>
+                                </div>
+                            </div>
+                            <div
+                                class="mt-2 overflow-hidden rounded-2xl border-l-4 border-(--or3-border) bg-(--or3-surface-soft)"
+                                :class="{
+                                    'border-(--or3-danger)/60':
+                                        cliOutputFilter === 'stderr',
+                                    'border-(--or3-green)':
+                                        cliOutputFilter === 'stdout',
+                                }"
+                            >
+                                <pre
+                                    class="max-h-96 overflow-y-auto px-4 py-3 font-mono text-[12px] leading-5 whitespace-pre-wrap"
+                                    :class="{
+                                        'text-(--or3-danger)':
+                                            cliOutputFilter === 'stderr',
+                                        'text-(--or3-text)':
+                                            cliOutputFilter !== 'stderr',
+                                    }"
+                                    >{{ cliOutputText }}</pre
+                                >
+                            </div>
+                        </section>
+
+                        <!-- Copy final result for CLI jobs -->
+                        <section
+                            v-if="isCli && isTerminal && cliFinalText"
+                            class="rounded-2xl border border-(--or3-border) bg-(--or3-surface-soft) px-3 py-2.5"
+                        >
+                            <div
+                                class="flex items-center justify-between gap-2"
+                            >
+                                <p
+                                    class="font-mono text-[11px] font-semibold tracking-[0.18em] text-(--or3-text-muted)"
+                                >
+                                    FINAL RESULT
+                                </p>
+                                <button
+                                    type="button"
+                                    class="or3-focus-ring inline-flex items-center gap-1 rounded-full px-2 py-1 font-mono text-[11px] font-medium text-(--or3-text-muted) transition hover:bg-(--or3-surface-soft) hover:text-(--or3-text)"
+                                    @click="copyCliFinal"
+                                >
+                                    <Icon
+                                        :name="
+                                            cliFinalCopied
+                                                ? 'i-pixelarticons-check'
+                                                : 'i-pixelarticons-copy'
+                                        "
+                                        class="size-3"
+                                    />
+                                    {{
+                                        cliFinalCopied ? 'Copied' : 'Copy final'
+                                    }}
+                                </button>
+                            </div>
+                            <pre
+                                class="mt-2 max-h-80 overflow-y-auto font-mono text-[12px] leading-5 text-(--or3-text) whitespace-pre-wrap"
+                                >{{ cliFinalText }}</pre
+                            >
+                        </section>
+
+                        <!-- RAW EVENTS (CLI debug) -->
+                        <section
+                            v-if="isCli && hasCliStructuredEvents"
+                            class="space-y-2"
+                        >
+                            <button
+                                type="button"
+                                class="or3-focus-ring inline-flex items-center gap-1.5 rounded-full border border-(--or3-border) bg-(--or3-surface-soft) px-3 py-1.5 font-mono text-[11px] font-medium text-(--or3-text-muted) transition hover:bg-(--or3-surface)"
+                                @click="cliRawExpanded = !cliRawExpanded"
+                            >
+                                <Icon
+                                    :name="
+                                        cliRawExpanded
+                                            ? 'i-pixelarticons-chevron-up'
+                                            : 'i-pixelarticons-chevron-down'
+                                    "
+                                    class="size-3"
+                                />
+                                {{ cliRawExpanded ? 'Hide' : 'Show' }} raw
+                                events ({{ cliStructuredEventCount }})
+                            </button>
+                            <div
+                                v-if="cliRawExpanded"
+                                class="overflow-hidden rounded-2xl border border-(--or3-border) bg-(--or3-surface-soft)"
+                            >
+                                <pre
+                                    class="max-h-96 overflow-y-auto px-4 py-3 font-mono text-[11px] leading-5 text-(--or3-text-muted) whitespace-pre-wrap"
+                                    >{{ cliStructuredEventsText }}</pre
+                                >
+                            </div>
                         </section>
 
                         <!-- Error -->
@@ -572,7 +750,16 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import type { JobEvent, JobSnapshot } from '~/types/or3-api';
-import { isActiveStatus, isTerminalStatus } from '~/utils/or3/jobs';
+import {
+    isActiveStatus,
+    isCliJob,
+    isTerminalStatus,
+    runnerLabel,
+} from '~/utils/or3/jobs';
+import {
+    normalizeResultDisplayText,
+    shouldRenderResultAsMarkdown,
+} from '~/utils/or3/result-display';
 
 const props = defineProps<{
     open: boolean;
@@ -593,6 +780,10 @@ function onUpdateOpen(value: boolean) {
 
 const resultCopied = ref(false);
 const copiedRow = ref<string | null>(null);
+const cliOutputFilter = ref<'all' | 'stdout' | 'stderr'>('stdout');
+const cliRawExpanded = ref(false);
+const cliOutputCopied = ref(false);
+const cliFinalCopied = ref(false);
 
 const liveEvents = ref<JobEvent[]>([]);
 const liveFinalText = ref<string | null>(null);
@@ -639,6 +830,10 @@ function resetDetailState() {
     liveEvents.value = [];
     liveFinalText.value = null;
     liveLoadFailed.value = false;
+    cliOutputFilter.value = 'stdout';
+    cliRawExpanded.value = false;
+    cliOutputCopied.value = false;
+    cliFinalCopied.value = false;
 }
 
 watch(
@@ -664,7 +859,17 @@ watch(
 
 const title = computed(() => {
     if (!props.job) return 'Agent task';
-    return props.job.title || props.job.task || 'Agent task';
+    if (isCliJob(props.job.kind)) {
+        return (
+            summarizeRunnerPrompt(props.job.task || '') ||
+            `${runnerLabel(props.job.runner_id)} task`
+        );
+    }
+    return (
+        props.job.title ||
+        summarizeRunnerPrompt(props.job.task || '') ||
+        'Agent task'
+    );
 });
 
 const taskText = computed(() => props.job?.task ?? '');
@@ -673,6 +878,7 @@ const isLive = computed(() => !!props.job && isActiveStatus(props.job.status));
 const isTerminal = computed(
     () => !!props.job && isTerminalStatus(props.job.status),
 );
+const isCli = computed(() => isCliJob(props.job?.kind));
 
 const canCancel = computed(() => isLive.value);
 const canRetry = computed(
@@ -848,6 +1054,17 @@ const outputTypeLabel = computed(() => {
     return 'None';
 });
 
+const cliOutputLabel = computed(() => {
+    const out = props.job?.stdout_preview ?? '';
+    const err = props.job?.stderr_preview ?? '';
+    if (out && err) return 'stdout + stderr';
+    if (out) return 'stdout';
+    if (err) return 'stderr';
+    if (props.job?.final_text) return 'Text';
+    if (isLive.value) return 'Pending';
+    return 'None';
+});
+
 const quickStats = computed(() => [
     {
         id: 'status',
@@ -863,15 +1080,17 @@ const quickStats = computed(() => [
     },
     {
         id: 'mode',
-        label: 'Mode',
+        label: isCli.value ? 'Runner' : 'Mode',
         icon: 'i-pixelarticons-robot',
-        value: 'Agent',
+        value: isCli.value
+            ? props.job?.runner_label || props.job?.runner_id || 'CLI'
+            : 'Agent',
     },
     {
         id: 'output',
         label: 'Output',
         icon: 'i-pixelarticons-file-text',
-        value: outputTypeLabel.value,
+        value: isCli.value ? cliOutputLabel.value : outputTypeLabel.value,
     },
 ]);
 
@@ -901,6 +1120,48 @@ const detailRows = computed<DetailRow[]>(() => {
             icon: 'i-pixelarticons-folder',
             value: props.job.kind,
         });
+    }
+    if (isCli.value) {
+        if (props.job.runner_id) {
+            rows.push({
+                id: 'runner',
+                label: 'Runner',
+                icon: 'i-pixelarticons-robot',
+                value: props.job.runner_label || props.job.runner_id,
+            });
+        }
+        if (props.job.mode) {
+            rows.push({
+                id: 'mode',
+                label: 'Mode',
+                icon: 'i-pixelarticons-shield',
+                value: props.job.mode,
+            });
+        }
+        if (props.job.isolation) {
+            rows.push({
+                id: 'isolation',
+                label: 'Isolation',
+                icon: 'i-pixelarticons-box',
+                value: props.job.isolation,
+            });
+        }
+        if (props.job.model) {
+            rows.push({
+                id: 'model',
+                label: 'Model',
+                icon: 'i-pixelarticons-cpu',
+                value: props.job.model,
+            });
+        }
+        if (props.job.cwd) {
+            rows.push({
+                id: 'cwd',
+                label: 'CWD',
+                icon: 'i-pixelarticons-folder',
+                value: props.job.cwd,
+            });
+        }
     }
     if (props.job.child_session_key) {
         rows.push({
@@ -999,7 +1260,14 @@ const fullResultAvailable = computed(
 );
 
 const displayedResultText = computed(() =>
-    fullResultAvailable.value ? fullResultText.value! : previewText.value,
+    normalizeResultDisplayText(
+        fullResultAvailable.value ? fullResultText.value! : previewText.value,
+        props.job?.runner_id,
+    ),
+);
+
+const renderResultAsMarkdown = computed(() =>
+    shouldRenderResultAsMarkdown(displayedResultText.value),
 );
 
 const showResultSection = computed(
@@ -1203,5 +1471,124 @@ async function copyDetail(id: string, value: string) {
     } catch {
         /* ignore */
     }
+}
+
+// ── CLI output helpers ──
+
+const hasCliOutput = computed(
+    () => !!(props.job?.stdout_preview || props.job?.stderr_preview),
+);
+
+const cliOutputText = computed(() => {
+    const stdout = props.job?.stdout_preview ?? '';
+    const stderr = props.job?.stderr_preview ?? '';
+    switch (cliOutputFilter.value) {
+        case 'stdout':
+            return stdout || '(no stdout output)';
+        case 'stderr':
+            return stderr || '(no stderr output)';
+        case 'all':
+            if (stdout && stderr)
+                return `[stdout]\n${stdout}\n\n[stderr]\n${stderr}`;
+            return stdout || stderr || '(no output)';
+        default:
+            return stdout || stderr || '(no output)';
+    }
+});
+
+const cliFinalText = computed(() => {
+    const final = props.job?.final_text;
+    const stdout = props.job?.stdout_preview;
+    return final || stdout || '';
+});
+
+const hasCliStructuredEvents = computed(
+    () =>
+        !!(
+            (props.job?.structured_events &&
+                props.job.structured_events.length) ||
+            (props.job?.raw_events && props.job.raw_events.length)
+        ),
+);
+
+const cliStructuredEventCount = computed(
+    () =>
+        (props.job?.structured_events?.length ?? 0) +
+        (props.job?.raw_events?.length ?? 0),
+);
+
+const cliStructuredEventsText = computed(() => {
+    const structured = props.job?.structured_events ?? [];
+    const raw = props.job?.raw_events ?? [];
+    const parts: string[] = [];
+    if (structured.length) {
+        parts.push(
+            `-- Structured events (${structured.length}) --`,
+            ...structured.map((e) =>
+                typeof e === 'object' ? JSON.stringify(e, null, 2) : String(e),
+            ),
+        );
+    }
+    if (raw.length) {
+        parts.push(
+            `-- Raw events (${raw.length}) --`,
+            ...raw.map((e) =>
+                typeof e === 'object' ? JSON.stringify(e, null, 2) : String(e),
+            ),
+        );
+    }
+    return parts.join('\n') || '(no events)';
+});
+
+async function copyCliOutput() {
+    const text = cliOutputText.value;
+    if (!text) return;
+    try {
+        await navigator.clipboard.writeText(text);
+        cliOutputCopied.value = true;
+        setTimeout(() => {
+            cliOutputCopied.value = false;
+        }, 1500);
+    } catch {
+        /* ignore */
+    }
+}
+
+async function copyCliFinal() {
+    const text = cliFinalText.value;
+    if (!text) return;
+    try {
+        await navigator.clipboard.writeText(text);
+        cliFinalCopied.value = true;
+        setTimeout(() => {
+            cliFinalCopied.value = false;
+        }, 1500);
+    } catch {
+        /* ignore */
+    }
+}
+
+function summarizeRunnerPrompt(value: string) {
+    const text = value.replace(/\r\n/g, '\n').trim();
+    if (!text) return '';
+    const matches = [
+        ...text.matchAll(
+            /(?:^|\n)User:\s*([\s\S]*?)(?=\nAssistant:|\nUser:|$)/g,
+        ),
+    ];
+    const latestUser = matches.at(-1)?.[1]?.trim();
+    if (latestUser) return latestUser;
+    if (
+        /^System:\s+This conversation is being replayed for context\./i.test(
+            text,
+        )
+    ) {
+        const previousTurns = text
+            .split('--- Previous turns ---')
+            .pop()
+            ?.trim();
+        if (previousTurns) return previousTurns;
+    }
+    return text;
 }
 </script>

@@ -1,7 +1,14 @@
 <template>
   <div v-if="toolCalls.length" class="space-y-2">
+    <div
+      v-if="hiddenCount"
+      class="rounded-2xl border border-(--or3-border) bg-(--or3-surface-soft) px-3 py-2 text-xs leading-5 text-(--or3-text-muted)"
+    >
+      {{ hiddenCount }} earlier completed tool call{{ hiddenCount === 1 ? '' : 's' }}
+      hidden here.
+    </div>
     <details
-      v-for="call in toolCalls"
+      v-for="call in visibleToolCalls"
       :key="call.id"
       class="overflow-hidden rounded-2xl border border-(--or3-border) bg-(--or3-surface-soft)"
     >
@@ -12,7 +19,7 @@
         </span>
         <div class="min-w-0 flex-1">
           <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span class="font-medium">{{ call.name }}</span>
+            <span class="font-medium">{{ displayNameFor(call) }}</span>
             <span class="font-mono text-[11px] uppercase tracking-[0.14em] text-(--or3-text-muted)">{{ labelFor(call.status) }}</span>
           </div>
           <p class="mt-0.5 text-xs leading-5 text-(--or3-text-muted)">{{ subtitleFor(call) }}</p>
@@ -22,11 +29,11 @@
       <div class="space-y-2 border-t border-(--or3-border) px-3 py-2.5 text-xs leading-5 text-(--or3-text-muted)">
         <div v-if="call.arguments">
           <p class="mb-1 font-mono uppercase tracking-[0.14em] text-(--or3-green-dark)">Arguments</p>
-          <pre class="overflow-x-auto rounded-xl bg-(--or3-surface) px-3 py-2 whitespace-pre-wrap text-(--or3-text-muted)">{{ pretty(call.arguments) }}</pre>
+          <pre class="overflow-x-auto rounded-xl bg-(--or3-surface) px-3 py-2 whitespace-pre-wrap text-(--or3-text-muted)">{{ displayPreview(call.arguments) }}</pre>
         </div>
         <div v-if="call.result">
           <p class="mb-1 font-mono uppercase tracking-[0.14em] text-(--or3-green-dark)">Result</p>
-          <pre class="overflow-x-auto rounded-xl bg-(--or3-surface) px-3 py-2 whitespace-pre-wrap text-(--or3-text-muted)">{{ truncate(pretty(call.result), 800) }}</pre>
+          <pre class="overflow-x-auto rounded-xl bg-(--or3-surface) px-3 py-2 whitespace-pre-wrap text-(--or3-text-muted)">{{ displayPreview(call.result) }}</pre>
         </div>
         <div v-if="call.error">
           <p class="mb-1 font-mono uppercase tracking-[0.14em]" :class="call.status === 'attention' ? 'text-amber-700' : 'text-(--or3-danger)'">{{ call.status === 'attention' ? 'Approval' : 'Error' }}</p>
@@ -38,9 +45,29 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { ChatToolCall } from '~/types/app-state'
 
-defineProps<{ toolCalls: ChatToolCall[] }>()
+const props = defineProps<{ toolCalls: ChatToolCall[] }>()
+
+const TOOL_CALL_INLINE_LIMIT = 8
+const TOOL_CALL_TAIL_COUNT = 5
+
+const visibleToolCalls = computed(() => {
+  const calls = props.toolCalls ?? []
+  if (calls.length <= TOOL_CALL_INLINE_LIMIT) return calls
+  const visibleIds = new Set(
+    calls.slice(-TOOL_CALL_TAIL_COUNT).map((call) => call.id),
+  )
+  for (const call of calls) {
+    if (call.status !== 'complete') visibleIds.add(call.id)
+  }
+  return calls.filter((call) => visibleIds.has(call.id))
+})
+
+const hiddenCount = computed(
+  () => (props.toolCalls?.length ?? 0) - visibleToolCalls.value.length,
+)
 
 function iconFor(status: ChatToolCall['status']) {
   if (status === 'running') return 'i-pixelarticons-loader'
@@ -57,10 +84,31 @@ function labelFor(status: ChatToolCall['status']) {
 }
 
 function subtitleFor(call: ChatToolCall) {
+  const specific = describeToolAction(displayNameFor(call), call.status, call.arguments)
+  if (specific) return specific
   if (call.status === 'running') return 'or3-intern is using this tool right now.'
   if (call.status === 'attention') return 'This tool call is waiting for your approval.'
   if (call.status === 'error') return 'This tool call ended with an error.'
   return 'This tool call finished successfully.'
+}
+
+function displayNameFor(call: ChatToolCall) {
+  const normalized = String(call.name ?? '').trim()
+  if (
+    normalized &&
+    normalized.toLowerCase() !== 'runner activity' &&
+    normalized.toLowerCase() !== 'tool' &&
+    normalized.toLowerCase() !== 'tool call'
+  ) {
+    return normalized
+  }
+  const parsed = parsePreview(call.arguments) || parsePreview(call.result)
+  if (!parsed) return normalized || 'tool'
+  if (typeof parsed.url === 'string' && parsed.url.trim()) return 'webfetch'
+  if (typeof parsed.command === 'string' && parsed.command.trim()) return 'command'
+  if (typeof parsed.program === 'string' && parsed.program.trim()) return 'command'
+  if (typeof parsed.path === 'string' && parsed.path.trim()) return 'file'
+  return normalized || 'tool'
 }
 
 function pretty(value: string) {
@@ -73,5 +121,50 @@ function pretty(value: string) {
 
 function truncate(value: string, limit: number) {
   return value.length > limit ? `${value.slice(0, limit)}\n…` : value
+}
+
+function displayPreview(value: string, limit = 800) {
+  return truncate(pretty(value), limit)
+}
+
+function parsePreview(value?: string) {
+  if (!value) return undefined
+  try {
+    const parsed = JSON.parse(value)
+    return parsed && typeof parsed === 'object'
+      ? (parsed as Record<string, unknown>)
+      : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function describeToolAction(
+  name?: string,
+  status?: ChatToolCall['status'],
+  argumentsPreview?: string,
+) {
+  const tool = String(name ?? '').trim().toLowerCase()
+  const parsed = parsePreview(argumentsPreview)
+  const url =
+    typeof parsed?.url === 'string'
+      ? parsed.url.trim()
+      : typeof parsed?.['source_url'] === 'string'
+        ? String(parsed.source_url).trim()
+        : ''
+  const command =
+    typeof parsed?.command === 'string'
+      ? parsed.command.trim()
+      : typeof parsed?.program === 'string'
+        ? String(parsed.program).trim()
+        : ''
+
+  if ((tool === 'webfetch' || tool === 'web_search') && url) {
+    return status === 'running' ? `Fetching ${url}` : `Fetched ${url}`
+  }
+  if ((tool === 'exec' || tool === 'bash' || tool === 'command') && command) {
+    return status === 'running' ? `Running ${command}` : `Ran ${command}`
+  }
+  return ''
 }
 </script>

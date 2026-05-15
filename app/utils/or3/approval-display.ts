@@ -60,7 +60,9 @@ export function approvalStatusTone(status?: string) {
     }
 }
 
-export function formatApprovalSubjectPreview(approval: Pick<ApprovalRequest, 'type' | 'domain' | 'subject'>) {
+export function formatApprovalSubjectPreview(
+    approval: Pick<ApprovalRequest, 'type' | 'domain' | 'subject'>,
+) {
     const subj = approval.subject;
     if (!subj) return '';
     if (typeof subj === 'string') return subj;
@@ -98,6 +100,15 @@ export function formatApprovalSubjectPreview(approval: Pick<ApprovalRequest, 'ty
         if (skill && command) return `${skill}: ${command}`;
         if (skill) return skill;
         if (command) return command;
+    }
+
+    if (type === 'runner_permission') {
+        const runner = stringValue(obj.runner_id);
+        const access = stringValue(obj.access);
+        const target = stringValue(obj.target_path);
+        if (runner && access && target) return `${runner} ${access} ${target}`;
+        if (runner && target) return `${runner}: ${target}`;
+        if (target) return target;
     }
 
     return (

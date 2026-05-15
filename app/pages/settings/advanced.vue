@@ -79,6 +79,38 @@
                 </div>
             </SurfaceCard>
 
+            <SurfaceCard class-name="space-y-3">
+                <div class="flex items-start gap-3">
+                    <Icon
+                        name="i-pixelarticons-monitor"
+                        class="mt-0.5 size-5 shrink-0 text-(--or3-green)"
+                    />
+                    <div class="min-w-0 flex-1">
+                        <p
+                            class="font-mono text-base font-semibold text-(--or3-text)"
+                        >
+                            Observability
+                        </p>
+                        <p
+                            class="mt-1 text-sm leading-6 text-(--or3-text-muted)"
+                        >
+                            Open live app events, trace IDs, and paired-host
+                            service logs on a dedicated page.
+                        </p>
+                    </div>
+                </div>
+                <div class="flex items-center justify-end">
+                    <UButton
+                        label="Open observability"
+                        icon="i-pixelarticons-chevron-right"
+                        color="neutral"
+                        variant="soft"
+                        size="sm"
+                        to="/settings/observability"
+                    />
+                </div>
+            </SurfaceCard>
+
             <!-- Search -->
             <div class="relative">
                 <Icon
@@ -379,7 +411,14 @@ type FilterKey =
     | 'advanced';
 const activeFilter = ref<FilterKey>('connection');
 
-const { sections, configureError, loadSections, fieldsBySection, allFieldsLoading, loadAllFields } = useConfigure();
+const {
+    sections,
+    configureError,
+    loadSections,
+    fieldsBySection,
+    allFieldsLoading,
+    loadAllFields,
+} = useConfigure();
 const { activeHost } = useActiveHost();
 
 const filters: Array<{ key: FilterKey; label: string }> = [

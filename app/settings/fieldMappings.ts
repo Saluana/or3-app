@@ -14,50 +14,305 @@ import {
     MEMORY_SEARCH_PRESETS,
     SAFETY_MODE_PRESETS,
     SUBAGENT_POWER_PRESETS,
-} from './presets'
-import type { SimpleSettingSection } from './simpleSettings'
+} from './presets';
+import type { SimpleSettingSection } from './simpleSettings';
 
 function get<T>(values: Record<string, unknown>, key: string, fallback: T): T {
-    const value = values[key]
-    return value === undefined || value === null ? fallback : (value as T)
+    const value = values[key];
+    return value === undefined || value === null ? fallback : (value as T);
 }
 
 export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
     {
-        key: 'ai',
-        label: 'AI Model',
-        description: 'Choose the AI service, model, and response style.',
-        icon: 'i-pixelarticons-cpu',
+        key: 'providers',
+        label: 'AI Providers',
+        description: 'Connect more than one AI service and keep favorite models handy.',
+        icon: 'i-pixelarticons-server',
         summaryTemplate: (v) => {
-            const provider = get(v, 'provider.kind', 'OpenRouter')
-            const model = get(v, 'provider.model', 'default model')
-            return `${provider}, ${model}.`
+            const openai = get(v, 'provider.openaiApiKey', '');
+            const openrouter = get(v, 'provider.openrouterApiKey', '');
+            const legacyProvider = get(v, 'provider.kind', '');
+            const names = [
+                openai ? 'OpenAI' : '',
+                openrouter ? 'OpenRouter' : '',
+            ].filter(Boolean);
+            return names.length
+                ? `${names.join(' and ')} configured.`
+                : legacyProvider
+                    ? `${legacyProvider} selected. Add more providers after restarting or3-intern.`
+                    : 'No provider keys configured yet.';
         },
         controls: [
             {
-                key: 'ai-provider',
-                label: 'AI provider',
-                description: 'Which service answers your messages.',
+                key: 'provider-kind',
+                label: 'Main provider',
+                description: 'The default AI service OR3 uses when a newer role setting is not available yet.',
                 kind: 'choice',
                 fieldRefs: [{ section: 'provider', field: 'kind' }],
                 advancedKeys: ['provider.kind', 'provider.apiBase'],
             },
             {
-                key: 'ai-key',
-                label: 'API key',
-                description: 'Your private key for the chosen provider.',
-                kind: 'secret',
-                fieldRefs: [{ section: 'provider', field: 'apiKey' }],
-                warningLevel: 'medium',
-                advancedKeys: ['provider.apiKey'],
+                key: 'provider-manager',
+                label: 'Provider cards',
+                description: 'Add OpenAI-compatible providers and check which providers have keys.',
+                kind: 'provider-manager',
+                fieldRefs: [{ section: 'provider', field: 'kind' }],
+                advancedKeys: ['providers', 'provider.apiBase', 'provider.apiKey'],
+            },
+        ],
+    },
+    {
+        key: 'ai',
+        label: 'Model Roles',
+        description: 'Choose which provider and model handles each kind of work.',
+        icon: 'i-pixelarticons-cpu',
+        summaryTemplate: (v) => {
+            const provider = get(v, 'routing.chatProvider', get(v, 'provider.kind', 'OpenAI'));
+            const model = get(v, 'routing.chatModel', get(v, 'provider.model', 'default model'));
+            const embedProvider = get(v, 'routing.embeddingsProvider', provider);
+            const embedModel = get(v, 'routing.embeddingsModel', get(v, 'provider.embedModel', 'default embedding model'));
+            return `Chat uses ${provider}/${model}; embeddings use ${embedProvider}/${embedModel}.`;
+        },
+        controls: [
+            {
+                key: 'chat-provider',
+                label: 'Chat provider',
+                description: 'Which provider answers normal messages.',
+                kind: 'choice',
+                group: 'chat',
+                groupLabel: 'Chat',
+                groupDescription: 'Normal messages and direct replies.',
+                fieldRefs: [
+                    { section: 'routing', field: 'chatProvider' },
+                    { section: 'provider', field: 'kind' },
+                ],
+                advancedKeys: ['routing.chatProvider', 'provider.kind'],
             },
             {
                 key: 'ai-model',
                 label: 'Chat model',
                 description: 'The model used for replies.',
+                kind: 'model-picker',
+                group: 'chat',
+                groupLabel: 'Chat',
+                groupDescription: 'Normal messages and direct replies.',
+                modelRole: 'chat',
+                modelKind: 'chat',
+                fieldRefs: [
+                    { section: 'routing', field: 'chatModel' },
+                    { section: 'provider', field: 'model' },
+                ],
+                advancedKeys: ['routing.chatModel', 'provider.model'],
+            },
+            {
+                key: 'chat-fallbacks',
+                label: 'Chat fallbacks',
+                description: 'Fallback provider/model entries, like openrouter/openai/gpt-4o-mini.',
+                kind: 'text',
+                group: 'chat',
+                groupLabel: 'Chat',
+                groupDescription: 'Normal messages and direct replies.',
+                fieldRefs: [{ section: 'routing', field: 'chatFallbacks' }],
+                advancedKeys: ['routing.chatFallbacks'],
+            },
+            {
+                key: 'agents-provider',
+                label: 'Agents provider',
+                description: 'Provider used for agent-style work.',
                 kind: 'choice',
-                fieldRefs: [{ section: 'provider', field: 'model' }],
-                advancedKeys: ['provider.model'],
+                group: 'agents',
+                groupLabel: 'Agents',
+                groupDescription: 'Longer tool-using work and agent runs.',
+                fieldRefs: [{ section: 'routing', field: 'agentsProvider' }],
+                advancedKeys: ['routing.agentsProvider'],
+            },
+            {
+                key: 'agents-model',
+                label: 'Agents model',
+                description: 'Model used for agent-style work.',
+                kind: 'model-picker',
+                group: 'agents',
+                groupLabel: 'Agents',
+                groupDescription: 'Longer tool-using work and agent runs.',
+                modelRole: 'agents',
+                modelKind: 'chat',
+                fieldRefs: [{ section: 'routing', field: 'agentsModel' }],
+                advancedKeys: ['routing.agentsProvider', 'routing.agentsModel'],
+            },
+            {
+                key: 'agents-fallbacks',
+                label: 'Agents fallbacks',
+                description: 'Fallback provider/model entries for agent failures.',
+                kind: 'text',
+                group: 'agents',
+                groupLabel: 'Agents',
+                groupDescription: 'Longer tool-using work and agent runs.',
+                fieldRefs: [{ section: 'routing', field: 'agentsFallbacks' }],
+                advancedKeys: ['routing.agentsFallbacks'],
+            },
+            {
+                key: 'subagents-provider',
+                label: 'Subagents provider',
+                description: 'Provider used for internal background subagents.',
+                kind: 'choice',
+                group: 'subagents',
+                groupLabel: 'Subagents',
+                groupDescription: 'Internal background work split away from the main chat.',
+                fieldRefs: [{ section: 'routing', field: 'subagentsProvider' }],
+                advancedKeys: ['routing.subagentsProvider'],
+            },
+            {
+                key: 'subagents-model',
+                label: 'Subagent model',
+                description: 'Model used for internal background subagents.',
+                kind: 'model-picker',
+                group: 'subagents',
+                groupLabel: 'Subagents',
+                groupDescription: 'Internal background work split away from the main chat.',
+                modelRole: 'subagents',
+                modelKind: 'chat',
+                fieldRefs: [{ section: 'routing', field: 'subagentsModel' }],
+                advancedKeys: ['routing.subagentsProvider', 'routing.subagentsModel'],
+            },
+            {
+                key: 'subagents-fallbacks',
+                label: 'Subagent fallbacks',
+                description: 'Fallback provider/model entries for background subagent failures.',
+                kind: 'text',
+                group: 'subagents',
+                groupLabel: 'Subagents',
+                groupDescription: 'Internal background work split away from the main chat.',
+                fieldRefs: [{ section: 'routing', field: 'subagentsFallbacks' }],
+                advancedKeys: ['routing.subagentsFallbacks'],
+            },
+            {
+                key: 'summarization-provider',
+                label: 'Summarization provider',
+                description: 'Provider used for memory consolidation and summaries.',
+                kind: 'choice',
+                group: 'summarization',
+                groupLabel: 'Summarization',
+                groupDescription: 'Memory consolidation and compact summaries.',
+                fieldRefs: [{ section: 'routing', field: 'summarizationProvider' }],
+                advancedKeys: ['routing.summarizationProvider'],
+            },
+            {
+                key: 'summarization-model',
+                label: 'Summarization model',
+                description: 'Model used for memory consolidation and summaries.',
+                kind: 'model-picker',
+                group: 'summarization',
+                groupLabel: 'Summarization',
+                groupDescription: 'Memory consolidation and compact summaries.',
+                modelRole: 'summarization',
+                modelKind: 'chat',
+                fieldRefs: [{ section: 'routing', field: 'summarizationModel' }],
+                advancedKeys: ['routing.summarizationProvider', 'routing.summarizationModel'],
+            },
+            {
+                key: 'summarization-fallbacks',
+                label: 'Summarization fallbacks',
+                description: 'Fallback provider/model entries for summary failures.',
+                kind: 'text',
+                group: 'summarization',
+                groupLabel: 'Summarization',
+                groupDescription: 'Memory consolidation and compact summaries.',
+                fieldRefs: [{ section: 'routing', field: 'summarizationFallbacks' }],
+                advancedKeys: ['routing.summarizationFallbacks'],
+            },
+            {
+                key: 'context-provider',
+                label: 'Context manager provider',
+                description: 'Provider used for context cleanup and maintenance proposals.',
+                kind: 'choice',
+                group: 'context-manager',
+                groupLabel: 'Context Manager',
+                groupDescription: 'Context cleanup and maintenance proposals.',
+                fieldRefs: [{ section: 'routing', field: 'contextProvider' }],
+                advancedKeys: ['routing.contextProvider'],
+            },
+            {
+                key: 'context-model',
+                label: 'Context manager model',
+                description: 'Model used for context cleanup and maintenance proposals.',
+                kind: 'model-picker',
+                group: 'context-manager',
+                groupLabel: 'Context Manager',
+                groupDescription: 'Context cleanup and maintenance proposals.',
+                modelRole: 'contextManager',
+                modelKind: 'chat',
+                fieldRefs: [{ section: 'routing', field: 'contextModel' }],
+                advancedKeys: ['routing.contextProvider', 'routing.contextModel'],
+            },
+            {
+                key: 'context-fallbacks',
+                label: 'Context manager fallbacks',
+                description: 'Fallback provider/model entries for context manager failures.',
+                kind: 'text',
+                group: 'context-manager',
+                groupLabel: 'Context Manager',
+                groupDescription: 'Context cleanup and maintenance proposals.',
+                fieldRefs: [{ section: 'routing', field: 'contextFallbacks' }],
+                advancedKeys: ['routing.contextFallbacks'],
+            },
+            {
+                key: 'embeddings-provider',
+                label: 'Embeddings provider',
+                description: 'Provider used for memory and document search embeddings.',
+                kind: 'choice',
+                group: 'embeddings',
+                groupLabel: 'Embeddings',
+                groupDescription: 'Memory and document search vectors. Changing these can require a rebuild.',
+                fieldRefs: [
+                    { section: 'routing', field: 'embeddingsProvider' },
+                    { section: 'provider', field: 'kind' },
+                ],
+                impacts: ['requires-reindex'],
+                advancedKeys: ['routing.embeddingsProvider', 'provider.kind'],
+            },
+            {
+                key: 'embeddings-model',
+                label: 'Embeddings model',
+                description: 'Model used for memory and document search embeddings.',
+                kind: 'model-picker',
+                group: 'embeddings',
+                groupLabel: 'Embeddings',
+                groupDescription: 'Memory and document search vectors. Changing these can require a rebuild.',
+                modelRole: 'embeddings',
+                modelKind: 'embeddings',
+                fieldRefs: [
+                    { section: 'routing', field: 'embeddingsModel' },
+                    { section: 'provider', field: 'embedModel' },
+                ],
+                impacts: ['requires-reindex'],
+                advancedKeys: ['routing.embeddingsModel', 'routing.embeddingsDimensions', 'provider.embedModel'],
+            },
+            {
+                key: 'embeddings-fallbacks',
+                label: 'Embeddings fallbacks',
+                description: 'Fallback provider/model entries for embedding failures.',
+                kind: 'text',
+                group: 'embeddings',
+                groupLabel: 'Embeddings',
+                groupDescription: 'Memory and document search vectors. Changing these can require a rebuild.',
+                fieldRefs: [{ section: 'routing', field: 'embeddingsFallbacks' }],
+                impacts: ['requires-reindex'],
+                advancedKeys: ['routing.embeddingsFallbacks'],
+            },
+            {
+                key: 'embeddings-dimensions',
+                label: 'Embedding dimensions',
+                description: 'Vector size used by the embedding model, if the provider supports choosing it.',
+                kind: 'text',
+                group: 'embeddings',
+                groupLabel: 'Embeddings',
+                groupDescription: 'Memory and document search vectors. Changing these can require a rebuild.',
+                fieldRefs: [
+                    { section: 'routing', field: 'embeddingsDimensions' },
+                    { section: 'provider', field: 'embedDimensions' },
+                ],
+                impacts: ['requires-reindex'],
+                advancedKeys: ['routing.embeddingsDimensions', 'provider.embedDimensions'],
             },
             {
                 key: 'ai-vision',
@@ -68,8 +323,16 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 impacts: ['higher-cost'],
                 advancedKeys: ['provider.enableVision'],
                 toggle: {
-                    on: { section: 'provider', field: 'enableVision', value: true },
-                    off: { section: 'provider', field: 'enableVision', value: false },
+                    on: {
+                        section: 'provider',
+                        field: 'enableVision',
+                        value: true,
+                    },
+                    off: {
+                        section: 'provider',
+                        field: 'enableVision',
+                        value: false,
+                    },
                 },
             },
             {
@@ -88,9 +351,9 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
         description: 'Control how much OR3 remembers and how hard it searches.',
         icon: 'i-pixelarticons-card-stack',
         summaryTemplate: (v) => {
-            const history = Number(get(v, 'context.historyMaxMessages', 40))
-            const recall = Number(get(v, 'context.memoryRetrieveLimit', 8))
-            return `OR3 keeps about ${history} recent messages in mind and may recall up to ${recall} saved memories per reply.`
+            const history = Number(get(v, 'context.historyMaxMessages', 40));
+            const recall = Number(get(v, 'context.memoryRetrieveLimit', 8));
+            return `OR3 keeps about ${history} recent messages in mind and may recall up to ${recall} saved memories per reply.`;
         },
         controls: [
             {
@@ -98,7 +361,9 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 label: 'Max messages per session',
                 description: 'How many recent messages stay in the AI’s mind.',
                 kind: 'text',
-                fieldRefs: [{ section: 'context', field: 'historyMaxMessages' }],
+                fieldRefs: [
+                    { section: 'context', field: 'historyMaxMessages' },
+                ],
                 advancedKeys: ['context.historyMaxMessages'],
             },
             {
@@ -106,7 +371,9 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 label: 'Memories recalled per reply',
                 description: 'How many saved memories OR3 may bring back.',
                 kind: 'text',
-                fieldRefs: [{ section: 'context', field: 'memoryRetrieveLimit' }],
+                fieldRefs: [
+                    { section: 'context', field: 'memoryRetrieveLimit' },
+                ],
                 advancedKeys: ['context.memoryRetrieveLimit'],
             },
             {
@@ -120,7 +387,11 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                     { section: 'memory', field: 'vectorScanLimit' },
                 ],
                 presets: MEMORY_SEARCH_PRESETS,
-                advancedKeys: ['memory.vectorSearchK', 'memory.ftsSearchK', 'memory.vectorScanLimit'],
+                advancedKeys: [
+                    'memory.vectorSearchK',
+                    'memory.ftsSearchK',
+                    'memory.vectorScanLimit',
+                ],
             },
             {
                 key: 'memory-detail',
@@ -130,19 +401,37 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 fieldRefs: [{ section: 'context', field: 'maxInputTokens' }],
                 presets: CONVERSATION_DETAIL_PRESETS,
                 impacts: ['higher-cost', 'slower'],
-                advancedKeys: ['context.maxInputTokens', 'context.outputReserveTokens', 'context.safetyMarginTokens'],
+                advancedKeys: [
+                    'context.maxInputTokens',
+                    'context.outputReserveTokens',
+                    'context.safetyMarginTokens',
+                ],
             },
             {
                 key: 'memory-cleanup',
                 label: 'Background memory cleanup',
-                description: 'Quietly summarise old memories to keep things tidy.',
+                description:
+                    'Quietly summarise old memories to keep things tidy.',
                 kind: 'toggle',
-                fieldRefs: [{ section: 'memory', field: 'consolidationEnabled' }],
-                advancedKeys: ['memory.consolidationEnabled', 'memory.consolidationCharLimit'],
+                fieldRefs: [
+                    { section: 'memory', field: 'consolidationEnabled' },
+                ],
+                advancedKeys: [
+                    'memory.consolidationEnabled',
+                    'memory.consolidationCharLimit',
+                ],
                 recommended: { value: true, label: 'On' },
                 toggle: {
-                    on: { section: 'memory', field: 'consolidationEnabled', value: true },
-                    off: { section: 'memory', field: 'consolidationEnabled', value: false },
+                    on: {
+                        section: 'memory',
+                        field: 'consolidationEnabled',
+                        value: true,
+                    },
+                    off: {
+                        section: 'memory',
+                        field: 'consolidationEnabled',
+                        value: false,
+                    },
                 },
             },
         ],
@@ -153,11 +442,13 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
         description: 'Choose what folders OR3 can use.',
         icon: 'i-pixelarticons-folder',
         summaryTemplate: (v) => {
-            const dir = String(get(v, 'workspace.workspaceDir', 'your workspace folder'))
-            const restrict = Boolean(get(v, 'tools.restrictToWorkspace', true))
+            const dir = String(
+                get(v, 'workspace.workspaceDir', 'your workspace folder'),
+            );
+            const restrict = Boolean(get(v, 'tools.restrictToWorkspace', true));
             return restrict
                 ? `OR3 can work inside ${dir} and cannot access files outside it.`
-                : `OR3 can work inside ${dir} and may also access other allowed folders.`
+                : `OR3 can work inside ${dir} and may also access other allowed folders.`;
         },
         controls: [
             {
@@ -171,15 +462,24 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
             {
                 key: 'workspace-restrict',
                 label: 'Keep OR3 inside this folder',
-                description: 'Stop OR3 from reading files outside the workspace.',
+                description:
+                    'Stop OR3 from reading files outside the workspace.',
                 kind: 'toggle',
                 fieldRefs: [{ section: 'tools', field: 'restrictToWorkspace' }],
                 impacts: ['safer'],
                 recommended: { value: true, label: 'On' },
                 advancedKeys: ['tools.restrictToWorkspace'],
                 toggle: {
-                    on: { section: 'tools', field: 'restrictToWorkspace', value: true },
-                    off: { section: 'tools', field: 'restrictToWorkspace', value: false },
+                    on: {
+                        section: 'tools',
+                        field: 'restrictToWorkspace',
+                        value: true,
+                    },
+                    off: {
+                        section: 'tools',
+                        field: 'restrictToWorkspace',
+                        value: false,
+                    },
                 },
             },
             {
@@ -200,7 +500,11 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 advancedKeys: ['docindex.enabled'],
                 toggle: {
                     on: { section: 'docindex', field: 'enabled', value: true },
-                    off: { section: 'docindex', field: 'enabled', value: false },
+                    off: {
+                        section: 'docindex',
+                        field: 'enabled',
+                        value: false,
+                    },
                 },
             },
             {
@@ -214,28 +518,47 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 ],
                 presets: FILE_SEARCH_SIZE_PRESETS,
                 impacts: ['uses-storage', 'slower'],
-                advancedKeys: ['docindex.maxFiles', 'docindex.maxChunks', 'docindex.maxFileBytes', 'docindex.embedMaxBytes', 'docindex.refreshSeconds'],
+                advancedKeys: [
+                    'docindex.maxFiles',
+                    'docindex.maxChunks',
+                    'docindex.maxFileBytes',
+                    'docindex.embedMaxBytes',
+                    'docindex.refreshSeconds',
+                ],
             },
         ],
     },
     {
         key: 'tools',
         label: 'Tools & Skills',
-        description: 'Manage local tools, skill execution, and service capability.',
+        description:
+            'Manage local tools, skill execution, and service capability.',
         icon: 'i-pixelarticons-tool-case',
         summaryTemplate: (v) => {
-            const exec = Boolean(get(v, 'tools.enableExec', false))
-            const skillExec = Boolean(get(v, 'skills.enableExec', false))
-            const capability = String(get(v, 'service.maxCapability', 'safe'))
-            const programs = String(get(v, 'hardening.execAllowedPrograms', '') || '').trim()
-            const programSummary = programs ? ` Allowed programs: ${programs}.` : ''
-            return `Local exec is ${exec ? 'on' : 'off'}, skill scripts are ${skillExec ? 'on' : 'off'}, service ceiling is ${capability}.${programSummary}`
+            const exec = Boolean(get(v, 'tools.enableExec', false));
+            const skillExec = Boolean(get(v, 'skills.enableExec', false));
+            const capability = String(get(v, 'service.maxCapability', 'safe'));
+            const programs = String(
+                get(v, 'hardening.execAllowedPrograms', '') || '',
+            ).trim();
+            const formattedPrograms = programs
+                ? programs
+                      .split(',')
+                      .map((program) => program.trim())
+                      .filter(Boolean)
+                      .join(', ')
+                : '';
+            const programSummary = formattedPrograms
+                ? ` Allowed programs: ${formattedPrograms}.`
+                : '';
+            return `Local exec is ${exec ? 'on' : 'off'}, skill scripts are ${skillExec ? 'on' : 'off'}, service ceiling is ${capability}.${programSummary}`;
         },
         controls: [
             {
                 key: 'tools-service-capability',
                 label: 'Service tool power',
-                description: 'The highest tool capability the app may request. Local command tools need at least guarded.',
+                description:
+                    'The highest tool capability the app may request. Local command tools need at least guarded.',
                 kind: 'choice',
                 fieldRefs: [{ section: 'service', field: 'maxCapability' }],
                 impacts: ['higher-risk', 'requires-restart'],
@@ -245,51 +568,80 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
             {
                 key: 'tools-enable-exec',
                 label: 'Local command tool',
-                description: 'Register the exec tool so OR3 can run approved local programs like gws.',
+                description:
+                    'Register the exec tool so OR3 can run approved local programs like gws.',
                 kind: 'toggle',
                 fieldRefs: [{ section: 'tools', field: 'enableExec' }],
                 impacts: ['higher-risk', 'requires-restart'],
                 warningLevel: 'high',
-                advancedKeys: ['tools.enableExec', 'hardening.execAllowedPrograms', 'security.approvals.execMode'],
+                advancedKeys: [
+                    'tools.enableExec',
+                    'hardening.execAllowedPrograms',
+                    'security.approvals.execMode',
+                ],
                 toggle: {
                     on: { section: 'tools', field: 'enableExec', value: true },
-                    off: { section: 'tools', field: 'enableExec', value: false },
+                    off: {
+                        section: 'tools',
+                        field: 'enableExec',
+                        value: false,
+                    },
                 },
             },
             {
                 key: 'tools-enable-skill-exec',
                 label: 'Skill scripts',
-                description: 'Expose skill script execution for installed skills when approval policy allows it.',
+                description:
+                    'Expose skill script execution for installed skills when approval policy allows it.',
                 kind: 'toggle',
                 fieldRefs: [{ section: 'skills', field: 'enableExec' }],
                 impacts: ['higher-risk', 'requires-restart'],
                 warningLevel: 'high',
-                advancedKeys: ['skills.enableExec', 'security.approvals.skillMode'],
+                advancedKeys: [
+                    'skills.enableExec',
+                    'security.approvals.skillMode',
+                ],
                 toggle: {
                     on: { section: 'skills', field: 'enableExec', value: true },
-                    off: { section: 'skills', field: 'enableExec', value: false },
+                    off: {
+                        section: 'skills',
+                        field: 'enableExec',
+                        value: false,
+                    },
                 },
             },
             {
                 key: 'tools-guarded-tools',
                 label: 'Guarded tools',
-                description: 'Allow guarded-capability tools after policy and approvals. Exec program calls are guarded.',
+                description:
+                    'Allow guarded-capability tools after policy and approvals. Exec program calls are guarded.',
                 kind: 'toggle',
                 fieldRefs: [{ section: 'hardening', field: 'guardedTools' }],
                 impacts: ['higher-risk'],
                 warningLevel: 'medium',
                 advancedKeys: ['hardening.guardedTools'],
                 toggle: {
-                    on: { section: 'hardening', field: 'guardedTools', value: true },
-                    off: { section: 'hardening', field: 'guardedTools', value: false },
+                    on: {
+                        section: 'hardening',
+                        field: 'guardedTools',
+                        value: true,
+                    },
+                    off: {
+                        section: 'hardening',
+                        field: 'guardedTools',
+                        value: false,
+                    },
                 },
             },
             {
                 key: 'tools-allowed-programs',
                 label: 'Allowed command programs',
-                description: 'Comma-separated binaries the exec tool may run. Add gws for Google Workspace skills.',
+                description:
+                    'Comma-separated binaries the exec tool may run. Add gws for Google Workspace skills.',
                 kind: 'text',
-                fieldRefs: [{ section: 'hardening', field: 'execAllowedPrograms' }],
+                fieldRefs: [
+                    { section: 'hardening', field: 'execAllowedPrograms' },
+                ],
                 impacts: ['higher-risk'],
                 warningLevel: 'medium',
                 recommended: { value: 'gws', label: 'Include gws' },
@@ -298,7 +650,8 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
             {
                 key: 'tools-path-append',
                 label: 'Extra command PATH',
-                description: 'Additional PATH entries used to find local command binaries such as Homebrew tools.',
+                description:
+                    'Additional PATH entries used to find local command binaries such as Homebrew tools.',
                 kind: 'text',
                 fieldRefs: [{ section: 'tools', field: 'pathAppend' }],
                 impacts: ['requires-restart'],
@@ -307,9 +660,12 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
             {
                 key: 'tools-exec-approval',
                 label: 'Command approval mode',
-                description: 'How command execution requests are approved before they run.',
+                description:
+                    'How command execution requests are approved before they run.',
                 kind: 'choice',
-                fieldRefs: [{ section: 'security', field: 'approvals.execMode' }],
+                fieldRefs: [
+                    { section: 'security', field: 'approvals.execMode' },
+                ],
                 impacts: ['higher-risk'],
                 warningLevel: 'medium',
                 advancedKeys: ['security.approvals.execMode'],
@@ -317,9 +673,12 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
             {
                 key: 'tools-skill-approval',
                 label: 'Skill script approval mode',
-                description: 'How skill script execution requests are approved before they run.',
+                description:
+                    'How skill script execution requests are approved before they run.',
                 kind: 'choice',
-                fieldRefs: [{ section: 'security', field: 'approvals.skillMode' }],
+                fieldRefs: [
+                    { section: 'security', field: 'approvals.skillMode' },
+                ],
                 impacts: ['higher-risk'],
                 warningLevel: 'medium',
                 advancedKeys: ['security.approvals.skillMode'],
@@ -327,7 +686,8 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
             {
                 key: 'tools-exec-timeout',
                 label: 'Command timeout',
-                description: 'How long local command tools may run before OR3 stops waiting.',
+                description:
+                    'How long local command tools may run before OR3 stops waiting.',
                 kind: 'text',
                 fieldRefs: [{ section: 'tools', field: 'execTimeoutSeconds' }],
                 advancedKeys: ['tools.execTimeoutSeconds'],
@@ -335,15 +695,24 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
             {
                 key: 'tools-shell-mode',
                 label: 'Shell command strings',
-                description: 'Allow shell-style command strings. Not needed for gws; direct program execution is safer.',
+                description:
+                    'Allow shell-style command strings. Not needed for gws; direct program execution is safer.',
                 kind: 'toggle',
                 fieldRefs: [{ section: 'hardening', field: 'enableExecShell' }],
                 impacts: ['higher-risk'],
                 warningLevel: 'high',
                 advancedKeys: ['hardening.enableExecShell'],
                 toggle: {
-                    on: { section: 'hardening', field: 'enableExecShell', value: true },
-                    off: { section: 'hardening', field: 'enableExecShell', value: false },
+                    on: {
+                        section: 'hardening',
+                        field: 'enableExecShell',
+                        value: true,
+                    },
+                    off: {
+                        section: 'hardening',
+                        field: 'enableExecShell',
+                        value: false,
+                    },
                 },
             },
         ],
@@ -354,11 +723,19 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
         description: 'Manage paired devices and message apps.',
         icon: 'i-pixelarticons-message-text',
         summaryTemplate: (v) => {
-            const enabled: string[] = []
-            for (const ch of ['telegram', 'slack', 'discord', 'whatsapp', 'email']) {
-                if (get(v, `channels.${ch}.enabled`, false)) enabled.push(ch)
+            const enabled: string[] = [];
+            for (const ch of [
+                'telegram',
+                'slack',
+                'discord',
+                'whatsapp',
+                'email',
+            ]) {
+                if (get(v, `channels.${ch}.enabled`, false)) enabled.push(ch);
             }
-            return enabled.length ? `Connected channels: ${enabled.join(', ')}.` : 'No external channels are connected.'
+            return enabled.length
+                ? `Connected channels: ${enabled.join(', ')}.`
+                : 'No external channels are connected.';
         },
         controls: [
             {
@@ -366,25 +743,46 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 label: 'Telegram',
                 description: 'Talk to OR3 from a Telegram chat.',
                 kind: 'connection-card',
-                fieldRefs: [{ section: 'channels', field: 'enabled', channel: 'telegram' }],
+                fieldRefs: [
+                    {
+                        section: 'channels',
+                        field: 'enabled',
+                        channel: 'telegram',
+                    },
+                ],
                 connection: { channelKey: 'telegram' },
-                advancedKeys: ['channels.telegram.botToken', 'channels.telegram.allowedChats'],
+                advancedKeys: [
+                    'channels.telegram.botToken',
+                    'channels.telegram.allowedChats',
+                ],
             },
             {
                 key: 'channel-slack',
                 label: 'Slack',
                 description: 'Talk to OR3 in a Slack workspace.',
                 kind: 'connection-card',
-                fieldRefs: [{ section: 'channels', field: 'enabled', channel: 'slack' }],
+                fieldRefs: [
+                    { section: 'channels', field: 'enabled', channel: 'slack' },
+                ],
                 connection: { channelKey: 'slack' },
-                advancedKeys: ['channels.slack.botToken', 'channels.slack.appToken', 'channels.slack.signingSecret'],
+                advancedKeys: [
+                    'channels.slack.botToken',
+                    'channels.slack.appToken',
+                    'channels.slack.signingSecret',
+                ],
             },
             {
                 key: 'channel-discord',
                 label: 'Discord',
                 description: 'Talk to OR3 in a Discord server.',
                 kind: 'connection-card',
-                fieldRefs: [{ section: 'channels', field: 'enabled', channel: 'discord' }],
+                fieldRefs: [
+                    {
+                        section: 'channels',
+                        field: 'enabled',
+                        channel: 'discord',
+                    },
+                ],
                 connection: { channelKey: 'discord' },
                 advancedKeys: ['channels.discord.botToken'],
             },
@@ -393,7 +791,13 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 label: 'WhatsApp',
                 description: 'Talk to OR3 from WhatsApp.',
                 kind: 'connection-card',
-                fieldRefs: [{ section: 'channels', field: 'enabled', channel: 'whatsapp' }],
+                fieldRefs: [
+                    {
+                        section: 'channels',
+                        field: 'enabled',
+                        channel: 'whatsapp',
+                    },
+                ],
                 connection: { channelKey: 'whatsapp' },
                 advancedKeys: ['channels.whatsapp.token'],
             },
@@ -402,7 +806,9 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 label: 'Email',
                 description: 'Get OR3 replies in your inbox.',
                 kind: 'connection-card',
-                fieldRefs: [{ section: 'channels', field: 'enabled', channel: 'email' }],
+                fieldRefs: [
+                    { section: 'channels', field: 'enabled', channel: 'email' },
+                ],
                 connection: { channelKey: 'email' },
                 advancedKeys: ['channels.email.smtp', 'channels.email.imap'],
             },
@@ -414,12 +820,14 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
         description: 'Control background work, schedules, and skills.',
         icon: 'i-pixelarticons-zap',
         summaryTemplate: (v) => {
-            const sub = Boolean(get(v, 'subagents.enabled', false))
-            const cron = Boolean(get(v, 'cron.enabled', false))
-            if (sub && cron) return 'Background agents and scheduled tasks are on.'
-            if (sub) return 'Background agents are on; schedules are off.'
-            if (cron) return 'Scheduled tasks are on; background agents are off.'
-            return 'Background work is limited.'
+            const sub = Boolean(get(v, 'subagents.enabled', false));
+            const cron = Boolean(get(v, 'cron.enabled', false));
+            if (sub && cron)
+                return 'Background agents and scheduled tasks are on.';
+            if (sub) return 'Background agents are on; schedules are off.';
+            if (cron)
+                return 'Scheduled tasks are on; background agents are off.';
+            return 'Background work is limited.';
         },
         controls: [
             {
@@ -431,7 +839,11 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 advancedKeys: ['subagents.enabled'],
                 toggle: {
                     on: { section: 'subagents', field: 'enabled', value: true },
-                    off: { section: 'subagents', field: 'enabled', value: false },
+                    off: {
+                        section: 'subagents',
+                        field: 'enabled',
+                        value: false,
+                    },
                 },
             },
             {
@@ -445,7 +857,11 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 ],
                 presets: SUBAGENT_POWER_PRESETS,
                 impacts: ['higher-cost'],
-                advancedKeys: ['subagents.maxConcurrent', 'subagents.maxQueued', 'subagents.taskTimeoutSeconds'],
+                advancedKeys: [
+                    'subagents.maxConcurrent',
+                    'subagents.maxQueued',
+                    'subagents.taskTimeoutSeconds',
+                ],
             },
             {
                 key: 'auto-cron',
@@ -465,10 +881,17 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 description: 'Let OR3 check in on its own from time to time.',
                 kind: 'toggle',
                 fieldRefs: [{ section: 'heartbeat', field: 'enabled' }],
-                advancedKeys: ['heartbeat.enabled', 'heartbeat.intervalSeconds'],
+                advancedKeys: [
+                    'heartbeat.enabled',
+                    'heartbeat.intervalSeconds',
+                ],
                 toggle: {
                     on: { section: 'heartbeat', field: 'enabled', value: true },
-                    off: { section: 'heartbeat', field: 'enabled', value: false },
+                    off: {
+                        section: 'heartbeat',
+                        field: 'enabled',
+                        value: false,
+                    },
                 },
             },
             {
@@ -476,11 +899,25 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 label: 'Watch files for changes',
                 description: 'Trigger work when watched files change.',
                 kind: 'toggle',
-                fieldRefs: [{ section: 'triggers', field: 'fileWatch.enabled' }],
-                advancedKeys: ['triggers.fileWatch.enabled', 'triggers.fileWatch.debounceMs', 'triggers.fileWatch.pollIntervalMs'],
+                fieldRefs: [
+                    { section: 'triggers', field: 'fileWatch.enabled' },
+                ],
+                advancedKeys: [
+                    'triggers.fileWatch.enabled',
+                    'triggers.fileWatch.debounceMs',
+                    'triggers.fileWatch.pollIntervalMs',
+                ],
                 toggle: {
-                    on: { section: 'triggers', field: 'fileWatch.enabled', value: true },
-                    off: { section: 'triggers', field: 'fileWatch.enabled', value: false },
+                    on: {
+                        section: 'triggers',
+                        field: 'fileWatch.enabled',
+                        value: true,
+                    },
+                    off: {
+                        section: 'triggers',
+                        field: 'fileWatch.enabled',
+                        value: false,
+                    },
                 },
             },
             {
@@ -490,10 +927,88 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 kind: 'toggle',
                 fieldRefs: [{ section: 'triggers', field: 'webhook.enabled' }],
                 impacts: ['higher-risk'],
-                advancedKeys: ['triggers.webhook.enabled', 'triggers.webhook.bind', 'triggers.webhook.secret'],
+                advancedKeys: [
+                    'triggers.webhook.enabled',
+                    'triggers.webhook.bind',
+                    'triggers.webhook.secret',
+                ],
                 toggle: {
-                    on: { section: 'triggers', field: 'webhook.enabled', value: true },
-                    off: { section: 'triggers', field: 'webhook.enabled', value: false },
+                    on: {
+                        section: 'triggers',
+                        field: 'webhook.enabled',
+                        value: true,
+                    },
+                    off: {
+                        section: 'triggers',
+                        field: 'webhook.enabled',
+                        value: false,
+                    },
+                },
+            },
+            {
+                key: 'auto-agent-cli',
+                label: 'External CLI agents',
+                description:
+                    'Let OR3 run external tools like OpenCode, Codex, Claude, or Gemini alongside internal agents.',
+                kind: 'toggle',
+                fieldRefs: [{ section: 'agentCLI', field: 'enabled' }],
+                impacts: ['higher-risk'],
+                warningLevel: 'medium',
+                advancedKeys: ['agentCLI.enabled'],
+                toggle: {
+                    on: { section: 'agentCLI', field: 'enabled', value: true },
+                    off: {
+                        section: 'agentCLI',
+                        field: 'enabled',
+                        value: false,
+                    },
+                },
+            },
+            {
+                key: 'auto-agent-cli-power',
+                label: 'External agent power',
+                description:
+                    'How many external CLI agents may run at once.',
+                kind: 'preset-slider',
+                fieldRefs: [
+                    { section: 'agentCLI', field: 'maxConcurrent' },
+                    { section: 'agentCLI', field: 'maxQueued' },
+                ],
+                presets: SUBAGENT_POWER_PRESETS,
+                impacts: ['higher-cost'],
+                warningLevel: 'medium',
+                advancedKeys: [
+                    'agentCLI.maxConcurrent',
+                    'agentCLI.maxQueued',
+                    'agentCLI.defaultTimeoutSeconds',
+                ],
+            },
+            {
+                key: 'auto-agent-cli-sandbox',
+                label: 'Full autonomy in sandbox',
+                description:
+                    'Allow external CLIs to run with full autonomy inside an isolated sandbox. Requires sandbox setup.',
+                kind: 'toggle',
+                fieldRefs: [
+                    { section: 'agentCLI', field: 'allowSandboxAuto' },
+                ],
+                impacts: ['higher-risk'],
+                warningLevel: 'high',
+                recommended: { value: false, label: 'Off for safety' },
+                advancedKeys: [
+                    'agentCLI.allowSandboxAuto',
+                ],
+                toggle: {
+                    on: {
+                        section: 'agentCLI',
+                        field: 'allowSandboxAuto',
+                        value: true,
+                    },
+                    off: {
+                        section: 'agentCLI',
+                        field: 'allowSandboxAuto',
+                        value: false,
+                    },
                 },
             },
         ],
@@ -501,14 +1016,17 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
     {
         key: 'safety',
         label: 'Safety & Privacy',
-        description: 'Control approvals, terminal access, network access, and logs.',
+        description:
+            'Control approvals, terminal access, network access, and logs.',
         icon: 'i-pixelarticons-shield',
         summaryTemplate: (v) => {
-            const profile = String(get(v, 'runtimeProfile', 'single-user-hardened'))
-            const exec = Boolean(get(v, 'hardening.enableExecShell', false))
+            const profile = String(
+                get(v, 'runtimeProfile', 'single-user-hardened'),
+            );
+            const exec = Boolean(get(v, 'hardening.enableExecShell', false));
             return exec
                 ? `Safety mode: ${profile}. Terminal commands are allowed.`
-                : `Safety mode: ${profile}. Terminal commands are off.`
+                : `Safety mode: ${profile}. Terminal commands are off.`;
         },
         controls: [
             {
@@ -530,10 +1048,21 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 impacts: ['higher-risk'],
                 warningLevel: 'high',
                 recommended: { value: false, label: 'Off for beginners' },
-                advancedKeys: ['hardening.enableExecShell', 'hardening.execAllowedPrograms'],
+                advancedKeys: [
+                    'hardening.enableExecShell',
+                    'hardening.execAllowedPrograms',
+                ],
                 toggle: {
-                    on: { section: 'hardening', field: 'enableExecShell', value: true },
-                    off: { section: 'hardening', field: 'enableExecShell', value: false },
+                    on: {
+                        section: 'hardening',
+                        field: 'enableExecShell',
+                        value: true,
+                    },
+                    off: {
+                        section: 'hardening',
+                        field: 'enableExecShell',
+                        value: false,
+                    },
                 },
             },
             {
@@ -545,8 +1074,16 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 impacts: ['higher-risk'],
                 advancedKeys: ['hardening.enableNetwork'],
                 toggle: {
-                    on: { section: 'hardening', field: 'enableNetwork', value: true },
-                    off: { section: 'hardening', field: 'enableNetwork', value: false },
+                    on: {
+                        section: 'hardening',
+                        field: 'enableNetwork',
+                        value: true,
+                    },
+                    off: {
+                        section: 'hardening',
+                        field: 'enableNetwork',
+                        value: false,
+                    },
                 },
             },
             {
@@ -557,10 +1094,21 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 fieldRefs: [{ section: 'security', field: 'audit.enabled' }],
                 impacts: ['safer'],
                 recommended: { value: true, label: 'On' },
-                advancedKeys: ['security.audit.enabled', 'security.audit.keyFile'],
+                advancedKeys: [
+                    'security.audit.enabled',
+                    'security.audit.keyFile',
+                ],
                 toggle: {
-                    on: { section: 'security', field: 'audit.enabled', value: true },
-                    off: { section: 'security', field: 'audit.enabled', value: false },
+                    on: {
+                        section: 'security',
+                        field: 'audit.enabled',
+                        value: true,
+                    },
+                    off: {
+                        section: 'security',
+                        field: 'audit.enabled',
+                        value: false,
+                    },
                 },
             },
             {
@@ -568,15 +1116,28 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 label: 'Protect saved secrets',
                 description: 'Encrypt secret values at rest.',
                 kind: 'toggle',
-                fieldRefs: [{ section: 'security', field: 'secretStore.enabled' }],
+                fieldRefs: [
+                    { section: 'security', field: 'secretStore.enabled' },
+                ],
                 impacts: ['safer'],
                 recommended: { value: true, label: 'On' },
-                advancedKeys: ['security.secretStore.enabled', 'security.secretStore.keyFile'],
+                advancedKeys: [
+                    'security.secretStore.enabled',
+                    'security.secretStore.keyFile',
+                ],
                 toggle: {
-                    on: { section: 'security', field: 'secretStore.enabled', value: true },
-                    off: { section: 'security', field: 'secretStore.enabled', value: false },
+                    on: {
+                        section: 'security',
+                        field: 'secretStore.enabled',
+                        value: true,
+                    },
+                    off: {
+                        section: 'security',
+                        field: 'secretStore.enabled',
+                        value: false,
+                    },
                 },
             },
         ],
     },
-]
+];

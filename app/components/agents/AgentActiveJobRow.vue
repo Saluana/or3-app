@@ -105,6 +105,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import type { JobSnapshot } from '~/types/or3-api';
+import { isCliJob, runnerLabel } from '~/utils/or3/jobs';
 
 const props = defineProps<{ job: JobSnapshot; cancelling?: boolean }>();
 const emit = defineEmits<{
@@ -187,12 +188,24 @@ const title = computed(() => {
     if (props.job.title) return props.job.title;
     if (props.job.task) return props.job.task;
     const kind = props.job.kind;
+    if (isCliJob(kind)) {
+        return runnerLabel(kind?.slice('agent_cli:'.length)) + ' task';
+    }
     if (!kind || kind === 'agent' || kind === 'subagent') return 'Agent task';
     return kind.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 });
 
 const description = computed(() => {
+    if (props.job.status === 'failed' || props.job.status === 'aborted') {
+        if (props.job.error) return props.job.error.slice(0, 120);
+        if (isCliJob(props.job.kind) && props.job.stderr_preview) {
+            return props.job.stderr_preview.slice(0, 120);
+        }
+    }
     if (props.job.final_text) return props.job.final_text.slice(0, 120);
+    if (isCliJob(props.job.kind) && props.job.stdout_preview) {
+        return props.job.stdout_preview.slice(0, 120);
+    }
     switch (category.value) {
         case 'research':
             return 'Searching and pulling together findings';
@@ -212,6 +225,10 @@ const statusVerb = computed(() => {
     if (props.job.status === 'failed') return 'Failed';
     if (props.job.status === 'completed') return 'Complete';
     if (props.job.status === 'aborted') return 'Cancelled';
+    if (isCliJob(props.job.kind)) {
+        const label = runnerLabel(props.job.runner_id);
+        return `Running ${label}`;
+    }
     switch (category.value) {
         case 'research':
             return 'Researching';

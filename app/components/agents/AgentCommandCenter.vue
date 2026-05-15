@@ -249,7 +249,180 @@
                 </button>
             </div>
 
-            <!-- Settings row -->
+            <!-- Runner & mode selection for external CLI -->
+            <div
+                v-if="runnerOptions && runnerOptions.length > 0"
+                class="rounded-2xl border border-(--or3-border) bg-(--or3-surface)/60 p-3 space-y-3"
+            >
+                <!-- Runner dropdown -->
+                <div class="grid grid-cols-2 gap-2">
+                    <div class="col-span-2 sm:col-span-1">
+                        <label
+                            class="block font-mono text-[11px] font-semibold tracking-[0.18em] text-(--or3-text-muted) mb-1.5"
+                        >
+                            RUNNER
+                        </label>
+                        <div class="relative">
+                            <button
+                                ref="runnerButtonRef"
+                                type="button"
+                                class="or3-focus-ring flex w-full items-center justify-between gap-2 rounded-xl border border-(--or3-border) bg-(--or3-surface) px-3 py-2 text-sm text-(--or3-text) hover:bg-(--or3-surface-soft) disabled:cursor-not-allowed disabled:opacity-60"
+                                :disabled="props.disabled || props.loadingRunners"
+                                aria-haspopup="listbox"
+                                :aria-expanded="showRunnerExpanded"
+                                @click="toggleRunnerDropdown"
+                            >
+                                <span class="truncate">{{
+                                    runnerLabel(selectedRunner)
+                                }}</span>
+                                <Icon
+                                    :name="
+                                        props.loadingRunners
+                                            ? 'i-pixelarticons-loader'
+                                            : 'i-pixelarticons-chevron-down'
+                                    "
+                                    :class="[
+                                        'size-3.5 shrink-0 text-(--or3-text-muted)',
+                                        props.loadingRunners && 'animate-spin',
+                                    ]"
+                                />
+                            </button>
+                        </div>
+                    </div>
+                    <!-- Mode selector (external runners only) -->
+                    <div
+                        v-if="selectedRunner !== 'or3-intern'"
+                        class="col-span-2 sm:col-span-1"
+                    >
+                        <label
+                            class="block font-mono text-[11px] font-semibold tracking-[0.18em] text-(--or3-text-muted) mb-1.5"
+                        >
+                            PERMISSIONS
+                        </label>
+                        <div class="relative">
+                            <button
+                                type="button"
+                                class="or3-focus-ring flex w-full items-center justify-between gap-2 rounded-xl border border-(--or3-border) bg-(--or3-surface) px-3 py-2 text-sm text-(--or3-text) hover:bg-(--or3-surface-soft) disabled:cursor-not-allowed disabled:opacity-60"
+                                :disabled="props.disabled"
+                                @click="showModeExpanded = !showModeExpanded"
+                            >
+                                <span class="truncate">{{
+                                    modeLabel(selectedMode)
+                                }}</span>
+                                <Icon
+                                    name="i-pixelarticons-chevron-down"
+                                    class="size-3.5 shrink-0 text-(--or3-text-muted)"
+                                />
+                            </button>
+                            <div
+                                v-if="showModeExpanded"
+                                class="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-xl border border-(--or3-border) bg-(--or3-surface) shadow-lg"
+                            >
+                                <button
+                                    v-for="mode in modeOptions"
+                                    :key="mode.id"
+                                    type="button"
+                                    class="or3-focus-ring flex w-full items-center gap-2 px-3 py-2 text-sm transition hover:bg-(--or3-surface-soft)"
+                                    :class="{
+                                        'bg-(--or3-green-soft)/60 text-(--or3-green-dark)':
+                                            selectedMode === mode.id,
+                                        'cursor-not-allowed opacity-50':
+                                            mode.disabled,
+                                    }"
+                                    :disabled="mode.disabled"
+                                    @click="
+                                        if (!mode.disabled) {
+                                            selectedMode = mode.id;
+                                            showModeExpanded = false;
+                                        }
+                                    "
+                                >
+                                    <span class="truncate flex-1 text-left">{{
+                                        mode.label
+                                    }}</span>
+                                    <span
+                                        v-if="mode.disabled"
+                                        class="text-[10px] text-(--or3-text-muted)"
+                                        >Requires sandbox</span
+                                    >
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Model and max-turns (external runners only, compact row) -->
+                <div
+                    v-if="
+                        selectedRunner !== 'or3-intern' &&
+                        activeRunnerSupports?.modelFlag
+                    "
+                    class="grid grid-cols-2 gap-2"
+                >
+                    <div class="col-span-2 sm:col-span-1">
+                        <label
+                            class="block font-mono text-[11px] font-semibold tracking-[0.18em] text-(--or3-text-muted) mb-1.5"
+                        >
+                            MODEL
+                        </label>
+                        <input
+                            v-model="selectedModel"
+                            type="text"
+                            class="or3-focus-ring w-full rounded-xl border border-(--or3-border) bg-(--or3-surface) px-3 py-2 text-sm text-(--or3-text) placeholder:text-(--or3-text-muted) disabled:cursor-not-allowed disabled:opacity-60"
+                            placeholder="Default model"
+                            :disabled="props.disabled"
+                        />
+                    </div>
+                    <div
+                        v-if="activeRunnerSupports?.maxTurns"
+                        class="col-span-2 sm:col-span-1"
+                    >
+                        <label
+                            class="block font-mono text-[11px] font-semibold tracking-[0.18em] text-(--or3-text-muted) mb-1.5"
+                        >
+                            MAX TURNS
+                        </label>
+                        <input
+                            v-model.number="selectedMaxTurns"
+                            type="number"
+                            min="1"
+                            class="or3-focus-ring w-full rounded-xl border border-(--or3-border) bg-(--or3-surface) px-3 py-2 text-sm text-(--or3-text) placeholder:text-(--or3-text-muted) disabled:cursor-not-allowed disabled:opacity-60"
+                            placeholder="Unlimited"
+                            :disabled="props.disabled"
+                        />
+                    </div>
+                </div>
+
+                <!-- Working directory (external runners only) -->
+                <div v-if="selectedRunner !== 'or3-intern'">
+                    <label
+                        class="block font-mono text-[11px] font-semibold tracking-[0.18em] text-(--or3-text-muted) mb-1.5"
+                    >
+                        WORKING DIRECTORY
+                    </label>
+                    <button
+                        type="button"
+                        class="or3-focus-ring flex w-full items-center justify-between gap-2 rounded-xl border border-(--or3-border) bg-(--or3-surface) px-3 py-2 text-sm text-(--or3-text) hover:bg-(--or3-surface-soft) disabled:cursor-not-allowed disabled:opacity-60"
+                        :disabled="props.disabled"
+                        @click="openCwdSlideover"
+                    >
+                        <span class="truncate">{{ cwdDisplayLabel }}</span>
+                        <Icon
+                            name="i-pixelarticons-folder"
+                            class="size-3.5 shrink-0 text-(--or3-text-muted)"
+                        />
+                    </button>
+                </div>
+
+                <!-- Safety copy for external runners -->
+                <p
+                    v-if="selectedRunner !== 'or3-intern'"
+                    class="font-mono text-[10px] text-(--or3-text-muted) leading-relaxed"
+                >
+                    Runs in the background using non-interactive safe mode. It
+                    won't wait for terminal approvals.
+                </p>
+            </div>
             <div
                 class="grid grid-cols-2 overflow-hidden rounded-2xl border border-(--or3-border) bg-(--or3-surface)/60"
             >
@@ -362,11 +535,72 @@
             </div>
         </UForm>
     </SurfaceCard>
+
+    <Teleport to="body">
+        <div
+            v-if="showRunnerExpanded"
+            ref="runnerDropdownRef"
+            class="fixed z-[1000] max-h-[min(22rem,calc(100vh-1rem))] overflow-y-auto rounded-xl border border-(--or3-border) bg-(--or3-surface) shadow-lg"
+            :style="runnerDropdownStyle"
+            role="listbox"
+            aria-label="Agent runner"
+        >
+            <button
+                v-for="runner in availableRunners"
+                :key="runner.id"
+                type="button"
+                class="or3-focus-ring flex w-full items-center gap-2 px-3 py-2 text-sm text-(--or3-text) transition hover:bg-(--or3-surface-soft)"
+                :class="{
+                    'bg-(--or3-green-soft)/60 text-(--or3-green-dark)':
+                        selectedRunner === runner.id,
+                }"
+                role="option"
+                :aria-selected="selectedRunner === runner.id"
+                @click="selectRunner(runner.id)"
+            >
+                <span class="truncate flex-1 text-left">{{ runner.label }}</span>
+                <span
+                    v-if="runnerAuthBadge(runner)"
+                    class="text-[10px] text-(--or3-amber)"
+                    >{{ runnerAuthBadge(runner) }}</span
+                >
+            </button>
+            <template v-if="unavailableRunners.length">
+                <div
+                    class="border-t border-(--or3-border) px-3 py-1.5 font-mono text-[10px] font-semibold text-(--or3-text-muted) uppercase tracking-wider"
+                >
+                    Not available
+                </div>
+                <button
+                    v-for="runner in unavailableRunners"
+                    :key="runner.id"
+                    type="button"
+                    class="flex w-full items-center gap-2 px-3 py-2 text-sm text-(--or3-text-muted) cursor-not-allowed"
+                    disabled
+                >
+                    <span class="truncate flex-1 text-left">{{
+                        runner.label
+                    }}</span>
+                    <span class="text-[10px] text-(--or3-text-muted)">{{
+                        runner.disabledReason || runner.status
+                    }}</span>
+                </button>
+            </template>
+        </div>
+    </Teleport>
+
+    <!-- CWD Picker Slideover -->
+    <CwdPickerSheet
+        v-model:open="showCwdSlideover"
+        :initial-path="cwdText"
+        @select="onCwdSelected"
+    />
 </template>
 
 <script setup lang="ts">
 import {
     computed,
+    nextTick,
     onBeforeUnmount,
     onMounted,
     reactive,
@@ -383,6 +617,9 @@ import {
     type FileMentionSuggestionItem,
 } from '~/composables/useFileMentionSuggestions';
 import type { ChatAttachment } from '~/types/app-state';
+import type { AgentRunnerInfo } from '~/types/or3-api';
+import { runnerLabel } from '~/utils/or3/jobs';
+import CwdPickerSheet from '~/components/agents/CwdPickerSheet.vue';
 
 export interface AgentTaskPayload {
     task: string;
@@ -392,6 +629,13 @@ export interface AgentTaskPayload {
     notify: AgentNotify;
     autoApprove: boolean;
     attachments: ChatAttachment[];
+    runnerId: string;
+    runnerLabel?: string;
+    mode?: string;
+    isolation?: string;
+    model?: string;
+    maxTurns?: number;
+    cwd?: string;
 }
 
 export type AgentCategory =
@@ -403,6 +647,8 @@ export type AgentCategory =
 export type AgentPriority = 'low' | 'balanced' | 'high';
 export type AgentNotify = 'always' | 'complete' | 'never';
 
+export type AgentCommandMode = 'review' | 'safe_edit' | 'sandbox_auto';
+
 export interface AgentCommandDisabledReason {
     title: string;
     description: string;
@@ -410,11 +656,24 @@ export interface AgentCommandDisabledReason {
     actionLabel?: string;
 }
 
+interface RunnerOption {
+    id: string;
+    label: string;
+    status: string;
+    disabled?: boolean;
+    disabledReason?: string;
+    auth_status?: string;
+}
+
 const props = defineProps<{
     disabled?: boolean;
     disabledReason?: AgentCommandDisabledReason | null;
     submitting?: boolean;
     submitError?: string | null;
+    runnerOptions?: AgentRunnerInfo[];
+    selectedRunnerId?: string;
+    loadingRunners?: boolean;
+    runnerListSupported?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -429,6 +688,18 @@ const formState = reactive({
     notify: 'complete' as AgentNotify,
     autoApprove: true,
 });
+
+const selectedRunner = ref(props.selectedRunnerId ?? 'or3-intern');
+const selectedMode = ref<AgentCommandMode>('safe_edit');
+const selectedModel = ref('');
+const selectedMaxTurns = ref<number | undefined>(undefined);
+const cwdText = ref('');
+const showRunnerExpanded = ref(false);
+const showModeExpanded = ref(false);
+const showCwdSlideover = ref(false);
+const runnerButtonRef = ref<HTMLButtonElement | null>(null);
+const runnerDropdownRef = ref<HTMLElement | null>(null);
+const runnerDropdownStyle = ref<Record<string, string>>({});
 
 interface DraftAttachment extends ChatAttachment {
     content?: string;
@@ -560,6 +831,145 @@ const notifyMenuItems = computed(() =>
         },
     })),
 );
+
+// ── Runner dropdown helpers ──
+
+const runnerList = computed<RunnerOption[]>(() => {
+    const runners = props.runnerOptions ?? [];
+    if (!runners.length)
+        return [{ id: 'or3-intern', label: 'or3-intern', status: 'available' }];
+    return runners.map((r) => ({
+        id: r.id,
+        label: r.display_name || r.id,
+        status: r.status,
+        disabled:
+            r.status === 'missing' ||
+            r.status === 'not_executable' ||
+            r.status === 'auth_missing' ||
+            r.status === 'error' ||
+            r.status === 'disabled_by_config' ||
+            r.status === 'unsupported_version',
+        disabledReason: r.disabled_reason || r.status,
+        auth_status:
+            r.status === 'available' && r.auth_status === 'unknown'
+                ? 'ready'
+                : r.auth_status,
+    }));
+});
+
+const availableRunners = computed(() =>
+    runnerList.value.filter((r) => !r.disabled),
+);
+
+const unavailableRunners = computed(() =>
+    runnerList.value.filter((r) => r.disabled),
+);
+
+const activeRunnerInfo = computed(() =>
+    props.runnerOptions?.find((r) => r.id === selectedRunner.value),
+);
+
+const activeRunnerSupports = computed(() =>
+    activeRunnerInfo.value?.supports,
+);
+
+const modeOptions = computed<
+    Array<{ id: AgentCommandMode; label: string; disabled?: boolean }>
+>(() => [
+    { id: 'review', label: 'Review only' },
+    { id: 'safe_edit', label: 'Safe workspace edits' },
+    {
+        id: 'sandbox_auto',
+        label: 'Full autonomy in sandbox',
+        disabled:
+            !activeRunnerSupports.value?.safeSandboxFlag ||
+            !activeRunnerSupports.value?.dangerousBypassFlag,
+    },
+]);
+
+function modeLabel(mode: string): string {
+    switch (mode) {
+        case 'review':
+            return 'Review only';
+        case 'safe_edit':
+            return 'Safe workspace edits';
+        case 'sandbox_auto':
+            return 'Full autonomy in sandbox';
+        default:
+            return 'Safe workspace edits';
+    }
+}
+
+const cwdDisplayLabel = computed(() => {
+    if (!cwdText.value.trim()) return 'Default';
+    const p = cwdText.value;
+    if (p.length > 36) return '…' + p.slice(-34);
+    return p;
+});
+
+function openCwdSlideover() {
+    showCwdSlideover.value = true;
+}
+
+function updateRunnerDropdownPosition() {
+    const button = runnerButtonRef.value;
+    if (!button || typeof window === 'undefined') return;
+    const rect = button.getBoundingClientRect();
+    const gap = 4;
+    const maxHeight = Math.min(352, window.innerHeight - 16);
+    const spaceBelow = window.innerHeight - rect.bottom - gap - 8;
+    const openUp = spaceBelow < 180 && rect.top > spaceBelow;
+    const top = openUp
+        ? Math.max(8, rect.top - maxHeight - gap)
+        : Math.min(rect.bottom + gap, window.innerHeight - 8);
+
+    runnerDropdownStyle.value = {
+        left: `${Math.max(8, rect.left)}px`,
+        top: `${top}px`,
+        width: `${rect.width}px`,
+        maxHeight: `${maxHeight}px`,
+    };
+}
+
+async function toggleRunnerDropdown() {
+    showRunnerExpanded.value = !showRunnerExpanded.value;
+    if (showRunnerExpanded.value) {
+        await nextTick();
+        updateRunnerDropdownPosition();
+    }
+}
+
+function closeRunnerDropdown() {
+    showRunnerExpanded.value = false;
+}
+
+function selectRunner(runnerId: string) {
+    selectedRunner.value = runnerId;
+    closeRunnerDropdown();
+}
+
+function runnerAuthBadge(runner: RunnerOption) {
+    if (runner.auth_status === 'missing') return 'Auth missing';
+    if (runner.status === 'auth_unknown') return 'Auth check skipped';
+    return null;
+}
+
+function onDocumentPointerDown(event: PointerEvent) {
+    if (!showRunnerExpanded.value) return;
+    const target = event.target as Node | null;
+    if (!target) return;
+    if (runnerButtonRef.value?.contains(target)) return;
+    if (runnerDropdownRef.value?.contains(target)) return;
+    closeRunnerDropdown();
+}
+
+function onRunnerDropdownKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape') closeRunnerDropdown();
+}
+
+function onCwdSelected(path: string) {
+    cwdText.value = path;
+}
 
 function priorityLabel(value: AgentPriority) {
     return priorityItems.find((p) => p.value === value)?.label ?? 'Balanced';
@@ -982,7 +1392,39 @@ function submit() {
         notify: formState.notify,
         autoApprove: formState.autoApprove,
         attachments: attachmentPayload(),
+        runnerId: selectedRunner.value,
+        runnerLabel: runnerLabel(selectedRunner.value),
+        mode: selectedRunner.value !== 'or3-intern' ? selectedMode.value : undefined,
+        isolation:
+            selectedRunner.value !== 'or3-intern'
+                ? modeToIsolation(selectedMode.value)
+                : undefined,
+        model:
+            selectedRunner.value !== 'or3-intern' && selectedModel.value
+                ? selectedModel.value
+                : undefined,
+        maxTurns:
+            selectedRunner.value !== 'or3-intern' && selectedMaxTurns.value
+                ? selectedMaxTurns.value
+                : undefined,
+        cwd:
+            selectedRunner.value !== 'or3-intern' && cwdText.value
+                ? cwdText.value
+                : undefined,
     });
+}
+
+function modeToIsolation(mode: string): string {
+    switch (mode) {
+        case 'review':
+            return 'host_readonly';
+        case 'safe_edit':
+            return 'host_workspace_write';
+        case 'sandbox_auto':
+            return 'sandbox_dangerous';
+        default:
+            return 'host_workspace_write';
+    }
 }
 
 function resetForm() {
@@ -997,6 +1439,16 @@ watch(
     (isReadonly) => {
         editor.value?.setEditable(!isReadonly);
     },
+);
+
+watch(
+    availableRunners,
+    (runners) => {
+        if (!runners.some((runner) => runner.id === selectedRunner.value)) {
+            selectedRunner.value = runners[0]?.id ?? 'or3-intern';
+        }
+    },
+    { immediate: true },
 );
 
 onMounted(() => {
@@ -1130,16 +1582,25 @@ onMounted(() => {
     dom?.addEventListener('dragover', onDragOver);
     dom?.addEventListener('dragleave', onDragLeave);
     dom?.addEventListener('drop', onDrop);
+    document.addEventListener('pointerdown', onDocumentPointerDown);
+    document.addEventListener('keydown', onRunnerDropdownKeydown);
+    window.addEventListener('resize', updateRunnerDropdownPosition);
+    window.addEventListener('scroll', updateRunnerDropdownPosition, true);
 });
 
 onBeforeUnmount(() => {
     closeMentionMenu();
+    closeRunnerDropdown();
     clearManualAttachments();
     const dom = editor.value?.view.dom;
     dom?.removeEventListener('dragenter', onDragEnter);
     dom?.removeEventListener('dragover', onDragOver);
     dom?.removeEventListener('dragleave', onDragLeave);
     dom?.removeEventListener('drop', onDrop);
+    document.removeEventListener('pointerdown', onDocumentPointerDown);
+    document.removeEventListener('keydown', onRunnerDropdownKeydown);
+    window.removeEventListener('resize', updateRunnerDropdownPosition);
+    window.removeEventListener('scroll', updateRunnerDropdownPosition, true);
     editor.value?.destroy();
 });
 

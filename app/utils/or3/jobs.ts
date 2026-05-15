@@ -1,6 +1,7 @@
 import type { RecentJobSummary } from '~/types/app-state';
 import type {
     JobSnapshot,
+    PersistedAgentCliJob,
     PersistedSubagentJob,
     PersistedSubagentStatus,
 } from '~/types/or3-api';
@@ -39,6 +40,8 @@ export function isActiveStatus(status: string | undefined): boolean {
  *
  * - `succeeded` and `complete` → `completed`
  * - `interrupted` → `aborted`
+ * - `timed_out` → `failed`
+ * - `starting` → `running`
  * - unknown values fall back to `queued` so they still render somewhere safe.
  */
 export function normalizeStatus(status: string | undefined): AgentJobUiStatus {
@@ -48,6 +51,7 @@ export function normalizeStatus(status: string | undefined): AgentJobUiStatus {
             return 'queued';
         case 'running':
         case 'started':
+        case 'starting':
             return 'running';
         case 'succeeded':
         case 'completed':
@@ -55,6 +59,7 @@ export function normalizeStatus(status: string | undefined): AgentJobUiStatus {
             return 'completed';
         case 'failed':
         case 'error':
+        case 'timed_out':
             return 'failed';
         case 'aborted':
         case 'interrupted':
@@ -122,6 +127,19 @@ export function mergeJobSummary(
         notify: existing.notify ?? next.notify,
         autoApprove: existing.autoApprove ?? next.autoApprove,
         created_at: existing.created_at ?? next.created_at,
+        runner_id: next.runner_id ?? existing.runner_id,
+        runner_label: next.runner_label ?? existing.runner_label,
+        mode: next.mode ?? existing.mode,
+        isolation: next.isolation ?? existing.isolation,
+        model: next.model ?? existing.model,
+        cwd: next.cwd ?? existing.cwd,
+        stdout_preview: next.stdout_preview ?? existing.stdout_preview,
+        stderr_preview: next.stderr_preview ?? existing.stderr_preview,
+        output_preview: next.output_preview ?? existing.output_preview,
+        error_preview: next.error_preview ?? existing.error_preview,
+        raw_events: next.raw_events ?? existing.raw_events,
+        structured_events: next.structured_events ?? existing.structured_events,
+        output_truncated: next.output_truncated ?? existing.output_truncated,
     };
 }
 
@@ -149,6 +167,19 @@ export function summaryToSnapshot(summary: RecentJobSummary): JobSnapshot {
         child_session_key: summary.child_session_key,
         parent_session_key: summary.parent_session_key,
         artifact_id: summary.artifact_id,
+        runner_id: summary.runner_id,
+        runner_label: summary.runner_label,
+        mode: summary.mode,
+        isolation: summary.isolation,
+        model: summary.model,
+        cwd: summary.cwd,
+        stdout_preview: summary.stdout_preview,
+        stderr_preview: summary.stderr_preview,
+        output_preview: summary.output_preview,
+        error_preview: summary.error_preview,
+        raw_events: summary.raw_events,
+        structured_events: summary.structured_events,
+        output_truncated: summary.output_truncated,
     };
 }
 
@@ -157,3 +188,88 @@ export function persistedStatusToUi(
 ): AgentJobUiStatus {
     return normalizeStatus(status);
 }
+
+/**
+ * Returns true when the job kind indicates an external CLI runner.
+ */
+export function isCliJob(kind?: string): boolean {
+    return (kind ?? '').startsWith('agent_cli:');
+}
+
+/**
+ * Human-readable label for a runner id.
+ */
+export function runnerLabel(runnerId?: string): string {
+    switch (runnerId) {
+        case 'or3-intern':
+            return 'or3-intern';
+        case 'opencode':
+            return 'OpenCode';
+        case 'codex':
+            return 'Codex';
+        case 'claude':
+            return 'Claude';
+        case 'gemini':
+            return 'Gemini';
+        default:
+            return runnerId || 'External CLI';
+    }
+}
+
+/**
+ * Format a `kind` string like `agent_cli:codex` into a user-facing label
+ * such as "Codex task".
+ */
+export function formatAgentCliKind(kind?: string): string {
+    if (!kind) return 'Agent task';
+    if (!isCliJob(kind)) {
+        if (kind === 'subagent' || kind === 'agent') return 'Agent task';
+        return kind.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+    const runnerId = kind.slice('agent_cli:'.length);
+    const label = runnerLabel(runnerId);
+    return `${label} task`;
+}
+
+/**
+ * Convert a persisted external CLI job into a UI summary.
+ */
+export function persistedAgentCliJobToSummary(
+    job: PersistedAgentCliJob,
+): RecentJobSummary {
+    const status = normalizeStatus(job.status);
+    const kind = job.kind || `agent_cli:${job.runner_id}`;
+    const updatedAt =
+        job.updated_at ||
+        job.completed_at ||
+        job.started_at ||
+        job.requested_at ||
+        new Date().toISOString();
+    return {
+        job_id: job.job_id,
+        kind,
+        status,
+        title: job.task || formatAgentCliKind(kind),
+        task: job.task,
+        updated_at: updatedAt,
+        final_text: job.final_text_preview || job.stdout_preview,
+        error:
+            (status === 'failed' || status === 'aborted'
+                ? job.error || job.stderr_preview
+                : undefined),
+        parent_session_key: job.parent_session_key,
+        created_at: job.requested_at,
+        started_at: job.started_at,
+        finished_at: job.completed_at,
+        runner_id: job.runner_id,
+        runner_label: runnerLabel(job.runner_id),
+        mode: job.mode,
+        isolation: job.isolation,
+        model: job.model,
+        cwd: job.cwd,
+        stdout_preview: job.stdout_preview,
+        stderr_preview: job.stderr_preview,
+        source: 'persisted',
+    };
+}
+

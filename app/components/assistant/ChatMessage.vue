@@ -29,19 +29,37 @@
                         :pending="
                             message.status === 'streaming' && !message.content
                         "
-                        :tool-calls="message.toolCalls || []"
+                        :tool-calls="
+                            hasOrderedParts ? [] : message.toolCalls || []
+                        "
                     />
                     <AssistantToolCallList
-                        v-if="message.toolCalls?.length"
+                        v-if="!hasOrderedParts && message.toolCalls?.length"
                         :tool-calls="message.toolCalls"
                     />
-                    <AssistantActivityLog
-                        v-if="message.activityLog?.length"
-                        :items="message.activityLog"
-                    />
+                    <div v-if="hasOrderedParts" class="or3-msg__parts">
+                        <template v-for="part in orderedParts">
+                            <StreamingMarkdown
+                                v-if="part.type === 'text' && part.content"
+                                :key="part.id"
+                                :content="part.content"
+                                :repair-incomplete-markdown="
+                                    shouldRepairIncompleteMarkdown
+                                "
+                            />
+                            <AssistantInlineToolCall
+                                v-else-if="part.type === 'tool'"
+                                :key="part.id"
+                                :part="part"
+                            />
+                        </template>
+                    </div>
                     <StreamingMarkdown
-                        v-if="message.content"
+                        v-else-if="message.content"
                         :content="message.content"
+                        :repair-incomplete-markdown="
+                            shouldRepairIncompleteMarkdown
+                        "
                     />
                     <p
                         v-else-if="message.status === 'streaming'"
@@ -51,6 +69,10 @@
                         <span class="or3-msg__dot" />
                         <span class="or3-msg__dot" />
                     </p>
+                    <AssistantActivityLog
+                        v-if="message.activityLog?.length"
+                        :items="message.activityLog"
+                    />
                 </template>
                 <template v-else>
                     <p
@@ -61,25 +83,91 @@
                     </p>
                     <div
                         v-if="message.attachments?.length"
-                        class="mt-2 flex flex-wrap gap-1.5"
+                        class="or3-msg__attachments"
                     >
-                        <span
+                        <UPopover
                             v-for="attachment in message.attachments"
                             :key="attachment.id"
-                            class="inline-flex max-w-full items-center gap-1.5 rounded-full border border-(--or3-border) bg-white/65 px-2.5 py-1 text-[11px] text-(--or3-text)"
+                            class="inline-flex max-w-full min-w-0"
+                            :ui="{
+                                content:
+                                    'p-0 bg-white border border-(--or3-border) rounded-xl shadow-lg max-w-xs',
+                            }"
                         >
-                            <Icon
-                                :name="
-                                    attachment.kind === 'text'
-                                        ? 'i-pixelarticons-notebook'
-                                        : 'i-pixelarticons-paperclip'
-                                "
-                                class="size-3 shrink-0"
-                            />
-                            <span class="truncate">{{
-                                attachment.preview || attachment.name
-                            }}</span>
-                        </span>
+                            <span
+                                class="or3-msg__attachment"
+                                :title="attachmentTooltip(attachment)"
+                            >
+                                <span class="or3-msg__attachment-icon-wrap">
+                                    <Icon
+                                        :name="
+                                            attachment.kind === 'text'
+                                                ? 'i-pixelarticons-notebook'
+                                                : 'i-pixelarticons-paperclip'
+                                        "
+                                        class="size-3 shrink-0"
+                                    />
+                                </span>
+                                <span class="or3-msg__attachment-label">{{
+                                    attachment.name
+                                }}</span>
+                            </span>
+
+                            <template #content>
+                                <div class="p-3 space-y-2">
+                                    <div class="flex items-start gap-2.5">
+                                        <span
+                                            class="grid size-8 shrink-0 place-items-center rounded-lg bg-(--or3-green-soft) text-(--or3-green-dark)"
+                                        >
+                                            <Icon
+                                                :name="
+                                                    attachment.kind === 'text'
+                                                        ? 'i-pixelarticons-notebook'
+                                                        : 'i-pixelarticons-file'
+                                                "
+                                                class="size-4"
+                                            />
+                                        </span>
+                                        <div class="min-w-0 flex-1">
+                                            <p
+                                                class="text-sm font-semibold text-(--or3-text) truncate"
+                                            >
+                                                {{ attachment.name }}
+                                            </p>
+                                            <p
+                                                v-if="attachment.preview"
+                                                class="text-xs text-(--or3-text-muted) break-all"
+                                            >
+                                                {{ attachment.preview }}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div
+                                        v-if="attachment.mimeType"
+                                        class="text-xs text-(--or3-text-muted)"
+                                    >
+                                        <span class="font-medium">Type:</span>
+                                        {{ attachment.mimeType }}
+                                    </div>
+                                    <div
+                                        v-if="attachment.size"
+                                        class="text-xs text-(--or3-text-muted)"
+                                    >
+                                        <span class="font-medium">Size:</span>
+                                        {{ formatBytes(attachment.size) }}
+                                    </div>
+                                    <div
+                                        v-if="attachment.path"
+                                        class="text-xs text-(--or3-text-muted)"
+                                    >
+                                        <span class="font-medium">Path:</span>
+                                        <span class="break-all">{{
+                                            attachment.path
+                                        }}</span>
+                                    </div>
+                                </div>
+                            </template>
+                        </UPopover>
                     </div>
                 </template>
                 <p
@@ -146,6 +234,21 @@
                         <span>Retry</span>
                     </button>
                     <button
+                        v-if="canFork"
+                        type="button"
+                        class="or3-msg__action"
+                        :disabled="isStreaming || forkBusy"
+                        aria-label="Fork conversation from this message"
+                        title="Fork conversation from this message"
+                        @click="forkMessage"
+                    >
+                        <Icon
+                            name="i-pixelarticons-git-branch"
+                            class="size-4"
+                        />
+                        <span>{{ forkBusy ? 'Forking…' : 'Fork' }}</span>
+                    </button>
+                    <button
                         v-if="showApprovalActions"
                         type="button"
                         class="or3-msg__action or3-msg__action--deny"
@@ -164,10 +267,22 @@
                         :disabled="approvalBusy"
                         aria-label="Approve request"
                         title="Approve request"
-                        @click="approveApproval"
+                        @click="approveApproval(false)"
                     >
                         <Icon name="i-pixelarticons-check" class="size-4" />
-                        <span>Approve</span>
+                        <span>Approve once</span>
+                    </button>
+                    <button
+                        v-if="showApprovalActions"
+                        type="button"
+                        class="or3-msg__action or3-msg__action--remember"
+                        :disabled="approvalBusy"
+                        aria-label="Approve and remember request"
+                        title="Approve and remember matching future requests"
+                        @click="approveApproval(true)"
+                    >
+                        <Icon name="i-pixelarticons-bookmark" class="size-4" />
+                        <span>Approve &amp; remember</span>
                     </button>
                 </div>
             </div>
@@ -192,16 +307,38 @@ import { useToast } from '@nuxt/ui/composables';
 import { useApprovals } from '../../composables/useApprovals';
 import { useAssistantStream } from '../../composables/useAssistantStream';
 import { useChatSessions } from '../../composables/useChatSessions';
-import type { ChatMessage } from '../../types/app-state';
+import { useSessionHistory } from '../../composables/useSessionHistory';
+import type { ChatAttachment, ChatMessage } from '../../types/app-state';
+import {
+    approvalActionErrorMessage,
+    approvalStatusFromError,
+    canContinueApprovedRequest,
+    resolvedApprovalMessage,
+    resolvedApprovalState,
+} from '../../utils/assistantApproval';
+import { shouldRepairIncompleteMarkdownForStatus } from '../../utils/streamingMarkdown';
 
 const props = defineProps<{ message: ChatMessage }>();
 const toast = useToast();
-const { messages, toggleMessagePin, updateMessage } = useChatSessions();
+const {
+    activeSession,
+    markApprovalResolved,
+    messages,
+    toggleMessagePin,
+    updateMessage,
+} = useChatSessions();
 const { isStreaming, send } = useAssistantStream();
-const { approve, deny, consumeIssuedApprovalToken } = useApprovals();
+const sessionHistory = useSessionHistory();
+const { approve, deny, fetchApproval, consumeIssuedApprovalToken } =
+    useApprovals();
 const copied = ref(false);
 const approvalBusy = ref(false);
+const forkBusy = ref(false);
 let copiedTimer: ReturnType<typeof setTimeout> | null = null;
+
+const shouldRepairIncompleteMarkdown = computed(() =>
+    shouldRepairIncompleteMarkdownForStatus(props.message.status),
+);
 
 function currentMessage(): ChatMessage {
     return (
@@ -212,11 +349,24 @@ function currentMessage(): ChatMessage {
 
 const copyText = computed(() => props.message.content.trim());
 const canCopy = computed(() => Boolean(copyText.value));
+const orderedParts = computed(() =>
+    (props.message.parts ?? []).filter((part) => {
+        if (part.type === 'text') return Boolean(part.content?.trim());
+        return Boolean(part.name || part.toolCallId);
+    }),
+);
+const hasOrderedParts = computed(() => orderedParts.value.length > 0);
 const canRetry = computed(
     () =>
         props.message.role === 'assistant' &&
         props.message.status === 'failed' &&
         !!props.message.retryPayload,
+);
+const canFork = computed(
+    () =>
+        props.message.status === 'complete' &&
+        typeof props.message.backendMessageId === 'number' &&
+        !props.message.approvalRequestId,
 );
 const showApprovalActions = computed(
     () =>
@@ -355,9 +505,59 @@ async function retryMessage() {
     await send(props.message.retryPayload);
 }
 
-async function retryApprovedRequest(explicitToken?: string) {
+async function forkMessage() {
+    if (!props.message.backendMessageId || forkBusy.value || isStreaming.value)
+        return;
+    forkBusy.value = true;
+    try {
+        const current = currentMessage();
+        await sessionHistory.forkSession({
+            sourceSessionKey:
+                current.sourceSessionKey ||
+                props.message.sourceSessionKey ||
+                activeSession.value?.sessionKey ||
+                '',
+            anchorMessageId: props.message.backendMessageId,
+            targetRunnerId: props.message.runnerId,
+            title: 'Forked conversation',
+        });
+        toast.add({
+            title: 'Conversation forked',
+            description: 'Opened a new conversation from this message.',
+            color: 'success',
+            icon: 'i-pixelarticons-git-branch',
+        });
+    } catch (error) {
+        toast.add({
+            title: 'Fork failed',
+            description:
+                error && typeof error === 'object' && 'message' in error
+                    ? String(
+                          (error as { message?: unknown }).message ||
+                              'Could not fork this message.',
+                      )
+                    : 'Could not fork this message.',
+            color: 'error',
+            icon: 'i-pixelarticons-warning-box',
+        });
+    } finally {
+        forkBusy.value = false;
+    }
+}
+
+async function retryApprovedRequest(
+    explicitToken?: string,
+    options: { allowWhileApprovalBusy?: boolean } = {},
+) {
     const message = currentMessage();
-    if (!message.retryPayload || isStreaming.value || approvalBusy.value) {
+    if (
+        !message.retryPayload ||
+        !canContinueApprovedRequest({
+            isStreaming: isStreaming.value,
+            approvalBusy: approvalBusy.value,
+            allowWhileApprovalBusy: options.allowWhileApprovalBusy,
+        })
+    ) {
         return false;
     }
     const requestId = message.approvalRequestId;
@@ -385,55 +585,153 @@ async function retryApprovedRequest(explicitToken?: string) {
     const retryFailed =
         latest.approvalState === 'failed' || latest.status === 'failed';
     if (!waitingAgain && !retryFailed) {
-        updateMessage(message.id, {
-            approvalState: 'approved',
-            error: undefined,
-        });
+        markApprovalResolved(
+            requestId,
+            'approved',
+            message.sourceSessionKey || activeSession.value?.sessionKey,
+        );
+    }
+    return true;
+}
+
+async function followApprovedResumeJob(
+    jobId: string,
+    options: { allowWhileApprovalBusy?: boolean } = {},
+) {
+    const message = currentMessage();
+    const requestId = message.approvalRequestId;
+    if (
+        !canContinueApprovedRequest({
+            isStreaming: isStreaming.value,
+            approvalBusy: approvalBusy.value,
+            allowWhileApprovalBusy: options.allowWhileApprovalBusy,
+        })
+    ) {
+        return false;
+    }
+    const retryPayload = {
+        ...(message.retryPayload ?? { text: '', transportText: '' }),
+        followJobId: jobId,
+        continueMessageId: message.id,
+        suppressUserEcho: true,
+    };
+    updateMessage(message.id, {
+        approvalState: 'retrying',
+        status: 'attention',
+        retryPayload: message.retryPayload,
+        error: undefined,
+    });
+
+    await send(retryPayload);
+
+    const latest = currentMessage();
+    const waitingAgain =
+        latest.approvalState === 'pending' && !!latest.approvalRequestId;
+    const retryFailed =
+        latest.approvalState === 'failed' || latest.status === 'failed';
+    if (!waitingAgain && !retryFailed) {
+        markApprovalResolved(
+            requestId,
+            'approved',
+            message.sourceSessionKey || activeSession.value?.sessionKey,
+        );
     }
     return true;
 }
 
 function approvalErrorMessage(error: unknown) {
-    return error instanceof Error && error.message
-        ? error.message
-        : 'Could not approve or retry this request.';
+    return approvalActionErrorMessage(error);
 }
 
-async function approveApproval() {
+function approvalGrantedMessage(remember: boolean, continues: boolean) {
+    if (remember) {
+        return continues
+            ? 'The request was approved and remembered. OR3 is continuing now.'
+            : 'The request was approved and matching future requests were saved.';
+    }
+    return continues
+        ? 'The request was approved. OR3 is continuing now.'
+        : 'The request was approved.';
+}
+
+async function resolveStaleApprovalAction(error: unknown) {
+    const message = currentMessage();
+    const requestId = message.approvalRequestId;
+    let status = approvalStatusFromError(error);
+    if (!resolvedApprovalState(status) && requestId) {
+        try {
+            const approval = await fetchApproval(requestId);
+            status = approval.status;
+        } catch {
+            // Keep the original error path if the status cannot be refreshed.
+        }
+    }
+    const state = resolvedApprovalState(status);
+    if (!state) return false;
+
+    const description = resolvedApprovalMessage(status);
+    markApprovalResolved(
+        requestId,
+        state,
+        message.sourceSessionKey || activeSession.value?.sessionKey,
+        description,
+    );
+    toast.add({
+        title: 'Approval already handled',
+        description,
+        color: state === 'approved' ? 'success' : 'neutral',
+        icon:
+            state === 'approved'
+                ? 'i-pixelarticons-check'
+                : 'i-pixelarticons-info-box',
+    });
+    return true;
+}
+
+async function approveApproval(remember = false) {
     const message = currentMessage();
     if (!message.approvalRequestId || approvalBusy.value) return;
     approvalBusy.value = true;
     let retryAttempted = false;
+    let approvalGranted = false;
     try {
-        const approval = await approve(message.approvalRequestId);
+        const approval = await approve(
+            message.approvalRequestId,
+            remember,
+            remember
+                ? 'approved and remembered from chat'
+                : 'approved from chat',
+        );
+        approvalGranted = true;
         const approvalToken =
             consumeIssuedApprovalToken(message.approvalRequestId) ??
             approval.token;
-        retryAttempted = Boolean(approvalToken);
-        const retried = approvalToken
-            ? await retryApprovedRequest(approvalToken)
-            : false;
-        if (!retried) {
-            updateMessage(message.id, {
-                approvalState: 'approved',
-                status: 'complete',
-                error: undefined,
-            });
-        }
-        const latest = currentMessage();
-        const waitingAgain =
-            latest.approvalState === 'pending' && !!latest.approvalRequestId;
+        retryAttempted = Boolean(approval.resume_job_id || approvalToken);
         toast.add({
             title: 'Approval granted',
-            description: waitingAgain
-                ? 'The request was approved. Another approval is needed to continue.'
-                : retried
-                  ? 'The request was approved and retried.'
-                  : 'The request was approved.',
+            description: approvalGrantedMessage(remember, retryAttempted),
             color: 'success',
             icon: 'i-pixelarticons-check',
         });
+        const retried = approval.resume_job_id
+            ? await followApprovedResumeJob(approval.resume_job_id, {
+                  allowWhileApprovalBusy: true,
+              })
+            : approvalToken
+              ? await retryApprovedRequest(approvalToken, {
+                    allowWhileApprovalBusy: true,
+                })
+              : false;
+        if (!retried) {
+            markApprovalResolved(
+                message.approvalRequestId,
+                'approved',
+                message.sourceSessionKey || activeSession.value?.sessionKey,
+            );
+        }
     } catch (error) {
+        if (!approvalGranted && (await resolveStaleApprovalAction(error)))
+            return;
         const message = approvalErrorMessage(error);
         updateMessage(currentMessage().id, {
             approvalState: retryAttempted ? 'failed' : 'pending',
@@ -441,7 +739,9 @@ async function approveApproval() {
             error: message,
         });
         toast.add({
-            title: 'Approval failed',
+            title: approvalGranted
+                ? 'Approval retry failed'
+                : 'Approval failed',
             description: message,
             color: 'error',
             icon: 'i-pixelarticons-warning-box',
@@ -485,11 +785,11 @@ async function denyApproval() {
     approvalBusy.value = true;
     try {
         await deny(props.message.approvalRequestId);
-        updateMessage(props.message.id, {
-            approvalState: 'denied',
-            status: 'complete',
-            error: undefined,
-        });
+        markApprovalResolved(
+            props.message.approvalRequestId,
+            'denied',
+            props.message.sourceSessionKey || activeSession.value?.sessionKey,
+        );
         toast.add({
             title: 'Approval denied',
             description: 'The request was denied.',
@@ -497,6 +797,7 @@ async function denyApproval() {
             icon: 'i-pixelarticons-close-box',
         });
     } catch (error) {
+        if (await resolveStaleApprovalAction(error)) return;
         const message =
             error instanceof Error && error.message
                 ? error.message
@@ -515,6 +816,28 @@ async function denyApproval() {
     } finally {
         approvalBusy.value = false;
     }
+}
+
+function formatBytes(size?: number): string {
+    if (!size) return '';
+    if (size < 1024) return `${size} B`;
+    const units = ['KB', 'MB', 'GB', 'TB'];
+    let value = size / 1024;
+    let unitIndex = 0;
+    while (value >= 1024 && unitIndex < units.length - 1) {
+        value /= 1024;
+        unitIndex += 1;
+    }
+    const precision = value >= 10 ? 0 : 1;
+    return `${value.toFixed(precision)} ${units[unitIndex]}`;
+}
+
+function attachmentTooltip(attachment: ChatAttachment): string {
+    const parts = [attachment.name];
+    if (attachment.preview && attachment.preview !== attachment.name) {
+        parts.push(attachment.preview);
+    }
+    return parts.join(' — ');
 }
 </script>
 
@@ -597,6 +920,97 @@ async function denyApproval() {
     margin-right: -0.35rem;
 }
 
+.or3-msg__parts {
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+}
+
+.or3-msg__attachments {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    max-width: 100%;
+    min-width: 0;
+    margin-top: 0.5rem;
+    overflow: hidden;
+}
+
+.or3-msg__attachment {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    border-radius: 0.75rem;
+    border: 1px solid color-mix(in srgb, var(--or3-border) 70%, transparent);
+    background: color-mix(in srgb, var(--or3-surface) 85%, white 15%);
+    padding: 0.35rem 0.6rem;
+    color: var(--or3-text);
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--or3-border) 20%, transparent);
+    transition:
+        box-shadow 0.15s ease,
+        border-color 0.15s ease;
+    cursor: pointer;
+}
+
+.or3-msg__attachment:hover {
+    border-color: color-mix(
+        in srgb,
+        var(--or3-green) 30%,
+        var(--or3-border) 70%
+    );
+    box-shadow: 0 2px 6px color-mix(in srgb, var(--or3-border) 25%, transparent);
+}
+
+.or3-msg__attachment-icon-wrap {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.4rem;
+    height: 1.4rem;
+    border-radius: 0.45rem;
+    background: color-mix(in srgb, var(--or3-green-soft) 80%, white 20%);
+    color: var(--or3-green-dark);
+    flex-shrink: 0;
+}
+
+.or3-msg__attachment-icon-wrap :deep(svg),
+.or3-msg__attachment-icon-wrap :deep(.iconify) {
+    width: 0.75rem;
+    height: 0.75rem;
+}
+
+.or3-msg__attachment-label {
+    min-width: 0;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--or3-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 1.3;
+}
+
+.or3-msg--user .or3-msg__attachment {
+    max-width: min(100%, 20rem);
+    background: color-mix(in srgb, white 92%, var(--or3-green-soft) 8%);
+    border-color: color-mix(
+        in srgb,
+        var(--or3-green) 18%,
+        var(--or3-border) 82%
+    );
+}
+
+.or3-msg--user .or3-msg__attachment:hover {
+    border-color: color-mix(
+        in srgb,
+        var(--or3-green) 35%,
+        var(--or3-border) 65%
+    );
+}
+
 .or3-msg__notice {
     display: inline-flex;
     align-items: flex-start;
@@ -663,6 +1077,18 @@ async function denyApproval() {
 .or3-msg__action--approve:hover:not(:disabled),
 .or3-msg__action--approve:focus-visible {
     background: color-mix(in srgb, var(--or3-green-soft) 80%, transparent);
+    opacity: 1;
+}
+
+.or3-msg__action--remember {
+    color: var(--or3-green-dark);
+    border-color: color-mix(in srgb, var(--or3-green) 22%, transparent);
+    opacity: 0.85;
+}
+
+.or3-msg__action--remember:hover:not(:disabled),
+.or3-msg__action--remember:focus-visible {
+    background: color-mix(in srgb, var(--or3-green-soft) 85%, transparent);
     opacity: 1;
 }
 

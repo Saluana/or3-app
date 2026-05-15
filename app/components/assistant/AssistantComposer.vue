@@ -12,7 +12,10 @@
             Drop files to attach them
         </div>
 
-        <div v-if="displayedAttachments.length" class="or3-composer__attachments">
+        <div
+            v-if="displayedAttachments.length"
+            class="or3-composer__attachments"
+        >
             <button
                 v-for="attachment in displayedAttachments"
                 :key="attachment.id"
@@ -28,11 +31,20 @@
                 />
                 <Icon
                     v-else
-                    :name="attachment.kind === 'text' ? 'i-pixelarticons-notebook' : attachment.source === 'workspace' ? 'i-pixelarticons-file' : 'i-pixelarticons-paperclip'"
+                    :name="
+                        attachment.kind === 'text'
+                            ? 'i-pixelarticons-notebook'
+                            : attachment.source === 'workspace'
+                              ? 'i-pixelarticons-file'
+                              : 'i-pixelarticons-paperclip'
+                    "
                     class="size-4 shrink-0 text-(--or3-green-dark)"
                 />
                 <span class="min-w-0 flex-1 text-left">
-                    <span class="block truncate font-medium text-(--or3-text)">{{ attachment.name }}</span>
+                    <span
+                        class="block truncate font-medium text-(--or3-text)"
+                        >{{ attachment.name }}</span
+                    >
                     <span
                         v-if="attachment.preview"
                         class="block truncate text-[0.75rem] text-(--or3-text-muted)"
@@ -48,15 +60,104 @@
         </div>
 
         <div class="or3-composer__row">
-            <UButton
-                icon="i-pixelarticons-paperclip"
-                color="neutral"
-                variant="ghost"
-                class="or3-composer__icon or3-touch-target"
-                aria-label="Attach file"
-                type="button"
-                @click="fileInput?.click()"
-            />
+            <UPopover
+                v-model:open="actionMenuOpen"
+                :content="{ align: 'start', side: 'top', sideOffset: 12 }"
+            >
+                <button
+                    type="button"
+                    class="or3-composer__icon or3-composer__plus or3-touch-target"
+                    aria-label="Open composer actions"
+                    :aria-expanded="actionMenuOpen"
+                >
+                    <Icon name="i-pixelarticons-plus" class="size-5" />
+                </button>
+                <template #content>
+                    <div class="or3-composer-menu">
+                        <button
+                            type="button"
+                            class="or3-composer-menu__item"
+                            @click="triggerFilePicker"
+                        >
+                            <Icon
+                                name="i-pixelarticons-paperclip"
+                                class="size-5"
+                            />
+                            <span>Add photos & files</span>
+                        </button>
+                        <button
+                            type="button"
+                            class="or3-composer-menu__item"
+                            @click="openWorkspaceFilePicker"
+                        >
+                            <Icon name="i-pixelarticons-file" class="size-5" />
+                            <span>Mention workspace file</span>
+                        </button>
+
+                        <div class="or3-composer-menu__divider" />
+                        <p class="or3-composer-menu__eyebrow">Runner</p>
+                        <div class="or3-composer-menu__modes" role="radiogroup" aria-label="Chat runner">
+                            <button
+                                v-for="runner in runnerOptions"
+                                :key="runner.id"
+                                type="button"
+                                class="or3-composer-menu__mode"
+                                :class="{
+                                    'is-active': selectedRunnerId === runner.id,
+                                    'is-disabled': !runner.selectable,
+                                }"
+                                :aria-checked="selectedRunnerId === runner.id"
+                                :disabled="!runner.selectable"
+                                role="radio"
+                                @click="selectRunner(runner.id)"
+                            >
+                                <Icon :name="runner.icon" class="size-4" />
+                                <span class="or3-composer-menu__mode-copy">
+                                    <span>{{ runner.label }}</span>
+                                    <small>{{ runner.description }}</small>
+                                </span>
+                                <Icon
+                                    v-if="selectedRunnerId === runner.id"
+                                    name="i-pixelarticons-check"
+                                    class="ml-auto size-4"
+                                />
+                            </button>
+                        </div>
+
+                        <div class="or3-composer-menu__divider" />
+                        <p class="or3-composer-menu__eyebrow">Mode</p>
+                        <div
+                            class="or3-composer-menu__modes"
+                            role="radiogroup"
+                            aria-label="Tool mode"
+                        >
+                            <button
+                                v-for="option in modeOptions"
+                                :key="option.id"
+                                type="button"
+                                class="or3-composer-menu__mode"
+                                :class="{
+                                    'is-active': selectedMode === option.id,
+                                }"
+                                :aria-checked="selectedMode === option.id"
+                                role="radio"
+                                @click="selectMode(option.id)"
+                            >
+                                <Icon :name="option.icon" class="size-4" />
+                                <span class="or3-composer-menu__mode-copy">
+                                    <span>{{ option.label }}</span>
+                                    <small>{{ option.description }}</small>
+                                </span>
+                                <Icon
+                                    v-if="selectedMode === option.id"
+                                    name="i-pixelarticons-check"
+                                    class="ml-auto size-4"
+                                />
+                            </button>
+                        </div>
+                    </div>
+                </template>
+            </UPopover>
             <input
                 ref="fileInput"
                 type="file"
@@ -114,6 +215,11 @@
             />
         </div>
     </UForm>
+    <CwdPickerSheet
+        v-model:open="workspaceFilePickerOpen"
+        purpose="file"
+        @select-file="addWorkspacePickedFile"
+    />
 </template>
 
 <script setup lang="ts">
@@ -145,32 +251,43 @@ import {
     useFileMentionSuggestions,
     type FileMentionSuggestionItem,
 } from '../../composables/useFileMentionSuggestions';
+import { useComputerFiles } from '../../composables/useComputerFiles';
 import type {
     AssistantSendPayload,
     ChatAttachment,
 } from '../../types/app-state';
+import type { ChatRunnerInfo } from '../../types/or3-api';
 
 const props = withDefaults(
     defineProps<{
         modelValue?: string;
         streaming?: boolean;
         paneId?: string;
+        mode?: 'ask' | 'work' | 'admin';
+        selectedRunnerId?: string;
+        runners?: ChatRunnerInfo[];
     }>(),
     {
         modelValue: '',
         streaming: false,
         paneId: 'main',
+        mode: 'work',
+        selectedRunnerId: 'or3-intern',
+        runners: () => [],
     },
 );
 
 const emit = defineEmits<{
     'update:modelValue': [value: string];
+    'update:mode': [value: 'ask' | 'work' | 'admin'];
+    'update:selectedRunnerId': [value: string];
     send: [value: AssistantSendPayload];
     stop: [];
 }>();
 
 interface DraftAttachment extends ChatAttachment {
     content?: string;
+    file?: File;
     thumbnailUrl?: string;
     objectUrl?: string;
 }
@@ -191,6 +308,8 @@ const fileInput = ref<HTMLInputElement | null>(null);
 const editor = shallowRef<Editor>();
 const isDragging = ref(false);
 const isFocused = ref(false);
+const actionMenuOpen = ref(false);
+const workspaceFilePickerOpen = ref(false);
 const dragDepth = ref(0);
 const enterCreatesNewLine = ref(false);
 const formState = reactive({
@@ -198,6 +317,7 @@ const formState = reactive({
 });
 const manualAttachments = ref<DraftAttachment[]>([]);
 const workspaceMentionAttachments = ref<DraftAttachment[]>([]);
+const workspacePickedAttachments = ref<DraftAttachment[]>([]);
 const mentionMenu = reactive<{
     open: boolean;
     selectedIndex: number;
@@ -218,8 +338,11 @@ const slashMenu = reactive<{
 });
 
 let viewportChangeCleanup: (() => void) | null = null;
-let selectMentionFromSuggestion: ((item: FileMentionSuggestionItem) => void) | null = null;
-let selectSlashFromSuggestion: ((item: ChatCommandDefinition) => void) | null = null;
+let selectMentionFromSuggestion:
+    | ((item: FileMentionSuggestionItem) => void)
+    | null = null;
+let selectSlashFromSuggestion: ((item: ChatCommandDefinition) => void) | null =
+    null;
 
 const {
     loading: mentionLoading,
@@ -228,11 +351,97 @@ const {
     reset: resetMentionSearch,
 } = useFileMentionSuggestions();
 const { filterCommands, findCommand, runCommand } = useChatCommands();
+const { fetchRoots, ensureDirectoryPath, uploadFilesToPath } = useComputerFiles();
+const toast = useToast();
 
 const displayedAttachments = computed(() => [
     ...workspaceMentionAttachments.value,
+    ...workspacePickedAttachments.value,
     ...manualAttachments.value,
 ]);
+
+const modeOptions = [
+    {
+        id: 'ask' as const,
+        label: 'Ask',
+        icon: 'i-pixelarticons-message',
+        description: 'Answer, read, and look things up.',
+    },
+    {
+        id: 'work' as const,
+        label: 'Work',
+        icon: 'i-pixelarticons-edit-box',
+        description: 'Use normal guarded work tools.',
+    },
+    {
+        id: 'admin' as const,
+        label: 'Admin',
+        icon: 'i-pixelarticons-shield',
+        description: 'Expose powerful tools when allowed.',
+    },
+];
+
+const selectedMode = computed(() => props.mode ?? 'work');
+const selectedRunnerId = computed(() => props.selectedRunnerId || 'or3-intern');
+
+const runnerOptions = computed(() => {
+    const runners = props.runners.length
+        ? props.runners
+        : [
+              {
+                  id: 'or3-intern',
+                  display_name: 'OR3 Intern',
+                  status: 'available',
+                  auth_status: 'ready',
+                  supports: {
+                      structuredOutput: false,
+                      streamingJson: false,
+                      modelFlag: true,
+                      permissionsMode: false,
+                      safeSandboxFlag: false,
+                      dangerousBypassFlag: false,
+                      stdinPrompt: false,
+                      chat: { chatSelectable: true, chatReplay: true },
+                  },
+                  chat_capabilities: { chatSelectable: true, chatReplay: true },
+              } satisfies ChatRunnerInfo,
+          ];
+    return runners.map((runner) => {
+        const caps = runner.chat_capabilities || runner.supports.chat;
+        const selectable =
+            runner.id === 'or3-intern' ||
+            (runner.status === 'available' &&
+                (!runner.auth_status ||
+                    runner.auth_status === 'ready' ||
+                    runner.auth_status === 'unknown') &&
+                caps?.chatSelectable !== false &&
+                caps?.chatReplay !== false);
+        const reason =
+            runner.status === 'missing'
+                ? 'Binary missing'
+                : runner.status === 'disabled_by_config'
+                  ? 'Disabled in config'
+                  : runner.auth_status === 'missing'
+                    ? 'Auth required'
+                    : !selectable
+                      ? runner.disabled_reason || 'Unavailable'
+                      : runner.id === 'or3-intern'
+                        ? 'Default OR3 tools and approvals.'
+                        : caps?.chatNativeSession
+                          ? 'Replay and native session capable.'
+                          : 'Replay-mode external runner.';
+        return {
+            id: runner.id,
+            label: runner.display_name || runner.id,
+            description: reason,
+            selectable,
+            icon:
+                runner.id === 'or3-intern'
+                    ? 'i-pixelarticons-robot'
+                    : 'i-pixelarticons-terminal',
+        };
+    });
+});
 
 const canSend = computed(
     () => !!formState.text.trim() || displayedAttachments.value.length > 0,
@@ -281,6 +490,24 @@ function focusEditor() {
     editor.value?.commands.focus('end');
 }
 
+function triggerFilePicker() {
+    actionMenuOpen.value = false;
+    fileInput.value?.click();
+}
+
+function openWorkspaceFilePicker() {
+    actionMenuOpen.value = false;
+    workspaceFilePickerOpen.value = true;
+}
+
+function selectMode(mode: 'ask' | 'work' | 'admin') {
+    emit('update:mode', mode);
+}
+
+function selectRunner(runnerId: string) {
+    emit('update:selectedRunnerId', runnerId);
+}
+
 function revokeAttachmentPreview(attachment: DraftAttachment) {
     if (attachment.objectUrl) URL.revokeObjectURL(attachment.objectUrl);
 }
@@ -290,6 +517,10 @@ function clearManualAttachments() {
         revokeAttachmentPreview(attachment);
     }
     manualAttachments.value = [];
+}
+
+function clearWorkspacePickedAttachments() {
+    workspacePickedAttachments.value = [];
 }
 
 function closeMentionMenu() {
@@ -322,17 +553,25 @@ function syncWorkspaceMentionAttachments(instance?: Editor) {
     instance.state.doc.descendants((node) => {
         if (node.type.name !== 'fileMention') return;
         const id = String(
-            node.attrs.id || `${node.attrs.rootId || 'workspace'}:${node.attrs.path || node.attrs.name || 'file'}`,
+            node.attrs.id ||
+                `${node.attrs.rootId || 'workspace'}:${node.attrs.path || node.attrs.name || 'file'}`,
         );
         if (nextAttachments.has(id)) return;
         nextAttachments.set(id, {
             id,
             kind: 'file',
             source: 'workspace',
-            name: node.attrs.name || node.attrs.label || node.attrs.path || 'Workspace file',
+            name:
+                node.attrs.name ||
+                node.attrs.label ||
+                node.attrs.path ||
+                'Workspace file',
             preview: node.attrs.path || undefined,
             mimeType: node.attrs.mimeType || undefined,
-            size: typeof node.attrs.size === 'number' ? node.attrs.size : undefined,
+            size:
+                typeof node.attrs.size === 'number'
+                    ? node.attrs.size
+                    : undefined,
             path: node.attrs.path || undefined,
             rootId: node.attrs.rootId || undefined,
         });
@@ -348,7 +587,8 @@ function removeWorkspaceMention(id: string) {
     instance.state.doc.descendants((node, pos) => {
         if (node.type.name !== 'fileMention') return;
         const nodeId = String(
-            node.attrs.id || `${node.attrs.rootId || 'workspace'}:${node.attrs.path || node.attrs.name || 'file'}`,
+            node.attrs.id ||
+                `${node.attrs.rootId || 'workspace'}:${node.attrs.path || node.attrs.name || 'file'}`,
         );
         if (nodeId !== id) return;
 
@@ -360,7 +600,10 @@ function removeWorkspaceMention(id: string) {
         );
         ranges.push({
             from: pos,
-            to: trailing === ' ' ? pos + node.nodeSize + 1 : pos + node.nodeSize,
+            to:
+                trailing === ' '
+                    ? pos + node.nodeSize + 1
+                    : pos + node.nodeSize,
         });
     });
 
@@ -383,6 +626,16 @@ function removeAttachment(id: string) {
         return;
     }
 
+    if (
+        workspacePickedAttachments.value.some(
+            (attachment) => attachment.id === id,
+        )
+    ) {
+        workspacePickedAttachments.value =
+            workspacePickedAttachments.value.filter((item) => item.id !== id);
+        return;
+    }
+
     const attachment = manualAttachments.value.find((item) => item.id === id);
     if (attachment) revokeAttachmentPreview(attachment);
     manualAttachments.value = manualAttachments.value.filter(
@@ -391,12 +644,45 @@ function removeAttachment(id: string) {
 }
 
 function buildTransportText() {
+    return buildTransportTextForAttachments();
+}
+
+function localFileAttachments() {
+    return manualAttachments.value.filter(
+        (attachment) =>
+            attachment.kind === 'file' && attachment.source !== 'workspace',
+    );
+}
+
+function localTextAttachments() {
+    return manualAttachments.value.filter(
+        (attachment) => attachment.kind === 'text',
+    );
+}
+
+function workspaceFileAttachments(extraFiles: DraftAttachment[] = []) {
+    return [
+        ...workspaceMentionAttachments.value,
+        ...workspacePickedAttachments.value,
+        ...extraFiles,
+    ];
+}
+
+function payloadAttachments(extraWorkspaceFiles: DraftAttachment[] = []) {
+    return [
+        ...workspaceFileAttachments(extraWorkspaceFiles),
+        ...localTextAttachments(),
+        ...(extraWorkspaceFiles.length ? [] : localFileAttachments()),
+    ];
+}
+
+function buildTransportTextForAttachments(extraWorkspaceFiles: DraftAttachment[] = []) {
     const sections: string[] = [];
     const promptText = formState.text.trim();
     if (promptText) sections.push(promptText);
 
-    const textAttachments = manualAttachments.value.filter(
-        (attachment) => attachment.kind === 'text' && attachment.content,
+    const textAttachments = localTextAttachments().filter(
+        (attachment) => attachment.content,
     );
     if (textAttachments.length) {
         sections.push(
@@ -410,11 +696,12 @@ function buildTransportText() {
         );
     }
 
-    if (workspaceMentionAttachments.value.length) {
+    const workspaceAttachments = workspaceFileAttachments(extraWorkspaceFiles);
+    if (workspaceAttachments.length) {
         sections.push(
             [
                 'Workspace files mentioned by the user:',
-                ...workspaceMentionAttachments.value.map(
+                ...workspaceAttachments.map(
                     (attachment) =>
                         `- ${attachment.rootId || 'workspace'}:${attachment.path || attachment.name}`,
                 ),
@@ -422,9 +709,7 @@ function buildTransportText() {
         );
     }
 
-    const localFiles = manualAttachments.value.filter(
-        (attachment) => attachment.kind === 'file' && attachment.source !== 'workspace',
-    );
+    const localFiles = extraWorkspaceFiles.length ? [] : localFileAttachments();
     if (localFiles.length) {
         sections.push(
             `Local files selected in or3-app (names only, contents not uploaded): ${localFiles.map((attachment) => attachment.name).join(', ')}`,
@@ -441,6 +726,77 @@ function visiblePayloadText() {
         return `Shared ${displayedAttachments.value[0]?.name || 'an attachment'} for context.`;
     }
     return `Shared ${displayedAttachments.value.length} attachments for context.`;
+}
+
+function createUploadBatchPath() {
+    const stamp = new Date()
+        .toISOString()
+        .replace(/[:.]/g, '-')
+        .replace('T', '_')
+        .replace('Z', '');
+    const suffix = Math.random().toString(36).slice(2, 8);
+    return `.uploads/${stamp}-${suffix}`;
+}
+
+function toPayloadAttachment(attachment: DraftAttachment): ChatAttachment {
+    const {
+        content: _content,
+        file: _file,
+        thumbnailUrl: _thumbnailUrl,
+        objectUrl: _objectUrl,
+        ...rest
+    } = attachment;
+    return rest;
+}
+
+async function stageLocalFilesForExternalRunner() {
+    const attachments = localFileAttachments().filter(
+        (attachment): attachment is DraftAttachment & { file: File } =>
+            attachment.file instanceof File,
+    );
+    if (!attachments.length || selectedRunnerId.value === 'or3-intern') {
+        return [] as DraftAttachment[];
+    }
+
+    const rootResponse = await fetchRoots();
+    const roots = Array.isArray(rootResponse)
+        ? rootResponse
+        : (rootResponse.items ?? []);
+    const workspaceRoot = roots.find((root) => root.id === 'workspace');
+    if (!workspaceRoot) {
+        throw new Error(
+            'This computer does not expose a writable workspace root for staging runner attachments.',
+        );
+    }
+    if (workspaceRoot.writable === false) {
+        throw new Error(
+            'The workspace root is read-only, so external runners cannot access uploaded attachments.',
+        );
+    }
+
+    const batchPath = createUploadBatchPath();
+    await ensureDirectoryPath(batchPath, workspaceRoot.id);
+    const uploads = await uploadFilesToPath(
+        attachments.map((attachment) => attachment.file),
+        workspaceRoot.id,
+        batchPath,
+    );
+
+    return attachments.map((attachment, index) => {
+        const uploaded = uploads[index];
+        const uploadedPath = uploaded?.path || `${batchPath}/${attachment.name}`;
+        return {
+            id: `${workspaceRoot.id}:${uploadedPath}`,
+            kind: 'file' as const,
+            source: 'workspace' as const,
+            name: attachment.name,
+            preview: uploadedPath,
+            mimeType: attachment.mimeType,
+            size: attachment.size,
+            path: uploadedPath,
+            rootId: workspaceRoot.id,
+        };
+    });
 }
 
 async function maybeRunSlashCommandFromInput() {
@@ -460,21 +816,38 @@ async function submit() {
     if (await maybeRunSlashCommandFromInput()) return;
     if (!canSend.value) return;
 
+    let stagedWorkspaceAttachments: DraftAttachment[] = [];
+    try {
+        stagedWorkspaceAttachments = await stageLocalFilesForExternalRunner();
+    } catch (error: any) {
+        toast.add({
+            title: 'Could not stage attachments',
+            description:
+                error?.message ||
+                'OR3 could not upload those files into the workspace for the external runner.',
+            color: 'error',
+            icon: 'i-pixelarticons-warning-box',
+        });
+        return;
+    }
+
+    const attachments = payloadAttachments(stagedWorkspaceAttachments);
+
     const payload: AssistantSendPayload = {
         text: visiblePayloadText(),
-        transportText: buildTransportText(),
-        attachments: displayedAttachments.value.map(
-            ({
-                content: _content,
-                thumbnailUrl: _thumbnailUrl,
-                objectUrl: _objectUrl,
-                ...attachment
-            }) => attachment,
+        transportText: buildTransportTextForAttachments(
+            stagedWorkspaceAttachments,
         ),
+        attachments: attachments.map(toPayloadAttachment),
+        runnerId: selectedRunnerId.value,
+        runnerLabel: runnerOptions.value.find(
+            (runner) => runner.id === selectedRunnerId.value,
+        )?.label,
     };
 
     emit('send', payload);
     clearManualAttachments();
+    clearWorkspacePickedAttachments();
     updateEditorText('');
 }
 
@@ -486,6 +859,7 @@ function addFiles(files: File[]) {
             id: attachmentId(),
             kind: 'file',
             name: file.name,
+            file,
             thumbnailUrl: objectUrl,
             objectUrl,
             preview: file.type
@@ -496,6 +870,40 @@ function addFiles(files: File[]) {
             source: 'local',
         });
     }
+}
+
+function addWorkspacePickedFile(file: {
+    rootId: string;
+    rootLabel?: string;
+    path: string;
+    name: string;
+    size?: number;
+    mimeType?: string;
+}) {
+    const id = `${file.rootId}:${file.path}`;
+    if (
+        workspacePickedAttachments.value.some(
+            (attachment) => attachment.id === id,
+        ) ||
+        workspaceMentionAttachments.value.some(
+            (attachment) => attachment.id === id,
+        )
+    ) {
+        return;
+    }
+    workspacePickedAttachments.value.push({
+        id,
+        kind: 'file',
+        source: 'workspace',
+        name: file.name || file.path,
+        preview: file.rootLabel
+            ? `${file.rootLabel} - ${file.path}`
+            : file.path,
+        path: file.path,
+        rootId: file.rootId,
+        mimeType: file.mimeType,
+        size: file.size,
+    });
 }
 
 function addPastedText(text: string) {
@@ -605,14 +1013,18 @@ function selectSlashCommand(item = slashMenu.items[slashMenu.selectedIndex]) {
 
 function createMentionRenderHooks() {
     return {
-        onStart: (props: SuggestionLifecycleProps<FileMentionSuggestionItem>) => {
+        onStart: (
+            props: SuggestionLifecycleProps<FileMentionSuggestionItem>,
+        ) => {
             mentionMenu.open = true;
             mentionMenu.items = props.items;
             mentionMenu.selectedIndex = 0;
             selectMentionFromSuggestion = props.command;
             closeSlashMenu();
         },
-        onUpdate: (props: SuggestionLifecycleProps<FileMentionSuggestionItem>) => {
+        onUpdate: (
+            props: SuggestionLifecycleProps<FileMentionSuggestionItem>,
+        ) => {
             mentionMenu.open = true;
             mentionMenu.items = props.items;
             mentionMenu.selectedIndex = Math.min(
@@ -742,7 +1154,11 @@ onMounted(() => {
             };
         },
         renderHTML({ HTMLAttributes, node }) {
-            const label = node.attrs.path || node.attrs.label || node.attrs.name || 'file';
+            const label =
+                node.attrs.path ||
+                node.attrs.label ||
+                node.attrs.name ||
+                'file';
             return [
                 'span',
                 mergeAttributes(HTMLAttributes, {
@@ -753,7 +1169,11 @@ onMounted(() => {
             ];
         },
         renderText({ node }) {
-            const label = node.attrs.path || node.attrs.label || node.attrs.name || 'file';
+            const label =
+                node.attrs.path ||
+                node.attrs.label ||
+                node.attrs.name ||
+                'file';
             return `@${label}`;
         },
     }).configure({
@@ -798,7 +1218,11 @@ onMounted(() => {
                     startOfLine: true,
                     allowSpaces: false,
                     items: ({ query }) => filterCommands(query),
-                    command: ({ editor: instance, range, props: item }: any) => {
+                    command: ({
+                        editor: instance,
+                        range,
+                        props: item,
+                    }: any) => {
                         instance.chain().focus().deleteRange(range).run();
                         void runCommand(item);
                     },
@@ -820,7 +1244,7 @@ onMounted(() => {
                 horizontalRule: false,
             }),
             Placeholder.configure({
-                placeholder: 'Ask or3-intern to help with your computer…',
+                placeholder: 'Ask or3-intern for help…',
             }),
             FileMention as any,
             SlashCommand as any,
@@ -831,7 +1255,10 @@ onMounted(() => {
                 class: 'min-h-6 outline-none',
             },
             handleKeyDown(_view, event) {
-                if ((mentionMenu.open || slashMenu.open) && event.key === 'Escape') {
+                if (
+                    (mentionMenu.open || slashMenu.open) &&
+                    event.key === 'Escape'
+                ) {
                     event.preventDefault();
                     closeSuggestionMenus();
                     return true;
@@ -897,6 +1324,7 @@ onBeforeUnmount(() => {
     viewportChangeCleanup?.();
     closeSuggestionMenus();
     clearManualAttachments();
+    clearWorkspacePickedAttachments();
     const dom = editor.value?.view.dom;
     dom?.removeEventListener('dragenter', onDragEnter);
     dom?.removeEventListener('dragover', onDragOver);
@@ -979,6 +1407,106 @@ onBeforeUnmount(() => {
 
 .or3-composer__icon {
     align-self: flex-end;
+}
+
+.or3-composer__plus {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    background: transparent;
+    color: var(--or3-text-muted);
+}
+
+.or3-composer__plus:hover,
+.or3-composer__plus[aria-expanded='true'] {
+    background: color-mix(in srgb, var(--or3-surface-soft) 72%, white 28%);
+    color: var(--or3-text);
+}
+
+.or3-composer-menu {
+    width: min(21rem, calc(100vw - 2rem));
+    border-radius: 1.25rem;
+    border: 1px solid var(--or3-border);
+    background: color-mix(in srgb, white 94%, var(--or3-surface) 6%);
+    padding: 0.55rem;
+    box-shadow: 0 18px 44px rgba(35, 31, 27, 0.16);
+}
+
+.or3-composer-menu__item,
+.or3-composer-menu__mode {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    border: 0;
+    border-radius: 0.8rem;
+    background: transparent;
+    color: var(--or3-text);
+    text-align: left;
+}
+
+.or3-composer-menu__item {
+    min-height: 2.8rem;
+    padding: 0.55rem 0.65rem;
+    font-size: 0.96rem;
+    font-weight: 650;
+}
+
+.or3-composer-menu__item:hover,
+.or3-composer-menu__mode:hover {
+    background: color-mix(in srgb, var(--or3-surface-soft) 82%, white 18%);
+}
+
+.or3-composer-menu__divider {
+    height: 1px;
+    margin: 0.45rem 0.2rem;
+    background: var(--or3-border);
+}
+
+.or3-composer-menu__eyebrow {
+    margin: 0.2rem 0.55rem 0.35rem;
+    color: var(--or3-text-muted);
+    font-size: 0.68rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.or3-composer-menu__modes {
+    display: grid;
+    gap: 0.15rem;
+}
+
+.or3-composer-menu__mode {
+    min-height: 3.4rem;
+    padding: 0.55rem 0.65rem;
+}
+
+.or3-composer-menu__mode.is-active {
+    color: var(--or3-green-dark);
+    background: color-mix(in srgb, var(--or3-green-soft) 34%, white 66%);
+}
+
+.or3-composer-menu__mode.is-disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.or3-composer-menu__mode-copy {
+    display: grid;
+    min-width: 0;
+    gap: 0.08rem;
+    font-weight: 750;
+}
+
+.or3-composer-menu__mode-copy small {
+    overflow: hidden;
+    color: var(--or3-text-muted);
+    font-size: 0.73rem;
+    font-weight: 600;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 :deep(.assistant-composer-editor .ProseMirror) {

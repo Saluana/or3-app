@@ -1,5 +1,9 @@
 import { ref } from 'vue';
-import type { AppActionResponse, FileRoot, TerminalSessionSnapshot } from '~/types/or3-api';
+import type {
+    AppActionResponse,
+    FileRoot,
+    TerminalSessionSnapshot,
+} from '~/types/or3-api';
 import {
     buildServiceRestartCommand,
     selectServiceRestartRoot,
@@ -118,7 +122,19 @@ export function useServiceRestart() {
         try {
             try {
                 const response = await requestRestartAction();
-                return { mode: 'action' as const, actionId: response.action_id };
+                const result: {
+                    mode: 'action';
+                    actionId: string;
+                    operationId?: string;
+                    logPath?: string;
+                } = {
+                    mode: 'action' as const,
+                    actionId: response.action_id,
+                };
+                if (response.operation_id)
+                    result.operationId = response.operation_id;
+                if (response.log_path) result.logPath = response.log_path;
+                return result;
             } catch (error: any) {
                 if (!shouldFallbackToTerminalRestart(error)) throw error;
             }

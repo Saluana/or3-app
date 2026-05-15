@@ -1,8 +1,430 @@
 export interface ToolPolicy {
-    mode: 'allow_all' | 'deny_all' | 'allow_list' | 'deny_list';
+    mode:
+        | 'allow_all'
+        | 'deny_all'
+        | 'allow_list'
+        | 'deny_list'
+        | 'ask'
+        | 'work'
+        | 'admin';
     allowed_tools?: string[];
     blocked_tools?: string[];
 }
+
+export type CronScheduleKind = 'at' | 'every' | 'cron';
+
+export interface CronSchedule {
+    kind: CronScheduleKind;
+    at_ms?: number;
+    every_ms?: number;
+    expr?: string;
+    tz?: string;
+}
+
+export interface CronAgentRunPayload {
+    runner_id: string;
+    task: string;
+    timeout_seconds?: number;
+    cwd?: string;
+    model?: string;
+    mode?: AgentRunMode | string;
+    isolation?: AgentRunIsolation | string;
+    max_turns?: number;
+    meta?: Record<string, unknown>;
+}
+
+export interface CronPayload {
+    kind: 'agent_turn' | 'system_event' | 'agent_cli_run' | string;
+    message?: string;
+    deliver?: boolean;
+    channel?: string;
+    to?: string;
+    session_key?: string;
+    agent_run?: CronAgentRunPayload;
+}
+
+export interface CronJobState {
+    next_run_at_ms?: number | null;
+    last_run_at_ms?: number | null;
+    last_status?: 'ok' | 'error' | 'skipped' | string;
+    last_error?: string;
+    last_enqueued_job_id?: string;
+    last_enqueued_run_id?: string;
+}
+
+export interface CronJob {
+    id: string;
+    name: string;
+    enabled: boolean;
+    schedule: CronSchedule;
+    payload: CronPayload;
+    state?: CronJobState;
+    created_at_ms?: number;
+    updated_at_ms?: number;
+    delete_after_run?: boolean;
+}
+
+export interface CronStatusResponse {
+    enabled?: boolean;
+    available?: boolean;
+    jobs?: number;
+    next_wake_at_ms?: number | null;
+}
+
+export interface CronJobsResponse {
+    items: CronJob[];
+}
+
+export interface CronJobResponse {
+    job: CronJob;
+}
+
+// ── External Agent CLI Delegation ──
+
+export type AgentRunnerId =
+    | 'or3-intern'
+    | 'opencode'
+    | 'codex'
+    | 'claude'
+    | 'gemini'
+    | string;
+
+export type AgentRunnerStatus =
+    | 'available'
+    | 'missing'
+    | 'not_executable'
+    | 'auth_missing'
+    | 'auth_unknown'
+    | 'unsupported_version'
+    | 'disabled_by_config'
+    | 'error';
+
+export type AgentRunnerAuthStatus = 'ready' | 'missing' | 'unknown';
+
+export interface AgentRunnerSupports {
+    structuredOutput: boolean;
+    streamingJson: boolean;
+    modelFlag: boolean;
+    permissionsMode: boolean;
+    safeSandboxFlag: boolean;
+    dangerousBypassFlag: boolean;
+    stdinPrompt: boolean;
+    maxTurns?: boolean;
+    chat?: RunnerChatCapabilities;
+}
+
+export type RunnerChatContinuationMode = 'replay' | 'native';
+
+export interface RunnerChatCapabilities {
+    chatSelectable?: boolean;
+    chatReplay?: boolean;
+    chatNativeSession?: boolean;
+    chatResume?: boolean;
+    chatSessionRefExtractable?: boolean;
+    streamToolEvents?: boolean;
+    supportsNativeFork?: boolean;
+}
+
+export interface AgentRunnerInfo {
+    id: AgentRunnerId;
+    display_name: string;
+    binary_name?: string;
+    binary_path?: string;
+    version?: string;
+    status: AgentRunnerStatus;
+    disabled_reason?: string;
+    auth_status?: AgentRunnerAuthStatus;
+    supports: AgentRunnerSupports;
+    default_args_preview?: string[];
+}
+
+export interface AgentRunnersResponse {
+    runners: AgentRunnerInfo[];
+}
+
+export interface ChatRunnerInfo extends AgentRunnerInfo {
+    chat_capabilities?: RunnerChatCapabilities;
+    default_model?: string;
+    default_mode?: string;
+    default_isolation?: string;
+    default_cwd?: string;
+}
+
+export interface ChatRunnersResponse {
+    runners: ChatRunnerInfo[];
+}
+
+export type RunnerChatTurnStatus =
+    | 'queued'
+    | 'running'
+    | 'succeeded'
+    | 'approval_required'
+    | 'failed'
+    | 'aborted'
+    | 'timed_out';
+
+export interface RunnerPermissionRequest {
+    runner_id?: string;
+    kind?: string;
+    access?: string;
+    target_path?: string;
+}
+
+export interface RunnerChatSession {
+    id: string;
+    app_session_key: string;
+    runner_id: AgentRunnerId;
+    continuation_mode: RunnerChatContinuationMode | string;
+    native_session_ref?: string;
+    model?: string;
+    mode?: string;
+    isolation?: string;
+    cwd?: string;
+    max_turns?: number;
+    meta?: unknown;
+    created_at: number;
+    updated_at: number;
+}
+
+export interface RunnerChatTurn {
+    id: string;
+    session_id: string;
+    sequence: number;
+    status: RunnerChatTurnStatus | string;
+    continuation_mode: RunnerChatContinuationMode | string;
+    requested_at: number;
+    started_at?: number;
+    completed_at?: number;
+    user_message?: string;
+    final_text?: string;
+    error?: string;
+    agent_cli_run_id?: string;
+    agent_cli_job_id?: string;
+    user_message_id?: number;
+    assistant_message_id?: number;
+    model?: string;
+    mode?: string;
+    isolation?: string;
+    cwd?: string;
+}
+
+export interface RunnerChatEvent {
+    id?: number;
+    turn_id: string;
+    seq: number;
+    ts?: number;
+    type: string;
+    stream?: string;
+    text?: string;
+    job_id?: string;
+    payload?: Record<string, unknown> | unknown;
+}
+
+export interface RunnerChatSessionRequest {
+    app_session_key: string;
+    runner_id: AgentRunnerId;
+    continuation_mode?: RunnerChatContinuationMode | string;
+    model?: string;
+    mode?: string;
+    isolation?: string;
+    cwd?: string;
+    max_turns?: number;
+}
+
+export interface RunnerChatTurnRequest {
+    user_message: string;
+    continuation_mode?: RunnerChatContinuationMode | string;
+    model?: string;
+    mode?: string;
+    isolation?: string;
+    cwd?: string;
+    max_turns?: number;
+    timeout_seconds?: number;
+    meta?: Record<string, unknown>;
+    approval_token?: string;
+    runner_permission?: RunnerPermissionRequest;
+}
+
+export interface RunnerChatTurnStartResponse {
+    session_id: string;
+    turn_id: string;
+    job_id?: string;
+    status: RunnerChatTurnStatus | string;
+}
+
+export interface RunnerChatEventsResponse {
+    events: RunnerChatEvent[];
+}
+
+export interface ChatSessionMeta {
+    session_key: string;
+    host_id?: string;
+    title: string;
+    runner_id?: AgentRunnerId;
+    runner_label?: string;
+    runner_chat_session_id?: string;
+    runner_continuation_mode?: RunnerChatContinuationMode | string;
+    runner_model?: string;
+    runner_mode?: string;
+    runner_isolation?: string;
+    runner_cwd?: string;
+    message_count?: number;
+    last_message_preview?: string;
+    last_message_at?: number;
+    parent_session_key?: string;
+    fork_anchor_message_id?: number;
+    forked_from_runner_id?: AgentRunnerId | string;
+    fork_strategy?: string;
+    archived?: boolean;
+    created_at?: number;
+    updated_at?: number;
+}
+
+export interface ChatSessionListResponse {
+    sessions: ChatSessionMeta[];
+}
+
+export interface ChatSessionCreateRequest {
+    session_key: string;
+    title?: string;
+    runner_id?: AgentRunnerId;
+    runner_label?: string;
+}
+
+export interface ChatSessionUpdateRequest {
+    title?: string;
+    archived?: boolean;
+}
+
+export interface ChatSessionForkRequest {
+    new_session_key: string;
+    anchor_message_id: number;
+    target_runner_id?: AgentRunnerId | string;
+    title?: string;
+    allow_incomplete_anchor?: boolean;
+    fork_strategy?: string;
+}
+
+export interface ChatHistoryMessage {
+    id: number;
+    session_key: string;
+    role: 'user' | 'assistant' | 'system' | 'tool' | string;
+    content: string;
+    created_at: number;
+    payload?: Record<string, unknown> | unknown;
+}
+
+export interface ChatMessagePageResponse {
+    messages: ChatHistoryMessage[];
+    next_cursor?: number;
+}
+
+export type AgentRunMode = 'review' | 'safe_edit' | 'sandbox_auto';
+export type AgentRunIsolation =
+    | 'host_readonly'
+    | 'host_workspace_write'
+    | 'sandbox_workspace_write'
+    | 'sandbox_dangerous';
+
+export interface AgentCliRunRequest {
+    parent_session_key: string;
+    runner_id: Exclude<AgentRunnerId, 'or3-intern'>;
+    task: string;
+    timeout_seconds?: number;
+    cwd?: string;
+    model?: string;
+    mode?: AgentRunMode;
+    isolation?: AgentRunIsolation;
+    max_turns?: number;
+    meta?: Record<string, unknown>;
+}
+
+export interface AgentCliRunResponse {
+    job_id: string;
+    run_id?: string;
+    status: 'queued' | 'running' | string;
+}
+
+export type PersistedAgentCliStatus =
+    | 'queued'
+    | 'starting'
+    | 'running'
+    | 'succeeded'
+    | 'failed'
+    | 'aborted'
+    | 'timed_out';
+
+export interface PersistedAgentCliJob {
+    job_id: string;
+    run_id?: string;
+    kind: `agent_cli:${string}` | string;
+    runner_id: string;
+    parent_session_key: string;
+    task: string;
+    status: PersistedAgentCliStatus | string;
+    requested_at: string;
+    started_at?: string;
+    completed_at?: string;
+    updated_at: string;
+    mode?: string;
+    isolation?: string;
+    model?: string;
+    cwd?: string;
+    stdout_preview?: string;
+    stderr_preview?: string;
+    final_text_preview?: string;
+    error?: string;
+    attempts?: number;
+}
+
+export interface AgentCliListResponse {
+    items: PersistedAgentCliJob[];
+}
+
+export interface AgentCliSseOutputEvent {
+    type: 'output';
+    ts?: string;
+    seq?: number;
+    job_id?: string;
+    runner_id?: string;
+    stream: 'stdout' | 'stderr';
+    chunk: string;
+}
+
+export interface AgentCliSseStructuredEvent {
+    type: 'structured';
+    ts?: string;
+    seq?: number;
+    job_id?: string;
+    runner_id?: string;
+    payload?: unknown;
+}
+
+export interface AgentCliSseCompletionEvent {
+    type: 'completion';
+    ts?: string;
+    job_id?: string;
+    runner_id?: string;
+    status: string;
+    exit_code?: number;
+    final_text_preview?: string;
+    stdout_preview?: string;
+    stderr_preview?: string;
+    error_message?: string;
+    duration_ms?: number;
+    message?: string;
+}
+
+export interface AgentCliSseErrorEvent {
+    type: 'error';
+    ts?: string;
+    job_id?: string;
+    runner_id?: string;
+    code?: string;
+    message?: string;
+}
+
+// ── Existing types ──
 
 export interface TurnRequest {
     session_key: string;
@@ -82,6 +504,20 @@ export interface JobSnapshot {
     parent_session_key?: string;
     /** Stored full-result artifact id when the final text exceeds the inline preview cap. */
     artifact_id?: string;
+    /** External CLI delegation fields */
+    runner_id?: string;
+    runner_label?: string;
+    mode?: string;
+    isolation?: string;
+    model?: string;
+    cwd?: string;
+    stdout_preview?: string;
+    stderr_preview?: string;
+    output_preview?: string;
+    error_preview?: string;
+    raw_events?: unknown[];
+    structured_events?: unknown[];
+    output_truncated?: boolean;
 }
 
 export interface PairingRequestResponse {
@@ -114,6 +550,8 @@ export interface HealthResponse {
     jobRegistryAvailable?: boolean;
     subagentManagerEnabled?: boolean;
     approvalBrokerAvailable?: boolean;
+    processId?: number;
+    startedAt?: string;
 }
 
 export interface ReadinessResponse {
@@ -147,8 +585,67 @@ export interface CapabilitiesResponse {
     execAvailable?: boolean;
     shellModeAvailable?: boolean;
     sandboxAvailable?: boolean;
-    mcpServers?: unknown[];
+    enabledMcpServers?: CapabilitiesMCPServerInfo[];
+    mcpServers?: CapabilitiesMCPServerInfo[];
     [key: string]: unknown;
+}
+
+export type MCPTransport = 'stdio' | 'sse' | 'streamable-http' | string;
+
+export interface MCPServerConfig {
+    enabled: boolean;
+    transport: MCPTransport;
+    command?: string;
+    args?: string[];
+    env?: Record<string, string>;
+    childEnvAllowlist?: string[];
+    url?: string;
+    headers?: Record<string, string>;
+    toolTimeoutSeconds?: number;
+    connectTimeoutSeconds?: number;
+    allowInsecureHttp?: boolean;
+}
+
+export interface MCPServerStatus {
+    connected: boolean;
+    toolCount: number;
+    tools?: string[];
+    lastError?: string;
+}
+
+export interface MCPServerDetail {
+    name: string;
+    config: MCPServerConfig;
+    status?: MCPServerStatus;
+}
+
+export interface MCPServersResponse {
+    servers: MCPServerDetail[];
+}
+
+export interface MCPServerSaveResponse {
+    ok: boolean;
+    config_path?: string;
+    restartRequired?: boolean;
+}
+
+export interface MCPServerToolInfo {
+    name: string;
+    description?: string;
+}
+
+export interface MCPServerTestResult {
+    ok: boolean;
+    toolCount?: number;
+    tools?: MCPServerToolInfo[];
+    error?: string;
+}
+
+export interface CapabilitiesMCPServerInfo {
+    name: string;
+    transport: string;
+    toolCount: number;
+    connected: boolean;
 }
 
 export interface AppBootstrapWarning {
@@ -213,10 +710,16 @@ export interface AppBootstrapResponse {
 
 export interface AppActionResponse {
     action_id: string;
-    status: 'accepted' | 'completed' | 'approval_required' | 'unsupported' | string;
+    status:
+        | 'accepted'
+        | 'completed'
+        | 'approval_required'
+        | 'unsupported'
+        | string;
     message?: string;
     approval_id?: number;
     operation_id?: string;
+    log_path?: string;
 }
 
 export interface ApprovalRequest {
@@ -227,12 +730,15 @@ export interface ApprovalRequest {
     subject?: unknown;
     created_at?: string;
     expires_at?: string;
+    requester_session_id?: string;
 }
 
 export interface ApprovalActionResponse {
     request_id: number | string;
     token?: string;
     allowlist_id?: number | string;
+    resume_job_id?: string;
+    session_key?: string;
     status?: string;
 }
 

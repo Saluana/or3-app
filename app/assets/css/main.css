@@ -1,10 +1,11 @@
 @import "tailwindcss";
+@import "@nuxt/ui";
 @import "or3-scroll/style.css";
 @import "streamdown-vue/style.css";
 
 :root {
   --or3-font-body: "IBM Plex Sans", sans-serif;
-  --or3-font-display: "IBM Plex Serif", "IBM Plex Sans", serif;
+  --or3-font-display: "VT323", "IBM Plex Serif", "IBM Plex Sans", serif;
   --or3-background: #f7f3ea;
   --or3-surface: #fffcf5;
   --or3-surface-soft: #f1eadf;
@@ -12,7 +13,7 @@
   --or3-border-strong: #c9beaf;
   --or3-text: #24241f;
   --or3-text-muted: #6f6a60;
-  --or3-green: #3f8f58;
+  --or3-green: #71a75f;
   --or3-green-soft: #e1efe4;
   --or3-green-dark: #28623b;
   --or3-amber: #c89232;
@@ -29,6 +30,42 @@
   --or3-safe-bottom: env(safe-area-inset-bottom, 0px);
   --or3-safe-left: env(safe-area-inset-left, 0px);
   --or3-keyboard-height: 0px;
+  --or3-bottom-nav-height: 5.5rem;
+  --or3-bottom-nav-offset: var(--or3-safe-bottom);
+
+  /* Re-tint Nuxt UI's `primary` (and its semantic siblings) to match the
+     or3 brand palette. Without this override, `bg-primary` resolves to
+     Tailwind's stock `green-500` which is far too saturated for the cream
+     theme. Mapping the full --ui-color-primary-* ramp keeps shade utilities
+     (bg-primary/10, ring-primary/50, etc.) consistent. */
+  --ui-color-primary-50:  #eef6ea;
+  --ui-color-primary-100: #d8ead0;
+  --ui-color-primary-200: #b6d6a7;
+  --ui-color-primary-300: #95c281;
+  --ui-color-primary-400: #82b570;
+  --ui-color-primary-500: #71a75f;
+  --ui-color-primary-600: #5d9050;
+  --ui-color-primary-700: #487140;
+  --ui-color-primary-800: #355431;
+  --ui-color-primary-900: #233a23;
+  --ui-color-primary-950: #142214;
+  --ui-primary: var(--or3-green);
+}
+
+@media (display-mode: standalone) {
+  :root {
+    /*
+       iOS home-screen PWAs sometimes report a zero safe-area inset until after
+       first paint, even though the home indicator is still physically there.
+       Keep the tappable nav clear in standalone mode without adding this extra
+       space to normal browser tabs.
+    */
+    --or3-bottom-nav-offset: max(var(--or3-safe-bottom), 1.25rem);
+  }
+}
+
+html.or3-standalone {
+  --or3-bottom-nav-offset: max(var(--or3-safe-bottom), 1.25rem);
 }
 
 html {
@@ -95,6 +132,10 @@ body:has(.or3-chat-shell),
   color: var(--or3-text);
 }
 
+.or3-surface-color {
+  background: color-mix(in srgb, var(--or3-surface) 92%, white 8%);
+}
+
 .or3-surface {
   background: color-mix(in srgb, var(--or3-surface) 92%, white 8%);
   border: 1px solid var(--or3-border);
@@ -119,7 +160,7 @@ body:has(.or3-chat-shell),
 h1,
 h2,
 h3 {
-  font-family: "IBM Plex Serif", "IBM Plex Sans", serif;
+  font-family: "JetBrains Mono", "IBM Plex Serif", "IBM Plex Sans", serif;
   font-weight: 600;
   letter-spacing: 0.01em;
 }
@@ -160,7 +201,8 @@ h3 {
 }
 
 .or3-bottom-nav-safe {
-  padding-bottom: calc(var(--or3-safe-bottom) + 0.75rem);
+  padding-bottom: var(--or3-safe-bottom);
+  background: var(--or3-surface, #faf4df);
 }
 
 .or3-bottom-nav {
@@ -215,6 +257,27 @@ html.or3-keyboard-open .or3-mobile-screen {
   background: var(--or3-green-soft);
   border-color: color-mix(in srgb, var(--or3-green) 28%, white 72%);
   color: var(--or3-green-dark);
+}
+
+[data-streamdown="ul"] {
+  list-style: disc;
+  padding-left: 1.5rem;
+  margin: 0.75rem 0;
+}
+
+[data-streamdown="ol"] {
+  list-style: decimal;
+  padding-left: 1.5rem;
+  margin: 0.75rem 0;
+}
+
+[data-streamdown="li"] {
+  display: list-item;
+  margin: 0.25rem 0;
+}
+
+[data-streamdown="li"]::marker {
+  color: var(--or3-text-muted);
 }
 
 .or3-hairline {
@@ -371,8 +434,8 @@ html.or3-keyboard-open .or3-mobile-screen {
   max-width: 46rem;
   margin: 0 auto;
   /* Reserve room so messages can scroll fully out from under the floating
-     composer + bottom nav (composer ~120px, nav ~88px, gap). */
-  padding: 0.5rem 0 calc(var(--or3-safe-bottom) + 16rem);
+     composer + bottom nav (composer + nav + safe area + spacing). */
+  padding: 0.5rem 0 calc(var(--or3-bottom-nav-height) + var(--or3-bottom-nav-offset) + 9.5rem);
 }
 
 html.or3-keyboard-open .or3-chat-shell__content {
@@ -389,7 +452,7 @@ html.or3-keyboard-open .or3-chat-shell__content {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: calc(var(--or3-safe-bottom) + 6rem); /* clearance above bottom nav */
+  bottom: calc(var(--or3-bottom-nav-height) + var(--or3-bottom-nav-offset) + 0.4rem);
   z-index: 30;
   pointer-events: none;
   padding: 0 calc(var(--or3-safe-right) + 0.75rem) 0 calc(var(--or3-safe-left) + 0.75rem);
@@ -488,11 +551,13 @@ html.or3-keyboard-open .or3-chat-shell__composer {
 }
 
 /* ── Floating slideover sheets (computer/files) ──────────────────────
-   Used by FileDetailsSheet & MemoryToolsSheet. Lifts the sheet visually
-   off the page (which uses --or3-surface) with a brighter surface,
-   accent edge, and strong shadow. */
+   Used by FileDetailsSheet, MemoryToolsSheet, and CwdPickerSheet.
+   Lift the sheet visually off the page (which uses --or3-surface) with
+   the same cream surface tint, an accent edge, and a strong shadow.
+   The background must match the inner header/body — otherwise the drag
+   handle area shows as a white stripe above the cream chrome. */
 .or3-fb-sheet-shell {
-  background: color-mix(in srgb, var(--or3-surface) 35%, #ffffff 65%) !important;
+  background: var(--or3-surface) !important;
   border-color: color-mix(in srgb, var(--or3-border) 70%, transparent) !important;
 }
 .or3-fb-sheet-shell--bottom {

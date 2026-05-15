@@ -63,7 +63,7 @@
                         :tone="bootstrapTone"
                         title="Connection warning"
                     >
-                        {{ bootstrapWarning.message }}
+                        {{ bootstrapWarning?.message }}
                     </DangerCallout>
 
                     <DangerCallout

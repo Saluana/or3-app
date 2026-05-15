@@ -110,11 +110,11 @@ describe('useChatCommands', () => {
 
     expect(refreshStatus).toHaveBeenCalledTimes(1)
     expect(appendSystemMessage).toHaveBeenCalledWith(
-      expect.stringContaining('Health: ok'),
+      expect.stringContaining('**Health:** Ok'),
       'session-1',
     )
     expect(appendSystemMessage).toHaveBeenCalledWith(
-      expect.stringContaining('Readiness: needs_attention'),
+      expect.stringContaining('**Readiness:** Needs Attention'),
       'session-1',
     )
   })
@@ -139,7 +139,7 @@ describe('useChatCommands', () => {
 
     expect(newSession).not.toHaveBeenCalled()
     expect(appendSystemMessage).toHaveBeenCalledWith(
-      expect.stringContaining('Active job: running: Review docs'),
+      expect.stringContaining('**Active job:** running: Review docs'),
       'session-1',
     )
   })

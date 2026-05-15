@@ -1,5 +1,6 @@
 import { ref } from 'vue';
 import type { Or3AppState, Or3HostProfile } from '~/types/app-state';
+import { needsUnlock } from './usePinLock';
 import {
     useSecureHostTokens,
     withResolvedHostTokens,
@@ -37,6 +38,7 @@ function serializableState() {
 }
 
 function persistSessionTokens() {
+    if (needsUnlock()) return;
     useSecureHostTokens().replaceTokens(state.value.hosts);
 }
 
@@ -72,6 +74,30 @@ function replaceLoopbackServiceBaseUrl(baseUrl: string) {
     return baseUrl;
 }
 
+function normalizePersistedSessions(
+    sessions: Or3AppState['sessions'] = [],
+): Or3AppState['sessions'] {
+    return sessions.map((session) => ({
+        ...session,
+        runnerId: session.runnerId || 'or3-intern',
+        runnerLabel: session.runnerLabel || 'OR3 Intern',
+        runnerContinuationMode: session.runnerContinuationMode || 'replay',
+        archived: Boolean(session.archived),
+    }));
+}
+
+function normalizePersistedMessages(
+    messages: Or3AppState['messages'] = [],
+): Or3AppState['messages'] {
+    return messages.map((message) => ({
+        ...message,
+        attachments: message.attachments ?? [],
+        toolCalls: message.toolCalls ?? [],
+        parts: message.parts ?? [],
+        activityLog: message.activityLog ?? [],
+    }));
+}
+
 function readPersistedState() {
     if (!import.meta.client) return defaultState();
     const tokenStore = useSecureHostTokens();
@@ -97,6 +123,8 @@ function readPersistedState() {
         ...parsed,
         activeHostId,
         hosts,
+        sessions: normalizePersistedSessions(parsed.sessions),
+        messages: normalizePersistedMessages(parsed.messages),
     } satisfies Or3AppState;
 }
 
@@ -213,6 +241,10 @@ export function useLocalCache() {
         useSecureHostTokens().replaceTokens([]);
     }
 
+    function forceReload() {
+        refreshFromStorage();
+    }
+
     return {
         state,
         persist,
@@ -222,5 +254,6 @@ export function useLocalCache() {
         setDraft,
         setLastKnownStatus,
         clearAll,
+        forceReload,
     };
 }
