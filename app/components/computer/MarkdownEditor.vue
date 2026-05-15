@@ -202,6 +202,7 @@ const props = withDefaults(defineProps<{
   autosave?: boolean
   showBack?: boolean
   backLabel?: string
+  renameLabel?: string
 }>(), {
   title: 'Markdown editor',
   statusLabel: '',
@@ -213,6 +214,7 @@ const props = withDefaults(defineProps<{
   autosave: true,
   showBack: true,
   backLabel: 'Back',
+  renameLabel: '',
 })
 
 const emit = defineEmits<{
@@ -220,6 +222,7 @@ const emit = defineEmits<{
   save: [reason: 'manual' | 'autosave']
   saveCopy: []
   reload: []
+  rename: []
   dismissConflict: []
   dirtyChange: [value: boolean]
   back: []
@@ -496,6 +499,15 @@ const overflowItems = computed(() => {
       disabled: props.saving || (!dirty.value && !props.readOnly),
       onSelect: () => { emit('save', 'manual') },
     })
+
+    if (props.renameLabel) {
+      fileActions.push({
+        label: props.renameLabel,
+        icon: 'i-pixelarticons-edit',
+        disabled: props.saving,
+        onSelect: () => { emit('rename') },
+      })
+    }
   }
 
   fileActions.push({

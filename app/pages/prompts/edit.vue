@@ -3,7 +3,7 @@
     desktop-title="Edit Prompt"
     desktop-subtitle="Update a saved prompt."
   >
-    <template #sidebar><ComputerSidebar /></template>
+    <template #sidebar><PromptLibrarySidebar /></template>
     <AppHeader subtitle="PROMPT EDITOR" />
     <div class="space-y-4">
       <SurfaceCard v-if="loading" class-name="space-y-3">
@@ -26,10 +26,12 @@
         :read-only="!promptState.writable"
         :unsupported-message="unsupportedMessage"
         :conflict-message="conflictMessage"
+        rename-label="Rename prompt"
         back-label="Prompts"
         @save="savePromptDocument"
         @save-copy="savePromptCopy"
         @reload="reloadPrompt"
+        @rename="renamePrompt"
         @dismiss-conflict="dismissConflict"
         @back="goBack"
       >
@@ -97,6 +99,15 @@ function buildCopyPath(path: string) {
   return `${path.slice(0, dotIndex)}-copy${path.slice(dotIndex)}`
 }
 
+function applyMarkdownTitle(markdown: string, nextTitle: string) {
+  const source = typeof markdown === 'string' ? markdown : ''
+  const titleLine = `# ${nextTitle}`
+  if (/^#\s+.+$/m.test(source)) {
+    return source.replace(/^#\s+.+$/m, titleLine)
+  }
+  return source.trimStart() ? `${titleLine}\n\n${source}` : `${titleLine}\n`
+}
+
 async function goBack() {
   await navigateTo('/prompts')
 }
@@ -128,8 +139,8 @@ async function loadPromptDocument() {
   }
 }
 
-async function savePromptDocument(reason: 'manual' | 'autosave') {
-  if (!promptState.value || saving.value || unsupportedMessage.value) return
+async function savePromptDocument(reason: 'manual' | 'autosave' | 'rename') {
+  if (!promptState.value || saving.value || unsupportedMessage.value) return false
   saving.value = true
   saveError.value = null
   try {
@@ -144,13 +155,31 @@ async function savePromptDocument(reason: 'manual' | 'autosave') {
     if (reason === 'manual') {
       toast.add({ title: 'Prompt saved', description: `${promptState.value.title} is up to date.` })
     }
+    return true
   } catch (nextError: any) {
     saveError.value = nextError as Or3AppError
-    if (saveError.value.code !== 'file_conflict' && reason === 'manual') {
-      toast.add({ title: 'Could not save prompt', description: saveError.value.message, color: 'error' })
+    if (saveError.value.code !== 'file_conflict' && reason !== 'autosave') {
+      toast.add({
+        title: reason === 'rename' ? 'Could not rename prompt' : 'Could not save prompt',
+        description: saveError.value.message,
+        color: 'error',
+      })
     }
+    return false
   } finally {
     saving.value = false
+  }
+}
+
+async function renamePrompt() {
+  if (!promptState.value || saving.value || unsupportedMessage.value) return
+  const nextTitle = window.prompt('Rename prompt', promptState.value.title)?.trim()
+  if (!nextTitle || nextTitle === promptState.value.title) return
+  draftContent.value = applyMarkdownTitle(draftContent.value, nextTitle)
+  const saved = await savePromptDocument('rename')
+  if (saved && promptState.value) {
+    promptState.value = { ...promptState.value, title: nextTitle }
+    toast.add({ title: 'Prompt renamed', description: nextTitle })
   }
 }
 

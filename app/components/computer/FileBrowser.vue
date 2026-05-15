@@ -11,6 +11,7 @@
             :is-writable-root="isWritableRoot"
             :favorite-directories="favoriteDirectories"
             :current-favorite="currentDirectoryFavorite"
+            :show-hidden-files="showHiddenFiles"
             @back="goUp"
             @navigate="navigatePath"
             @switch-root="handleRootChange"
@@ -26,6 +27,7 @@
             @refresh="refresh"
             @open-terminal="openTerminalForCurrentFolder"
             @open-memory-tools="openMemoryTools"
+            @toggle-hidden-files="toggleHiddenFiles"
         />
 
         <UInput
@@ -125,7 +127,10 @@
             </SurfaceCard>
 
             <!-- Directory listing -->
-            <SurfaceCard class-name="!p-0 overflow-hidden">
+            <SurfaceCard
+                v-if="!showSearchResults"
+                class-name="!p-0 overflow-hidden"
+            >
                 <div
                     class="flex items-center justify-between border-b border-(--or3-border) px-3 py-2"
                 >
@@ -150,9 +155,9 @@
                     />
                 </div>
 
-                <template v-else-if="entries.length">
+                <template v-else-if="visibleEntries.length">
                     <FileRow
-                        v-for="entry in entries"
+                        v-for="entry in visibleEntries"
                         :key="entry.path"
                         :entry="entry"
                         :selected="selectedEntry?.path === entry.path"
@@ -169,13 +174,11 @@
                 </template>
 
                 <div v-else class="px-4 py-8 text-center">
-                    <p
-                        class="or3-display-title or3-display-title--sm text-2xl text-(--or3-text)"
-                    >
-                        This folder is empty
+                    <p class="or3-display-title or3-display-title--sm text-2xl text-(--or3-text)">
+                        {{ hiddenEntries.length && !showHiddenFiles ? 'Only hidden files here' : 'This folder is empty' }}
                     </p>
                     <p class="mt-2 text-sm leading-6 text-(--or3-text-muted)">
-                        Upload files here or create a new folder to get started.
+                        {{ hiddenEntries.length && !showHiddenFiles ? 'Use More actions to show hidden files.' : 'Upload files here or create a new folder to get started.' }}
                     </p>
                     <div class="mt-4 flex flex-wrap justify-center gap-2">
                         <UButton
@@ -362,6 +365,7 @@ const searchQuery = ref('');
 const searchMode = ref<SearchMode>('folder');
 const searchResults = ref<FileSearchItem[]>([]);
 const searchTouched = ref(false);
+const showHiddenFiles = ref(false);
 const newFolderOpen = ref(false);
 const newFolderName = ref('');
 const creatingFolder = ref(false);
@@ -395,6 +399,12 @@ const currentDirectoryFavorite = computed(() =>
 );
 const showSearchResults = computed(
     () => searchOpen.value && searchTouched.value,
+);
+const hiddenEntries = computed(() => entries.value.filter(isHiddenEntry));
+const visibleEntries = computed(() =>
+    showHiddenFiles.value
+        ? entries.value
+        : entries.value.filter((entry) => !isHiddenEntry(entry)),
 );
 const entriesPanelTitle = computed(() =>
     currentPath.value === '.' || !currentPath.value
@@ -519,6 +529,27 @@ function parentPath(path: string) {
     if (parts.length <= 1) return '.';
     parts.pop();
     return parts.join('/');
+}
+
+function isHiddenPath(path: string) {
+    return path
+        .split('/')
+        .filter(Boolean)
+        .some((part) => part.startsWith('.') && part !== '.' && part !== '..');
+}
+
+function isHiddenEntry(entry: Pick<FileEntry, 'name' | 'path'>) {
+    return entry.name.startsWith('.') || isHiddenPath(entry.path);
+}
+
+function filterHiddenSearchItems(items: FileSearchItem[]) {
+    if (showHiddenFiles.value) return items;
+    return items.filter((item) => !isHiddenPath(item.path));
+}
+
+function toggleHiddenFiles() {
+    showHiddenFiles.value = !showHiddenFiles.value;
+    if (searchTouched.value && searchQuery.value.trim()) void runSearch();
 }
 
 function resetPreview() {
@@ -769,7 +800,7 @@ function folderSearchMatches(query: string, path: string, name: string) {
 }
 
 function currentDirectorySearchMatches(query: string) {
-    return entries.value
+    return visibleEntries.value
         .filter((entry) => folderSearchMatches(query, entry.path, entry.name))
         .map(
             (entry) =>
@@ -798,7 +829,7 @@ async function runSearch() {
         const item = await statPath(currentRootId.value, query).catch(
             () => null,
         );
-        searchResults.value = item
+        searchResults.value = item && (showHiddenFiles.value || !isHiddenEntry(item))
             ? [
                   {
                       root_id: currentRootId.value,
@@ -825,7 +856,7 @@ async function runSearch() {
         const merged = new Map<string, FileSearchItem>();
         for (const item of [...local, ...remote])
             merged.set(`${item.root_id}:${item.path}`, item);
-        searchResults.value = [...merged.values()];
+        searchResults.value = filterHiddenSearchItems([...merged.values()]);
         return;
     }
     const prefix = currentPath.value.endsWith('/')
@@ -838,7 +869,7 @@ async function runSearch() {
             merged.set(`${item.root_id}:${item.path}`, item);
         }
     }
-    searchResults.value = [...merged.values()];
+    searchResults.value = filterHiddenSearchItems([...merged.values()]);
 }
 
 async function revealFile(

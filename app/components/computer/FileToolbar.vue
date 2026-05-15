@@ -264,6 +264,7 @@ const props = withDefaults(
         isWritableRoot: boolean;
         favoriteDirectories: FavoriteDirectory[];
         currentFavorite: boolean;
+        showHiddenFiles: boolean;
     }>(),
     {
         searchOpen: false,
@@ -271,6 +272,7 @@ const props = withDefaults(
         isWritableRoot: false,
         favoriteDirectories: () => [],
         currentFavorite: false,
+        showHiddenFiles: false,
     },
 );
 
@@ -290,6 +292,7 @@ const emit = defineEmits<{
     refresh: [];
     'open-terminal': [];
     'open-memory-tools': [];
+    'toggle-hidden-files': [];
 }>();
 
 const searchInputRef = ref<{ inputRef?: HTMLInputElement } | null>(null);
@@ -360,6 +363,15 @@ const overflowItems = computed(() => [
         },
     ],
     [
+        {
+            label: props.showHiddenFiles
+                ? 'Hide hidden files'
+                : 'Show hidden files',
+            icon: props.showHiddenFiles
+                ? 'i-pixelarticons-eye-closed'
+                : 'i-pixelarticons-eye',
+            onSelect: () => emit('toggle-hidden-files'),
+        },
         {
             label: 'Memory tools',
             icon: 'i-pixelarticons-database',

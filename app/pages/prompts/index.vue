@@ -3,7 +3,20 @@
     desktop-title="Prompts"
     desktop-subtitle="Manage your reusable prompts."
   >
-    <template #sidebar><ComputerSidebar /></template>
+    <template #sidebar><PromptLibrarySidebar /></template>
+    <template #desktop>
+      <SurfaceCard class-name="h-full">
+        <div class="grid min-h-[420px] place-items-center text-center">
+          <div>
+            <RetroIcon name="i-pixelarticons-notebook" class="mx-auto" />
+            <p class="mt-3 font-mono text-sm font-semibold text-(--or3-text)">Select a prompt</p>
+            <p class="mt-2 max-w-sm text-sm leading-6 text-(--or3-text-muted)">
+              Choose a prompt from the sidebar or create a new one.
+            </p>
+          </div>
+        </div>
+      </SurfaceCard>
+    </template>
     <AppHeader subtitle="PROMPTS" />
     <div class="space-y-4">
       <SurfaceCard class-name="space-y-4">
@@ -19,7 +32,14 @@
           </div>
 
           <div class="flex flex-wrap gap-2">
-            <UButton label="New prompt" icon="i-pixelarticons-plus" color="primary" :loading="creating" @click="handleCreatePrompt" />
+            <UButton
+              label="New prompt"
+              icon="i-pixelarticons-plus"
+              color="primary"
+              :loading="creating"
+              :disabled="!promptLibraryReady"
+              @click="handleCreatePrompt"
+            />
             <UButton label="Refresh" icon="i-pixelarticons-reload" color="neutral" variant="soft" :loading="loading" @click="refresh" />
           </div>
         </div>
@@ -90,7 +110,13 @@
             Start a reusable prompt library for your workspace. Each prompt is just a Markdown file you can edit anytime.
           </p>
           <div class="mt-4 flex justify-center gap-2">
-            <UButton label="Create first prompt" icon="i-pixelarticons-plus" color="primary" @click="handleCreatePrompt" />
+            <UButton
+              label="Create first prompt"
+              icon="i-pixelarticons-plus"
+              color="primary"
+              :disabled="!promptLibraryReady"
+              @click="handleCreatePrompt"
+            />
           </div>
         </div>
       </SurfaceCard>
@@ -126,6 +152,8 @@ const filteredPrompts = computed(() => {
   return prompts.value.filter((prompt) => [prompt.title, prompt.preview, prompt.name, prompt.path].some((value) => value.toLowerCase().includes(query)))
 })
 
+const promptLibraryReady = computed(() => !error.value)
+
 function promptEditRoute(path: string) {
   return {
     path: '/prompts/edit',
@@ -152,6 +180,10 @@ async function refresh() {
 }
 
 async function handleCreatePrompt() {
+  if (!promptLibraryReady.value) {
+    toast.add({ title: 'Prompt library unavailable', description: error.value || 'Connect to your computer and try again.', color: 'warning' })
+    return
+  }
   creating.value = true
   try {
     const path = await createPrompt()

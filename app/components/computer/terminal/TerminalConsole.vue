@@ -23,7 +23,7 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { Terminal } from '@xterm/xterm'
 import type { FitAddon } from '@xterm/addon-fit'
 import type { TerminalSessionSnapshot } from '~/types/or3-api'
@@ -61,7 +61,8 @@ function dismissWarning() {
 }
 
 async function setup() {
-  if (!mountRef.value) return
+  await nextTick()
+  if (!mountRef.value?.isConnected || !mountRef.value.parentElement) return
   // xterm + addons are dynamically imported to keep them out of SSR/static bundles.
   const [{ Terminal: TerminalCtor }, { FitAddon: FitCtor }, { WebLinksAddon }] = await Promise.all([
     import('@xterm/xterm'),
@@ -111,6 +112,7 @@ async function setup() {
   fit = new FitCtor()
   term.loadAddon(fit)
   term.loadAddon(new WebLinksAddon())
+  if (!mountRef.value?.isConnected || !mountRef.value.parentElement) return
   term.open(mountRef.value)
   term.onData((data) => emit('data', data))
 

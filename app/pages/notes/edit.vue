@@ -3,7 +3,7 @@
     desktop-title="Edit Note"
     desktop-subtitle="Update a note."
   >
-    <template #sidebar><ComputerSidebar /></template>
+    <template #sidebar><NotesSidebar /></template>
     <AppHeader subtitle="NOTE EDITOR" />
     <div class="space-y-4">
       <SurfaceCard v-if="loading" class-name="space-y-3">
@@ -26,10 +26,12 @@
         :read-only="!noteState.writable"
         :unsupported-message="unsupportedMessage"
         :conflict-message="conflictMessage"
+        rename-label="Rename note"
         back-label="Notes"
         @save="saveNoteDocument"
         @save-copy="saveNoteCopy"
         @reload="reloadNote"
+        @rename="renameNote"
         @dismiss-conflict="dismissConflict"
         @back="goBack"
       />
@@ -75,6 +77,15 @@ function buildCopyPath(path: string) {
   return `${path.slice(0, dotIndex)}-copy${path.slice(dotIndex)}`
 }
 
+function applyMarkdownTitle(markdown: string, nextTitle: string) {
+  const source = typeof markdown === 'string' ? markdown : ''
+  const titleLine = `# ${nextTitle}`
+  if (/^#\s+.+$/m.test(source)) {
+    return source.replace(/^#\s+.+$/m, titleLine)
+  }
+  return source.trimStart() ? `${titleLine}\n\n${source}` : `${titleLine}\n`
+}
+
 async function goBack() {
   await navigateTo('/notes')
 }
@@ -106,8 +117,8 @@ async function loadNoteDocument() {
   }
 }
 
-async function saveNoteDocument(reason: 'manual' | 'autosave') {
-  if (!noteState.value || saving.value || unsupportedMessage.value) return
+async function saveNoteDocument(reason: 'manual' | 'autosave' | 'rename') {
+  if (!noteState.value || saving.value || unsupportedMessage.value) return false
   saving.value = true
   saveError.value = null
   try {
@@ -122,13 +133,31 @@ async function saveNoteDocument(reason: 'manual' | 'autosave') {
     if (reason === 'manual') {
       toast.add({ title: 'Note saved', description: `${noteState.value.title} is up to date.` })
     }
+    return true
   } catch (nextError: any) {
     saveError.value = nextError as Or3AppError
-    if (saveError.value.code !== 'file_conflict' && reason === 'manual') {
-      toast.add({ title: 'Could not save note', description: saveError.value.message, color: 'error' })
+    if (saveError.value.code !== 'file_conflict' && reason !== 'autosave') {
+      toast.add({
+        title: reason === 'rename' ? 'Could not rename note' : 'Could not save note',
+        description: saveError.value.message,
+        color: 'error',
+      })
     }
+    return false
   } finally {
     saving.value = false
+  }
+}
+
+async function renameNote() {
+  if (!noteState.value || saving.value || unsupportedMessage.value) return
+  const nextTitle = window.prompt('Rename note', noteState.value.title)?.trim()
+  if (!nextTitle || nextTitle === noteState.value.title) return
+  draftContent.value = applyMarkdownTitle(draftContent.value, nextTitle)
+  const saved = await saveNoteDocument('rename')
+  if (saved && noteState.value) {
+    noteState.value = { ...noteState.value, title: nextTitle }
+    toast.add({ title: 'Note renamed', description: nextTitle })
   }
 }
 

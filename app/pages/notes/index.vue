@@ -3,7 +3,20 @@
     desktop-title="Notes"
     desktop-subtitle="Browse and manage notes."
   >
-    <template #sidebar><ComputerSidebar /></template>
+    <template #sidebar><NotesSidebar /></template>
+    <template #desktop>
+      <SurfaceCard class-name="h-full">
+        <div class="grid min-h-[420px] place-items-center text-center">
+          <div>
+            <RetroIcon name="i-pixelarticons-notes" class="mx-auto" />
+            <p class="mt-3 font-mono text-sm font-semibold text-(--or3-text)">Select a note</p>
+            <p class="mt-2 max-w-sm text-sm leading-6 text-(--or3-text-muted)">
+              Choose a note from the sidebar or create a new one.
+            </p>
+          </div>
+        </div>
+      </SurfaceCard>
+    </template>
     <AppHeader subtitle="NOTES" />
     <div class="space-y-4">
       <SurfaceCard class-name="space-y-4">

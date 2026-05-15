@@ -29,20 +29,22 @@
                 <div v-else-if="!filteredSessions.length" class="or3-session-history__empty">No matching sessions.</div>
 
                 <div v-else class="or3-session-history__list">
-                    <button
+                    <div
                         v-for="session in filteredSessions"
                         :key="session.session_key"
-                        type="button"
                         class="or3-session-history__item"
-                        @click="emit('open-session', session)"
                     >
-                        <span class="or3-session-history__item-main">
+                        <button
+                            type="button"
+                            class="or3-session-history__item-main"
+                            @click="emit('open-session', session)"
+                        >
                             <strong>{{ session.title || 'Untitled conversation' }}</strong>
                             <small>{{ session.runner_label || session.runner_id || 'OR3 Intern' }} · {{ session.message_count || 0 }} messages</small>
                             <small class="flex items-center gap-1.5 mt-1.5" v-if="session.last_message_at"><UIcon name="i-pixelarticons-clock" /> {{ formatDate(session.last_message_at) }}</small>
                             <small v-if="session.parent_session_key">Forked from {{ session.parent_session_key }}</small>
-                        </span>
-                        <span class="or3-session-history__item-actions" @click.stop>
+                        </button>
+                        <span class="or3-session-history__item-actions">
                             <UButton
                                 icon="i-pixelarticons-edit-box"
                                 color="neutral"
@@ -60,7 +62,7 @@
                                 @click="emit('archive-session', session, !session.archived)"
                             />
                         </span>
-                    </button>
+                    </div>
                 </div>
             </UCard>
         </template>
@@ -218,8 +220,15 @@ function renameSession(session: ChatSessionMeta) {
 
 .or3-session-history__item-main {
     display: grid;
+    flex: 1;
     min-width: 0;
     gap: 0.15rem;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
 }
 
 .or3-session-history__item-main strong,

@@ -77,6 +77,12 @@ interface NavItem {
 const items = computed<NavItem[]>(() => [
     { label: 'Chat', to: '/', icon: 'i-pixelarticons-message' },
     { label: 'Agents', to: '/agents', icon: 'i-pixelarticons-robot' },
+    {
+        label: 'Create',
+        to: '/add',
+        icon: 'i-pixelarticons-plus',
+        matches: ['/add', '/prompts', '/notes'],
+    },
     { label: 'Computer', to: '/computer', icon: 'i-pixelarticons-monitor' },
     {
         label: 'Approvals',
@@ -93,6 +99,7 @@ const items = computed<NavItem[]>(() => [
 
 function isActive(item: NavItem) {
     if (item.to === '/') return route.path === '/';
+    if (item.matches?.some((path) => route.path === path || route.path.startsWith(path + '/'))) return true;
     return route.path === item.to || route.path.startsWith(item.to + '/');
 }
 </script>
