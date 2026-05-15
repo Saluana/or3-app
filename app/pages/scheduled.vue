@@ -1,5 +1,11 @@
 <template>
-    <AppShell>
+    <AppShell
+        desktop-title="Scheduled"
+        desktop-subtitle="Recurring tasks and automations."
+    >
+        <template #sidebar>
+            <ComputerSidebar />
+        </template>
         <AppHeader subtitle="SCHEDULED TASKS" />
 
         <div class="space-y-6">

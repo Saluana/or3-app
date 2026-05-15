@@ -1,5 +1,9 @@
 <template>
-  <AppShell>
+  <AppShell
+    desktop-title="Edit Prompt"
+    desktop-subtitle="Update a saved prompt."
+  >
+    <template #sidebar><ComputerSidebar /></template>
     <AppHeader subtitle="PROMPT EDITOR" />
     <div class="space-y-4">
       <SurfaceCard v-if="loading" class-name="space-y-3">

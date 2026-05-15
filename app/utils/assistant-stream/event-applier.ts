@@ -550,6 +550,7 @@ export function createAssistantEventApplier(
             streamStatus === 'succeeded' ||
             streamStatus === 'success'
         ) {
+            const jobId = eventJobId(event) ?? undefined;
             const finalText =
                 typeof payload?.final_text === 'string'
                     ? payload.final_text.trim()
@@ -583,6 +584,23 @@ export function createAssistantEventApplier(
                 'dynamic_tool_call',
                 'unknown',
             ]);
+            if (!finalText && hasToolWork && source === 'stream' && jobId) {
+                options.addActivity(
+                    createActivity(
+                        'completion',
+                        'Finalizing response',
+                        'Tool work completed. Waiting for the final assistant message…',
+                        'running',
+                    ),
+                );
+                options.updateAssistant({
+                    status: 'streaming',
+                    error: undefined,
+                    errorCode: undefined,
+                    jobId,
+                });
+                return { failed: false, completed: true };
+            }
             if (!finalText && hasToolWork) {
                 const warning =
                     'Tool work completed, but or3-intern did not return a final assistant message. The last tool result is shown above; retry the turn if it still matters.';
@@ -605,6 +623,7 @@ export function createAssistantEventApplier(
                     status: 'attention',
                     error: 'or3-intern completed without a final assistant message.',
                     errorCode: 'empty_final_text',
+                    jobId,
                 });
                 logger.warn(
                     'completion:empty_final_text',
@@ -629,7 +648,7 @@ export function createAssistantEventApplier(
                     'complete',
                 ),
             );
-            options.updateAssistant({ status: 'complete' });
+            options.updateAssistant({ status: 'complete', jobId });
             return { failed: false, completed: true };
         }
 

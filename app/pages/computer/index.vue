@@ -1,5 +1,11 @@
 <template>
-    <AppShell>
+    <AppShell
+        desktop-title="My Computer"
+        desktop-subtitle="Connection status, files, terminal, and approvals for your paired computer."
+    >
+        <template #sidebar>
+            <ComputerSidebar />
+        </template>
         <AppHeader subtitle="COMPUTER" />
 
         <div class="space-y-5">

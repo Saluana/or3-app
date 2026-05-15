@@ -1,5 +1,9 @@
 <template>
-  <AppShell>
+  <AppShell
+    desktop-title="Prompts"
+    desktop-subtitle="Manage your reusable prompts."
+  >
+    <template #sidebar><ComputerSidebar /></template>
     <AppHeader subtitle="PROMPTS" />
     <div class="space-y-4">
       <SurfaceCard class-name="space-y-4">

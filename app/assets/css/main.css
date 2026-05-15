@@ -524,10 +524,19 @@ html.or3-keyboard-open .or3-chat-shell__composer {
   max-width: 32rem;
   justify-content: center !important;
   flex-wrap: wrap !important;
+  line-clamp: 2;
   overflow-x: visible !important;
 }
 
 /* Thread ---------------------------------------------------------------- */
+
+ .or3-desktop-main-wrap {
+  position: relative;
+  width: 100%;
+  max-width: var(--or3-desktop-content-max);
+  min-width: 0;
+  margin-inline: auto;
+}
 
 .or3-chat-thread {
   display: flex;
@@ -572,4 +581,931 @@ html.or3-keyboard-open .or3-chat-shell__composer {
   box-shadow:
     -1px 0 0 rgba(255, 255, 255, 0.8) inset,
     -22px 0 50px -10px rgba(42, 35, 25, 0.22) !important;
+}
+
+/* ===========================================================================
+   Desktop shell (lg+) — three-column workspace
+   =========================================================================== */
+
+:root {
+  --or3-desktop-shell-pad: clamp(10px, 1.35vw, 16px);
+  --or3-desktop-gap: clamp(8px, 1vw, 14px);
+  --or3-desktop-primary-w: clamp(164px, 17vw, 200px);
+  --or3-desktop-secondary-w: clamp(280px, 28vw, 350px);
+  --or3-desktop-secondary-collapsed-w: 0px;
+  /* Card max widths — surface hugs content for a premium feel */
+  --or3-desktop-content-max: 60rem;
+  --or3-desktop-chat-max: 52rem;
+  --or3-desktop-radius: 22px;
+}
+
+@media (min-width: 1280px) {
+  :root {
+    --or3-desktop-primary-w: 200px;
+    --or3-desktop-secondary-w: 350px;
+  }
+}
+
+@media (max-width: 1160px) and (min-width: 1024px) {
+  :root {
+    --or3-desktop-primary-w: 160px;
+    --or3-desktop-secondary-w: 270px;
+    --or3-desktop-radius: 18px;
+  }
+}
+
+/* Hide mobile chrome on desktop */
+@media (min-width: 1024px) {
+  .or3-bottom-nav,
+  .or3-app-header-mobile {
+    display: none !important;
+  }
+
+  .or3-mobile-screen {
+    display: none !important;
+  }
+}
+
+/* Hide desktop shell on mobile */
+@media (max-width: 1023.98px) {
+  .or3-desktop-shell {
+    display: none !important;
+  }
+}
+
+.or3-desktop-shell {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--or3-desktop-primary-w) var(--or3-desktop-secondary-w) minmax(0, 1fr);
+  gap: var(--or3-desktop-gap);
+  padding: var(--or3-desktop-shell-pad);
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  background: var(--or3-background);
+  overflow: hidden;
+  transition: grid-template-columns 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.or3-desktop-shell--secondary-collapsed {
+  grid-template-columns: var(--or3-desktop-primary-w) var(--or3-desktop-secondary-collapsed-w) minmax(0, 1fr);
+}
+
+.or3-desktop-shell:has(> .or3-desktop-secondary:not(:nth-child(2))),
+.or3-desktop-shell:not(:has(.or3-desktop-secondary)) {
+  grid-template-columns: var(--or3-desktop-primary-w) minmax(0, 1fr);
+}
+
+/* ----- Primary sidebar ----- */
+.or3-desktop-primary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem 0.5rem 1rem;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.or3-desktop-primary__brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0.55rem 0.85rem;
+  text-decoration: none;
+  color: inherit;
+  border-bottom: 1px dashed color-mix(in srgb, var(--or3-border) 80%, transparent);
+}
+
+.or3-desktop-primary__brand-mark {
+  flex-shrink: 0;
+}
+
+.or3-desktop-primary__brand-text {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.or3-desktop-primary__brand-name {
+  font-family: "VT323", "JetBrains Mono", monospace;
+  font-size: 1.55rem;
+  line-height: 1;
+  color: var(--or3-text);
+  letter-spacing: 0.02em;
+}
+
+.or3-desktop-primary__brand-tag {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  color: var(--or3-text-muted);
+  text-transform: lowercase;
+}
+
+.or3-desktop-primary__nav {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.or3-desktop-primary__spacer {
+  flex: 1 1 auto;
+  min-height: 0.5rem;
+}
+
+.or3-desktop-nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 14px;
+  color: var(--or3-text-muted);
+  text-decoration: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.84rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  border: 1px solid transparent;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.or3-desktop-nav-item:hover {
+  background: color-mix(in srgb, var(--or3-green-soft) 60%, transparent);
+  color: var(--or3-text);
+}
+
+.or3-desktop-nav-item.is-active {
+  background: var(--or3-green-soft);
+  border-color: color-mix(in srgb, var(--or3-green) 30%, white 70%);
+  color: var(--or3-green-dark);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.or3-desktop-nav-item.is-active::before {
+  content: "";
+  position: absolute;
+  left: -0.85rem;
+  top: 25%;
+  bottom: 25%;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--or3-green);
+}
+
+.or3-desktop-nav-item__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.1rem;
+  height: 1.1rem;
+  flex-shrink: 0;
+}
+
+.or3-desktop-nav-item__label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.or3-desktop-nav-item__badge {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 0.35rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  border-radius: 999px;
+  background: var(--or3-amber);
+  color: white;
+}
+
+.or3-desktop-primary__status {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.4rem;
+  padding: 0.55rem 0.55rem;
+  border-radius: 14px;
+  border: 1px solid var(--or3-border);
+  background: color-mix(in srgb, var(--or3-surface) 60%, var(--or3-background) 40%);
+}
+
+.or3-desktop-primary__status-mascot {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--or3-green-soft);
+  border: 1px solid color-mix(in srgb, var(--or3-green) 25%, white 75%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.or3-desktop-primary__status-img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.or3-desktop-primary__status-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.or3-desktop-primary__status-name {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--or3-text);
+}
+
+.or3-desktop-primary__status-state {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.7rem;
+  color: var(--or3-text-muted);
+}
+
+.or3-desktop-primary__status-dot {
+  display: inline-block;
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 999px;
+  background: var(--or3-text-muted);
+}
+
+.or3-desktop-primary__status-dot[data-tone="green"] {
+  background: var(--or3-green);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--or3-green) 25%, transparent);
+}
+
+/* ----- Secondary sidebar (page-specific) ----- */
+.or3-desktop-secondary {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: transparent;
+  border: 0;
+  border-radius: var(--or3-desktop-radius);
+  box-shadow: none;
+  min-width: 0;
+  min-height: 0;
+  overflow: visible;
+}
+
+.or3-desktop-secondary--collapsed {
+  pointer-events: none;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+.or3-desktop-secondary--collapsed .or3-desktop-secondary__toggle {
+  display: none;
+}
+
+.or3-desktop-secondary__content {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+  border-radius: var(--or3-desktop-radius);
+  background: var(--or3-surface);
+  border: 1px solid var(--or3-border);
+  box-shadow: var(--or3-shadow-soft);
+}
+
+.or3-desktop-secondary__content > * {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Fade for sidebar content when collapsing/expanding */
+.or3-secondary-fade-enter-active,
+.or3-secondary-fade-leave-active {
+  transition: opacity 0.18s ease;
+}
+
+.or3-secondary-fade-enter-from,
+.or3-secondary-fade-leave-to {
+  opacity: 0;
+}
+
+.or3-desktop-secondary__toggle {
+  position: absolute;
+  top: 50%;
+  right: -12px;
+  transform: translateY(-50%);
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 46px;
+  border-radius: 8px;
+  border: 1px solid var(--or3-border);
+  background: var(--or3-surface);
+  color: var(--or3-text-muted);
+  box-shadow:
+    0 2px 6px -2px rgba(42, 35, 25, 0.18),
+    0 1px 2px rgba(42, 35, 25, 0.08);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease,
+    opacity 0.18s ease,
+    transform 0.22s ease,
+    box-shadow 0.22s ease;
+}
+
+.or3-desktop-secondary:hover .or3-desktop-secondary__toggle,
+.or3-desktop-secondary:focus-within .or3-desktop-secondary__toggle,
+.or3-desktop-secondary__toggle:focus-visible {
+  opacity: 1;
+}
+
+.or3-desktop-secondary__toggle:hover {
+  background: var(--or3-green-soft);
+  color: var(--or3-green-dark);
+  border-color: color-mix(in srgb, var(--or3-green) 28%, white 72%);
+}
+
+.or3-desktop-side-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.or3-desktop-side-panel__search {
+  padding: 0.85rem 0.85rem 0.55rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--or3-border) 60%, transparent);
+}
+
+/* toggle now lives on the sidebar's right edge, so the search row keeps its native padding */
+
+.or3-desktop-side-panel__kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.4rem;
+  height: 1.4rem;
+  border-radius: 6px;
+  border: 1px solid var(--or3-border);
+  background: color-mix(in srgb, var(--or3-surface) 60%, var(--or3-background) 40%);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.65rem;
+  color: var(--or3-text-muted);
+}
+
+.or3-desktop-side-panel__filters {
+  padding: 0.55rem 0.85rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--or3-border) 60%, transparent);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.or3-desktop-side-panel__list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.6rem 0.55rem;
+  scrollbar-width: thin;
+}
+
+.or3-desktop-side-panel__footer {
+  border-top: 1px solid color-mix(in srgb, var(--or3-border) 60%, transparent);
+  padding: 0.55rem 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.or3-desktop-side-panel__footer-text {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.7rem;
+  color: var(--or3-text-muted);
+}
+
+/* Section labels in secondary sidebar */
+.or3-desktop-side-section-label {
+  display: block;
+  padding: 0.7rem 0.65rem 0.3rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--or3-text-muted);
+}
+
+.or3-desktop-side-section-label:first-child {
+  padding-top: 0.2rem;
+}
+
+/* Generic list item used in secondary sidebar */
+.or3-desktop-list-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.65rem 0.7rem;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--or3-text);
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  margin-bottom: 0.2rem;
+}
+
+.or3-desktop-list-item:hover {
+  background: color-mix(in srgb, var(--or3-green-soft) 50%, transparent);
+}
+
+.or3-desktop-list-item.is-active {
+  background: var(--or3-green-soft);
+  border-color: color-mix(in srgb, var(--or3-green) 28%, white 72%);
+}
+
+.or3-desktop-list-item__title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  justify-content: space-between;
+}
+
+.or3-desktop-list-item__title {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--or3-text);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.or3-desktop-list-item__meta {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.65rem;
+  color: var(--or3-text-muted);
+  flex-shrink: 0;
+}
+
+.or3-desktop-list-item__preview {
+  margin-top: 0.25rem;
+  font-size: 0.78rem;
+  color: var(--or3-text-muted);
+  line-height: 1.35;
+  display: -webkit-box;
+  line-clamp: 2;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.or3-desktop-list-item__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--or3-green-soft);
+  color: var(--or3-green-dark);
+  flex-shrink: 0;
+}
+
+.or3-desktop-main-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  max-width: var(--or3-desktop-content-max);
+  height: 100%;
+  margin-inline: auto;
+  overflow: visible;
+}
+
+/* ----- Main surface ----- */
+.or3-desktop-main {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--or3-surface);
+  border: 1px solid var(--or3-border);
+  border-radius: var(--or3-desktop-radius);
+  box-shadow:
+    0 1px 2px rgba(42, 35, 25, 0.04),
+    0 8px 28px -12px rgba(42, 35, 25, 0.12);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  width: 100%;
+  max-width: none;
+  margin-inline: 0;
+}
+
+.or3-desktop-main-wrap__expand {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  left: -12px;
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 52px;
+  border-radius: 10px;
+  border: 1px solid var(--or3-border);
+  background: var(--or3-surface);
+  color: var(--or3-text-muted);
+  box-shadow:
+    0 2px 6px -2px rgba(42, 35, 25, 0.18),
+    0 1px 2px rgba(42, 35, 25, 0.08);
+  cursor: pointer;
+  opacity: 0.96;
+  transition:
+    opacity 0.18s ease,
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.18s ease;
+}
+
+.or3-desktop-main-wrap__expand:hover,
+.or3-desktop-main-wrap__expand:focus-visible {
+  opacity: 1;
+  background: var(--or3-green-soft);
+  color: var(--or3-green-dark);
+  border-color: color-mix(in srgb, var(--or3-green) 28%, white 72%);
+  transform: translateY(-50%) translateX(-1px);
+}
+
+.or3-desktop-main__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  overflow-y: auto;
+  padding: 1.75rem 2.25rem 2rem;
+  scrollbar-width: thin;
+}
+
+.or3-desktop-main__body--flush {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ----- Page header inside main surface ----- */
+.or3-desktop-page-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.4rem 2.25rem 1.1rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--or3-border) 60%, transparent);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--or3-surface) 100%, transparent) 0%,
+    color-mix(in srgb, var(--or3-surface) 96%, transparent) 100%
+  );
+}
+
+.or3-desktop-page-header__main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.or3-desktop-page-header__title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.or3-desktop-page-header__title {
+  font-family: "JetBrains Mono", "IBM Plex Serif", monospace;
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: var(--or3-text);
+  letter-spacing: 0.005em;
+  margin: 0;
+}
+
+.or3-desktop-page-header__subtitle {
+  margin: 0.3rem 0 0;
+  font-size: 0.85rem;
+  color: var(--or3-text-muted);
+  line-height: 1.45;
+  max-width: 60ch;
+}
+
+.or3-desktop-page-header__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.7rem;
+}
+
+.or3-desktop-page-header__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.22rem 0.55rem;
+  border-radius: 999px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.7rem;
+  border: 1px solid var(--or3-border);
+  background: color-mix(in srgb, var(--or3-surface) 60%, var(--or3-background) 40%);
+  color: var(--or3-text);
+}
+
+.or3-desktop-page-header__badge[data-tone="green"] {
+  background: var(--or3-green-soft);
+  border-color: color-mix(in srgb, var(--or3-green) 28%, white 72%);
+  color: var(--or3-green-dark);
+}
+
+.or3-desktop-page-header__badge[data-tone="amber"] {
+  background: var(--or3-amber-soft);
+  border-color: color-mix(in srgb, var(--or3-amber) 32%, white 68%);
+  color: color-mix(in srgb, var(--or3-amber) 75%, black 25%);
+}
+
+.or3-desktop-page-header__badge[data-tone="rose"] {
+  background: var(--or3-danger-soft);
+  border-color: color-mix(in srgb, var(--or3-danger) 28%, white 72%);
+  color: var(--or3-danger);
+}
+
+.or3-desktop-page-header__actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+/* Action card grid (computer, agents) */
+.or3-desktop-action-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.85rem;
+}
+
+.or3-desktop-action-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 1rem 0.85rem;
+  background: color-mix(in srgb, var(--or3-surface) 80%, var(--or3-background) 20%);
+  border: 1px solid var(--or3-border);
+  border-radius: 18px;
+  text-decoration: none;
+  color: var(--or3-text);
+  transition: transform 0.12s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  min-height: 110px;
+  cursor: pointer;
+}
+
+.or3-desktop-action-card:hover {
+  border-color: color-mix(in srgb, var(--or3-green) 35%, var(--or3-border));
+  box-shadow: 0 4px 14px rgba(42, 35, 25, 0.06);
+  transform: translateY(-1px);
+}
+
+.or3-desktop-action-card__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--or3-green-soft);
+  color: var(--or3-green-dark);
+}
+
+.or3-desktop-action-card__title {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--or3-text);
+  text-align: center;
+}
+
+.or3-desktop-action-card__desc {
+  font-size: 0.72rem;
+  color: var(--or3-text-muted);
+  text-align: center;
+}
+
+.or3-desktop-action-card__badge {
+  position: absolute;
+  top: 0.55rem;
+  right: 0.55rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: var(--or3-amber);
+  color: white;
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
+/* Section card used inside main surface */
+.or3-desktop-section {
+  border: 1px solid var(--or3-border);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--or3-surface) 80%, var(--or3-background) 20%);
+  padding: 1rem 1.1rem;
+}
+
+.or3-desktop-section__title {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--or3-text-muted);
+  margin-bottom: 0.65rem;
+}
+
+/* ============================================================
+ * Desktop chat layout (lives inside DesktopAppShell main surface)
+ * ============================================================ */
+.or3-chat-desktop {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.or3-chat-desktop__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 1.5rem 2rem 1.25rem;
+  border-bottom: 1px solid var(--or3-border);
+  min-width: 0;
+}
+
+.or3-chat-desktop__header-main {
+  min-width: 0;
+}
+
+.or3-chat-desktop__title {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 1.4rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--or3-text);
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.or3-chat-desktop__subtitle {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  color: var(--or3-text-muted);
+  margin: 0.4rem 0 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.or3-chat-desktop__runner-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--or3-text);
+}
+
+.or3-chat-desktop__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-shrink: 0;
+}
+
+.or3-chat-desktop__body {
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.or3-chat-desktop__messages {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+  padding: 0 1rem;
+}
+
+.or3-chat-desktop__message-list {
+  flex: 1 1 auto;
+  width: 100%;
+  max-width: var(--or3-desktop-chat-max);
+  min-width: 0;
+  min-height: 0;
+}
+
+.or3-chat-desktop__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 3rem 2rem;
+  text-align: center;
+  gap: 0.85rem;
+  max-width: 48rem;
+  margin: 0 auto;
+}
+
+.or3-chat-desktop__composer {
+  border-top: 1px solid var(--or3-border);
+  padding: 1rem 2rem 1.25rem;
+  background: color-mix(in srgb, var(--or3-surface) 92%, var(--or3-background) 8%);
+  min-width: 0;
+}
+
+.or3-chat-desktop__composer-inner {
+  width: 100%;
+  max-width: var(--or3-desktop-chat-max);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.or3-chat-desktop__status {
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+/* When AppShell is in flush mode the desktop main surface should not double-pad chat */
+.or3-desktop-main--flush > .or3-chat-desktop {
+  padding: 0;
+}
+
+/* Hide the mobile chat shell on desktop. */
+@media (min-width: 1024px) {
+  .or3-chat-shell--mobile {
+    display: none !important;
+  }
 }

@@ -248,6 +248,63 @@ describe("assistant stream ordered parts", () => {
         ).toMatchObject({ status: "attention" });
     });
 
+    it("waits for snapshot final text instead of showing a premature empty-final warning", async () => {
+        useLocalCache().updateHost({
+            id: "test-host",
+            name: "Test Host",
+            baseUrl: "http://127.0.0.1:9100",
+            token: "secret",
+        });
+
+        streamEvents.push(
+            {
+                event: "tool_call",
+                sequence: 1,
+                data: {
+                    name: "web_search",
+                    arguments: '{"query":"glue traps humane"}',
+                    tool_call_id: "call_search",
+                    job_id: "job_parts",
+                },
+            },
+            {
+                event: "tool_result",
+                sequence: 2,
+                data: {
+                    name: "web_search",
+                    result: "search results",
+                    tool_call_id: "call_search",
+                    job_id: "job_parts",
+                },
+            },
+            {
+                event: "completion",
+                sequence: 3,
+                data: { status: "completed", final_text: "", job_id: "job_parts" },
+            },
+        );
+
+        snapshotResponse = {
+            job_id: "job_parts",
+            status: "completed",
+            final_text:
+                "Based on the sources I found, glue-board traps are generally regarded as the least humane option.",
+            events: [],
+        };
+
+        await useAssistantStream().send("what is the least humane trap?");
+
+        const assistant = useChatSessions().messages.value.find(
+            (message) => message.role === "assistant",
+        );
+        expect(assistant?.status).toBe("complete");
+        expect(assistant?.errorCode).toBeUndefined();
+        expect(assistant?.content).toContain("glue-board traps");
+        expect(assistant?.content).not.toContain(
+            "did not return a final assistant message",
+        );
+    });
+
     it("surfaces empty completion without tool work as an attention state", async () => {
         useLocalCache().updateHost({
             id: "test-host",

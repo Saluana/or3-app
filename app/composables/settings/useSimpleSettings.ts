@@ -372,12 +372,22 @@ export function useSimpleSettings() {
         applyChanges: async (changes: SimpleSettingChange[]) => {
             const wire: ConfigureChange[] = changes.map((change) => {
                 const resolved = resolveFieldRef(change.section, change.field, change.channel)
-                return toConfigureChange({
+                const base = toConfigureChange({
                     ...change,
                     section: resolved.section,
                     field: resolved.field,
                     channel: resolved.channel,
                 })
+
+                const backendField = findField(resolved.section, resolved.field, resolved.channel)
+                if (backendField?.kind === 'choice') {
+                    return {
+                        ...base,
+                        op: 'choose',
+                    }
+                }
+
+                return base
             })
             return configure.applyChanges(wire)
         },

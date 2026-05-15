@@ -845,6 +845,7 @@ function attachmentTooltip(attachment: ChatAttachment): string {
 .or3-msg {
     display: flex;
     width: 100%;
+    min-width: 0;
 }
 
 .or3-msg--user {
@@ -875,6 +876,8 @@ function attachmentTooltip(attachment: ChatAttachment): string {
     padding: 0.85rem 1rem;
     border: 1px solid var(--or3-border);
     box-shadow: var(--or3-shadow-soft);
+    min-width: 0;
+    max-width: 100%;
     word-wrap: break-word;
     overflow-wrap: anywhere;
 }

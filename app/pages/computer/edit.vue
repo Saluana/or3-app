@@ -1,5 +1,11 @@
 <template>
-  <AppShell>
+  <AppShell
+    desktop-title="Editor"
+    desktop-subtitle="Edit workspace files inline."
+  >
+    <template #sidebar>
+      <ComputerSidebar />
+    </template>
     <AppHeader subtitle="EDITOR" />
     <div class="space-y-4">
       <SurfaceCard v-if="loading" class-name="space-y-3">

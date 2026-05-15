@@ -1,5 +1,5 @@
 <template>
-  <header class="flex items-center justify-between gap-3 pb-5">
+  <header class="or3-app-header-mobile flex items-center justify-between gap-3 pb-5">
     <NuxtLink to="/" class="flex items-center gap-3 outline-none or3-focus-ring rounded-2xl" aria-label="Go to chat home">
       <BrandMark size="lg" />
       <div>
@@ -37,7 +37,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { useApprovals } from '~/composables/useApprovals';
 
 withDefaults(defineProps<{ subtitle?: string }>(), {
@@ -46,8 +46,6 @@ withDefaults(defineProps<{ subtitle?: string }>(), {
 
 const approvalsOpen = ref(false);
 const { pendingCount, loadPendingCount, startPolling, stopPolling } = useApprovals();
-const { activeHost } = useActiveHost();
-const connected = computed(() => Boolean(activeHost.value?.token));
 
 onMounted(async () => {
   await loadPendingCount();

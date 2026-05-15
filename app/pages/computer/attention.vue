@@ -1,5 +1,11 @@
 <template>
-    <AppShell>
+    <AppShell
+        desktop-title="Needs Attention"
+        desktop-subtitle="Things to fix on your paired computer."
+    >
+        <template #sidebar>
+            <ComputerSidebar />
+        </template>
         <AppHeader subtitle="COMPUTER · ATTENTION" />
 
         <div class="space-y-4">

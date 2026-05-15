@@ -241,7 +241,9 @@ export function useAssistantStream() {
             const messageAfterSnapshot = readAssistant();
             if (
                 !executionState.sawVisibleOutput() &&
-                messageAfterSnapshot?.status !== 'streaming'
+                messageAfterSnapshot?.status !== 'streaming' &&
+                messageAfterSnapshot?.status !== 'attention' &&
+                messageAfterSnapshot?.status !== 'failed'
             ) {
                 const emptyMessage = sawStreamEvent
                     ? 'or3-intern finished thinking, but did not return any visible text.'

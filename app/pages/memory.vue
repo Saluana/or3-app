@@ -1,5 +1,11 @@
 <template>
-  <AppShell>
+  <AppShell
+    desktop-title="Memory"
+    desktop-subtitle="What or3-intern remembers and how to keep it healthy."
+  >
+    <template #sidebar>
+      <MemorySidebar />
+    </template>
     <AppHeader subtitle="KNOWLEDGE" />
 
     <div class="space-y-4">

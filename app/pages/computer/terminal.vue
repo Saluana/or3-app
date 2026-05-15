@@ -1,5 +1,11 @@
 <template>
-    <AppShell>
+    <AppShell
+        desktop-title="Terminal"
+        desktop-subtitle="Run commands inside your paired computer."
+    >
+        <template #sidebar>
+            <ComputerSidebar />
+        </template>
         <div class="or3-terminal-page">
             <!-- Sticky compact top bar -->
             <div class="or3-terminal-page__bar">

@@ -1,5 +1,11 @@
 <template>
-    <AppShell>
+    <AppShell
+        desktop-title="Settings"
+        desktop-subtitle="Configure models, memory, runtime, and connection settings."
+    >
+        <template #sidebar>
+            <SettingsSidebar />
+        </template>
         <AppHeader subtitle="SETTINGS" />
 
         <div class="space-y-4">

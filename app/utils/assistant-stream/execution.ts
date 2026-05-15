@@ -175,6 +175,25 @@ function streamIdleTimeoutError(path: string) {
     };
 }
 
+function assistantHasToolWork(message: ChatMessage | undefined) {
+    return Boolean(
+        message?.toolCalls?.length ||
+            message?.parts?.some((part) => part.type === "tool") ||
+            message?.activityLog?.some((entry) =>
+                [
+                    "tool_call",
+                    "tool_result",
+                    "command_execution",
+                    "file_change",
+                    "mcp_tool_call",
+                    "web_search",
+                    "collab_agent_tool_call",
+                    "dynamic_tool_call",
+                ].includes(entry.type),
+            ),
+    );
+}
+
 async function* withStreamWatchdog<T>(
     iterable: AsyncIterable<T>,
     path: string,
@@ -221,16 +240,59 @@ export function applyJobSnapshot(
     for (const event of snapshot.events ?? []) {
         context.applyEvent(event, "snapshot");
     }
+    const latest = context.readAssistant();
     const snapshotText =
         snapshot.final_text?.trim() || snapshot.error?.trim() || "";
-    if (snapshotText && !context.sawVisibleOutput()) {
+    if (
+        snapshotText &&
+        (!context.sawVisibleOutput() || latest?.errorCode === "empty_final_text")
+    ) {
         context.replaceAssistantContent(snapshotText);
         context.appendCompleteTextPart(snapshotText);
         context.setSawVisibleOutput(
             Boolean(context.sanitizeAssistantText(snapshotText)),
         );
     }
-    const latest = context.readAssistant();
+    const hasToolWork = assistantHasToolWork(latest);
+    const emptyFinalAfterSnapshot =
+        !snapshotText &&
+        !snapshot.error &&
+        snapshot.status !== "approval_required" &&
+        !isLiveJobStatus(snapshot.status) &&
+        hasToolWork;
+    if (emptyFinalAfterSnapshot) {
+        context.updateActivity(
+            (entry) =>
+                entry.type === "completion" && entry.status === "running",
+            {
+                status: "attention",
+                label: "Completed turn",
+                detail: "Tool work completed without a final assistant message.",
+            },
+        );
+        const warning =
+            "Tool work completed, but or3-intern did not return a final assistant message. The last tool result is shown above; retry the turn if it still matters.";
+        context.addActivity(
+            createActivity(
+                "completion",
+                "Completed turn",
+                "Tool work completed without a final assistant message.",
+                "attention",
+            ),
+        );
+        if (!context.sanitizeAssistantText(latest?.content || "")) {
+            context.replaceAssistantContent(warning);
+            context.appendCompleteTextPart(warning);
+        }
+        context.setSawVisibleOutput(true);
+        context.updateAssistant({
+            status: "attention",
+            error: "or3-intern completed without a final assistant message.",
+            errorCode: "empty_final_text",
+            jobId: snapshot.job_id,
+        });
+        return;
+    }
     const preserveEmptyFinalAttention =
         latest?.status === "attention" &&
         latest.errorCode === "empty_final_text" &&

@@ -1,5 +1,9 @@
 <template>
-    <AppShell>
+    <AppShell
+    desktop-title="Settings"
+    desktop-subtitle="Configure or3-intern."
+  >
+    <template #sidebar><SettingsSidebar /></template>
         <AppHeader subtitle="ADVANCED SETTINGS" />
 
         <div class="space-y-4">

@@ -1,5 +1,9 @@
 <template>
-  <AppShell>
+  <AppShell
+    desktop-title="Settings"
+    desktop-subtitle="Configure or3-intern."
+  >
+    <template #sidebar><SettingsSidebar /></template>
     <AppHeader subtitle="PASSKEYS" />
 
     <div class="space-y-4">

@@ -1,5 +1,9 @@
 <template>
-  <AppShell>
+  <AppShell
+    desktop-title="Edit Note"
+    desktop-subtitle="Update a note."
+  >
+    <template #sidebar><ComputerSidebar /></template>
     <AppHeader subtitle="NOTE EDITOR" />
     <div class="space-y-4">
       <SurfaceCard v-if="loading" class-name="space-y-3">

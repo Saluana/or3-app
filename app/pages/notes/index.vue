@@ -1,5 +1,9 @@
 <template>
-  <AppShell>
+  <AppShell
+    desktop-title="Notes"
+    desktop-subtitle="Browse and manage notes."
+  >
+    <template #sidebar><ComputerSidebar /></template>
     <AppHeader subtitle="NOTES" />
     <div class="space-y-4">
       <SurfaceCard class-name="space-y-4">

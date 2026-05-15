@@ -1,5 +1,15 @@
 <template>
-    <AppShell>
+    <AppShell
+        desktop-title="Agents"
+        desktop-subtitle="Delegate work to your agents and monitor their jobs."
+    >
+        <template #sidebar>
+            <AgentsSidebar
+                :jobs="jobs"
+                :on-refresh="loadJobs"
+                @open-job="openJobDetailById"
+            />
+        </template>
         <AppHeader subtitle="AGENTS" />
 
         <div class="space-y-6">
@@ -401,6 +411,11 @@ async function retryJobAndClose(job: JobSnapshot) {
 
 function openJobDetail(job: JobSnapshot) {
     selectedJobId.value = job.job_id;
+    detailOpen.value = true;
+}
+
+function openJobDetailById(jobId: string) {
+    selectedJobId.value = jobId;
     detailOpen.value = true;
 }
 

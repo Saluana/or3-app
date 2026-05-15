@@ -1,5 +1,11 @@
 <template>
-    <AppShell>
+    <AppShell
+        desktop-title="Activity"
+        desktop-subtitle="Recent commands, jobs, and approvals."
+    >
+        <template #sidebar>
+            <ComputerSidebar />
+        </template>
         <AppHeader subtitle="RECENT ACTIVITY" />
 
         <div class="min-w-0 max-w-full space-y-4 pb-28">

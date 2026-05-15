@@ -1,5 +1,8 @@
 <template>
-  <AppShell>
+  <AppShell
+    desktop-title="Create"
+    desktop-subtitle="Start a new task, agent run, or note."
+  >
     <AppHeader subtitle="CREATE" />
 
     <div class="space-y-6">
