@@ -59,12 +59,12 @@
       <details class="rounded-3xl border border-(--or3-border) bg-(--or3-surface) p-4 shadow-(--or3-shadow-soft)">
         <summary class="flex cursor-pointer items-center gap-2 select-none">
           <RetroIcon name="i-pixelarticons-tool-case" size="sm" />
-          <span class="font-mono text-sm font-semibold">Advanced: scope tools</span>
+          <span class="font-mono text-sm font-semibold">Advanced: memory identity tools</span>
           <span class="or3-command ml-auto text-[11px]">developer</span>
         </summary>
         <div class="mt-4 space-y-4">
           <DangerCallout tone="caution" title="Developer tools">
-            These are for connecting chat sessions to memory scopes. If that sentence didn't make sense, you don't need this section.
+            These are for debugging how conversations share memory. If you only want OR3 to remember notes and documents, you don't need this section.
           </DangerCallout>
           <div class="grid gap-3 md:grid-cols-2">
             <UInput v-model="sessionKey" placeholder="session_key" />

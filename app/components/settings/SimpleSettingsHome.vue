@@ -118,7 +118,7 @@
                         Add-ons
                     </p>
                     <p class="mt-0.5 text-xs text-(--or3-text-muted)">
-                        Manage MCP servers and external tools.
+                        Manage external tools and advanced add-ons.
                     </p>
                 </NuxtLink>
                 <NuxtLink

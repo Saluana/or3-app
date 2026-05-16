@@ -60,8 +60,8 @@ const items = [
     },
     {
         key: 'scopes',
-        label: 'Scope tools',
-        description: 'Developer tools for memory scopes.',
+        label: 'Memory identity tools',
+        description: 'Developer tools for conversation memory.',
         icon: 'i-pixelarticons-tool-case',
     },
 ];

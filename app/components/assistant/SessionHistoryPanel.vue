@@ -20,13 +20,13 @@
                 </template>
 
                 <div class="or3-session-history__filters">
-                    <UInput v-model="query" icon="i-pixelarticons-search" placeholder="Search sessions" />
+                    <UInput v-model="query" icon="i-pixelarticons-search" placeholder="Search conversations" />
                     <UTabs v-model="historyView" :items="items" :content="false" class="w-full" />
                 </div>
 
-                <div v-if="loading" class="or3-session-history__empty">Loading sessions…</div>
+                <div v-if="loading" class="or3-session-history__empty">Loading conversations…</div>
                 <div v-else-if="error" class="or3-session-history__empty or3-session-history__empty--error">{{ error }}</div>
-                <div v-else-if="!filteredSessions.length" class="or3-session-history__empty">No matching sessions.</div>
+                <div v-else-if="!filteredSessions.length" class="or3-session-history__empty">No matching conversations.</div>
 
                 <div v-else class="or3-session-history__list">
                     <div
@@ -42,7 +42,7 @@
                             <strong>{{ session.title || 'Untitled conversation' }}</strong>
                             <small>{{ session.runner_label || session.runner_id || 'OR3 Intern' }} · {{ session.message_count || 0 }} messages</small>
                             <small class="flex items-center gap-1.5 mt-1.5" v-if="session.last_message_at"><UIcon name="i-pixelarticons-clock" /> {{ formatDate(session.last_message_at) }}</small>
-                            <small v-if="session.parent_session_key">Forked from {{ session.parent_session_key }}</small>
+                            <small v-if="session.parent_session_key">Forked from another conversation</small>
                         </button>
                         <span class="or3-session-history__item-actions">
                             <UButton
@@ -50,7 +50,7 @@
                                 color="neutral"
                                 variant="ghost"
                                 square
-                                aria-label="Rename session"
+                                aria-label="Rename conversation"
                                 @click="renameSession(session)"
                             />
                             <UButton

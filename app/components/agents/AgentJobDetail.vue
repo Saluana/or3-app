@@ -1166,19 +1166,17 @@ const detailRows = computed<DetailRow[]>(() => {
     if (props.job.child_session_key) {
         rows.push({
             id: 'session',
-            label: 'Session',
+            label: 'Conversation',
             icon: 'i-pixelarticons-link',
-            value: props.job.child_session_key,
-            copyable: true,
+            value: 'Task conversation',
         });
     }
     if (props.job.parent_session_key) {
         rows.push({
             id: 'parent',
-            label: 'Parent',
+            label: 'Parent conversation',
             icon: 'i-pixelarticons-arrow-up',
-            value: props.job.parent_session_key,
-            copyable: true,
+            value: 'Original conversation',
         });
     }
     return rows;
@@ -1298,7 +1296,7 @@ async function loadFullResult() {
         props.job.child_session_key || props.job.parent_session_key;
     if (!sessionKey) {
         fullResultError.value =
-            'Missing session key for this task — can\u2019t fetch the full result.';
+            'Missing conversation identity for this task, so the full result can\u2019t be fetched.';
         return;
     }
     fullResultLoading.value = true;

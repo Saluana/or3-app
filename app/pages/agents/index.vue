@@ -230,7 +230,7 @@ function describeError(error: unknown, fallback: string): string {
         case 'auth_required':
         case 'session_required':
         case 'session_expired':
-            return 'Your session expired. Reconnect from settings to continue.';
+            return 'Your connection expired. Reconnect from settings to continue.';
         case 'forbidden':
             return 'Your computer rejected this request. Check pairing role.';
         case 'rate_limited':

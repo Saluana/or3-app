@@ -931,7 +931,7 @@ function cronConversationLabel(job: CronJob) {
     if (!sessionKey) return 'Dedicated task memory';
     if (sessionKey.startsWith('scheduled:')) return 'Dedicated task memory';
     if (sessionKey === 'cron:default') return 'Legacy shared memory';
-    return sessionKey;
+    return 'Custom conversation';
 }
 
 function cronPayloadLabel(job: CronJob) {

@@ -90,7 +90,7 @@ const baseItems = computed<SidebarItem[]>(() => {
         },
         {
             label: 'Add-ons',
-            description: 'Manage MCP servers and external tools.',
+            description: 'Manage external tools and advanced add-ons.',
             icon: 'i-pixelarticons-plug',
             to: '/settings/addons',
         },

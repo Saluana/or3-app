@@ -358,7 +358,7 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
         controls: [
             {
                 key: 'memory-history',
-                label: 'Max messages per session',
+                label: 'Recent conversation size',
                 description: 'How many recent messages stay in the AI’s mind.',
                 kind: 'text',
                 fieldRefs: [
@@ -719,8 +719,8 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
     },
     {
         key: 'connections',
-        label: 'Devices & Connections',
-        description: 'Manage paired devices and message apps.',
+        label: 'Connected Apps',
+        description: 'Manage messaging apps and paired devices.',
         icon: 'i-pixelarticons-message-text',
         summaryTemplate: (v) => {
             const enabled: string[] = [];
@@ -734,8 +734,8 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 if (get(v, `channels.${ch}.enabled`, false)) enabled.push(ch);
             }
             return enabled.length
-                ? `Connected channels: ${enabled.join(', ')}.`
-                : 'No external channels are connected.';
+                ? `Connected apps: ${enabled.join(', ')}.`
+                : 'No messaging apps are connected.';
         },
         controls: [
             {

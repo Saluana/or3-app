@@ -202,7 +202,7 @@
                         >
                             <span>
                                 <strong>Advanced options</strong>
-                                <small>Technical routing and agent settings</small>
+                                <small>Technical conversation and agent settings</small>
                             </span>
                             <Icon
                                 :name="advancedOpen ? 'i-pixelarticons-chevron-up' : 'i-pixelarticons-chevron-down'"
@@ -212,7 +212,7 @@
 
                         <div v-if="advancedOpen" class="or3-task-advanced__body">
                             <p class="or3-task-advanced__intro">
-                                Most people can ignore these. Use them when you need to route a task to a specific conversation key, recipient, or custom agent runtime.
+                                Most people can ignore these. Use them when you need a raw runtime key, a specific destination, or custom agent settings.
                             </p>
 
                             <label
@@ -235,10 +235,10 @@
                                 <input
                                     v-model="form.to"
                                     class="or3-task-input"
-                                    placeholder="Optional override, like a channel ID or address"
+                                    placeholder="Optional override, like a destination ID or address"
                                 />
                                 <small class="or3-task-helper">
-                                    Leave blank to use the channel's default destination.
+                                    Leave blank to use the connected app's default destination.
                                 </small>
                             </label>
 
@@ -564,7 +564,7 @@ const sessionSelectOptions = computed(() => {
         });
     }
     return items.map((session) => ({
-        label: session.title || session.session_key,
+        label: session.title || 'Untitled conversation',
         value: session.session_key,
     }));
 });
@@ -784,7 +784,7 @@ async function loadConversationOptions() {
 
 async function loadDeliveryOptions() {
     channelLoadError.value = null;
-    const results = await Promise.all(
+    const results: Array<ChannelSelectOption | null> = await Promise.all(
         CHANNEL_CATALOG.map(async (channel) => {
             try {
                 const response = await api.request<ConfigureFieldsResponse>(

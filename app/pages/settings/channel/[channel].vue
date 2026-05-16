@@ -4,7 +4,7 @@
     desktop-subtitle="Configure or3-intern."
   >
     <template #sidebar><SettingsSidebar /></template>
-        <AppHeader subtitle="SETTINGS · CHANNEL" />
+        <AppHeader subtitle="SETTINGS · CONNECTED APP" />
 
         <div class="space-y-4">
             <SurfaceCard class-name="space-y-2">
@@ -14,7 +14,7 @@
                     @click="$router.push('/settings/section/connections')"
                 >
                     <Icon name="i-pixelarticons-chevron-left" class="size-4" />
-                    Devices &amp; Connections
+                    Connected Apps
                 </button>
 
                 <div class="flex items-start gap-3">
@@ -22,8 +22,7 @@
                     <div class="min-w-0 flex-1">
                         <p class="font-mono text-base font-semibold text-(--or3-text)">{{ channelLabel }}</p>
                         <p class="mt-1 text-sm leading-6 text-(--or3-text-muted)">
-                            Manage how OR3 talks to {{ channelLabel }}. Fields below come straight from the host
-                            configuration for the <code class="font-mono">channels</code> section.
+                            Manage how OR3 talks to {{ channelLabel }}. Advanced connection details stay here so normal chat and task screens can stay simple.
                         </p>
                     </div>
                 </div>
@@ -33,11 +32,11 @@
 
             <SettingsSectionEditor
                 :title="`${channelLabel} settings`"
-                subtitle="Channel configuration"
-                :description="`Wire up bot tokens, signing secrets, allowed identities, and inbound policy for ${channelLabel}.`"
+                subtitle="Connected app settings"
+                :description="`Wire up bot tokens, signing secrets, trusted identities, and message access for ${channelLabel}.`"
                 :fields="fields"
                 :saving="configureSaving"
-                empty-state-text="This host does not expose any fields for this channel yet."
+                empty-state-text="This host does not expose any fields for this connected app yet."
                 @save="onSave"
             />
         </div>

@@ -491,7 +491,7 @@ async function saveHeartbeatSettings() {
     settingsError.value = error?.message ?? 'Unable to save heartbeat settings.'
     toast.add({
       title: 'Could not save heartbeat settings',
-      description: settingsError.value,
+      description: settingsError.value || undefined,
       color: 'error',
     })
   } finally {

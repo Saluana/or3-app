@@ -19,7 +19,7 @@ export const FIELD_LABEL_MAP: Record<string, string> = {
     'provider.enableVision': 'Image understanding',
 
     // Memory & Chat
-    'context.historyMaxMessages': 'Max messages per session',
+    'context.historyMaxMessages': 'Recent conversation size',
     'context.memoryRetrieveLimit': 'Memories recalled per reply',
     'context.maxInputTokens': 'Conversation detail',
     'context.outputReserveTokens': 'Reply space reserve',
