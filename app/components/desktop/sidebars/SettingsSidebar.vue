@@ -95,6 +95,12 @@ const baseItems = computed<SidebarItem[]>(() => {
             to: '/settings/addons',
         },
         {
+            label: 'Automatic check-ins',
+            description: 'Turn on heartbeat and edit its background checklist.',
+            icon: 'tabler:activity-heartbeat',
+            to: '/settings/heartbeat',
+        },
+        {
             label: 'Passkeys',
             description: 'Manage device passkeys for security.',
             icon: 'i-pixelarticons-shield',

@@ -203,6 +203,7 @@ const props = withDefaults(defineProps<{
   showBack?: boolean
   backLabel?: string
   renameLabel?: string
+  initialMode?: 'edit' | 'read'
 }>(), {
   title: 'Markdown editor',
   statusLabel: '',
@@ -215,6 +216,7 @@ const props = withDefaults(defineProps<{
   showBack: true,
   backLabel: 'Back',
   renameLabel: '',
+  initialMode: undefined,
 })
 
 const emit = defineEmits<{
@@ -231,7 +233,13 @@ const emit = defineEmits<{
 const toast = useToast()
 const editor = shallowRef<Editor | null>(null)
 const dirty = ref(false)
-const mode = ref<'edit' | 'read'>(props.readOnly ? 'read' : 'edit')
+const mode = ref<'edit' | 'read'>(
+  props.readOnly
+    ? 'read'
+    : props.initialMode === 'read'
+      ? 'read'
+      : 'edit',
+)
 let lastCommittedValue = props.modelValue
 let syncFromProps = false
 let autosaveTimer: ReturnType<typeof setTimeout> | null = null

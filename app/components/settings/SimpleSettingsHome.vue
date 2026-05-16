@@ -132,6 +132,17 @@
                         Create and manage recurring work.
                     </p>
                 </NuxtLink>
+                <NuxtLink
+                    to="/settings/heartbeat"
+                    class="or3-focus-ring rounded-xl border border-(--or3-border) bg-white/70 p-3 text-sm hover:bg-(--or3-green-soft)"
+                >
+                    <p class="font-mono font-semibold text-(--or3-text)">
+                        Automatic check-ins
+                    </p>
+                    <p class="mt-0.5 text-xs text-(--or3-text-muted)">
+                        Turn on heartbeat and edit its background checklist.
+                    </p>
+                </NuxtLink>
             </div>
         </SurfaceCard>
 

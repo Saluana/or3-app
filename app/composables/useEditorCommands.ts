@@ -33,7 +33,7 @@ export function useEditorCommands(editorRef: Ref<Editor | null | undefined>, opt
       {
         id: 'bold',
         label: 'Bold',
-        icon: 'i-pixelarticons-edit',
+        icon: 'mdi:format-bold',
         run: () => { editor?.chain().focus().toggleBold().run() },
         isActive: canRun(() => editor?.isActive('bold') === true),
         disabled: !canRun(() => editor?.can().chain().focus().toggleBold().run() === true),
@@ -41,7 +41,7 @@ export function useEditorCommands(editorRef: Ref<Editor | null | undefined>, opt
       {
         id: 'italic',
         label: 'Italic',
-        icon: 'i-pixelarticons-edit-box',
+        icon: 'mdi:format-italic',
         run: () => { editor?.chain().focus().toggleItalic().run() },
         isActive: canRun(() => editor?.isActive('italic') === true),
         disabled: !canRun(() => editor?.can().chain().focus().toggleItalic().run() === true),
@@ -49,7 +49,7 @@ export function useEditorCommands(editorRef: Ref<Editor | null | undefined>, opt
       {
         id: 'heading',
         label: 'Heading',
-        icon: 'i-pixelarticons-book-open',
+        icon: 'mdi:format-header-2',
         run: () => { editor?.chain().focus().toggleHeading({ level: 2 }).run() },
         isActive: canRun(() => editor?.isActive('heading', { level: 2 }) === true),
         disabled: !canRun(() => editor?.can().chain().focus().toggleHeading({ level: 2 }).run() === true),
@@ -57,7 +57,7 @@ export function useEditorCommands(editorRef: Ref<Editor | null | undefined>, opt
       {
         id: 'bullet-list',
         label: 'Bullet list',
-        icon: 'i-pixelarticons-list',
+        icon: 'mdi:format-list-bulleted',
         run: () => { editor?.chain().focus().toggleBulletList().run() },
         isActive: canRun(() => editor?.isActive('bulletList') === true),
         disabled: !canRun(() => editor?.can().chain().focus().toggleBulletList().run() === true),
@@ -65,7 +65,7 @@ export function useEditorCommands(editorRef: Ref<Editor | null | undefined>, opt
       {
         id: 'ordered-list',
         label: 'Numbered list',
-        icon: 'i-pixelarticons-list',
+        icon: 'mdi:format-list-numbered',
         run: () => { editor?.chain().focus().toggleOrderedList().run() },
         isActive: canRun(() => editor?.isActive('orderedList') === true),
         disabled: !canRun(() => editor?.can().chain().focus().toggleOrderedList().run() === true),
@@ -73,7 +73,7 @@ export function useEditorCommands(editorRef: Ref<Editor | null | undefined>, opt
       {
         id: 'inline-code',
         label: 'Inline code',
-        icon: 'i-pixelarticons-code',
+        icon: 'mdi:code-tags',
         run: () => { editor?.chain().focus().toggleCode().run() },
         isActive: canRun(() => editor?.isActive('code') === true),
         disabled: !canRun(() => editor?.can().chain().focus().toggleCode().run() === true),
@@ -81,7 +81,7 @@ export function useEditorCommands(editorRef: Ref<Editor | null | undefined>, opt
       {
         id: 'code-block',
         label: 'Code block',
-        icon: 'i-pixelarticons-terminal',
+        icon: 'mdi:code-tags',
         run: () => { editor?.chain().focus().toggleCodeBlock().run() },
         isActive: canRun(() => editor?.isActive('codeBlock') === true),
         disabled: !canRun(() => editor?.can().chain().focus().toggleCodeBlock().run() === true),
@@ -89,7 +89,7 @@ export function useEditorCommands(editorRef: Ref<Editor | null | undefined>, opt
       {
         id: 'horizontal-rule',
         label: 'Divider',
-        icon: 'i-pixelarticons-minus',
+        icon: 'mdi:minus',
         run: () => { editor?.chain().focus().setHorizontalRule().run() },
         disabled: !canRun(() => editor?.can().chain().focus().setHorizontalRule().run() === true),
       },

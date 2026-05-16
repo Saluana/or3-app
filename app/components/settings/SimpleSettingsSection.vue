@@ -31,6 +31,37 @@
 
         <template v-for="group in controlGroups" :key="group.key">
             <SurfaceCard
+                v-if="section.key === 'automation' && group === controlGroups[0]"
+                class-name="space-y-3"
+            >
+                <div class="flex items-start gap-3">
+                    <span class="or3-heartbeat-cta__icon">
+                        <Icon name="tabler:activity-heartbeat" class="size-5" />
+                    </span>
+                    <div class="min-w-0 flex-1">
+                        <p class="font-mono text-base font-semibold text-(--or3-text)">
+                            Automatic check-ins
+                        </p>
+                        <p class="mt-1 text-sm leading-6 text-(--or3-text-muted)">
+                            Set up heartbeat with a simple on/off switch, choose how often it runs, and edit the background checklist in the markdown editor.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-(--or3-border) bg-white/70 px-4 py-3">
+                    <p class="text-sm leading-6 text-(--or3-text-muted)">
+                        Best for standing review work. Use scheduled tasks when you need exact times or delivery targets.
+                    </p>
+                    <UButton
+                        to="/settings/heartbeat"
+                        color="primary"
+                        icon="i-pixelarticons-arrow-right"
+                    >
+                        Open heartbeat setup
+                    </UButton>
+                </div>
+            </SurfaceCard>
+            <SurfaceCard
                 v-if="group.grouped"
                 class-name="space-y-1"
             >
@@ -230,3 +261,17 @@ onMounted(async () => {
     await simple.ensureLoaded(props.section.key);
 });
 </script>
+
+<style scoped>
+.or3-heartbeat-cta__icon {
+    display: grid;
+    place-items: center;
+    width: 2.6rem;
+    height: 2.6rem;
+    flex-shrink: 0;
+    border-radius: 1rem;
+    background: var(--or3-green-soft);
+    color: var(--or3-green-dark);
+    border: 1px solid color-mix(in srgb, var(--or3-green) 22%, transparent);
+}
+</style>
