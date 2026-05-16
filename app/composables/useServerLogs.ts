@@ -31,6 +31,7 @@ let controller: AbortController | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectAttempt = 0;
 let manualDisconnect = false;
+let localCollisionId = 0;
 
 function normalizeLevel(value: unknown): ServerLogLevel {
     if (value === 'debug' || value === 'warn' || value === 'error')
@@ -73,7 +74,12 @@ function buildQuery(filters: ServerLogFilters) {
 }
 
 function pushEntry(entry: ServerLogEntry) {
-    entries.value = [...entries.value, entry].slice(-MAX_SERVER_LOG_ENTRIES);
+    const nextEntry = entries.value.some((existing) => existing.id === entry.id)
+        ? { ...entry, id: `${entry.id}_${++localCollisionId}` }
+        : entry;
+    entries.value = [...entries.value, nextEntry].slice(
+        -MAX_SERVER_LOG_ENTRIES,
+    );
 }
 
 function clearReconnectTimer() {

@@ -31,7 +31,9 @@
 
         <template v-for="group in controlGroups" :key="group.key">
             <SurfaceCard
-                v-if="section.key === 'automation' && group === controlGroups[0]"
+                v-if="
+                    section.key === 'automation' && group === controlGroups[0]
+                "
                 class-name="space-y-3"
             >
                 <div class="flex items-start gap-3">
@@ -39,18 +41,27 @@
                         <Icon name="tabler:activity-heartbeat" class="size-5" />
                     </span>
                     <div class="min-w-0 flex-1">
-                        <p class="font-mono text-base font-semibold text-(--or3-text)">
+                        <p
+                            class="font-mono text-base font-semibold text-(--or3-text)"
+                        >
                             Automatic check-ins
                         </p>
-                        <p class="mt-1 text-sm leading-6 text-(--or3-text-muted)">
-                            Set up heartbeat with a simple on/off switch, choose how often it runs, and edit the background checklist in the markdown editor.
+                        <p
+                            class="mt-1 text-sm leading-6 text-(--or3-text-muted)"
+                        >
+                            Set up heartbeat with a simple on/off switch, choose
+                            how often it runs, and edit the background checklist
+                            in the markdown editor.
                         </p>
                     </div>
                 </div>
 
-                <div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-(--or3-border) bg-white/70 px-4 py-3">
+                <div
+                    class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-(--or3-border) bg-white/70 px-4 py-3"
+                >
                     <p class="text-sm leading-6 text-(--or3-text-muted)">
-                        Best for standing review work. Use scheduled tasks when you need exact times or delivery targets.
+                        Best for standing review work. Use scheduled tasks when
+                        you need exact times or delivery targets.
                     </p>
                     <UButton
                         to="/settings/heartbeat"
@@ -61,12 +72,11 @@
                     </UButton>
                 </div>
             </SurfaceCard>
-            <SurfaceCard
-                v-if="group.grouped"
-                class-name="space-y-1"
-            >
+            <SurfaceCard v-if="group.grouped" class-name="space-y-1">
                 <div class="space-y-1 pb-2">
-                    <p class="font-mono text-base font-semibold text-(--or3-text)">
+                    <p
+                        class="font-mono text-base font-semibold text-(--or3-text)"
+                    >
                         {{ group.label }}
                     </p>
                     <p
@@ -146,6 +156,7 @@
         <SettingSaveReview
             v-if="reviewing"
             :changes="pendingChanges"
+            :error="saveError"
             :saving="saving"
             @cancel="reviewing = false"
             @confirm="onConfirmSave"

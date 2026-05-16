@@ -15,6 +15,16 @@ async function waitForMicrotasks() {
     await Promise.resolve();
 }
 
+async function waitForLogCount(
+    logs: ReturnType<typeof useServerLogs>,
+    count: number,
+) {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+        if (logs.entries.value.length >= count) return;
+        await waitForMicrotasks();
+    }
+}
+
 describe('useServerLogs', () => {
     beforeEach(() => {
         stream.mockReset();
@@ -85,5 +95,38 @@ describe('useServerLogs', () => {
 
         expect(signal?.aborted).toBe(true);
         expect(logs.isStreaming.value).toBe(false);
+    });
+
+    it('keeps repeated server log ids unique in the client buffer', async () => {
+        stream.mockImplementation(async function* () {
+            yield {
+                event: 'log',
+                json: {
+                    id: 'log_50',
+                    timestamp: '2026-05-14T00:00:00Z',
+                    level: 'info',
+                    component: 'service',
+                    message: 'first',
+                },
+            };
+            yield {
+                event: 'log',
+                json: {
+                    id: 'log_50',
+                    timestamp: '2026-05-14T00:00:01Z',
+                    level: 'info',
+                    component: 'service',
+                    message: 'second',
+                },
+            };
+        });
+
+        const logs = useServerLogs();
+        logs.connect();
+        await waitForLogCount(logs, 2);
+
+        expect(logs.entries.value).toHaveLength(2);
+        expect(logs.entries.value[0].id).toBe('log_50');
+        expect(logs.entries.value[1].id).toMatch(/^log_50_\d+$/);
     });
 });
