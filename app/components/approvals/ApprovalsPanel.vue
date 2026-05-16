@@ -1,32 +1,40 @@
 <template>
     <div class="space-y-4">
         <!-- Hero summary card -->
-        <section class="or3-approval-hero">
-            <div class="flex items-start gap-3 sm:gap-4">
+        <SurfaceCard padded class-name="or3-approval-hero">
+            <div class="or3-approval-hero__copy">
+                <span class="or3-approval-hero__eyebrow">
+                    <Icon
+                        name="i-pixelarticons-shield"
+                        class="size-3.5"
+                        aria-hidden="true"
+                    />
+                    Approval desk
+                </span>
+                <h1 class="or3-approval-hero__title">
+                    {{ heroTitle }}
+                </h1>
+                <p class="or3-approval-hero__sub">
+                    or3-intern pauses before risky actions. Review and decide
+                    what happens next.
+                </p>
+            </div>
+            <div class="or3-approval-hero__stage" aria-hidden="true">
+                <span class="or3-approval-hero__sparkle or3-approval-hero__sparkle--a" />
+                <span class="or3-approval-hero__sparkle or3-approval-hero__sparkle--b" />
+                <span class="or3-approval-hero__glow" />
                 <span class="or3-approval-hero__badge">
                     <Icon
                         name="i-pixelarticons-shield"
-                        class="size-6 text-(--or3-green-dark)"
+                        class="size-5 text-(--or3-green-dark)"
                     />
                 </span>
-                <div class="min-w-0 flex-1">
-                    <p
-                        class="font-mono text-[1.05rem] font-semibold leading-snug tracking-tight text-(--or3-text) sm:text-[1.15rem]"
-                    >
-                        {{ heroTitle }}
-                    </p>
-                    <p class="mt-1.5 text-sm leading-6 text-(--or3-text-muted)">
-                        or3-intern pauses before risky actions.
-                        <br class="hidden sm:inline" />
-                        Review and decide what happens next.
-                    </p>
-                </div>
                 <RetroComputerMascot
-                    :size="68"
-                    class="or3-approval-hero__mascot hidden shrink-0 self-start sm:block"
+                    :size="94"
+                    class="or3-approval-hero__mascot"
                 />
             </div>
-        </section>
+        </SurfaceCard>
 
         <!-- Filter chips row -->
         <div class="-mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-1">
@@ -107,9 +115,9 @@
             />
 
             <!-- All clear footer card -->
-            <section
+            <SurfaceCard
                 v-if="!pendingCount && selectedFilter === 'pending'"
-                class="or3-approval-allclear"
+                class-name="or3-approval-allclear"
             >
                 <span class="or3-approval-hero__badge">
                     <Icon
@@ -135,7 +143,7 @@
                     sparkle
                     class="hidden shrink-0 self-start sm:block"
                 />
-            </section>
+            </SurfaceCard>
         </template>
 
         <ApprovalDetailSheet
@@ -480,29 +488,118 @@ watch(
 </script>
 
 <style scoped>
-.or3-approval-hero,
-.or3-approval-allclear {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.75rem;
-    padding: 1rem 1.1rem;
-    background: linear-gradient(
-        180deg,
-        color-mix(in srgb, var(--or3-green-soft) 78%, white 22%) 0%,
-        color-mix(in srgb, var(--or3-green-soft) 55%, white 45%) 100%
+.or3-approval-hero {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 1.25rem;
+    overflow: hidden;
+    background:
+        radial-gradient(
+            110% 92% at 100% 0%,
+            color-mix(in srgb, var(--or3-green) 16%, transparent) 0%,
+            transparent 58%
+        ),
+        radial-gradient(
+            90% 70% at 0% 0%,
+            color-mix(in srgb, var(--or3-green) 7%, transparent) 0%,
+            transparent 62%
+        ),
+        color-mix(in srgb, var(--or3-surface) 92%, white 8%);
+}
+
+.or3-approval-hero::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image: radial-gradient(
+        color-mix(in srgb, var(--or3-green) 18%, transparent) 1px,
+        transparent 1px
     );
-    border: 1px solid
-        color-mix(in srgb, var(--or3-green) 22%, var(--or3-border) 78%);
-    border-radius: var(--or3-radius-card);
-    box-shadow: var(--or3-shadow-soft);
+    background-size: 14px 14px;
+    background-position: top right;
+    mask-image: radial-gradient(
+        72% 66% at 100% 0%,
+        rgba(0, 0, 0, 0.46),
+        transparent 72%
+    );
+    opacity: 0.5;
+}
+
+.or3-approval-hero > * {
+    position: relative;
+}
+
+.or3-approval-hero__copy {
+    min-width: 0;
+}
+
+.or3-approval-hero__eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-family:
+        'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--or3-green-dark);
+}
+
+.or3-approval-hero__title {
+    margin-top: 0.45rem;
+    max-width: 22ch;
+    overflow-wrap: anywhere;
+    font-family:
+        'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: clamp(1.15rem, 4vw, 1.45rem);
+    font-weight: 700;
+    line-height: 1.16;
+    letter-spacing: 0;
+    color: var(--or3-text);
+}
+
+.or3-approval-hero__sub {
+    margin-top: 0.55rem;
+    max-width: 38rem;
+    font-size: 0.9rem;
+    line-height: 1.6;
+    color: var(--or3-text-muted);
+}
+
+.or3-approval-hero__stage {
+    position: relative;
+    display: grid;
+    width: 8.25rem;
+    height: 7.25rem;
+    flex-shrink: 0;
+    place-items: center;
+}
+
+.or3-approval-hero__glow {
+    position: absolute;
+    right: 0.2rem;
+    bottom: 0.55rem;
+    width: 5.5rem;
+    height: 1.2rem;
+    border-radius: 999px;
+    background: radial-gradient(
+        ellipse at center,
+        color-mix(in srgb, var(--or3-green) 46%, transparent) 0%,
+        transparent 72%
+    );
+    filter: blur(2px);
 }
 
 .or3-approval-hero__badge {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 44px;
-    height: 44px;
+    width: 2.9rem;
+    height: 2.9rem;
     border-radius: 16px;
     background: color-mix(in srgb, white 65%, var(--or3-green-soft) 35%);
     border: 1px solid color-mix(in srgb, var(--or3-green) 30%, white 70%);
@@ -510,9 +607,52 @@ watch(
     flex-shrink: 0;
 }
 
+.or3-approval-hero__stage .or3-approval-hero__badge {
+    position: absolute;
+    top: 0.25rem;
+    left: 0;
+}
+
 .or3-approval-hero__mascot {
+    position: relative;
+    z-index: 1;
     transform: scaleX(-1);
     transform-origin: center;
+}
+
+.or3-approval-hero__sparkle {
+    position: absolute;
+    border-radius: 999px;
+    background: var(--or3-green);
+    opacity: 0.7;
+    box-shadow: 0 0 8px color-mix(in srgb, var(--or3-green) 55%, transparent);
+}
+
+.or3-approval-hero__sparkle--a {
+    top: 1rem;
+    right: 1.15rem;
+    width: 0.38rem;
+    height: 0.38rem;
+}
+
+.or3-approval-hero__sparkle--b {
+    right: 0.15rem;
+    bottom: 2.55rem;
+    width: 0.25rem;
+    height: 0.25rem;
+}
+
+.or3-approval-allclear {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.85rem;
+    background:
+        radial-gradient(
+            80% 100% at 100% 50%,
+            color-mix(in srgb, var(--or3-green) 12%, transparent) 0%,
+            transparent 58%
+        ),
+        color-mix(in srgb, var(--or3-surface) 92%, white 8%);
 }
 
 .or3-chip--lg {
@@ -541,5 +681,16 @@ watch(
 .or3-chip[aria-pressed="true"] .or3-chip__count {
     background: white;
     color: var(--or3-green-dark);
+}
+
+@media (max-width: 520px) {
+    .or3-approval-hero {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 0.75rem;
+    }
+
+    .or3-approval-hero__stage {
+        display: none;
+    }
 }
 </style>

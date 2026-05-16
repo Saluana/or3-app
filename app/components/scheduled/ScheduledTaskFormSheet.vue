@@ -75,27 +75,60 @@
                         </label>
 
                         <label class="or3-task-field">
-                            <span>Target</span>
+                            <span>Run with</span>
                             <USelectMenu
-                                v-model="form.target"
-                                :items="targetOptions"
+                                v-model="runWithValue"
+                                :items="runWithOptions"
                                 value-key="value"
                                 size="lg"
                                 class="or3-task-select"
                             />
+                            <small class="or3-task-helper">
+                                {{ runWithSummary }}
+                            </small>
                         </label>
 
-                        <label v-if="form.target === 'agent_cli'" class="or3-task-field">
-                            <span>Runner</span>
+                        <label class="or3-task-field">
+                            <span>Conversation</span>
                             <USelectMenu
-                                v-model="form.runnerId"
-                                :items="runnerSelectOptions"
+                                v-model="form.conversationMode"
+                                :items="conversationModeOptions"
                                 value-key="value"
                                 size="lg"
-                                placeholder="Select runner"
                                 class="or3-task-select"
                             />
+                            <small class="or3-task-helper">
+                                {{ conversationSummary }}
+                            </small>
                         </label>
+
+                        <label
+                            v-if="form.conversationMode === 'existing'"
+                            class="or3-task-field sm:col-span-2"
+                        >
+                            <span>Choose conversation</span>
+                            <USelectMenu
+                                v-model="form.existingSessionKey"
+                                :items="sessionSelectOptions"
+                                value-key="value"
+                                size="lg"
+                                placeholder="Choose a conversation"
+                                class="or3-task-select"
+                            />
+                            <small class="or3-task-helper">
+                                {{ sessionPickerSummary }}
+                            </small>
+                        </label>
+
+                        <div
+                            v-if="form.conversationMode === 'existing' && !sessionSelectOptions.length"
+                            class="or3-task-callout sm:col-span-2"
+                        >
+                            <Icon name="i-pixelarticons-info-box" class="size-4 shrink-0" />
+                            <span>
+                                No recent conversations are available yet. Switch to dedicated task memory, or open an existing OR3 chat first.
+                            </span>
+                        </div>
 
                         <label class="or3-task-field">
                             <span>Schedule</span>
@@ -137,75 +170,135 @@
                             <p>{{ schedulePreview }}</p>
                         </div>
 
-                        <label class="or3-task-field">
-                            <span>Session key</span>
-                            <input v-model="form.sessionKey" class="or3-task-input font-mono" placeholder="cron:default" />
-                        </label>
-
                         <label v-if="form.target === 'or3'" class="or3-task-field">
-                            <span>Delivery channel</span>
-                            <input v-model="form.channel" class="or3-task-input" placeholder="optional, e.g. cli" />
+                            <span>Send results to</span>
+                            <USelectMenu
+                                v-model="form.channel"
+                                :items="deliveryOptions"
+                                value-key="value"
+                                size="lg"
+                                class="or3-task-select"
+                            />
+                            <small class="or3-task-helper">
+                                {{ deliverySummary }}
+                            </small>
                         </label>
 
-                        <label v-if="form.target === 'or3'" class="or3-task-field sm:col-span-2">
-                            <span>Send to</span>
-                            <input v-model="form.to" class="or3-task-input" placeholder="optional destination/user/channel id" />
-                        </label>
-
-                        <template v-if="form.target === 'agent_cli'">
-                            <label class="or3-task-field">
-                                <span>Mode</span>
-                                <USelectMenu
-                                    v-model="form.mode"
-                                    :items="modeOptions"
-                                    value-key="value"
-                                    size="lg"
-                                    class="or3-task-select"
-                                />
-                            </label>
-
-                            <label class="or3-task-field">
-                                <span>Isolation</span>
-                                <USelectMenu
-                                    v-model="form.isolation"
-                                    :items="isolationOptions"
-                                    value-key="value"
-                                    size="lg"
-                                    class="or3-task-select"
-                                />
-                            </label>
-
-                            <label class="or3-task-field">
-                                <span>Working directory</span>
-                                <button
-                                    type="button"
-                                    class="or3-task-cwd-trigger"
-                                    @click="showCwdSlideover = true"
-                                >
-                                    <span class="truncate">{{ cwdDisplayLabel }}</span>
-                                    <Icon
-                                        name="i-pixelarticons-folder"
-                                        class="size-4 shrink-0 text-(--or3-text-muted)"
-                                    />
-                                </button>
-                            </label>
-
-                            <label class="or3-task-field">
-                                <span>Model</span>
-                                <input v-model="form.model" class="or3-task-input" placeholder="runner default" />
-                            </label>
-
-                            <label class="or3-task-field">
-                                <span>Timeout seconds</span>
-                                <input v-model.number="form.timeoutSeconds" class="or3-task-input" min="1" type="number" placeholder="900" />
-                            </label>
-
-                            <label class="or3-task-field">
-                                <span>Max turns</span>
-                                <input v-model.number="form.maxTurns" class="or3-task-input" min="1" type="number" placeholder="optional" />
-                            </label>
-                        </template>
+                        <div
+                            v-if="channelLoadError && form.target === 'or3'"
+                            class="or3-task-callout"
+                        >
+                            <Icon name="i-pixelarticons-warning-box" class="size-4 shrink-0" />
+                            <span>{{ channelLoadError }}</span>
+                        </div>
                     </div>
+
+                    <section class="or3-task-advanced">
+                        <button
+                            type="button"
+                            class="or3-task-advanced__toggle"
+                            :aria-expanded="advancedOpen"
+                            @click="advancedOpen = !advancedOpen"
+                        >
+                            <span>
+                                <strong>Advanced options</strong>
+                                <small>Technical routing and agent settings</small>
+                            </span>
+                            <Icon
+                                :name="advancedOpen ? 'i-pixelarticons-chevron-up' : 'i-pixelarticons-chevron-down'"
+                                class="size-4 shrink-0"
+                            />
+                        </button>
+
+                        <div v-if="advancedOpen" class="or3-task-advanced__body">
+                            <p class="or3-task-advanced__intro">
+                                Most people can ignore these. Use them when you need to route a task to a specific conversation key, recipient, or custom agent runtime.
+                            </p>
+
+                            <label
+                                v-if="form.conversationMode === 'custom'"
+                                class="or3-task-field"
+                            >
+                                <span>Conversation key</span>
+                                <input
+                                    v-model="form.sessionKey"
+                                    class="or3-task-input font-mono"
+                                    placeholder="scheduled:marketing-sync:abc123"
+                                />
+                                <small class="or3-task-helper">
+                                    This is the raw session key used by the runtime. Leave this alone unless you need precise routing.
+                                </small>
+                            </label>
+
+                            <label v-if="form.target === 'or3'" class="or3-task-field">
+                                <span>Specific recipient or destination</span>
+                                <input
+                                    v-model="form.to"
+                                    class="or3-task-input"
+                                    placeholder="Optional override, like a channel ID or address"
+                                />
+                                <small class="or3-task-helper">
+                                    Leave blank to use the channel's default destination.
+                                </small>
+                            </label>
+
+                            <template v-if="form.target === 'agent_cli'">
+                                <div class="or3-task-advanced__section-label">Agent app settings</div>
+
+                                <label class="or3-task-field">
+                                    <span>Mode</span>
+                                    <USelectMenu
+                                        v-model="form.mode"
+                                        :items="modeOptions"
+                                        value-key="value"
+                                        size="lg"
+                                        class="or3-task-select"
+                                    />
+                                </label>
+
+                                <label class="or3-task-field">
+                                    <span>Isolation</span>
+                                    <USelectMenu
+                                        v-model="form.isolation"
+                                        :items="isolationOptions"
+                                        value-key="value"
+                                        size="lg"
+                                        class="or3-task-select"
+                                    />
+                                </label>
+
+                                <label class="or3-task-field">
+                                    <span>Working directory</span>
+                                    <button
+                                        type="button"
+                                        class="or3-task-cwd-trigger"
+                                        @click="showCwdSlideover = true"
+                                    >
+                                        <span class="truncate">{{ cwdDisplayLabel }}</span>
+                                        <Icon
+                                            name="i-pixelarticons-folder"
+                                            class="size-4 shrink-0 text-(--or3-text-muted)"
+                                        />
+                                    </button>
+                                </label>
+
+                                <label class="or3-task-field">
+                                    <span>Model</span>
+                                    <input v-model="form.model" class="or3-task-input" placeholder="runner default" />
+                                </label>
+
+                                <label class="or3-task-field">
+                                    <span>Timeout seconds</span>
+                                    <input v-model.number="form.timeoutSeconds" class="or3-task-input" min="1" type="number" placeholder="900" />
+                                </label>
+
+                                <label class="or3-task-field">
+                                    <span>Max turns</span>
+                                    <input v-model.number="form.maxTurns" class="or3-task-input" min="1" type="number" placeholder="optional" />
+                                </label>
+                            </template>
+                        </div>
+                    </section>
 
                     <div class="or3-task-toggles">
                         <label class="or3-task-toggle">
@@ -263,11 +356,20 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
-import type { AgentRunnerInfo, CronJob, CronSchedule } from '~/types/or3-api';
+import type {
+    AgentRunnerInfo,
+    ConfigureField,
+    ConfigureFieldsResponse,
+    CronJob,
+    CronSchedule,
+} from '~/types/or3-api';
 import type { Or3AppError } from '~/types/app-state';
 import CwdPickerSheet from '~/components/agents/CwdPickerSheet.vue';
 import { useIsDesktop } from '~/composables/useViewport';
 import { useSheetSwipeDismiss } from '~/composables/useSheetSwipeDismiss';
+import { useChatSessions } from '~/composables/useChatSessions';
+import { useOr3Api } from '~/composables/useOr3Api';
+import { useSessionHistory } from '~/composables/useSessionHistory';
 
 const props = defineProps<{
     open: boolean;
@@ -300,10 +402,33 @@ useSheetSwipeDismiss({
 });
 
 const { agentRunners, loadAgentRunners } = useJobs();
+const api = useOr3Api();
+const chat = useChatSessions();
+const sessionHistory = useSessionHistory();
 
 const formError = ref<string | null>(null);
 const showCwdSlideover = ref(false);
 const isEdit = computed(() => Boolean(props.editJob));
+const advancedOpen = ref(false);
+const channelLoadError = ref<string | null>(null);
+
+const CHANNEL_CATALOG = [
+    { key: 'slack', label: 'Slack' },
+    { key: 'telegram', label: 'Telegram' },
+    { key: 'discord', label: 'Discord' },
+    { key: 'whatsapp', label: 'WhatsApp' },
+    { key: 'email', label: 'Email' },
+] as const;
+
+type ConversationMode = 'dedicated' | 'existing' | 'custom';
+
+type ChannelSelectOption = {
+    label: string;
+    value: string;
+    hasDefaultDestination?: boolean;
+};
+
+const discoveredChannels = ref<ChannelSelectOption[]>([]);
 
 const form = reactive({
     name: '',
@@ -321,7 +446,9 @@ const form = reactive({
     intervalUnit: 'hours' as 'minutes' | 'hours' | 'days',
     atLocal: defaultAtLocal(),
     cronExpr: '0 9 * * *',
-    sessionKey: 'cron:default',
+    conversationMode: 'dedicated' as ConversationMode,
+    existingSessionKey: '',
+    sessionKey: '',
     channel: '',
     to: '',
     enabled: true,
@@ -330,16 +457,53 @@ const form = reactive({
 
 const schedulePreview = computed(() => describeScheduleFromPreset());
 
-const targetOptions = [
-    { label: 'OR3 turn', value: 'or3' },
-    { label: 'External agent', value: 'agent_cli' },
+const runWithValue = computed({
+    get: () => (form.target === 'agent_cli' && form.runnerId ? `runner:${form.runnerId}` : 'or3'),
+    set: (value: string) => {
+        if (value === 'or3') {
+            form.target = 'or3';
+            return;
+        }
+        form.target = 'agent_cli';
+        form.runnerId = value.replace(/^runner:/, '');
+    },
+});
+
+const runWithOptions = computed(() => {
+    const options = [
+        {
+            label: 'OR3 assistant',
+            value: 'or3',
+        },
+    ];
+    for (const runner of externalRunnerOptions.value) {
+        options.push({
+            label: runner.display_name || runner.id,
+            value: `runner:${runner.id}`,
+        });
+    }
+    return options;
+});
+
+const runWithSummary = computed(() => {
+    if (form.target === 'or3') return 'Runs with OR3 on this computer.';
+    const runner = externalRunnerOptions.value.find((item) => item.id === form.runnerId);
+    return runner
+        ? `Runs through ${runner.display_name || runner.id}.`
+        : 'Runs through an external agent app.';
+});
+
+const conversationModeOptions = [
+    { label: 'Dedicated task memory', value: 'dedicated' },
+    { label: 'Continue existing conversation', value: 'existing' },
+    { label: 'Custom / advanced', value: 'custom' },
 ];
 
 const scheduleOptions = [
     { label: 'Every hour', value: 'hourly' },
-    { label: 'Every day at 9 AM', value: 'daily' },
-    { label: 'Weekdays at 9 AM', value: 'weekdays' },
-    { label: 'Mondays at 9 AM', value: 'weekly' },
+    { label: 'Every day at 9:00 AM', value: 'daily' },
+    { label: 'Weekdays at 9:00 AM', value: 'weekdays' },
+    { label: 'Every Monday at 9:00 AM', value: 'weekly' },
     { label: 'Custom interval', value: 'interval' },
     { label: 'One time', value: 'once' },
     { label: 'Advanced cron expression', value: 'custom' },
@@ -384,8 +548,79 @@ const cwdDisplayLabel = computed(() => {
     return path;
 });
 
+const sessionSelectOptions = computed(() => {
+    const items = [...(sessionHistory.sessions.value ?? [])];
+    const activeKey = chat.activeSession.value?.sessionKey;
+    const activeTitle = chat.activeSession.value?.title?.trim();
+    if (
+        activeKey &&
+        !items.some((session) => session.session_key === activeKey)
+    ) {
+        items.unshift({
+            session_key: activeKey,
+            title: activeTitle || 'Current conversation',
+            last_message_preview: 'Currently open in OR3.',
+            updated_at: Date.now(),
+        });
+    }
+    return items.map((session) => ({
+        label: session.title || session.session_key,
+        value: session.session_key,
+    }));
+});
+
+const conversationSummary = computed(() => {
+    if (form.conversationMode === 'existing')
+        return 'Reuse the memory from a conversation you already have in OR3.';
+    if (form.conversationMode === 'custom')
+        return 'Use a raw conversation key. Best for technical routing and migrations.';
+    return 'Creates a private memory thread just for this scheduled task.';
+});
+
+const sessionPickerSummary = computed(() => {
+    const selected = sessionHistory.sessions.value.find(
+        (session) => session.session_key === form.existingSessionKey,
+    );
+    if (!selected)
+        return 'Pick the conversation this task should continue.';
+    return selected.last_message_preview
+        ? selected.last_message_preview
+        : 'The task will keep using this conversation history.';
+});
+
+const deliveryOptions = computed(() => {
+    const options: ChannelSelectOption[] = [
+        { label: 'Keep in OR3', value: '' },
+        ...discoveredChannels.value,
+    ];
+    if (
+        form.channel &&
+        !options.some((option) => option.value === form.channel)
+    ) {
+        options.push({
+            label: `${channelLabel(form.channel)} (saved task setting)`,
+            value: form.channel,
+        });
+    }
+    return options;
+});
+
+const deliverySummary = computed(() => {
+    if (!form.channel)
+        return 'Results stay in OR3 unless you send them to another app.';
+    const option = deliveryOptions.value.find(
+        (item) => item.value === form.channel,
+    );
+    if (form.to.trim())
+        return `Sends results to a specific ${channelLabel(form.channel)} destination.`;
+    if (option?.hasDefaultDestination)
+        return `Uses the default ${channelLabel(form.channel)} destination from settings.`;
+    return `Sends results through ${channelLabel(form.channel)}. Add a specific destination in Advanced if needed.`;
+});
+
 function resetForm() {
     formError.value = null;
+    advancedOpen.value = false;
     form.name = '';
     form.message = '';
     form.target = 'or3';
@@ -401,7 +636,9 @@ function resetForm() {
     form.intervalUnit = 'hours';
     form.atLocal = defaultAtLocal();
     form.cronExpr = '0 9 * * *';
-    form.sessionKey = 'cron:default';
+    form.conversationMode = 'dedicated';
+    form.existingSessionKey = '';
+    form.sessionKey = '';
     form.channel = '';
     form.to = '';
     form.enabled = true;
@@ -412,7 +649,7 @@ function applyEditJob(job: CronJob) {
     form.target = job.payload?.kind === 'agent_cli_run' ? 'agent_cli' : 'or3';
     form.name = job.name || '';
     form.message = job.payload?.kind === 'agent_cli_run' ? job.payload?.agent_run?.task || '' : job.payload?.message || '';
-    form.sessionKey = job.payload?.session_key || 'cron:default';
+    form.sessionKey = job.payload?.session_key || '';
     form.channel = job.payload?.channel || '';
     form.to = job.payload?.to || '';
     form.runnerId = job.payload?.agent_run?.runner_id || defaultRunnerId();
@@ -425,6 +662,8 @@ function applyEditJob(job: CronJob) {
     form.enabled = job.enabled;
     form.deleteAfterRun = Boolean(job.delete_after_run);
     applyScheduleToForm(job.schedule);
+    applyConversationRouting(job.payload?.session_key || '');
+    advancedOpen.value = shouldOpenAdvanced(job);
 }
 
 function defaultRunnerId() {
@@ -435,6 +674,9 @@ function validateForm() {
     if (!form.name.trim()) return 'Give this scheduled task a name.';
     if (!form.message.trim()) return form.target === 'agent_cli' ? 'Describe what the external agent should do when the task runs.' : 'Describe what OR3 should do when the task runs.';
     if (form.target === 'agent_cli' && !form.runnerId.trim()) return 'Choose an external agent runner.';
+    if (form.conversationMode === 'existing' && !form.existingSessionKey.trim()) return 'Choose which conversation this task should continue.';
+    if (form.conversationMode === 'custom' && !form.sessionKey.trim()) return 'Enter a conversation key or switch back to dedicated task memory.';
+    if (form.to.trim() && !form.channel.trim()) return 'Choose where to send results before adding a specific destination.';
     if (form.preset === 'interval' && (!Number.isFinite(form.intervalValue) || form.intervalValue <= 0)) return 'Choose an interval greater than zero.';
     if (form.preset === 'once' && Number.isNaN(Date.parse(form.atLocal))) return 'Choose a valid run date and time.';
     if (form.preset === 'custom' && !form.cronExpr.trim()) return 'Enter a cron expression.';
@@ -445,7 +687,7 @@ function buildJobPayload(): Partial<CronJob> {
     const payload = form.target === 'agent_cli'
         ? {
             kind: 'agent_cli_run' as const,
-            session_key: form.sessionKey.trim() || undefined,
+            session_key: resolveSessionKey(),
             agent_run: {
                 runner_id: form.runnerId.trim(),
                 task: form.message.trim(),
@@ -463,7 +705,7 @@ function buildJobPayload(): Partial<CronJob> {
             deliver: Boolean(form.channel.trim() || form.to.trim()),
             channel: form.channel.trim() || undefined,
             to: form.to.trim() || undefined,
-            session_key: form.sessionKey.trim() || undefined,
+            session_key: resolveSessionKey(),
         };
     return {
         name: form.name.trim(),
@@ -536,6 +778,154 @@ function describeScheduleFromPreset() {
     }
 }
 
+async function loadConversationOptions() {
+    await sessionHistory.refresh({ includeArchived: true }).catch(() => []);
+}
+
+async function loadDeliveryOptions() {
+    channelLoadError.value = null;
+    const results = await Promise.all(
+        CHANNEL_CATALOG.map(async (channel) => {
+            try {
+                const response = await api.request<ConfigureFieldsResponse>(
+                    `/internal/v1/configure/fields?section=channels&channel=${channel.key}`,
+                );
+                const fields = response.fields ?? [];
+                if (!isFieldEnabled(fields)) return null;
+                return {
+                    label: hasDefaultDestination(fields)
+                        ? `${channel.label} (default destination)`
+                        : channel.label,
+                    value: channel.key,
+                    hasDefaultDestination: hasDefaultDestination(fields),
+                } satisfies ChannelSelectOption;
+            } catch {
+                return null;
+            }
+        }),
+    );
+    discoveredChannels.value = results.filter(
+        (item): item is ChannelSelectOption => Boolean(item),
+    );
+    if (!discoveredChannels.value.length) {
+        channelLoadError.value =
+            'No connected delivery apps were detected. You can still keep results in OR3 or use a custom destination in Advanced.';
+    }
+}
+
+async function initializeForm() {
+    await Promise.allSettled([
+        loadAgentRunners(),
+        loadConversationOptions(),
+        loadDeliveryOptions(),
+    ]);
+    if (props.editJob) {
+        applyEditJob(props.editJob);
+    } else {
+        resetForm();
+    }
+    if (
+        form.conversationMode === 'existing' &&
+        !form.existingSessionKey &&
+        sessionSelectOptions.value.length
+    ) {
+        form.existingSessionKey = sessionSelectOptions.value[0]?.value || '';
+    }
+}
+
+function applyConversationRouting(sessionKey: string) {
+    const normalized = sessionKey.trim();
+    if (!normalized) {
+        form.conversationMode = 'dedicated';
+        form.existingSessionKey = '';
+        return;
+    }
+    if (sessionSelectOptions.value.some((item) => item.value === normalized)) {
+        form.conversationMode = 'existing';
+        form.existingSessionKey = normalized;
+        return;
+    }
+    if (normalized.startsWith('scheduled:')) {
+        form.conversationMode = 'dedicated';
+        return;
+    }
+    form.conversationMode = 'custom';
+}
+
+function resolveSessionKey() {
+    if (form.conversationMode === 'existing') {
+        return form.existingSessionKey.trim() || undefined;
+    }
+    if (form.conversationMode === 'custom') {
+        return form.sessionKey.trim() || undefined;
+    }
+    return form.sessionKey.trim() || generateScheduledSessionKey();
+}
+
+function generateScheduledSessionKey() {
+    const slug = slugify(form.name || 'task');
+    return `scheduled:${slug}:${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+}
+
+function slugify(value: string) {
+    return value
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 32) || 'task';
+}
+
+function channelLabel(channelKey: string) {
+    return (
+        CHANNEL_CATALOG.find((channel) => channel.key === channelKey)?.label ||
+        channelKey
+    );
+}
+
+function isFieldEnabled(fields: ConfigureField[]) {
+    const enabledField = fields.find((field) => field.key === 'enabled');
+    const value = enabledField?.value;
+    return value === true || value === 'true' || value === '1';
+}
+
+function hasDefaultDestination(fields: ConfigureField[]) {
+    return fields.some((field) => {
+        if (
+            !/default.*(channel|chat|recipient|reply|to|address|room|destination|user)/i.test(
+                field.key,
+            )
+        ) {
+            return false;
+        }
+        if (Array.isArray(field.value)) {
+            return field.value.some((value) => String(value || '').trim());
+        }
+        return String(field.value || '').trim().length > 0;
+    });
+}
+
+function shouldOpenAdvanced(job: CronJob) {
+    const hasCustomConversation =
+        Boolean(job.payload?.session_key) &&
+        !sessionSelectOptions.value.some(
+            (item) => item.value === job.payload?.session_key,
+        ) &&
+        !String(job.payload?.session_key || '').startsWith('scheduled:');
+    const hasDestinationOverride = Boolean(job.payload?.to);
+    const hasAgentAdvanced =
+        job.payload?.kind === 'agent_cli_run' &&
+        Boolean(
+            job.payload?.agent_run?.cwd ||
+                job.payload?.agent_run?.model ||
+                job.payload?.agent_run?.timeout_seconds ||
+                job.payload?.agent_run?.max_turns ||
+                (job.payload?.agent_run?.mode || 'review') !== 'review' ||
+                (job.payload?.agent_run?.isolation || 'host_readonly') !==
+                    'host_readonly',
+        );
+    return hasCustomConversation || hasDestinationOverride || hasAgentAdvanced;
+}
+
 function save() {
     formError.value = null;
     const validation = validateForm();
@@ -583,12 +973,7 @@ watch(
     () => props.open,
     (isOpen) => {
         if (!isOpen) return;
-        void loadAgentRunners().catch(() => undefined);
-        if (props.editJob) {
-            applyEditJob(props.editJob);
-        } else {
-            resetForm();
-        }
+        void initializeForm();
     },
     { immediate: true },
 );
@@ -854,6 +1239,90 @@ select.or3-task-input {
 .or3-task-preview span {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--or3-green-dark);
+}
+
+.or3-task-helper {
+    font-size: 0.74rem;
+    line-height: 1.45;
+    color: var(--or3-text-muted);
+    font-weight: 500;
+}
+
+.or3-task-callout {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.55rem;
+    border-radius: var(--or3-radius-control);
+    border: 1px solid color-mix(in srgb, var(--or3-green) 25%, var(--or3-border) 75%);
+    background: rgb(255 255 255 / 0.72);
+    padding: 0.8rem 0.9rem;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    color: var(--or3-text-muted);
+}
+
+.or3-task-advanced {
+    display: grid;
+    gap: 0.7rem;
+}
+
+.or3-task-advanced__toggle {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    border-radius: var(--or3-radius-control);
+    border: 1px solid var(--or3-border);
+    background: rgb(255 255 255 / 0.75);
+    padding: 0.9rem 1rem;
+    text-align: left;
+    transition: border-color 140ms ease, background 140ms ease;
+}
+
+.or3-task-advanced__toggle:hover {
+    border-color: color-mix(in srgb, var(--or3-green) 25%, var(--or3-border) 75%);
+    background: rgb(255 255 255 / 0.92);
+}
+
+.or3-task-advanced__toggle strong,
+.or3-task-advanced__toggle small {
+    display: block;
+}
+
+.or3-task-advanced__toggle strong {
+    font-size: 0.88rem;
+    color: var(--or3-text);
+}
+
+.or3-task-advanced__toggle small {
+    margin-top: 0.2rem;
+    font-size: 0.74rem;
+    color: var(--or3-text-muted);
+}
+
+.or3-task-advanced__body {
+    display: grid;
+    gap: 0.85rem;
+    border-radius: calc(var(--or3-radius-control) + 0.2rem);
+    border: 1px solid var(--or3-border);
+    background: color-mix(in srgb, var(--or3-surface-soft) 75%, white 25%);
+    padding: 0.95rem;
+}
+
+.or3-task-advanced__intro {
+    font-size: 0.78rem;
+    line-height: 1.55;
+    color: var(--or3-text-muted);
+}
+
+.or3-task-advanced__section-label {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.68rem;
     font-weight: 700;
     letter-spacing: 0.16em;
     text-transform: uppercase;

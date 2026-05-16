@@ -493,15 +493,11 @@ html.or3-keyboard-open .or3-chat-shell__composer {
 }
 
 .or3-chat-empty__avatar {
-  width: 4rem;
-  height: 4rem;
+  width: 10rem;
+  height: 10rem;
   display: grid;
   place-items: center;
-  border-radius: 1.25rem;
-  background: var(--or3-green-soft);
   color: var(--or3-green-dark);
-  border: 1px solid color-mix(in srgb, var(--or3-green) 25%, transparent);
-  box-shadow: var(--or3-shadow-soft);
 }
 
 .or3-chat-empty__title {

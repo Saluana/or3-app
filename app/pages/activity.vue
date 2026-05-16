@@ -292,7 +292,7 @@
                                 :tone="cronStatusTone(selectedCronJob)"
                             />
                             <StatusPill
-                                :label="selectedCronJob.payload?.kind || 'task'"
+                                :label="cronPayloadLabel(selectedCronJob)"
                                 tone="neutral"
                             />
                         </div>
@@ -359,17 +359,19 @@
                             <p
                                 class="or3-label text-[11px] font-semibold tracking-[0.18em] text-(--or3-text-muted)"
                             >
-                                RUNNER
+                                RUN WITH
                             </p>
                             <div
                                 class="mt-2 grid gap-2 rounded-2xl border border-(--or3-border) bg-(--or3-surface-soft) p-3 text-sm text-(--or3-text)"
                                 style="overflow-wrap: anywhere"
                             >
                                 <span
-                                    ><strong>Runner:</strong>
+                                    ><strong>Agent app:</strong>
                                     {{
-                                        selectedCronJob.payload.agent_run
-                                            ?.runner_id || 'Unknown'
+                                        agentRunnerLabel(
+                                            selectedCronJob.payload.agent_run
+                                                ?.runner_id,
+                                        )
                                     }}</span
                                 >
                                 <span
@@ -441,7 +443,12 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import type { ApprovalRequest, CronJob, JobSnapshot } from '~/types/or3-api';
+import type {
+    AgentRunnerInfo,
+    ApprovalRequest,
+    CronJob,
+    JobSnapshot,
+} from '~/types/or3-api';
 import type { Or3AppError } from '~/types/app-state';
 
 type ActivityCategory = 'all' | 'jobs' | 'approvals' | 'scheduled';
@@ -461,7 +468,8 @@ interface ActivityEntry {
 }
 
 const toast = useToast();
-const { jobs, loadJobs, loadAgentRunners, abortJob, retryJob } = useJobs();
+const { jobs, agentRunners, loadJobs, loadAgentRunners, abortJob, retryJob } =
+    useJobs();
 const { approvals, loadApprovals, approve, deny, cancel } = useApprovals();
 const {
     cronJobs,
@@ -911,8 +919,35 @@ function cronStats(job: CronJob) {
             value:
                 job.state?.last_status || (job.enabled ? 'active' : 'paused'),
         },
-        { label: 'Session', value: job.payload?.session_key || 'default' },
+        {
+            label: 'Conversation',
+            value: cronConversationLabel(job),
+        },
     ];
+}
+
+function cronConversationLabel(job: CronJob) {
+    const sessionKey = String(job.payload?.session_key || '').trim();
+    if (!sessionKey) return 'Dedicated task memory';
+    if (sessionKey.startsWith('scheduled:')) return 'Dedicated task memory';
+    if (sessionKey === 'cron:default') return 'Legacy shared memory';
+    return sessionKey;
+}
+
+function cronPayloadLabel(job: CronJob) {
+    if (job.payload?.kind === 'agent_cli_run') {
+        return agentRunnerLabel(job.payload?.agent_run?.runner_id);
+    }
+    if (job.payload?.kind === 'agent_turn') return 'OR3 assistant';
+    return job.payload?.kind || 'task';
+}
+
+function agentRunnerLabel(runnerId?: string) {
+    if (!runnerId || runnerId === 'or3-intern') return 'OR3 assistant';
+    const runner = (agentRunners.value ?? []).find(
+        (item: AgentRunnerInfo) => item.id === runnerId,
+    );
+    return runner?.display_name || runnerId;
 }
 
 function jobLabel(kind?: string) {

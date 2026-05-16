@@ -147,15 +147,15 @@
                         <p class="or3-sched-card__desc">{{ jobPrompt(job) }}</p>
                         <div class="or3-sched-card__chips">
                             <span class="or3-sched-chip or3-sched-chip--schedule">
-                                <Icon name="i-pixelarticons-refresh" class="size-3.5" />
+                                <Icon name="pixelarticons:calendar-import" class="size-3.5" />
                                 {{ describeSchedule(job) }}
                             </span>
                             <span class="or3-sched-chip">
                                 <Icon
-                                    :name="job.payload?.kind === 'agent_cli_run' ? 'i-pixelarticons-chip' : 'i-pixelarticons-zap'"
+                                    :name="job.payload?.kind === 'agent_cli_run' ? 'pixelarticons:mood-happy' : 'pixelarticons:zap'"
                                     class="size-3"
                                 />
-                                {{ job.payload?.kind === 'agent_cli_run' ? agentRunnerLabel(job.payload?.agent_run?.runner_id) : 'OR3 turn' }}
+                                {{ job.payload?.kind === 'agent_cli_run' ? agentRunnerLabel(job.payload?.agent_run?.runner_id) : 'OR3 assistant' }}
                             </span>
                         </div>
                     </div>
@@ -420,6 +420,7 @@ function jobPrompt(job: CronJob) {
 
 function agentRunnerLabel(id?: string) {
     if (!id) return 'Unknown';
+    if (id === 'or3-intern') return 'OR3 assistant';
     const runner = (agentRunners.value ?? []).find((item: AgentRunnerInfo) => item.id === id);
     return runner?.display_name || id;
 }

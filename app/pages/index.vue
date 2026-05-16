@@ -76,9 +76,10 @@
                 <div v-if="!messages.length" class="or3-chat-shell__content">
                     <section class="or3-chat-empty">
                         <div class="or3-chat-empty__avatar">
-                            <RetroIcon
-                                name="i-pixelarticons-sparkles"
-                                size="lg"
+                            <img
+                                src="/computer-icons/chat-guy.webp"
+                                alt="chat avatar"
+                                class="or3-chat-empty__avatar-image"
                             />
                         </div>
                         <h1 class="or3-chat-empty__title">
@@ -190,9 +191,10 @@
                         class="or3-chat-desktop__empty"
                     >
                         <div class="or3-chat-empty__avatar">
-                            <RetroIcon
-                                name="i-pixelarticons-sparkles"
-                                size="lg"
+                            <img
+                                src="/computer-icons/chat-guy.webp"
+                                alt="chat avatar"
+                                class="or3-chat-empty__avatar-image"
                             />
                         </div>
                         <h2 class="or3-chat-empty__title">
