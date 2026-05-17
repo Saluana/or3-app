@@ -18,33 +18,25 @@
                             <p
                                 class="font-mono text-base font-semibold text-(--or3-text)"
                             >
-                                {{
-                                    activeHost?.token
-                                        ? `Connected to ${activeHost.name || 'My Computer'}`
-                                        : 'No computer paired'
-                                }}
+                                {{ connectionHeadline }}
                             </p>
                             <StatusPill
-                                v-if="activeHost?.token"
-                                label="Connected"
-                                tone="green"
-                                pulse
+                                v-if="isPaired"
+                                :label="connectionPillLabel"
+                                :tone="connectionPillTone"
+                                :pulse="isConnected"
                             />
                         </div>
                         <p
                             class="mt-1 text-sm leading-6 text-(--or3-text-muted)"
                         >
-                            {{
-                                activeHost?.token
-                                    ? 'Your or3-intern app is connected and ready.'
-                                    : 'Pair this app to your computer to get started.'
-                            }}
+                            {{ connectionDescription }}
                         </p>
                     </div>
                 </div>
 
                 <div
-                    v-if="activeHost?.token"
+                    v-if="isPaired"
                     class="flex overflow-hidden rounded-2xl border border-(--or3-border) bg-white/70"
                 >
                     <div
@@ -75,7 +67,33 @@
                     </div>
                 </div>
 
-                <div v-if="!activeHost?.token">
+                <div v-if="isPaired" class="flex flex-wrap items-center gap-2">
+                    <code
+                        v-if="activeHost?.baseUrl"
+                        class="min-w-0 flex-1 truncate rounded-xl border border-(--or3-border) bg-white/70 px-3 py-2 font-mono text-xs text-(--or3-text)"
+                        >{{ activeHost.baseUrl }}</code
+                    >
+                    <UButton
+                        label="Pair new computer"
+                        icon="i-pixelarticons-link"
+                        color="primary"
+                        variant="solid"
+                        size="sm"
+                        class="shrink-0 rounded-full"
+                        to="/settings/pair"
+                    />
+                    <UButton
+                        label="Disconnect this app"
+                        icon="i-pixelarticons-close"
+                        color="neutral"
+                        variant="ghost"
+                        size="sm"
+                        class="shrink-0 rounded-full"
+                        @click="disconnectHost"
+                    />
+                </div>
+
+                <div v-else>
                     <UButton
                         label="Pair new computer"
                         icon="i-pixelarticons-link"
@@ -122,21 +140,41 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
-import { useActiveHost } from '~/composables/useActiveHost';
-import { useComputerStatus } from '~/composables/useComputerStatus';
-import { useSettingsSnapshots } from '~/composables/settings/useSettingsSnapshots';
-import { useSimpleSettings } from '~/composables/settings/useSimpleSettings';
-import { createLogger } from '~/utils/logger';
+import { useToast } from '@nuxt/ui/composables';
+import { useActiveHost } from '../../composables/useActiveHost';
+import { useComputerStatus } from '../../composables/useComputerStatus';
+import { useSettingsSnapshots } from '../../composables/settings/useSettingsSnapshots';
+import { useSimpleSettings } from '../../composables/settings/useSimpleSettings';
+import { createLogger } from '../../utils/logger';
 
 const logger = createLogger('settings');
 
-const { activeHost } = useActiveHost();
+const { activeHost, isConnected, disconnectActiveHost } = useActiveHost();
 const computerStatus = useComputerStatus();
 const snapshots = useSettingsSnapshots();
 const simple = useSimpleSettings();
+const toast = useToast();
 const undoing = ref(false);
 
 const isPaired = computed(() => Boolean(activeHost.value?.token));
+const connectionHeadline = computed(() => {
+    if (!isPaired.value) return 'No computer paired';
+    return isConnected.value
+        ? `Connected to ${activeHost.value?.name || 'My Computer'}`
+        : `Paired to ${activeHost.value?.name || 'My Computer'}`;
+});
+const connectionDescription = computed(() => {
+    if (!isPaired.value)
+        return 'Pair this app to your computer to get started.';
+    if (isConnected.value) return 'Your or3-intern app is connected and ready.';
+    return 'This app still has a saved pairing, but it cannot reach that computer right now.';
+});
+const connectionPillLabel = computed(() =>
+    isConnected.value ? 'Connected' : 'Unavailable',
+);
+const connectionPillTone = computed<'green' | 'amber'>(() =>
+    isConnected.value ? 'green' : 'amber',
+);
 const activeJobCount = computed(
     () => computerStatus.bootstrap.value?.counts?.active_jobs ?? 0,
 );
@@ -203,6 +241,11 @@ const formattedTime = computed(() => {
 
 async function refreshConnectionStats() {
     if (!isPaired.value) return;
+    if (
+        activeHost.value?.status === 'offline' ||
+        activeHost.value?.status === 'unauthorized'
+    )
+        return;
     try {
         await computerStatus.refreshStatus();
     } catch (err) {
@@ -226,6 +269,18 @@ watch(
         void refreshConnectionStats();
     },
 );
+
+function disconnectHost() {
+    if (!disconnectActiveHost()) return;
+    toast.add({
+        title: 'Disconnected',
+        description:
+            'This app forgot the saved computer. Revoke the device on the computer only if you want to remove trust there too.',
+        color: 'neutral',
+        icon: 'i-pixelarticons-close',
+        duration: 7000,
+    });
+}
 
 async function undoLast() {
     const s = snapshots.latest();

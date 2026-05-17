@@ -6,7 +6,9 @@
         scroll-key="settings"
     >
         <template #filters>
-            <span class="text-[11px] font-mono uppercase tracking-[0.16em] text-(--or3-text-muted)">
+            <span
+                class="text-[11px] font-mono uppercase tracking-[0.16em] text-(--or3-text-muted)"
+            >
                 Preferences
             </span>
         </template>
@@ -91,7 +93,7 @@ const baseItems = computed<SidebarItem[]>(() => {
         {
             label: 'Add-ons',
             description: 'Manage external tools and advanced add-ons.',
-            icon: 'i-pixelarticons-plug',
+            icon: 'i-lucide-plug',
             to: '/settings/addons',
         },
         {

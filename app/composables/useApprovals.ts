@@ -9,6 +9,7 @@ import {
     normalizeApprovalRequest,
 } from '~/utils/or3/approvals';
 import { createLogger } from '~/utils/logger';
+import { useActiveHost } from './useActiveHost';
 import { useOr3Api } from './useOr3Api';
 
 const approvals = ref<ApprovalRequest[]>([]);
@@ -70,6 +71,7 @@ async function withApprovalAction<T>(
 
 export function useApprovals() {
     const api = useOr3Api();
+    const { activeHost, isPaired } = useActiveHost();
     const logger = createLogger('approvals');
 
     const pendingApprovals = computed(() =>
@@ -77,6 +79,10 @@ export function useApprovals() {
     );
 
     async function loadPendingCount() {
+        if (hostKnownUnavailable()) {
+            pendingCount.value = 0;
+            return;
+        }
         try {
             const response = await api.request<{ items: unknown[] }>(
                 '/internal/v1/approvals?status=pending',
@@ -89,6 +95,11 @@ export function useApprovals() {
 
     async function loadApprovals(status = '') {
         activeApprovalStatus.value = status;
+        if (hostKnownUnavailable()) {
+            approvals.value = [];
+            if (status === 'pending') pendingCount.value = 0;
+            return;
+        }
         approvalsLoading.value = true;
         approvalsError.value = null;
 
@@ -113,6 +124,10 @@ export function useApprovals() {
     }
 
     async function loadAllowlists() {
+        if (hostKnownUnavailable()) {
+            allowlists.value = [];
+            return;
+        }
         approvalsError.value = null;
         try {
             const response = await api.request<{ items: unknown[] }>(
@@ -246,10 +261,19 @@ export function useApprovals() {
     }
 
     function startPolling(intervalMs = 15000) {
-        if (!import.meta.client || approvalsPollTimer) return;
+        if (!import.meta.client || approvalsPollTimer || hostKnownUnavailable())
+            return;
         approvalsPollTimer = setInterval(() => {
             if (document.visibilityState === 'visible') void loadPendingCount();
         }, intervalMs);
+    }
+
+    function hostKnownUnavailable() {
+        return (
+            !isPaired.value ||
+            activeHost.value?.status === 'offline' ||
+            activeHost.value?.status === 'unauthorized'
+        );
     }
 
     function stopPolling() {

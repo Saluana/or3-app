@@ -1,9 +1,6 @@
 <template>
-    <AppShell
-    desktop-title="Settings"
-    desktop-subtitle="Configure or3-intern."
-  >
-    <template #sidebar><SettingsSidebar /></template>
+    <AppShell desktop-title="Settings" desktop-subtitle="Configure or3-intern.">
+        <template #sidebar><SettingsSidebar /></template>
         <AppHeader subtitle="ADVANCED SETTINGS" />
 
         <div class="space-y-4">
@@ -41,27 +38,19 @@
                             <p
                                 class="font-mono text-base font-semibold text-(--or3-text)"
                             >
-                                {{
-                                    activeHost?.token
-                                        ? `Connected to ${activeHost.name || 'My Computer'}`
-                                        : 'No computer paired'
-                                }}
+                                {{ connectionHeadline }}
                             </p>
                             <StatusPill
-                                v-if="activeHost?.token"
-                                label="Connected"
-                                tone="green"
-                                pulse
+                                v-if="isPaired"
+                                :label="connectionPillLabel"
+                                :tone="connectionPillTone"
+                                :pulse="isConnected"
                             />
                         </div>
                         <p
                             class="mt-1 text-sm leading-6 text-(--or3-text-muted)"
                         >
-                            {{
-                                activeHost?.token
-                                    ? 'Your or3-intern app is connected and ready.'
-                                    : 'Pair this app to your computer to get started.'
-                            }}
+                            {{ connectionDescription }}
                         </p>
                     </div>
                 </div>
@@ -79,6 +68,16 @@
                         size="sm"
                         class="shrink-0 rounded-full"
                         to="/settings/pair"
+                    />
+                    <UButton
+                        v-if="isPaired"
+                        label="Disconnect this app"
+                        icon="i-pixelarticons-close"
+                        color="neutral"
+                        variant="ghost"
+                        size="sm"
+                        class="shrink-0 rounded-full"
+                        @click="disconnectHost"
                     />
                 </div>
             </SurfaceCard>
@@ -399,12 +398,14 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue';
+import { useToast } from '@nuxt/ui/composables';
 import { useRouter } from 'vue-router';
 import { useConfigure } from '../../composables/useConfigure';
 import { useActiveHost } from '../../composables/useActiveHost';
 
 const router = useRouter();
 const searchTerm = ref('');
+const toast = useToast();
 
 type FilterKey =
     | 'connection'
@@ -423,7 +424,38 @@ const {
     allFieldsLoading,
     loadAllFields,
 } = useConfigure();
-const { activeHost } = useActiveHost();
+const { activeHost, isConnected, disconnectActiveHost } = useActiveHost();
+const isPaired = computed(() => Boolean(activeHost.value?.token));
+const connectionHeadline = computed(() => {
+    if (!isPaired.value) return 'No computer paired';
+    return isConnected.value
+        ? `Connected to ${activeHost.value?.name || 'My Computer'}`
+        : `Paired to ${activeHost.value?.name || 'My Computer'}`;
+});
+const connectionDescription = computed(() => {
+    if (!isPaired.value)
+        return 'Pair this app to your computer to get started.';
+    if (isConnected.value) return 'Your or3-intern app is connected and ready.';
+    return 'This app still has a saved pairing, but it cannot reach that computer right now.';
+});
+const connectionPillLabel = computed(() =>
+    isConnected.value ? 'Connected' : 'Unavailable',
+);
+const connectionPillTone = computed<'green' | 'amber'>(() =>
+    isConnected.value ? 'green' : 'amber',
+);
+
+function disconnectHost() {
+    if (!disconnectActiveHost()) return;
+    toast.add({
+        title: 'Disconnected',
+        description:
+            'This app forgot the saved computer. Revoke the device on the computer only if you want to remove trust there too.',
+        color: 'neutral',
+        icon: 'i-pixelarticons-close',
+        duration: 7000,
+    });
+}
 
 const filters: Array<{ key: FilterKey; label: string }> = [
     { key: 'connection', label: 'Connection' },

@@ -14,6 +14,7 @@ export interface Or3ApiRequestOptions {
     body?: unknown;
     headers?: Record<string, string>;
     signal?: AbortSignal;
+    baseUrl?: string;
     acceptSse?: boolean;
     requireAuth?: boolean;
     preferPairedToken?: boolean;
@@ -211,8 +212,43 @@ async function readError(response: Response) {
 }
 
 export function useOr3Api() {
-    const { activeHost } = useActiveHost();
+    const { activeHost, updateHost } = useActiveHost();
     const logger = createLogger('api');
+
+    function canUpdateActiveHostStatus(explicitBaseUrl?: string) {
+        if (!activeHost.value) return false;
+        if (!explicitBaseUrl) return true;
+        return (
+            normalizeBaseUrl(explicitBaseUrl) ===
+            normalizeBaseUrl(activeHost.value.baseUrl)
+        );
+    }
+
+    function updateActiveHostStatus(
+        status: 'online' | 'offline' | 'unauthorized' | 'unknown',
+        explicitBaseUrl?: string,
+    ) {
+        if (!canUpdateActiveHostStatus(explicitBaseUrl) || !activeHost.value)
+            return;
+
+        const nextLastSeenAt =
+            status === 'online'
+                ? new Date().toISOString()
+                : activeHost.value.lastSeenAt;
+
+        if (
+            activeHost.value.status === status &&
+            nextLastSeenAt === activeHost.value.lastSeenAt
+        ) {
+            return;
+        }
+
+        updateHost({
+            ...activeHost.value,
+            status,
+            lastSeenAt: nextLastSeenAt,
+        });
+    }
 
     function buildUrl(path: string, explicitBaseUrl?: string) {
         const baseUrl = explicitBaseUrl || activeHost.value?.baseUrl;
@@ -264,7 +300,7 @@ export function useOr3Api() {
 
         let response: Response;
         try {
-            response = await fetch(buildUrl(path), {
+            response = await fetch(buildUrl(path, options.baseUrl), {
                 method:
                     options.method ||
                     (options.body === undefined ? 'GET' : 'POST'),
@@ -276,6 +312,7 @@ export function useOr3Api() {
                 signal: options.signal,
             });
         } catch (error) {
+            updateActiveHostStatus('offline', options.baseUrl);
             const payload = {
                 path,
                 method:
@@ -284,9 +321,17 @@ export function useOr3Api() {
                 error: error instanceof Error ? error.message : String(error),
             };
             if (shouldLogNetworkError()) {
-                logger.error('request:network_error', 'Could not reach host', payload);
+                logger.error(
+                    'request:network_error',
+                    'Could not reach host',
+                    payload,
+                );
             } else {
-                logger.debug('request:network_error_suppressed', 'Host is restarting', payload);
+                logger.debug(
+                    'request:network_error_suppressed',
+                    'Host is restarting',
+                    payload,
+                );
             }
             throw {
                 code: 'host_unreachable',
@@ -297,6 +342,11 @@ export function useOr3Api() {
 
         if (!response.ok) {
             const payload = await readError(response);
+            if (response.status === 401 || response.status === 403) {
+                updateActiveHostStatus('unauthorized', options.baseUrl);
+            } else {
+                updateActiveHostStatus('online', options.baseUrl);
+            }
             const challenge = toAuthChallenge(payload, response.status);
             if (challenge && options.onAuthChallenge) {
                 const shouldRetry = await options.onAuthChallenge(challenge);
@@ -328,6 +378,7 @@ export function useOr3Api() {
             );
             throw mapError(response.status, payload);
         }
+        updateActiveHostStatus('online', options.baseUrl);
         if (response.status === 204) return undefined as T;
         return (await response.json()) as T;
     }

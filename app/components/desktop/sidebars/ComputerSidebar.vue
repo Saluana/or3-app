@@ -2,14 +2,20 @@
     <DesktopSecondarySidebar
         :search-value="query"
         search-placeholder="Search or quick action…"
-        :footer-text="connected ? `Connected · ${activeHostName}` : 'Not connected'"
+        :footer-text="
+            connected ? `Connected · ${activeHostName}` : 'Not connected'
+        "
         scroll-key="computer"
     >
         <template #filters>
-            <span class="flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-[0.16em] text-(--or3-text-muted)">
+            <span
+                class="flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-[0.16em] text-(--or3-text-muted)"
+            >
                 <span
                     class="inline-block size-1.5 rounded-full"
-                    :class="connected ? 'bg-(--or3-green)' : 'bg-(--or3-text-muted)'"
+                    :class="
+                        connected ? 'bg-(--or3-green)' : 'bg-(--or3-text-muted)'
+                    "
                 />
                 {{ connected ? 'Connected' : 'Disconnected' }}
             </span>
@@ -33,7 +39,8 @@
                     v-if="item.badge"
                     class="or3-desktop-list-item__meta"
                     :data-tone="item.badgeTone"
-                >{{ item.badge }}</span>
+                    >{{ item.badge }}</span
+                >
             </span>
             <p v-if="item.description" class="or3-desktop-list-item__preview">
                 {{ item.description }}
@@ -45,13 +52,13 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useRoute } from 'vue-router';
-import { useActiveHost } from '~/composables/useActiveHost';
-import { useApprovals } from '~/composables/useApprovals';
+import { useActiveHost } from '../../../composables/useActiveHost';
+import { useApprovals } from '../../../composables/useApprovals';
 
 const route = useRoute();
-const { activeHost } = useActiveHost();
+const { activeHost, isConnected } = useActiveHost();
 const { pendingCount } = useApprovals();
-const connected = computed(() => Boolean(activeHost.value?.token));
+const connected = computed(() => Boolean(isConnected.value));
 const activeHostName = computed(() => activeHost.value?.name || 'My Computer');
 
 const query = ref('');
@@ -70,7 +77,9 @@ const items = computed<SidebarItem[]>(() => [
         label: 'My Computer',
         description: connected.value
             ? `${activeHostName.value} · Connected`
-            : 'Pair to get started',
+            : activeHost.value?.token
+              ? `${activeHostName.value} · Unreachable`
+              : 'Pair to get started',
         icon: 'i-pixelarticons-monitor',
         to: '/computer',
     },

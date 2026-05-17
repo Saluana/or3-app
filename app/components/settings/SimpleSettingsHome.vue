@@ -172,10 +172,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
+import { useActiveHost } from '~/composables/useActiveHost';
 import { useSimpleSettings } from '~/composables/settings/useSimpleSettings';
 
 const simple = useSimpleSettings();
+const { isConnected } = useActiveHost();
 const loading = ref(false);
 
 const sections = computed(() => simple.availableSections.value);
@@ -185,12 +187,21 @@ const summaries = computed(() => {
     return out;
 });
 
-onMounted(async () => {
+async function loadIfConnected() {
+    if (!isConnected.value) return;
     loading.value = true;
     try {
         await simple.ensureLoaded();
     } finally {
         loading.value = false;
     }
+}
+
+onMounted(() => {
+    void loadIfConnected();
+});
+
+watch(isConnected, (connected) => {
+    if (connected && !sections.value.length) void loadIfConnected();
 });
 </script>

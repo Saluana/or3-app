@@ -21,12 +21,17 @@
                     <span class="or3-desktop-nav-item__icon" aria-hidden="true">
                         <Icon :name="item.icon" class="size-4" />
                     </span>
-                    <span class="or3-desktop-nav-item__label">{{ item.label }}</span>
+                    <span class="or3-desktop-nav-item__label">{{
+                        item.label
+                    }}</span>
                     <span
                         v-if="item.badgeCount"
                         class="or3-desktop-nav-item__badge"
                         aria-hidden="true"
-                    >{{ item.badgeCount > 99 ? '99+' : item.badgeCount }}</span>
+                        >{{
+                            item.badgeCount > 99 ? '99+' : item.badgeCount
+                        }}</span
+                    >
                 </NuxtLink>
             </li>
         </ul>
@@ -58,13 +63,13 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useRoute } from 'vue-router';
-import { useApprovals } from '~/composables/useApprovals';
-import { useActiveHost } from '~/composables/useActiveHost';
+import { useApprovals } from '../../composables/useApprovals';
+import { useActiveHost } from '../../composables/useActiveHost';
 
 const route = useRoute();
 const { pendingCount } = useApprovals();
-const { activeHost } = useActiveHost();
-const connected = computed(() => Boolean(activeHost.value?.token));
+const { isConnected } = useActiveHost();
+const connected = computed(() => Boolean(isConnected.value));
 
 interface NavItem {
     label: string;
@@ -99,7 +104,12 @@ const items = computed<NavItem[]>(() => [
 
 function isActive(item: NavItem) {
     if (item.to === '/') return route.path === '/';
-    if (item.matches?.some((path) => route.path === path || route.path.startsWith(path + '/'))) return true;
+    if (
+        item.matches?.some(
+            (path) => route.path === path || route.path.startsWith(path + '/'),
+        )
+    )
+        return true;
     return route.path === item.to || route.path.startsWith(item.to + '/');
 }
 </script>
