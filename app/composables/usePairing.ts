@@ -17,6 +17,15 @@ interface StartPairingInput {
     deviceName: string;
 }
 
+type DeviceInfoWire = DeviceInfo & {
+    DeviceID?: string;
+    DisplayName?: string;
+    Role?: string;
+    Status?: string;
+    CreatedAt?: string | number;
+    LastSeenAt?: string | number;
+};
+
 const PENDING_PAIRING_STORAGE_KEY = 'or3-app:v1:pending-pairing';
 
 const pendingPairing = ref<PairingRequestResponse | null>(null);
@@ -110,6 +119,21 @@ async function readPairingFailure(response: Response) {
             serverMessage: responseBody.trim(),
         };
     }
+}
+
+function normalizeDeviceInfo(device: DeviceInfoWire): DeviceInfo {
+    return {
+        device_id: String(device.device_id || device.DeviceID || '').trim(),
+        display_name: device.display_name || device.DisplayName,
+        role: device.role || device.Role,
+        status: device.status || device.Status,
+        created_at: String(device.created_at || device.CreatedAt || ''),
+        last_seen_at: String(device.last_seen_at || device.LastSeenAt || ''),
+    };
+}
+
+function isVisiblePairedDevice(device: DeviceInfo) {
+    return device.device_id && device.status?.toLowerCase() !== 'revoked';
 }
 
 function hostIdFromUrl(baseUrl: string) {
@@ -443,11 +467,14 @@ export function usePairing() {
         logger.info('devices:list_start', 'Listing paired devices');
         try {
             const response = await api.request<
-                { items?: DeviceInfo[] } | DeviceInfo[]
+                { items?: DeviceInfoWire[] } | DeviceInfoWire[]
             >('/internal/v1/devices');
-            const devices = Array.isArray(response)
+            const rawDevices = Array.isArray(response)
                 ? response
                 : (response.items ?? []);
+            const devices = rawDevices
+                .map((device) => normalizeDeviceInfo(device))
+                .filter((device) => isVisiblePairedDevice(device));
             logger.info('devices:list_complete', 'Paired devices loaded', {
                 count: devices.length,
             });
@@ -468,18 +495,22 @@ export function usePairing() {
     }
 
     async function revokeDevice(deviceId: string) {
+        const normalizedDeviceId = String(deviceId || '').trim();
+        if (!normalizedDeviceId) {
+            throw new Error('Device ID is required to revoke a paired device.');
+        }
         logger.info('devices:revoke_start', 'Revoking paired device', {
-            deviceId,
+            deviceId: normalizedDeviceId,
         });
         try {
             const response = await api.request<{
                 device_id: string;
                 status: string;
-            }>(`/internal/v1/devices/${encodeURIComponent(deviceId)}/revoke`, {
+            }>(`/internal/v1/devices/${encodeURIComponent(normalizedDeviceId)}/revoke`, {
                 method: 'POST',
             });
             logger.info('devices:revoke_complete', 'Paired device revoked', {
-                deviceId,
+                deviceId: normalizedDeviceId,
                 status: response.status,
             });
             return response;
@@ -488,7 +519,7 @@ export function usePairing() {
                 'devices:revoke_error',
                 'Failed to revoke paired device',
                 {
-                    deviceId,
+                    deviceId: normalizedDeviceId,
                     error:
                         error instanceof Error
                             ? error.message

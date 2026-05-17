@@ -79,6 +79,7 @@
                             <USelectMenu
                                 v-model="runWithValue"
                                 :items="runWithOptions"
+                                :search-input="selectMenuSearchInput"
                                 value-key="value"
                                 size="lg"
                                 class="or3-task-select"
@@ -93,6 +94,7 @@
                             <USelectMenu
                                 v-model="form.conversationMode"
                                 :items="conversationModeOptions"
+                                :search-input="selectMenuSearchInput"
                                 value-key="value"
                                 size="lg"
                                 class="or3-task-select"
@@ -110,6 +112,7 @@
                             <USelectMenu
                                 v-model="form.existingSessionKey"
                                 :items="sessionSelectOptions"
+                                :search-input="selectMenuSearchInput"
                                 value-key="value"
                                 size="lg"
                                 placeholder="Choose a conversation"
@@ -135,6 +138,7 @@
                             <USelectMenu
                                 v-model="form.preset"
                                 :items="scheduleOptions"
+                                :search-input="selectMenuSearchInput"
                                 value-key="value"
                                 size="lg"
                                 class="or3-task-select"
@@ -148,6 +152,7 @@
                                 <USelectMenu
                                     v-model="form.intervalUnit"
                                     :items="intervalUnitOptions"
+                                    :search-input="selectMenuSearchInput"
                                     value-key="value"
                                     size="lg"
                                     class="or3-task-select"
@@ -173,8 +178,9 @@
                         <label v-if="form.target === 'or3'" class="or3-task-field">
                             <span>Send results to</span>
                             <USelectMenu
-                                v-model="form.channel"
+                                v-model="deliverySelectValue"
                                 :items="deliveryOptions"
+                                :search-input="selectMenuSearchInput"
                                 value-key="value"
                                 size="lg"
                                 class="or3-task-select"
@@ -212,7 +218,7 @@
 
                         <div v-if="advancedOpen" class="or3-task-advanced__body">
                             <p class="or3-task-advanced__intro">
-                                Most people can ignore these. Use them when you need a raw runtime key, a specific destination, or custom agent settings.
+                                Most people can ignore these. Use them when you need a raw runtime key, a manual delivery override, or custom agent settings.
                             </p>
 
                             <label
@@ -230,15 +236,15 @@
                                 </small>
                             </label>
 
-                            <label v-if="form.target === 'or3'" class="or3-task-field">
-                                <span>Specific recipient or destination</span>
+                            <label v-if="form.target === 'or3' && form.channel" class="or3-task-field">
+                                <span>Manual delivery override</span>
                                 <input
                                     v-model="form.to"
                                     class="or3-task-input"
-                                    placeholder="Optional override, like a destination ID or address"
+                                    placeholder="Optional address, channel, or chat ID"
                                 />
                                 <small class="or3-task-helper">
-                                    Leave blank to use the connected app's default destination.
+                                    Prefer the Send results dropdown. Use this only if the destination is not listed yet.
                                 </small>
                             </label>
 
@@ -250,6 +256,7 @@
                                     <USelectMenu
                                         v-model="form.mode"
                                         :items="modeOptions"
+                                        :search-input="selectMenuSearchInput"
                                         value-key="value"
                                         size="lg"
                                         class="or3-task-select"
@@ -261,6 +268,7 @@
                                     <USelectMenu
                                         v-model="form.isolation"
                                         :items="isolationOptions"
+                                        :search-input="selectMenuSearchInput"
                                         value-key="value"
                                         size="lg"
                                         class="or3-task-select"
@@ -385,6 +393,7 @@ const isDesktop = useIsDesktop();
 const side = computed<'bottom' | 'right'>(() =>
     isDesktop.value ? 'right' : 'bottom',
 );
+const selectMenuSearchInput = computed(() => isDesktop.value);
 const contentClass = computed(() =>
     side.value === 'bottom'
         ? 'or3-fb-sheet-shell or3-fb-sheet-shell--bottom h-[92dvh] rounded-t-3xl'
@@ -422,13 +431,47 @@ const CHANNEL_CATALOG = [
 
 type ConversationMode = 'dedicated' | 'existing' | 'custom';
 
-type ChannelSelectOption = {
+type ChannelKey = typeof CHANNEL_CATALOG[number]['key'];
+
+type DeliverySelectOption = {
     label: string;
     value: string;
+    channel: string;
+    to: string;
+    description?: string;
+    kind: 'or3' | 'destination' | 'default' | 'channel';
     hasDefaultDestination?: boolean;
 };
 
-const discoveredChannels = ref<ChannelSelectOption[]>([]);
+interface TelegramChatCandidate {
+    id: string;
+    type?: string;
+    displayName: string;
+    lastMessageText?: string;
+}
+
+interface DiscordTargetCandidate {
+    channelId: string;
+    userId?: string;
+    guildId?: string;
+    kind?: string;
+    displayName: string;
+    userDisplayName?: string;
+    channelName?: string;
+    guildName?: string;
+    lastMessageText?: string;
+    isPrivate?: boolean;
+}
+
+interface ChannelDiscoveryContext {
+    key: ChannelKey;
+    label: string;
+    defaultDestination: string;
+}
+
+const KEEP_IN_OR3_CHANNEL_VALUE = '__or3_keep__';
+
+const discoveredDeliveryOptions = ref<DeliverySelectOption[]>([]);
 
 const form = reactive({
     name: '',
@@ -589,33 +632,57 @@ const sessionPickerSummary = computed(() => {
 });
 
 const deliveryOptions = computed(() => {
-    const options: ChannelSelectOption[] = [
-        { label: 'Keep in OR3', value: '' },
-        ...discoveredChannels.value,
+    const options: DeliverySelectOption[] = [
+        {
+            label: 'Keep in OR3',
+            value: KEEP_IN_OR3_CHANNEL_VALUE,
+            channel: '',
+            to: '',
+            description: 'Show results in the OR3 app only.',
+            kind: 'or3',
+        },
+        ...discoveredDeliveryOptions.value,
     ];
+    const currentValue = deliveryValue(form.channel, form.to);
     if (
         form.channel &&
-        !options.some((option) => option.value === form.channel)
+        !options.some((option) => option.value === currentValue)
     ) {
         options.push({
-            label: `${channelLabel(form.channel)} (saved task setting)`,
-            value: form.channel,
+            label: form.to.trim()
+                ? `${channelLabel(form.channel)} — saved destination`
+                : `${channelLabel(form.channel)} — app default`,
+            value: currentValue,
+            channel: form.channel,
+            to: form.to,
+            description: form.to.trim()
+                ? 'Saved on this scheduled task.'
+                : 'Uses the connected app default destination.',
+            kind: form.to.trim() ? 'destination' : 'channel',
         });
     }
     return options;
 });
 
+const deliverySelectValue = computed({
+    get: () => (form.channel ? deliveryValue(form.channel, form.to) : KEEP_IN_OR3_CHANNEL_VALUE),
+    set: (value: string) => {
+        const option = deliveryOptions.value.find((item) => item.value === value);
+        form.channel = option?.channel || '';
+        form.to = option?.to || '';
+    },
+});
+
 const deliverySummary = computed(() => {
     if (!form.channel)
         return 'Results stay in OR3 unless you send them to another app.';
-    const option = deliveryOptions.value.find(
-        (item) => item.value === form.channel,
-    );
+    const option = deliveryOptions.value.find((item) => item.value === deliverySelectValue.value);
+    if (option?.description) return option.description;
     if (form.to.trim())
-        return `Sends results to a specific ${channelLabel(form.channel)} destination.`;
+        return `Sends results to this ${channelLabel(form.channel)} destination.`;
     if (option?.hasDefaultDestination)
         return `Uses the default ${channelLabel(form.channel)} destination from settings.`;
-    return `Sends results through ${channelLabel(form.channel)}. Add a specific destination in Advanced if needed.`;
+    return `Sends results through ${channelLabel(form.channel)} using its app default.`;
 });
 
 function resetForm() {
@@ -784,7 +851,7 @@ async function loadConversationOptions() {
 
 async function loadDeliveryOptions() {
     channelLoadError.value = null;
-    const results: Array<ChannelSelectOption | null> = await Promise.all(
+    const contextResults: Array<ChannelDiscoveryContext | null> = await Promise.all(
         CHANNEL_CATALOG.map(async (channel) => {
             try {
                 const response = await api.request<ConfigureFieldsResponse>(
@@ -793,24 +860,147 @@ async function loadDeliveryOptions() {
                 const fields = response.fields ?? [];
                 if (!isFieldEnabled(fields)) return null;
                 return {
-                    label: hasDefaultDestination(fields)
-                        ? `${channel.label} (default destination)`
-                        : channel.label,
-                    value: channel.key,
-                    hasDefaultDestination: hasDefaultDestination(fields),
-                } satisfies ChannelSelectOption;
+                    key: channel.key,
+                    label: channel.label,
+                    defaultDestination: readDefaultDestination(fields),
+                };
             } catch {
                 return null;
             }
         }),
     );
-    discoveredChannels.value = results.filter(
-        (item): item is ChannelSelectOption => Boolean(item),
+    const contexts = contextResults.filter(
+        (item): item is ChannelDiscoveryContext => Boolean(item),
     );
-    if (!discoveredChannels.value.length) {
+
+    discoveredDeliveryOptions.value = dedupeDeliveryOptions(
+        contexts
+            .map((context) => initialDeliveryOption(context))
+            .filter((item): item is DeliverySelectOption => Boolean(item)),
+    );
+
+    void loadDiscoveredDeliveryDestinations(contexts);
+
+    if (!discoveredDeliveryOptions.value.length) {
         channelLoadError.value =
-            'No connected delivery apps were detected. You can still keep results in OR3 or use a custom destination in Advanced.';
+            'No connected delivery apps were detected yet. Results can still stay in OR3, and connected destinations will appear here automatically.';
     }
+}
+
+async function loadDiscoveredDeliveryDestinations(contexts: ChannelDiscoveryContext[]) {
+    const results = await Promise.all(
+        contexts.map((context) => loadChannelDeliveryOptions(context).catch(() => [])),
+    );
+    const discovered = results.flatMap((item) => item);
+    if (!discovered.length) return;
+    discoveredDeliveryOptions.value = dedupeDeliveryOptions([
+        ...discoveredDeliveryOptions.value,
+        ...discovered,
+    ]);
+}
+
+async function loadChannelDeliveryOptions(context: ChannelDiscoveryContext) {
+    const options: DeliverySelectOption[] = [];
+    const defaultOption = defaultDeliveryOption(context);
+    if (defaultOption) options.push(defaultOption);
+
+    if (context.key === 'telegram') {
+        options.push(...await loadTelegramDeliveryOptions(context));
+    } else if (context.key === 'discord') {
+        options.push(...await loadDiscordDeliveryOptions(context));
+    } else if (!defaultOption) {
+        options.push(channelDeliveryOption(context));
+    }
+
+    return dedupeDeliveryOptions(options);
+}
+
+function initialDeliveryOption(context: ChannelDiscoveryContext): DeliverySelectOption | null {
+    const defaultOption = defaultDeliveryOption(context);
+    if (defaultOption) return defaultOption;
+    if (context.key === 'telegram' || context.key === 'discord') return null;
+    return channelDeliveryOption(context);
+}
+
+async function loadTelegramDeliveryOptions(context: ChannelDiscoveryContext) {
+    try {
+        const response = await api.request<{ items?: TelegramChatCandidate[]; warning?: string }>(
+            '/internal/v1/configure/channels/telegram/chats?limit=50',
+        );
+        return (response.items ?? []).map((item) => ({
+            label: `Telegram — ${item.displayName || item.id}`,
+            value: deliveryValue(context.key, item.id),
+            channel: context.key,
+            to: item.id,
+            description: telegramChatDescription(item, context.defaultDestination),
+            kind: 'destination' as const,
+            hasDefaultDestination: context.defaultDestination === item.id,
+        }));
+    } catch {
+        return [];
+    }
+}
+
+async function loadDiscordDeliveryOptions(context: ChannelDiscoveryContext) {
+    try {
+        const response = await api.request<{ items?: DiscordTargetCandidate[]; warning?: string }>(
+            '/internal/v1/configure/channels/discord/targets?limit=50',
+        );
+        return (response.items ?? []).map((item) => ({
+            label: `Discord — ${item.displayName || item.channelId}`,
+            value: deliveryValue(context.key, item.channelId),
+            channel: context.key,
+            to: item.channelId,
+            description: discordTargetDescription(item, context.defaultDestination),
+            kind: 'destination' as const,
+            hasDefaultDestination: context.defaultDestination === item.channelId,
+        }));
+    } catch {
+        return [];
+    }
+}
+
+function defaultDeliveryOption(context: ChannelDiscoveryContext): DeliverySelectOption | null {
+    if (!context.defaultDestination) return null;
+    return {
+        label: `${context.label} — default destination`,
+        value: deliveryValue(context.key, context.defaultDestination),
+        channel: context.key,
+        to: context.defaultDestination,
+        description: `Uses the ${context.label} destination saved in settings.`,
+        kind: 'default',
+        hasDefaultDestination: true,
+    };
+}
+
+function channelDeliveryOption(context: ChannelDiscoveryContext): DeliverySelectOption {
+    return {
+        label: `${context.label} — app default`,
+        value: deliveryValue(context.key, ''),
+        channel: context.key,
+        to: '',
+        description: `Sends through ${context.label}; add a default destination in settings for one-click routing.`,
+        kind: 'channel',
+        hasDefaultDestination: false,
+    };
+}
+
+function dedupeDeliveryOptions(options: DeliverySelectOption[]) {
+    const byValue = new Map<string, DeliverySelectOption>();
+    for (const option of options) {
+        if (!option.channel && option.value !== KEEP_IN_OR3_CHANNEL_VALUE) continue;
+        const existing = byValue.get(option.value);
+        if (!existing || option.kind === 'destination') {
+            byValue.set(option.value, option);
+        }
+    }
+    return [...byValue.values()];
+}
+
+function deliveryValue(channel: string, to: string) {
+    const normalizedChannel = channel.trim();
+    if (!normalizedChannel) return KEEP_IN_OR3_CHANNEL_VALUE;
+    return `delivery:${normalizedChannel}:${encodeURIComponent(to.trim())}`;
 }
 
 async function initializeForm() {
@@ -882,26 +1072,42 @@ function channelLabel(channelKey: string) {
     );
 }
 
+function telegramChatDescription(item: TelegramChatCandidate, defaultDestination: string) {
+    const parts = [item.id === defaultDestination ? 'Default Telegram chat' : item.type || 'Telegram chat'];
+    if (item.lastMessageText) parts.push(`last message: ${item.lastMessageText}`);
+    return parts.join(' · ');
+}
+
+function discordTargetDescription(item: DiscordTargetCandidate, defaultDestination: string) {
+    if (item.channelId === defaultDestination) return 'Default Discord destination';
+    if (item.kind === 'dm' || item.isPrivate) {
+        return item.userDisplayName ? `Discord private chat · ${item.userDisplayName}` : 'Discord private chat';
+    }
+    const parts = ['Discord server channel'];
+    if (item.guildName) parts.push(item.guildName);
+    if (item.userDisplayName) parts.push(`last sender: ${item.userDisplayName}`);
+    return parts.join(' · ');
+}
+
 function isFieldEnabled(fields: ConfigureField[]) {
     const enabledField = fields.find((field) => field.key === 'enabled');
     const value = enabledField?.value;
     return value === true || value === 'true' || value === '1';
 }
 
-function hasDefaultDestination(fields: ConfigureField[]) {
-    return fields.some((field) => {
-        if (
-            !/default.*(channel|chat|recipient|reply|to|address|room|destination|user)/i.test(
-                field.key,
-            )
-        ) {
-            return false;
-        }
-        if (Array.isArray(field.value)) {
-            return field.value.some((value) => String(value || '').trim());
-        }
-        return String(field.value || '').trim().length > 0;
-    });
+function readDefaultDestination(fields: ConfigureField[]) {
+    const field = fields.find((item) => isDefaultDestinationField(item) && fieldStringValue(item).trim());
+    return field ? fieldStringValue(field).trim() : '';
+}
+
+function isDefaultDestinationField(field: ConfigureField) {
+    const text = `${field.key} ${field.label}`.toLowerCase();
+    return text.includes('default') && /(channel|chat|recipient|reply|to|address|room|destination|user|id)/i.test(text);
+}
+
+function fieldStringValue(field: ConfigureField) {
+    if (Array.isArray(field.value)) return field.value.map((item) => String(item || '').trim()).filter(Boolean).join(',');
+    return String(field.value || '');
 }
 
 function shouldOpenAdvanced(job: CronJob) {
@@ -911,7 +1117,6 @@ function shouldOpenAdvanced(job: CronJob) {
             (item) => item.value === job.payload?.session_key,
         ) &&
         !String(job.payload?.session_key || '').startsWith('scheduled:');
-    const hasDestinationOverride = Boolean(job.payload?.to);
     const hasAgentAdvanced =
         job.payload?.kind === 'agent_cli_run' &&
         Boolean(
@@ -923,7 +1128,7 @@ function shouldOpenAdvanced(job: CronJob) {
                 (job.payload?.agent_run?.isolation || 'host_readonly') !==
                     'host_readonly',
         );
-    return hasCustomConversation || hasDestinationOverride || hasAgentAdvanced;
+    return hasCustomConversation || hasAgentAdvanced;
 }
 
 function save() {

@@ -7,6 +7,8 @@ import { readSseStream } from '~/utils/or3/sse';
 import { useActiveHost } from './useActiveHost';
 import { resolveHostAuthTokens } from './useSecureHostTokens';
 
+let suppressNetworkErrorLogsUntil = 0;
+
 export interface Or3ApiRequestOptions {
     method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
     body?: unknown;
@@ -32,6 +34,18 @@ interface Or3ApiErrorPayload {
 
 function normalizeBaseUrl(baseUrl: string) {
     return baseUrl.trim().replace(/\/+$/, '');
+}
+
+export function suppressOr3ApiNetworkErrorLogsFor(ms: number) {
+    const duration = Math.max(0, Number(ms) || 0);
+    suppressNetworkErrorLogsUntil = Math.max(
+        suppressNetworkErrorLogsUntil,
+        Date.now() + duration,
+    );
+}
+
+function shouldLogNetworkError() {
+    return Date.now() > suppressNetworkErrorLogsUntil;
 }
 
 function normalizeChallengeCode(
@@ -262,13 +276,18 @@ export function useOr3Api() {
                 signal: options.signal,
             });
         } catch (error) {
-            logger.error('request:network_error', 'Could not reach host', {
+            const payload = {
                 path,
                 method:
                     options.method ||
                     (options.body === undefined ? 'GET' : 'POST'),
                 error: error instanceof Error ? error.message : String(error),
-            });
+            };
+            if (shouldLogNetworkError()) {
+                logger.error('request:network_error', 'Could not reach host', payload);
+            } else {
+                logger.debug('request:network_error_suppressed', 'Host is restarting', payload);
+            }
             throw {
                 code: 'host_unreachable',
                 message: 'Could not reach the selected computer.',

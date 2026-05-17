@@ -63,6 +63,30 @@
       </div>
     </div>
 
+    <div class="rounded-xl border border-(--or3-border) bg-white/70 p-3">
+      <p class="font-mono text-[11px] font-semibold uppercase tracking-wide text-(--or3-text-muted)">Primary destination</p>
+      <div class="mt-2 flex flex-col gap-2 sm:flex-row">
+        <UInput
+          v-model="manualChannelId"
+          class="min-w-0 flex-1"
+          placeholder="Discord channel ID"
+          size="sm"
+        />
+        <UButton
+          size="sm"
+          color="primary"
+          variant="soft"
+          icon="i-pixelarticons-check"
+          label="Set primary"
+          :disabled="!manualChannelId.trim() || manualChannelId.trim() === normalizedDefaultChannelId"
+          @click="setManualPrimaryDestination"
+        />
+      </div>
+      <p class="mt-2 text-[11px] leading-5 text-(--or3-text-muted)">
+        Scheduled tasks use this when sending Discord results.
+      </p>
+    </div>
+
     <div v-if="trustedUsers.length" class="rounded-xl border border-(--or3-border) bg-white/70 p-3">
       <p class="font-mono text-[11px] font-semibold uppercase tracking-wide text-(--or3-text-muted)">Trusted people</p>
       <div class="mt-2 flex flex-wrap gap-2">
@@ -79,14 +103,14 @@
       </p>
     </div>
 
-    <p v-else-if="loaded && !error" class="rounded-xl border border-dashed border-(--or3-border) px-3 py-3 text-center text-xs leading-5 text-(--or3-text-muted)">
+    <p v-if="loaded && !error && !displayItems.length" class="rounded-xl border border-dashed border-(--or3-border) px-3 py-3 text-center text-xs leading-5 text-(--or3-text-muted)">
       No Discord conversations found yet. Save the token, restart or3-intern, invite or DM the bot once, then try again.
     </p>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useAuthSession } from '~/composables/useAuthSession'
 import { useOr3Api } from '~/composables/useOr3Api'
 
@@ -121,6 +145,9 @@ const loaded = ref(false)
 const error = ref('')
 const warning = ref('')
 const items = ref<DiscordTargetCandidate[]>([])
+const manualChannelId = ref('')
+
+const normalizedDefaultChannelId = computed(() => String(props.defaultChannelId ?? '').trim())
 
 const allowedIds = computed(() =>
   String(props.allowedUserIds ?? '')
@@ -130,7 +157,7 @@ const allowedIds = computed(() =>
 )
 
 const knownPrimaryItem = computed<DiscordTargetCandidate[]>(() => {
-  const id = String(props.defaultChannelId ?? '').trim()
+  const id = normalizedDefaultChannelId.value
   if (!id) return []
   return [{ channelId: id, kind: 'saved', displayName: 'Primary Discord destination', lastMessageText: 'Saved in OR3 settings.' }]
 })
@@ -153,8 +180,16 @@ const trustedUsers = computed(() => {
   return allowedIds.value.map((id) => ({ id, label: labelsById.get(id) || `Trusted user ${id}` }))
 })
 
+watch(
+  normalizedDefaultChannelId,
+  (nextValue) => {
+    manualChannelId.value = nextValue
+  },
+  { immediate: true },
+)
+
 function isPrimaryConversation(channelId: string) {
-  return String(props.defaultChannelId ?? '').trim() === channelId
+  return normalizedDefaultChannelId.value === channelId
 }
 
 function isTrustedUser(userId: string) {
@@ -171,6 +206,7 @@ function trustActionLabel(userId: string) {
 }
 
 function conversationMeta(item: DiscordTargetCandidate) {
+  if (item.kind === 'saved') return 'Saved primary Discord destination'
   if (item.kind === 'dm' || item.isPrivate) {
     return item.userDisplayName ? `Private chat · ${item.userDisplayName}` : 'Private chat'
   }
@@ -178,6 +214,12 @@ function conversationMeta(item: DiscordTargetCandidate) {
   if (item.guildName) parts.push(item.guildName)
   if (item.userDisplayName) parts.push(`last sender: ${item.userDisplayName}`)
   return parts.join(' · ')
+}
+
+function setManualPrimaryDestination() {
+  const channelId = manualChannelId.value.trim()
+  if (!channelId) return
+  emit('use-conversation', channelId)
 }
 
 async function loadTargets() {

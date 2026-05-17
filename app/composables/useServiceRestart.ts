@@ -10,7 +10,10 @@ import {
 } from '~/utils/or3/service-restart';
 import { useAuthSession } from './useAuthSession';
 import { useComputerFiles } from './useComputerFiles';
-import { useOr3Api } from './useOr3Api';
+import {
+    suppressOr3ApiNetworkErrorLogsFor,
+    useOr3Api,
+} from './useOr3Api';
 
 const restartingService = ref(false);
 const restartError = ref<string | null>(null);
@@ -134,6 +137,7 @@ export function useServiceRestart() {
                 if (response.operation_id)
                     result.operationId = response.operation_id;
                 if (response.log_path) result.logPath = response.log_path;
+                suppressOr3ApiNetworkErrorLogsFor(65000);
                 return result;
             } catch (error: any) {
                 if (!shouldFallbackToTerminalRestart(error)) throw error;
@@ -149,6 +153,7 @@ export function useServiceRestart() {
 
             const session = await createTerminalSession(root);
             await sendRestartCommand(session.session_id);
+            suppressOr3ApiNetworkErrorLogsFor(65000);
             return {
                 mode: 'terminal' as const,
                 root,
