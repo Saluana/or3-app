@@ -61,6 +61,7 @@ export function normalizePayload(
         runnerIsolation: input.runnerIsolation,
         runnerCwd: input.runnerCwd,
         runnerMaxTurns: input.runnerMaxTurns,
+        runnerThinkingLevel: input.runnerThinkingLevel,
         runnerPermission: normalizeRunnerPermissionPayload(
             input.runnerPermission,
         ),
@@ -90,6 +91,7 @@ export function retryPayloadForStorage(
         runnerIsolation: payload.runnerIsolation,
         runnerCwd: payload.runnerCwd,
         runnerMaxTurns: payload.runnerMaxTurns,
+        runnerThinkingLevel: payload.runnerThinkingLevel,
         runnerPermission: payload.runnerPermission,
     };
 }

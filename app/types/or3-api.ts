@@ -145,8 +145,10 @@ export interface RunnerModelInfo {
     id: string;
     display_name?: string;
     provider?: string;
+    provider_name?: string;
     default?: boolean;
     reasoning?: string[];
+    reasoning_default?: string;
 }
 
 export interface RunnerRuntimeInfo {

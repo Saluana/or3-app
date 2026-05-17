@@ -105,6 +105,7 @@ export interface AssistantSendPayload {
     runnerIsolation?: string;
     runnerCwd?: string;
     runnerMaxTurns?: number;
+    runnerThinkingLevel?: string;
     runnerPermission?: AssistantRunnerPermission;
 }
 

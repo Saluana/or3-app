@@ -61,6 +61,8 @@ describe('assistant stream runner bootstrap', () => {
                 expect(options?.body).toMatchObject({
                     continuation_mode: 'replay',
                     user_message: 'hello runner',
+                    thinking_level: 'high',
+                    meta: { runner_thinking_level: 'high' },
                 });
                 return {
                     session_id: 'rcs_bootstrap',
@@ -88,6 +90,7 @@ describe('assistant stream runner bootstrap', () => {
             runnerId: 'opencode',
             runnerLabel: 'OpenCode',
             runnerContinuationMode: 'native',
+            runnerThinkingLevel: 'high',
         });
 
         const assistantMessage = useChatSessions().messages.value.find(

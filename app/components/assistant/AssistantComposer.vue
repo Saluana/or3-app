@@ -127,25 +127,107 @@
                         <template v-if="selectedRunnerId !== 'or3-intern'">
                             <div class="or3-composer-menu__divider" />
                             <p class="or3-composer-menu__eyebrow">Model</p>
-                            <input
-                                :value="selectedRunnerModel"
-                                :list="runnerModelListId"
-                                class="or3-composer-menu__input"
-                                type="text"
-                                :placeholder="activeRunnerDefaultModel || 'Default model'"
-                                @input="selectRunnerModel(($event.target as HTMLInputElement).value)"
-                            />
-                            <datalist :id="runnerModelListId">
-                                <option
-                                    v-for="model in activeRunnerModels"
-                                    :key="model.id"
-                                    :value="model.id"
+                            <div class="or3-composer-menu__picker">
+                                <button
+                                    type="button"
+                                    class="or3-composer-menu__picker-trigger"
+                                    @click="modelPickerOpen = !modelPickerOpen"
                                 >
-                                    {{ model.display_name || model.id }}
-                                </option>
-                            </datalist>
+                                    <span>
+                                        {{ selectedRunnerModelLabel }}
+                                    </span>
+                                    <Icon
+                                        name="i-pixelarticons-chevron-down"
+                                        class="size-4"
+                                    />
+                                </button>
+                                <div
+                                    v-if="modelPickerOpen"
+                                    class="or3-composer-menu__picker-panel"
+                                >
+                                    <input
+                                        v-model="modelSearch"
+                                        class="or3-composer-menu__input"
+                                        type="text"
+                                        :placeholder="activeRunnerModels.length ? 'Search models…' : 'Custom model id…'"
+                                        @keydown.enter.prevent="selectRunnerModel(modelSearch)"
+                                    />
+                                    <div
+                                        v-if="filteredRunnerModels.length"
+                                        class="or3-composer-menu__model-list"
+                                    >
+                                        <button
+                                            v-for="model in filteredRunnerModels"
+                                            :key="runnerModelValue(model)"
+                                            type="button"
+                                            class="or3-composer-menu__model-option"
+                                            :class="{ 'is-active': selectedRunnerModel === runnerModelValue(model) }"
+                                            @click="selectRunnerModel(runnerModelValue(model))"
+                                        >
+                                            <span>
+                                                <span>{{ model.display_name || model.id }}</span>
+                                                <small>{{ runnerModelProviderLabel(model) }}</small>
+                                            </span>
+                                            <Icon
+                                                v-if="selectedRunnerModel === runnerModelValue(model)"
+                                                name="i-pixelarticons-check"
+                                                class="size-4"
+                                            />
+                                        </button>
+                                    </div>
+                                    <button
+                                        v-if="customModelCandidate"
+                                        type="button"
+                                        class="or3-composer-menu__model-option"
+                                        @click="selectRunnerModel(customModelCandidate)"
+                                    >
+                                        <span>
+                                            <span>Use “{{ customModelCandidate }}”</span>
+                                            <small>Custom model id</small>
+                                        </span>
+                                    </button>
+                                    <button
+                                        v-if="selectedRunnerModel"
+                                        type="button"
+                                        class="or3-composer-menu__model-option"
+                                        @click="selectRunnerModel('')"
+                                    >
+                                        <span>
+                                            <span>Use runner default</span>
+                                            <small>{{ activeRunnerDefaultModel || 'No model override' }}</small>
+                                        </span>
+                                    </button>
+                                </div>
+                            </div>
+                            <template v-if="activeModelReasoningOptions.length">
+                                <p class="or3-composer-menu__eyebrow or3-composer-menu__eyebrow--sub">Thinking</p>
+                                <div
+                                    class="or3-composer-menu__chips"
+                                    role="radiogroup"
+                                    aria-label="Thinking level"
+                                >
+                                    <button
+                                        type="button"
+                                        class="or3-composer-menu__chip"
+                                        :class="{ 'is-active': !selectedRunnerThinkingLevel }"
+                                        @click="selectRunnerThinkingLevel('')"
+                                    >
+                                        Auto
+                                    </button>
+                                    <button
+                                        v-for="option in activeModelReasoningOptions"
+                                        :key="option"
+                                        type="button"
+                                        class="or3-composer-menu__chip"
+                                        :class="{ 'is-active': selectedRunnerThinkingLevel === option }"
+                                        @click="selectRunnerThinkingLevel(option)"
+                                    >
+                                        {{ option }}
+                                    </button>
+                                </div>
+                            </template>
                             <small class="or3-composer-menu__hint">
-                                Leave blank to use {{ activeRunnerDefaultModel || 'the runner default' }}.
+                                {{ activeRunnerModels.length ? 'Pick a discovered model or type a custom id.' : 'No model list yet; type a custom id if needed.' }}
                             </small>
                         </template>
 
@@ -291,6 +373,7 @@ const props = withDefaults(
         mode?: 'ask' | 'work' | 'admin';
         selectedRunnerId?: string;
         selectedRunnerModel?: string;
+        selectedRunnerThinkingLevel?: string;
         runners?: ChatRunnerInfo[];
     }>(),
     {
@@ -300,6 +383,7 @@ const props = withDefaults(
         mode: 'work',
         selectedRunnerId: 'or3-intern',
         selectedRunnerModel: '',
+        selectedRunnerThinkingLevel: '',
         runners: () => [],
     },
 );
@@ -309,6 +393,7 @@ const emit = defineEmits<{
     'update:mode': [value: 'ask' | 'work' | 'admin'];
     'update:selectedRunnerId': [value: string];
     'update:selectedRunnerModel': [value: string];
+    'update:selectedRunnerThinkingLevel': [value: string];
     send: [value: AssistantSendPayload];
     stop: [];
 }>();
@@ -412,9 +497,11 @@ const modeOptions = [
 const selectedMode = computed(() => props.mode ?? 'work');
 const selectedRunnerId = computed(() => props.selectedRunnerId || 'or3-intern');
 const selectedRunnerModel = computed(() => props.selectedRunnerModel || '');
-const runnerModelListId = computed(
-    () => `or3-runner-models-${selectedRunnerId.value}`,
+const selectedRunnerThinkingLevel = computed(
+    () => props.selectedRunnerThinkingLevel || '',
 );
+const modelPickerOpen = ref(false);
+const modelSearch = ref('');
 
 const runnerOptions = computed(() => {
     const runners = props.runners.length
@@ -490,6 +577,57 @@ const activeRunnerDefaultModel = computed(
         activeRunnerModels.value.find((model) => model.default)?.id ||
         '',
 );
+const activeRunnerSelectedModel = computed(() => {
+    const selected = selectedRunnerModel.value || activeRunnerDefaultModel.value;
+    return activeRunnerModels.value.find(
+        (model) => model.id === selected || runnerModelValue(model) === selected,
+    );
+});
+const activeModelReasoningOptions = computed(() =>
+    (activeRunnerSelectedModel.value?.reasoning || [])
+        .map((option) => String(option).trim())
+        .filter(Boolean),
+);
+const selectedRunnerModelLabel = computed(() => {
+    if (!selectedRunnerModel.value) {
+        return activeRunnerDefaultModel.value
+            ? `Default · ${activeRunnerDefaultModel.value}`
+            : 'Runner default';
+    }
+    const model = activeRunnerModels.value.find(
+        (item) =>
+            item.id === selectedRunnerModel.value ||
+            runnerModelValue(item) === selectedRunnerModel.value,
+    );
+    if (!model) return selectedRunnerModel.value;
+    return model.display_name || model.id || selectedRunnerModel.value;
+});
+const filteredRunnerModels = computed(() => {
+    const query = modelSearch.value.trim().toLowerCase();
+    if (!query) return activeRunnerModels.value.slice(0, 80);
+    return activeRunnerModels.value
+        .filter((model) => {
+            const haystack = [model.id, model.display_name, model.provider]
+                .concat(model.provider_name ? [model.provider_name] : [])
+                .filter(Boolean)
+                .join(' ')
+                .toLowerCase();
+            return haystack.includes(query);
+        })
+        .slice(0, 80);
+});
+const customModelCandidate = computed(() => {
+    const value = modelSearch.value.trim();
+    if (!value) return '';
+    if (
+        activeRunnerModels.value.some(
+            (model) => model.id === value || runnerModelValue(model) === value,
+        )
+    ) {
+        return '';
+    }
+    return value;
+});
 
 const canSend = computed(
     () => !!formState.text.trim() || displayedAttachments.value.length > 0,
@@ -554,16 +692,68 @@ function selectMode(mode: 'ask' | 'work' | 'admin') {
 
 function selectRunner(runnerId: string) {
     emit('update:selectedRunnerId', runnerId);
+    modelPickerOpen.value = false;
+    modelSearch.value = '';
     const runner = props.runners.find((item) => item.id === runnerId);
     emit(
         'update:selectedRunnerModel',
         runner?.default_model || runner?.runtime?.default_model || '',
     );
+    emit('update:selectedRunnerThinkingLevel', '');
 }
 
 function selectRunnerModel(model: string) {
-    emit('update:selectedRunnerModel', model.trim());
+    const trimmed = model.trim();
+    emit('update:selectedRunnerModel', trimmed);
+    modelSearch.value = '';
+    modelPickerOpen.value = false;
+    const selected = activeRunnerModels.value.find(
+        (item) => item.id === trimmed || runnerModelValue(item) === trimmed,
+    );
+    const options = selected?.reasoning || [];
+    if (!options.includes(selectedRunnerThinkingLevel.value)) {
+        emit('update:selectedRunnerThinkingLevel', selected?.reasoning_default || '');
+    }
 }
+
+function selectRunnerThinkingLevel(level: string) {
+    emit('update:selectedRunnerThinkingLevel', level.trim());
+}
+
+function runnerModelValue(model: { id: string; provider?: string }) {
+    if (
+        selectedRunnerId.value === 'opencode' &&
+        model.provider &&
+        !model.id.includes('/')
+    ) {
+        return `${model.provider}/${model.id}`;
+    }
+    return model.id;
+}
+
+function runnerModelProviderLabel(model: {
+    id: string;
+    provider?: string;
+    provider_name?: string;
+}) {
+    if (model.provider_name && model.provider) {
+        return `${model.provider_name} · ${model.provider}`;
+    }
+    return model.provider_name || model.provider || model.id;
+}
+
+watch(activeModelReasoningOptions, (options) => {
+    if (!options.length && selectedRunnerThinkingLevel.value) {
+        emit('update:selectedRunnerThinkingLevel', '');
+        return;
+    }
+    if (
+        selectedRunnerThinkingLevel.value &&
+        !options.includes(selectedRunnerThinkingLevel.value)
+    ) {
+        emit('update:selectedRunnerThinkingLevel', '');
+    }
+});
 
 function revokeAttachmentPreview(attachment: DraftAttachment) {
     if (attachment.objectUrl) URL.revokeObjectURL(attachment.objectUrl);
@@ -900,6 +1090,13 @@ async function submit() {
         runnerModel:
             selectedRunnerId.value !== 'or3-intern' && selectedRunnerModel.value
                 ? selectedRunnerModel.value
+                : undefined,
+        runnerThinkingLevel:
+            selectedRunnerId.value !== 'or3-intern' &&
+            activeModelReasoningOptions.value.includes(
+                selectedRunnerThinkingLevel.value,
+            )
+                ? selectedRunnerThinkingLevel.value
                 : undefined,
         runnerLabel: runnerOptions.value.find(
             (runner) => runner.id === selectedRunnerId.value,
@@ -1546,6 +1743,113 @@ onBeforeUnmount(() => {
     color: var(--or3-text);
     font-size: 0.9rem;
     padding: 0.62rem 0.7rem;
+}
+
+.or3-composer-menu__picker {
+    position: relative;
+    display: grid;
+    gap: 0.35rem;
+}
+
+.or3-composer-menu__picker-trigger {
+    width: 100%;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.65rem;
+    border: 1px solid var(--or3-border);
+    border-radius: 0.8rem;
+    background: var(--or3-surface);
+    color: var(--or3-text);
+    font-size: 0.9rem;
+    font-weight: 750;
+    padding: 0.62rem 0.7rem;
+}
+
+.or3-composer-menu__picker-trigger span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.or3-composer-menu__picker-panel {
+    display: grid;
+    gap: 0.35rem;
+    border: 1px solid var(--or3-border);
+    border-radius: 0.9rem;
+    background: color-mix(in srgb, white 94%, var(--or3-surface) 6%);
+    padding: 0.4rem;
+}
+
+.or3-composer-menu__model-list {
+    display: grid;
+    gap: 0.15rem;
+    max-height: 12rem;
+    overflow-y: auto;
+}
+
+.or3-composer-menu__model-option {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.65rem;
+    border: 0;
+    border-radius: 0.75rem;
+    background: transparent;
+    color: var(--or3-text);
+    padding: 0.5rem 0.55rem;
+    text-align: left;
+}
+
+.or3-composer-menu__model-option:hover,
+.or3-composer-menu__model-option.is-active {
+    background: color-mix(in srgb, var(--or3-green-soft) 30%, white 70%);
+}
+
+.or3-composer-menu__model-option span span,
+.or3-composer-menu__model-option small {
+    display: block;
+}
+
+.or3-composer-menu__model-option span span {
+    font-size: 0.86rem;
+    font-weight: 800;
+}
+
+.or3-composer-menu__model-option small {
+    color: var(--or3-text-muted);
+    font-size: 0.72rem;
+    font-weight: 650;
+}
+
+.or3-composer-menu__eyebrow--sub {
+    margin-top: 0.55rem;
+}
+
+.or3-composer-menu__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+}
+
+.or3-composer-menu__chip {
+    border: 1px solid var(--or3-border);
+    border-radius: 999px;
+    background: var(--or3-surface);
+    color: var(--or3-text);
+    font-size: 0.76rem;
+    font-weight: 800;
+    padding: 0.35rem 0.55rem;
+    text-transform: capitalize;
+}
+
+.or3-composer-menu__chip.is-active {
+    border-color: color-mix(in srgb, var(--or3-green-dark) 52%, var(--or3-border));
+    background: color-mix(in srgb, var(--or3-green-soft) 42%, white 58%);
+    color: var(--or3-green-dark);
 }
 
 .or3-composer-menu__hint {

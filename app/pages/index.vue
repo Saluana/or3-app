@@ -158,6 +158,7 @@
                         v-model:mode="chatMode"
                         v-model:selected-runner-id="selectedRunnerId"
                         v-model:selected-runner-model="selectedRunnerModel"
+                        v-model:selected-runner-thinking-level="selectedRunnerThinkingLevel"
                         :streaming="isStreaming"
                         :runners="runners"
                         @send="sendWithMode"
@@ -273,6 +274,7 @@
                             v-model:mode="chatMode"
                             v-model:selected-runner-id="selectedRunnerId"
                             v-model:selected-runner-model="selectedRunnerModel"
+                            v-model:selected-runner-thinking-level="selectedRunnerThinkingLevel"
                             :streaming="isStreaming"
                             :runners="runners"
                             @send="sendWithMode"
@@ -326,6 +328,7 @@ const { pendingCount } = useApprovals();
 
 const selectedRunnerId = ref('or3-intern');
 const selectedRunnerModel = ref('');
+const selectedRunnerThinkingLevel = ref('');
 const approvalsOpen = ref(false);
 const mobileMessageList = ref<{
     scrollToBottom?: () => void;
@@ -488,6 +491,7 @@ watch(selectedRunnerId, (runnerId, previous) => {
         }
         const session = newSession('New conversation');
         selectedRunnerModel.value = runner.default_model || runner.runtime?.default_model || '';
+        selectedRunnerThinkingLevel.value = '';
         setSessionRunnerMetadata(session.id, {
             runnerId,
             runnerLabel: runner.display_name || runner.id,
@@ -497,6 +501,7 @@ watch(selectedRunnerId, (runnerId, previous) => {
         return;
     }
     selectedRunnerModel.value = runner.default_model || runner.runtime?.default_model || '';
+    selectedRunnerThinkingLevel.value = '';
     setSessionRunnerMetadata(activeSession.value.id, {
         runnerId,
         runnerLabel: runner.display_name || runner.id,
@@ -517,6 +522,7 @@ function sendWithMode(payload: Parameters<typeof send>[0]) {
             mode: chatMode.value,
             runnerId: selectedRunnerId.value,
             runnerModel: selectedRunnerModel.value || runner?.default_model,
+            runnerThinkingLevel: selectedRunnerThinkingLevel.value || undefined,
             runnerLabel: runner?.display_name || selectedRunnerId.value,
             runnerContinuationMode: sessionContinuationMode,
         });
@@ -530,6 +536,10 @@ function sendWithMode(payload: Parameters<typeof send>[0]) {
             payload.runnerModel ||
             selectedRunnerModel.value ||
             runner?.default_model,
+        runnerThinkingLevel:
+            payload.runnerThinkingLevel ||
+            selectedRunnerThinkingLevel.value ||
+            undefined,
         runnerLabel:
             payload.runnerLabel ||
             runner?.display_name ||

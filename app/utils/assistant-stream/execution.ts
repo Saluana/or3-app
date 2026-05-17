@@ -537,6 +537,15 @@ export async function streamRunnerChat(
                     context.session.runnerIsolation,
                 cwd: context.payload.runnerCwd || context.session.runnerCwd,
                 max_turns: context.payload.runnerMaxTurns || undefined,
+                ...(context.payload.runnerThinkingLevel
+                    ? {
+                          thinking_level: context.payload.runnerThinkingLevel,
+                          meta: {
+                              runner_thinking_level:
+                                  context.payload.runnerThinkingLevel,
+                          },
+                      }
+                    : {}),
                 ...(context.payload.approvalToken
                     ? { approval_token: context.payload.approvalToken }
                     : {}),
