@@ -1,6 +1,13 @@
 <template>
+    <ConnectionCard
+        v-if="control.kind === 'connection-card'"
+        :control="control"
+        :current-value="currentValue"
+        :value-index="valueIndex"
+        @change="onChange"
+    />
     <SurfaceCard
-        v-if="framed"
+        v-else-if="framed"
         :id="`setting-${control.key}`"
         :class-name="cardClass"
     >
@@ -95,14 +102,6 @@
                 v-else-if="control.kind === 'text'"
                 :model-value="String(currentValue ?? '')"
                 @update:model-value="onTextInput"
-            />
-
-            <ConnectionCard
-                v-else-if="control.kind === 'connection-card'"
-                :control="control"
-                :current-value="currentValue"
-                :value-index="valueIndex"
-                @change="onChange"
             />
 
             <ProviderManagerControl
@@ -243,14 +242,6 @@
                 @update:model-value="onTextInput"
             />
 
-            <ConnectionCard
-                v-else-if="control.kind === 'connection-card'"
-                :control="control"
-                :current-value="currentValue"
-                :value-index="valueIndex"
-                @change="onChange"
-            />
-
             <ProviderManagerControl
                 v-else-if="control.kind === 'provider-manager'"
             />
@@ -370,6 +361,7 @@ const primaryBackendField = computed(() => {
 });
 
 const isToggleControl = computed(() => {
+    if (props.control.kind === 'connection-card') return false;
     const kind = String(primaryBackendField.value?.kind ?? '').toLowerCase();
     return (
         props.control.kind === 'toggle' ||
