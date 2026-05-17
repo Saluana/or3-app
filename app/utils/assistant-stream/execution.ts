@@ -146,6 +146,7 @@ interface DirectRecoveryContext extends BaseExecutionContext {
 const COMPLETION_ACTIVITY_TYPES = [
     "queued",
     "started",
+    "completion",
     "tool_call",
     "command_execution",
     "file_change",

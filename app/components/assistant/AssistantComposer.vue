@@ -124,6 +124,31 @@
                             </button>
                         </div>
 
+                        <template v-if="selectedRunnerId !== 'or3-intern'">
+                            <div class="or3-composer-menu__divider" />
+                            <p class="or3-composer-menu__eyebrow">Model</p>
+                            <input
+                                :value="selectedRunnerModel"
+                                :list="runnerModelListId"
+                                class="or3-composer-menu__input"
+                                type="text"
+                                :placeholder="activeRunnerDefaultModel || 'Default model'"
+                                @input="selectRunnerModel(($event.target as HTMLInputElement).value)"
+                            />
+                            <datalist :id="runnerModelListId">
+                                <option
+                                    v-for="model in activeRunnerModels"
+                                    :key="model.id"
+                                    :value="model.id"
+                                >
+                                    {{ model.display_name || model.id }}
+                                </option>
+                            </datalist>
+                            <small class="or3-composer-menu__hint">
+                                Leave blank to use {{ activeRunnerDefaultModel || 'the runner default' }}.
+                            </small>
+                        </template>
+
                         <div class="or3-composer-menu__divider" />
                         <p class="or3-composer-menu__eyebrow">Mode</p>
                         <div
@@ -265,6 +290,7 @@ const props = withDefaults(
         paneId?: string;
         mode?: 'ask' | 'work' | 'admin';
         selectedRunnerId?: string;
+        selectedRunnerModel?: string;
         runners?: ChatRunnerInfo[];
     }>(),
     {
@@ -273,6 +299,7 @@ const props = withDefaults(
         paneId: 'main',
         mode: 'work',
         selectedRunnerId: 'or3-intern',
+        selectedRunnerModel: '',
         runners: () => [],
     },
 );
@@ -281,6 +308,7 @@ const emit = defineEmits<{
     'update:modelValue': [value: string];
     'update:mode': [value: 'ask' | 'work' | 'admin'];
     'update:selectedRunnerId': [value: string];
+    'update:selectedRunnerModel': [value: string];
     send: [value: AssistantSendPayload];
     stop: [];
 }>();
@@ -383,6 +411,10 @@ const modeOptions = [
 
 const selectedMode = computed(() => props.mode ?? 'work');
 const selectedRunnerId = computed(() => props.selectedRunnerId || 'or3-intern');
+const selectedRunnerModel = computed(() => props.selectedRunnerModel || '');
+const runnerModelListId = computed(
+    () => `or3-runner-models-${selectedRunnerId.value}`,
+);
 
 const runnerOptions = computed(() => {
     const runners = props.runners.length
@@ -442,6 +474,22 @@ const runnerOptions = computed(() => {
         };
     });
 });
+
+const activeRunner = computed(() =>
+    props.runners.find((runner) => runner.id === selectedRunnerId.value),
+);
+const activeRunnerModels = computed(() =>
+    activeRunner.value?.models?.length
+        ? activeRunner.value.models
+        : activeRunner.value?.runtime?.models || [],
+);
+const activeRunnerDefaultModel = computed(
+    () =>
+        activeRunner.value?.default_model ||
+        activeRunner.value?.runtime?.default_model ||
+        activeRunnerModels.value.find((model) => model.default)?.id ||
+        '',
+);
 
 const canSend = computed(
     () => !!formState.text.trim() || displayedAttachments.value.length > 0,
@@ -506,6 +554,15 @@ function selectMode(mode: 'ask' | 'work' | 'admin') {
 
 function selectRunner(runnerId: string) {
     emit('update:selectedRunnerId', runnerId);
+    const runner = props.runners.find((item) => item.id === runnerId);
+    emit(
+        'update:selectedRunnerModel',
+        runner?.default_model || runner?.runtime?.default_model || '',
+    );
+}
+
+function selectRunnerModel(model: string) {
+    emit('update:selectedRunnerModel', model.trim());
 }
 
 function revokeAttachmentPreview(attachment: DraftAttachment) {
@@ -840,6 +897,10 @@ async function submit() {
         ),
         attachments: attachments.map(toPayloadAttachment),
         runnerId: selectedRunnerId.value,
+        runnerModel:
+            selectedRunnerId.value !== 'or3-intern' && selectedRunnerModel.value
+                ? selectedRunnerModel.value
+                : undefined,
         runnerLabel: runnerOptions.value.find(
             (runner) => runner.id === selectedRunnerId.value,
         )?.label,
@@ -1426,6 +1487,11 @@ onBeforeUnmount(() => {
 
 .or3-composer-menu {
     width: min(21rem, calc(100vw - 2rem));
+    max-height: min(32rem, calc(100vh - 8rem));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    -webkit-overflow-scrolling: touch;
     border-radius: 1.25rem;
     border: 1px solid var(--or3-border);
     background: color-mix(in srgb, white 94%, var(--or3-surface) 6%);
@@ -1470,6 +1536,24 @@ onBeforeUnmount(() => {
     font-size: 0.68rem;
     font-weight: 800;
     text-transform: uppercase;
+}
+
+.or3-composer-menu__input {
+    width: 100%;
+    border: 1px solid var(--or3-border);
+    border-radius: 0.8rem;
+    background: var(--or3-surface);
+    color: var(--or3-text);
+    font-size: 0.9rem;
+    padding: 0.62rem 0.7rem;
+}
+
+.or3-composer-menu__hint {
+    display: block;
+    margin: 0.35rem 0.55rem 0;
+    color: var(--or3-text-muted);
+    font-size: 0.72rem;
+    line-height: 1.25;
 }
 
 .or3-composer-menu__modes {

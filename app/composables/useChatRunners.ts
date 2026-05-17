@@ -32,13 +32,25 @@ function isSelectableRunner(runner: ChatRunnerInfo) {
 }
 
 function normalizeChatRunners(runners: ChatRunnerInfo[]): ChatRunnerInfo[] {
-    return runners.map((runner) => ({
-        ...runner,
-        auth_status:
-            runner.status === 'available' && runner.auth_status === 'unknown'
-                ? 'ready'
-                : runner.auth_status,
-    }));
+    return runners.map((runner) => {
+        const models = runner.models?.length
+            ? runner.models
+            : runner.runtime?.models || [];
+        const defaultModel =
+            runner.default_model ||
+            runner.runtime?.default_model ||
+            models.find((model) => model.default)?.id ||
+            '';
+        return {
+            ...runner,
+            models,
+            default_model: defaultModel || runner.default_model,
+            auth_status:
+                runner.status === 'available' && runner.auth_status === 'unknown'
+                    ? 'ready'
+                    : runner.auth_status,
+        };
+    });
 }
 
 export function useChatRunners() {

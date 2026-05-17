@@ -41,7 +41,7 @@ function createApplier() {
         else assistant.value.activityLog.push(entry);
     };
 
-    return createAssistantEventApplier({
+    const applier = createAssistantEventApplier({
         assistantId: assistant.value.id,
         readAssistant: () => assistant.value,
         updateAssistant: (patch) => {
@@ -135,6 +135,11 @@ function createApplier() {
         setSawVisibleOutput: () => undefined,
         rawAssistantContent: () => assistant.value.content,
     });
+
+    return {
+        assistant,
+        ...applier,
+    };
 }
 
 describe('createAssistantEventApplier', () => {
@@ -193,5 +198,77 @@ describe('createAssistantEventApplier', () => {
                 (entry) => entry.event === 'event:skip_sequence',
             ),
         ).toHaveLength(1);
+    });
+
+    it('reuses finalizing completion activity and resolves it on final text', () => {
+        const { applyEvent, assistant } = createApplier();
+
+        assistant.value.activityLog.push({
+            id: 'tool-1',
+            type: 'tool_call',
+            label: 'Web search',
+            detail: 'Searching docs',
+            status: 'running',
+            createdAt: '2026-05-14T00:00:00.000Z',
+        });
+
+        applyEvent(
+            {
+                event: 'completed',
+                json: {
+                    type: 'completed',
+                    sequence: 31,
+                    status: 'completed',
+                    job_id: 'job-1',
+                    final_text: '',
+                },
+            },
+            'stream',
+        );
+        applyEvent(
+            {
+                event: 'completed',
+                json: {
+                    type: 'completed',
+                    sequence: 32,
+                    status: 'completed',
+                    job_id: 'job-1',
+                    final_text: '',
+                },
+            },
+            'stream',
+        );
+
+        let completionEntries = assistant.value.activityLog.filter(
+            (entry) => entry.type === 'completion',
+        );
+        expect(completionEntries).toHaveLength(1);
+        expect(completionEntries[0]).toMatchObject({
+            label: 'Finalizing response',
+            status: 'running',
+        });
+
+        applyEvent(
+            {
+                event: 'completed',
+                json: {
+                    type: 'completed',
+                    sequence: 33,
+                    status: 'completed',
+                    job_id: 'job-1',
+                    final_text: 'All done.',
+                },
+            },
+            'stream',
+        );
+
+        completionEntries = assistant.value.activityLog.filter(
+            (entry) => entry.type === 'completion',
+        );
+        expect(completionEntries).toHaveLength(1);
+        expect(completionEntries[0]).toMatchObject({
+            label: 'Completed turn',
+            status: 'complete',
+        });
     });
 });

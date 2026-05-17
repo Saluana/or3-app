@@ -136,6 +136,30 @@ export interface AgentRunnerInfo {
     auth_status?: AgentRunnerAuthStatus;
     supports: AgentRunnerSupports;
     default_args_preview?: string[];
+    runtime?: RunnerRuntimeInfo;
+    models?: RunnerModelInfo[];
+    default_model?: string;
+}
+
+export interface RunnerModelInfo {
+    id: string;
+    display_name?: string;
+    provider?: string;
+    default?: boolean;
+    reasoning?: string[];
+}
+
+export interface RunnerRuntimeInfo {
+    kind?: 'cli' | 'native';
+    mode?: 'auto' | 'native' | 'cli';
+    state?: 'unavailable' | 'ready' | 'starting' | 'error' | 'fallback';
+    ownership?: 'none' | 'managed' | 'external' | 'unknown';
+    endpoint?: string;
+    message?: string;
+    fallback?: boolean;
+    fallback_reason?: string;
+    models?: RunnerModelInfo[];
+    default_model?: string;
 }
 
 export interface AgentRunnersResponse {
@@ -144,7 +168,6 @@ export interface AgentRunnersResponse {
 
 export interface ChatRunnerInfo extends AgentRunnerInfo {
     chat_capabilities?: RunnerChatCapabilities;
-    default_model?: string;
     default_mode?: string;
     default_isolation?: string;
     default_cwd?: string;

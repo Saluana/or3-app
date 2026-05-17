@@ -39,6 +39,17 @@ describe('approval display helpers', () => {
     })).toBe('gws-tasks: create-task')
   })
 
+  it('shows runner permission identity clearly', () => {
+    expect(formatApprovalSubjectPreview({
+      type: 'runner_permission',
+      subject: {
+        runner_id: 'opencode',
+        access: 'write',
+        target_path: '/Users/brendon/project',
+      },
+    })).toBe('opencode write /Users/brendon/project')
+  })
+
   it('labels terminal approval states explicitly', () => {
     expect(approvalStatusLabel('expired')).toBe('Expired')
     expect(approvalStatusTone('expired')).toBe('danger')

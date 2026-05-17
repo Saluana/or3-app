@@ -127,4 +127,37 @@ describe('useChatRunners', () => {
         expect(chatRunners.selectableRunners.value.map((runner) => runner.id)).toEqual(['or3-intern', 'gemini']);
         expect(chatRunners.getRunner('gemini')?.auth_status).toBe('ready');
     });
+
+    it('normalizes runtime model metadata for native runners', async () => {
+        const opencode = makeRunner('opencode');
+        const { chatRunners } = await loadComposable(async () => ({
+            runners: [
+                makeRunner('or3-intern'),
+                {
+                    ...opencode,
+                    default_model: '',
+                    models: [],
+                    runtime: {
+                        kind: 'native',
+                        mode: 'auto',
+                        state: 'ready',
+                        ownership: 'external',
+                        endpoint: 'http://127.0.0.1:4096',
+                        default_model: 'gpt-5',
+                        models: [
+                            { id: 'gpt-5', display_name: 'GPT-5', default: true },
+                            { id: 'gpt-5-mini', display_name: 'GPT-5 Mini' },
+                        ],
+                    },
+                },
+            ],
+        }));
+
+        await chatRunners.refresh();
+
+        const runner = chatRunners.getRunner('opencode');
+        expect(runner?.default_model).toBe('gpt-5');
+        expect(runner?.models.map((model) => model.id)).toEqual(['gpt-5', 'gpt-5-mini']);
+        expect(runner?.runtime?.ownership).toBe('external');
+    });
 });

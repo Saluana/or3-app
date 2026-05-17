@@ -157,6 +157,7 @@
                         v-model="draft"
                         v-model:mode="chatMode"
                         v-model:selected-runner-id="selectedRunnerId"
+                        v-model:selected-runner-model="selectedRunnerModel"
                         :streaming="isStreaming"
                         :runners="runners"
                         @send="sendWithMode"
@@ -271,6 +272,7 @@
                             v-model="draft"
                             v-model:mode="chatMode"
                             v-model:selected-runner-id="selectedRunnerId"
+                            v-model:selected-runner-model="selectedRunnerModel"
                             :streaming="isStreaming"
                             :runners="runners"
                             @send="sendWithMode"
@@ -323,6 +325,7 @@ const router = useRouter();
 const { pendingCount } = useApprovals();
 
 const selectedRunnerId = ref('or3-intern');
+const selectedRunnerModel = ref('');
 const approvalsOpen = ref(false);
 const mobileMessageList = ref<{
     scrollToBottom?: () => void;
@@ -434,6 +437,7 @@ function onNewSession() {
         setSessionRunnerMetadata(session.id, {
             runnerId: runner.id,
             runnerLabel: runner.display_name || runner.id,
+            runnerModel: selectedRunnerModel.value || runner.default_model,
             runnerContinuationMode: continuationModeForRunner(runner.id),
         });
     }
@@ -483,16 +487,20 @@ watch(selectedRunnerId, (runnerId, previous) => {
             return;
         }
         const session = newSession('New conversation');
+        selectedRunnerModel.value = runner.default_model || runner.runtime?.default_model || '';
         setSessionRunnerMetadata(session.id, {
             runnerId,
             runnerLabel: runner.display_name || runner.id,
+            runnerModel: selectedRunnerModel.value || undefined,
             runnerContinuationMode: continuationModeForRunner(runnerId),
         });
         return;
     }
+    selectedRunnerModel.value = runner.default_model || runner.runtime?.default_model || '';
     setSessionRunnerMetadata(activeSession.value.id, {
         runnerId,
         runnerLabel: runner.display_name || runner.id,
+        runnerModel: selectedRunnerModel.value || undefined,
         runnerContinuationMode: continuationModeForRunner(runnerId),
     });
 });
@@ -508,6 +516,7 @@ function sendWithMode(payload: Parameters<typeof send>[0]) {
             transportText: payload,
             mode: chatMode.value,
             runnerId: selectedRunnerId.value,
+            runnerModel: selectedRunnerModel.value || runner?.default_model,
             runnerLabel: runner?.display_name || selectedRunnerId.value,
             runnerContinuationMode: sessionContinuationMode,
         });
@@ -517,6 +526,10 @@ function sendWithMode(payload: Parameters<typeof send>[0]) {
         ...payload,
         mode: payload.mode ?? chatMode.value,
         runnerId: payload.runnerId || selectedRunnerId.value,
+        runnerModel:
+            payload.runnerModel ||
+            selectedRunnerModel.value ||
+            runner?.default_model,
         runnerLabel:
             payload.runnerLabel ||
             runner?.display_name ||

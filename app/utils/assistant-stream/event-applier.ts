@@ -64,6 +64,7 @@ export function createAssistantEventApplier(
     const logger = createLogger('stream');
     const appliedEventSequenceKeys = new Set<string>();
     const streamedEventPayloadKeys = new Set<string>();
+    const completionActivityId = 'activity:completion:final-response';
 
     const markVisibleOutput = (value: string) => {
         if (sanitizeAssistantText(value)) {
@@ -585,12 +586,13 @@ export function createAssistantEventApplier(
                 'unknown',
             ]);
             if (!finalText && hasToolWork && source === 'stream' && jobId) {
-                options.addActivity(
+                options.upsertActivity(
                     createActivity(
                         'completion',
                         'Finalizing response',
                         'Tool work completed. Waiting for the final assistant message…',
                         'running',
+                        completionActivityId,
                     ),
                 );
                 options.updateAssistant({
@@ -604,12 +606,13 @@ export function createAssistantEventApplier(
             if (!finalText && hasToolWork) {
                 const warning =
                     'Tool work completed, but or3-intern did not return a final assistant message. The last tool result is shown above; retry the turn if it still matters.';
-                options.addActivity(
+                options.upsertActivity(
                     createActivity(
                         'completion',
                         'Completed turn',
                         'Tool work completed without a final assistant message.',
                         'attention',
+                        completionActivityId,
                     ),
                 );
                 if (!sanitizeAssistantText(currentAssistant?.content || '')) {
@@ -636,7 +639,7 @@ export function createAssistantEventApplier(
                 );
                 return { failed: false, completed: true };
             }
-            options.addActivity(
+            options.upsertActivity(
                 createActivity(
                     'completion',
                     'Completed turn',
@@ -646,6 +649,7 @@ export function createAssistantEventApplier(
                           ? 'Tool work completed without a final assistant message.'
                           : 'No final text was included in the completion event.',
                     'complete',
+                    completionActivityId,
                 ),
             );
             options.updateAssistant({ status: 'complete', jobId });

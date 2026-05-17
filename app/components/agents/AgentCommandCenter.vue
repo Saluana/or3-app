@@ -168,7 +168,7 @@
                     @change="handleFiles"
                 />
 
-                <div class="or3-cc-composer__editor-wrap max-h-[300px] overflow-auto">
+                <div class="or3-cc-composer__editor-wrap max-h-75 overflow-auto">
                     <EditorContent
                         v-if="editor"
                         :editor="editor"
@@ -367,11 +367,21 @@
                         </label>
                         <input
                             v-model="selectedModel"
+                            :list="runnerModelListId"
                             type="text"
                             class="or3-focus-ring w-full rounded-xl border border-(--or3-border) bg-(--or3-surface) px-3 py-2 text-sm text-(--or3-text) placeholder:text-(--or3-text-muted) disabled:cursor-not-allowed disabled:opacity-60"
-                            placeholder="Default model"
+                            :placeholder="activeRunnerDefaultModel || 'Default model'"
                             :disabled="props.disabled"
                         />
+                        <datalist :id="runnerModelListId">
+                            <option
+                                v-for="model in activeRunnerModels"
+                                :key="model.id"
+                                :value="model.id"
+                            >
+                                {{ model.display_name || model.id }}
+                            </option>
+                        </datalist>
                     </div>
                     <div
                         v-if="activeRunnerSupports?.maxTurns"
@@ -540,7 +550,7 @@
         <div
             v-if="showRunnerExpanded"
             ref="runnerDropdownRef"
-            class="fixed z-[1000] max-h-[min(22rem,calc(100vh-1rem))] overflow-y-auto rounded-xl border border-(--or3-border) bg-(--or3-surface) shadow-lg"
+            class="fixed z-1000 max-h-[min(22rem,calc(100vh-1rem))] overflow-y-auto rounded-xl border border-(--or3-border) bg-(--or3-surface) shadow-lg"
             :style="runnerDropdownStyle"
             role="listbox"
             aria-label="Agent runner"
@@ -873,6 +883,24 @@ const activeRunnerSupports = computed(() =>
     activeRunnerInfo.value?.supports,
 );
 
+const activeRunnerModels = computed(() =>
+    activeRunnerInfo.value?.models?.length
+        ? activeRunnerInfo.value.models
+        : activeRunnerInfo.value?.runtime?.models || [],
+);
+
+const activeRunnerDefaultModel = computed(
+    () =>
+        activeRunnerInfo.value?.default_model ||
+        activeRunnerInfo.value?.runtime?.default_model ||
+        activeRunnerModels.value.find((model) => model.default)?.id ||
+        '',
+);
+
+const runnerModelListId = computed(
+    () => `or3-agent-runner-models-${selectedRunner.value}`,
+);
+
 const modeOptions = computed<
     Array<{ id: AgentCommandMode; label: string; disabled?: boolean }>
 >(() => [
@@ -945,6 +973,8 @@ function closeRunnerDropdown() {
 
 function selectRunner(runnerId: string) {
     selectedRunner.value = runnerId;
+    const runner = props.runnerOptions?.find((item) => item.id === runnerId);
+    selectedModel.value = runner?.default_model || runner?.runtime?.default_model || '';
     closeRunnerDropdown();
 }
 
