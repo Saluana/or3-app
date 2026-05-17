@@ -2,7 +2,11 @@ import { app, BrowserWindow, protocol, shell } from 'electron';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { OR3_ELECTRON_CSP, isAllowedNavigation } from './security-policy.js';
+import {
+    buildElectronCsp,
+    extractInlineScriptHashes,
+    isAllowedNavigation,
+} from './security-policy.js';
 
 const root = join(fileURLToPath(new URL('..', import.meta.url)));
 function createWindow() {
@@ -19,16 +23,6 @@ function createWindow() {
             allowRunningInsecureContent: false,
         },
     });
-    win.webContents.session.webRequest.onHeadersReceived(
-        (details, callback) => {
-            callback({
-                responseHeaders: {
-                    ...details.responseHeaders,
-                    'Content-Security-Policy': [OR3_ELECTRON_CSP],
-                },
-            });
-        },
-    );
     win.webContents.setWindowOpenHandler(({ url }) => {
         if (url.startsWith('https://')) void shell.openExternal(url);
         return { action: 'deny' };
@@ -62,8 +56,17 @@ app.whenReady().then(() => {
             return new Response('blocked', { status: 403 });
         const file = join(root, '.output', 'public', requested);
         const data = await readFile(file);
+        const type = contentType(file);
+        const headers = { 'content-type': type };
+
+        if (type === 'text/html') {
+            headers['content-security-policy'] = buildElectronCsp({
+                scriptHashes: extractInlineScriptHashes(data.toString('utf8')),
+            });
+        }
+
         return new Response(data, {
-            headers: { 'content-type': contentType(file) },
+            headers,
         });
     });
     createWindow();
