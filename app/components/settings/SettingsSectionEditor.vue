@@ -37,12 +37,33 @@
           />
 
           <UTextarea
-            v-else-if="field.kind === 'list'"
+            v-else-if="field.kind === 'list' && field.key !== 'hardening_exec_allowed_programs'"
             :model-value="String(localValues[field.key] ?? '')"
             autoresize
             :rows="3"
             placeholder="Separate items with commas"
             @update:model-value="(value: string) => updateValue(field.key, value)"
+          />
+
+          <SettingCommandProgramsControl
+            v-else-if="field.key === 'hardening_exec_allowed_programs'"
+            :model-value="String(localValues[field.key] ?? '')"
+            :options="COMMON_COMMAND_PROGRAMS"
+            @update:model-value="(value: string) => updateValue(field.key, value)"
+          />
+
+          <SettingPathControl
+            v-else-if="field.kind === 'path' || field.key === 'tools_path_append'"
+            :model-value="String(localValues[field.key] ?? '')"
+            :label="field.label"
+            :placeholder="field.placeholder || field.emptyHint || '/path/to/folder'"
+            @update:model-value="(value: string) => updateValue(field.key, value)"
+          />
+
+          <SettingSecondsControl
+            v-else-if="field.key === 'tools_exec_timeout'"
+            :model-value="localValues[field.key]"
+            @update:model-value="(value: number) => updateValue(field.key, value)"
           />
 
           <UInput
@@ -73,6 +94,10 @@
 <script setup lang="ts">
 import { reactive, watch } from 'vue'
 import type { ConfigureField } from '~/types/or3-api'
+import { COMMON_COMMAND_PROGRAMS } from '~/settings/commandPrograms'
+import SettingCommandProgramsControl from './SettingCommandProgramsControl.vue'
+import SettingPathControl from './SettingPathControl.vue'
+import SettingSecondsControl from './SettingSecondsControl.vue'
 
 const props = withDefaults(defineProps<{
   title: string

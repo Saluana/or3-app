@@ -31,6 +31,8 @@ export type SimpleSettingControlKind =
     | 'secret'
     | 'text'
     | 'path'
+    | 'command-programs'
+    | 'seconds'
     | 'connection-card'
     | 'summary-card'
     | 'provider-manager'
@@ -75,6 +77,17 @@ export interface SimpleSettingPreset {
     changes: SimpleSettingChange[]
 }
 
+export interface SimpleSettingCommandOption {
+    value: string
+    title: string
+    description: string
+}
+
+export interface SimpleSettingSecondsPreset {
+    value: number
+    label: string
+}
+
 export interface SimpleSettingControl {
     key: string
     label: string
@@ -101,6 +114,10 @@ export interface SimpleSettingControl {
     warningLevel?: SimpleSettingWarningLevel
     /** Recommended default for new users. Used by RecommendedBadge. */
     recommended?: { value: unknown; label?: string }
+    /** Used by `kind: 'command-programs'` controls. */
+    commandOptions?: SimpleSettingCommandOption[]
+    /** Used by `kind: 'seconds'` controls. */
+    secondsPresets?: SimpleSettingSecondsPreset[]
     /**
      * Used by `kind: 'preset-slider'` and `kind: 'choice'` controls.
      * When values match a preset the slider snaps to it; otherwise it shows

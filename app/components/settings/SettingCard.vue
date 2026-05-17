@@ -61,11 +61,26 @@
                 @update:model-value="onTextInput"
             />
 
-            <UInput
+            <SettingPathControl
                 v-else-if="control.kind === 'path'"
                 :model-value="String(currentValue ?? '')"
+                :label="control.label"
                 placeholder="/path/to/folder"
                 @update:model-value="onTextInput"
+            />
+
+            <SettingCommandProgramsControl
+                v-else-if="control.kind === 'command-programs'"
+                :model-value="String(currentValue ?? '')"
+                :options="control.commandOptions ?? []"
+                @update:model-value="onTextInput"
+            />
+
+            <SettingSecondsControl
+                v-else-if="control.kind === 'seconds'"
+                :model-value="currentValue"
+                :presets="control.secondsPresets"
+                @update:model-value="onNumberInput"
             />
 
             <USelectMenu
@@ -192,11 +207,26 @@
                 @update:model-value="onTextInput"
             />
 
-            <UInput
+            <SettingPathControl
                 v-else-if="control.kind === 'path'"
                 :model-value="String(currentValue ?? '')"
+                :label="control.label"
                 placeholder="/path/to/folder"
                 @update:model-value="onTextInput"
+            />
+
+            <SettingCommandProgramsControl
+                v-else-if="control.kind === 'command-programs'"
+                :model-value="String(currentValue ?? '')"
+                :options="control.commandOptions ?? []"
+                @update:model-value="onTextInput"
+            />
+
+            <SettingSecondsControl
+                v-else-if="control.kind === 'seconds'"
+                :model-value="currentValue"
+                :presets="control.secondsPresets"
+                @update:model-value="onNumberInput"
             />
 
             <USelectMenu
@@ -280,6 +310,9 @@ import type {
     SimpleSettingPreset,
 } from '../../settings/simpleSettings';
 import { useSimpleSettings } from '../../composables/settings/useSimpleSettings';
+import SettingCommandProgramsControl from './SettingCommandProgramsControl.vue';
+import SettingPathControl from './SettingPathControl.vue';
+import SettingSecondsControl from './SettingSecondsControl.vue';
 import SurfaceCard from '../ui/SurfaceCard.vue';
 
 const props = defineProps<{
@@ -421,6 +454,14 @@ function onToggle(value: boolean) {
 }
 
 function onTextInput(value: string) {
+    const ref = simple.availableFieldRef(props.control);
+    if (!ref) return;
+    emit('change', [
+        { section: ref.section, field: ref.field, channel: ref.channel, value },
+    ]);
+}
+
+function onNumberInput(value: number) {
     const ref = simple.availableFieldRef(props.control);
     if (!ref) return;
     emit('change', [

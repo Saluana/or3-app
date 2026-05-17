@@ -429,6 +429,21 @@ describe('settings configure mappings', () => {
         expect(section?.controls.map((control) => control.key)).toContain(
             'tools-enable-exec',
         );
+        expect(
+            section?.controls.find(
+                (control) => control.key === 'tools-allowed-programs',
+            )?.kind,
+        ).toBe('command-programs');
+        expect(
+            section?.controls.find(
+                (control) => control.key === 'tools-path-append',
+            )?.kind,
+        ).toBe('path');
+        expect(
+            section?.controls.find(
+                (control) => control.key === 'tools-exec-timeout',
+            )?.kind,
+        ).toBe('seconds');
         expect(simple.valueIndex.value['tools.enableExec']).toBe(false);
         expect(simple.valueIndex.value['service.maxCapability']).toBe('safe');
         expect(simple.summaryFor(section!)).toContain('Local exec is off');

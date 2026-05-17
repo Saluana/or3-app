@@ -484,6 +484,10 @@ const props = defineProps<{
     open: boolean;
     initialPath?: string;
     purpose?: 'directory' | 'file';
+    headerEyebrow?: string;
+    headerTitle?: string;
+    headerSubtitle?: string;
+    primaryActionLabel?: string;
 }>();
 
 const emit = defineEmits<{
@@ -542,15 +546,18 @@ const atRootList = computed(() => currentRootId.value === '');
 const purpose = computed(() => props.purpose ?? 'directory');
 
 const headerEyebrow = computed(() =>
-    purpose.value === 'file' ? 'WORKSPACE FILE' : 'WORKING DIRECTORY',
+    props.headerEyebrow ??
+    (purpose.value === 'file' ? 'WORKSPACE FILE' : 'WORKING DIRECTORY'),
 );
 const headerTitle = computed(() =>
-    purpose.value === 'file' ? 'Choose a file' : 'Choose a folder',
+    props.headerTitle ??
+    (purpose.value === 'file' ? 'Choose a file' : 'Choose a folder'),
 );
 const headerSubtitle = computed(() =>
-    purpose.value === 'file'
+    props.headerSubtitle ??
+    (purpose.value === 'file'
         ? 'Pick a workspace file to attach as chat context.'
-        : 'Pick where the external CLI agent will run.',
+        : 'Pick where the external CLI agent will run.'),
 );
 
 const currentRoot = computed(() =>
@@ -583,7 +590,8 @@ const selectedEmptyText = computed(() =>
         : 'Tap a folder to select',
 );
 const primaryActionLabel = computed(() =>
-    purpose.value === 'file' ? 'Add current file' : 'Use this folder',
+    props.primaryActionLabel ??
+    (purpose.value === 'file' ? 'Add current file' : 'Use this folder'),
 );
 
 const normalizedSearch = computed(() => searchQuery.value.trim().toLowerCase());

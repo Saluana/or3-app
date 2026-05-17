@@ -150,7 +150,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import type { SimpleSettingChange, SimpleSettingControl } from '~/settings/simpleSettings'
 import type { ModelCatalogItem } from '~/composables/settings/useProviderSettings'
 import { useProviderSettings } from '~/composables/settings/useProviderSettings'
@@ -172,6 +172,11 @@ const models = ref<ModelCatalogItem[]>([])
 const loading = ref(false)
 const error = ref('')
 const hasLoaded = ref(false)
+
+const isTouchDevice = computed(() => {
+    if (!import.meta.client) return false
+    return 'ontouchstart' in window || navigator.maxTouchPoints > 0
+})
 
 const roleProviderField = computed(() => {
     switch (props.control.modelRole) {
@@ -250,6 +255,18 @@ function commitManual() {
 
 function onOpenChange(open: boolean) {
     if (open && !hasLoaded.value) load(false)
+    if (open && isTouchDevice.value) {
+        // De-focus the search input so the mobile soft keyboard does not
+        // open and shift the layout when the popover appears.
+        nextTick(() => {
+            setTimeout(() => {
+                const active = document.activeElement as HTMLElement | null
+                if (active && active.tagName.toLowerCase() === 'input') {
+                    active.blur()
+                }
+            }, 50)
+        })
+    }
 }
 
 async function load(refresh = false) {
