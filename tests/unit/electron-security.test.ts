@@ -29,7 +29,8 @@ describe('Electron security baseline', () => {
         expect(main).toContain('sandbox: true');
         expect(main).toContain('setWindowOpenHandler');
         expect(main).toContain('will-navigate');
-        expect(main).not.toContain('ipcMain.handle');
+        expect(main).toContain('registerDesktopIpc');
+        expect(main).toContain('validateIpcChannel');
     });
 
     it('uses a restrictive CSP', () => {
@@ -59,15 +60,30 @@ describe('Electron security baseline', () => {
 
     it('validates IPC and navigation allowlists', () => {
         expect(validateIpcChannel(IPC_CHANNELS.hostIdentity)).toBe(true);
+        expect(validateIpcChannel(IPC_CHANNELS.platformCapabilities)).toBe(true);
+        expect(validateIpcChannel(IPC_CHANNELS.internStart)).toBe(true);
+        expect(validateIpcChannel(IPC_CHANNELS.filesystemPickWorkspace)).toBe(true);
         expect(validateIpcChannel('shell:open')).toBe(false);
         expect(isAllowedNavigation('app://or3/index.html')).toBe(true);
         expect(isAllowedNavigation('https://example.com')).toBe(false);
     });
 
-    it('does not expose ipcRenderer directly in preload', () => {
+    it('exposes only the typed desktop bridge in preload', () => {
         const preload = readFileSync(appFile('electron/preload.cjs'), 'utf8');
         expect(preload).toContain('contextBridge.exposeInMainWorld');
-        expect(preload).not.toContain('ipcRenderer.invoke');
+        expect(preload).toContain('or3Desktop');
+        expect(preload).toContain('Object.freeze');
+        expect(preload).toContain('Object.values(channels).includes(channel)');
+        expect(preload).not.toContain('shell');
+        expect(preload).not.toContain('require(\'fs\')');
+        expect(preload).not.toContain('require("fs")');
+    });
+
+    it('keeps every preload IPC channel in the shared allowlist', () => {
+        const preload = readFileSync(appFile('electron/preload.cjs'), 'utf8');
+        for (const channel of preload.matchAll(/'or3:[^']+'/g)) {
+            expect(validateIpcChannel(channel[0].slice(1, -1))).toBe(true);
+        }
     });
 
     it('loads the packaged app only from ASAR', () => {

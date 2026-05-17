@@ -12,8 +12,12 @@ const OR3_ELECTRON_CSP_BASE_DIRECTIVES = [
     "frame-ancestors 'none'",
 ];
 
+const OR3_ELECTRON_RUNTIME_SCRIPT_HASHES = [
+    'tYCcUbFfjZ9QESuTWESGWrFg2SmiEdyD2MYUfRWUgK0=',
+];
+
 export function buildElectronCsp({ scriptHashes = [] } = {}) {
-    const normalizedHashes = [...new Set(scriptHashes)]
+    const normalizedHashes = [...new Set([...scriptHashes, ...OR3_ELECTRON_RUNTIME_SCRIPT_HASHES])]
         .map((hash) => String(hash || '').trim())
         .filter(Boolean)
         .map((hash) => `'sha256-${hash}'`);
@@ -63,6 +67,27 @@ export const IPC_CHANNELS = Object.freeze({
     listDevices: 'secure-connections:list-devices',
     revokeDevice: 'secure-connections:revoke-device',
     sessionStatus: 'secure-connections:session-status',
+    platformCapabilities: 'or3:platform:get-capabilities',
+    setupGetState: 'or3:setup:get-state',
+    setupSaveState: 'or3:setup:save-state',
+    filesystemPickWorkspace: 'or3:filesystem:pick-workspace-directory',
+    filesystemPickData: 'or3:filesystem:pick-data-directory',
+    filesystemPickInternBinary: 'or3:filesystem:pick-intern-binary',
+    internLocate: 'or3:intern:locate',
+    internInstall: 'or3:intern:install',
+    internConfigure: 'or3:intern:configure',
+    internStart: 'or3:intern:start',
+    internStop: 'or3:intern:stop',
+    internRestart: 'or3:intern:restart',
+    internStatus: 'or3:intern:status',
+    internIssueServiceToken: 'or3:intern:issue-service-token',
+    internSetAutostart: 'or3:intern:set-autostart',
+    internCreateSecureInvite: 'or3:intern:create-secure-invite',
+    internCreateCliInvite: 'or3:intern:create-cli-invite',
+    internListSecureDevices: 'or3:intern:list-secure-devices',
+    internRevokeSecureDevice: 'or3:intern:revoke-secure-device',
+    internListLegacyDevices: 'or3:intern:list-legacy-devices',
+    internRevokeLegacyDevice: 'or3:intern:revoke-legacy-device',
 });
 
 export function isAllowedNavigation(url) {

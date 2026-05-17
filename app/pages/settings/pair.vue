@@ -1,7 +1,7 @@
 <template>
     <AppShell desktop-title="Settings" desktop-subtitle="Configure or3-intern.">
         <template #sidebar><SettingsSidebar /></template>
-        <AppHeader subtitle="PAIR DEVICE" />
+        <AppHeader :subtitle="isElectronHostMode ? 'TRUSTED DEVICES' : 'PAIR DEVICE'" />
 
         <div class="space-y-4">
             <button
@@ -13,18 +13,39 @@
                 Settings
             </button>
 
-            <SecurePairingCard />
-            <HostConnectionCard />
-            <SecureDeviceApprovalCard />
-            <DeviceManagementCard />
+            <SurfaceCard v-if="isElectronHostMode" class-name="space-y-3">
+                <p class="font-mono text-base font-semibold text-(--or3-text)">
+                    This computer is the host
+                </p>
+                <p class="text-sm leading-6 text-(--or3-text-muted)">
+                    Use Connect devices to add phones, browsers, or remote Electron apps. Trusted devices lists secure devices first and compatibility pairings separately.
+                </p>
+                <div class="flex flex-wrap gap-2">
+                    <UButton label="Connect devices" to="/computer/connect-device" />
+                    <UButton label="Trusted devices" color="neutral" variant="soft" to="/computer/trusted-devices" />
+                </div>
+            </SurfaceCard>
+            <template v-else>
+                <SecurePairingCard />
+                <HostConnectionCard />
+                <SecureDeviceApprovalCard />
+                <DeviceManagementCard />
+            </template>
         </div>
     </AppShell>
 </template>
 
 <script setup lang="ts">
 import { useRouter } from 'vue-router';
+import { onMounted } from 'vue';
+import { useElectronHostSetup } from '~/composables/useElectronHostSetup';
 
 const router = useRouter();
+const { isElectronHostMode, ensureLoaded } = useElectronHostSetup();
+
+onMounted(() => {
+    void ensureLoaded();
+});
 
 function goBack() {
     void router.push('/settings');

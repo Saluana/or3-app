@@ -22,6 +22,11 @@ describe('settings pair page', () => {
                     SettingsSidebar: { template: '<aside />' },
                     AppHeader: { template: '<header />' },
                     Icon: { template: '<span />' },
+                    SurfaceCard: { template: '<section><slot /></section>' },
+                    UButton: {
+                        props: ['label'],
+                        template: '<button>{{ label }}<slot /></button>',
+                    },
                     SecurePairingCard: {
                         template:
                             '<section data-card="secure-pairing">SecurePairingCard</section>',

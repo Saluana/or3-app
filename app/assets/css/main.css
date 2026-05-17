@@ -849,6 +849,7 @@ html.or3-keyboard-open .or3-chat-shell__composer {
   flex-direction: column;
   gap: 0.1rem;
   min-width: 0;
+  flex: 1 1 auto;
 }
 
 .or3-desktop-primary__status-name {
@@ -878,6 +879,20 @@ html.or3-keyboard-open .or3-chat-shell__composer {
 .or3-desktop-primary__status-dot[data-tone="green"] {
   background: var(--or3-green);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--or3-green) 25%, transparent);
+}
+
+.electron-host-status-actions {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+}
+
+.electron-host-status-actions a,
+.electron-host-status-actions button {
+  min-width: 0;
+  max-width: 100%;
+  justify-content: center;
+  overflow: hidden;
 }
 
 /* ----- Secondary sidebar (page-specific) ----- */

@@ -1,5 +1,6 @@
 <template>
   <div class="or3-app-shell">
+    <ElectronHostSetupWizard />
     <template v-if="isDesktop">
       <DesktopAppShell
         :title="desktopTitle"

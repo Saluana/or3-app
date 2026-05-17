@@ -337,6 +337,87 @@ describe('useOr3Api', () => {
         });
     });
 
+    it('uses desktop shared-secret tokens for Electron host requests', async () => {
+        vi.resetModules();
+        const { ref } = await import('vue');
+        const activeHost = ref({
+            id: 'electron-local-host',
+            name: 'This computer',
+            baseUrl: 'http://127.0.0.1:9100',
+            token: 'electron-local-service-token',
+            status: 'online',
+        });
+        vi.doMock('../../app/composables/useActiveHost', () => ({
+            ELECTRON_HOST_PROFILE_ID: 'electron-local-host',
+            useActiveHost: () => ({ activeHost, updateHost: vi.fn() }),
+        }));
+        vi.doMock('../../app/composables/useElectronHostSetup', () => ({
+            useElectronHostSetup: () => ({ isElectronHostMode: ref(true) }),
+        }));
+        vi.stubGlobal('window', {
+            or3Desktop: {
+                intern: {
+                    issueServiceToken: vi.fn(async () => ({ token: 'desktop-token', expiresAt: new Date().toISOString() })),
+                },
+            },
+        });
+
+        const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+            expect(String(_url)).toBe('http://127.0.0.1:9100/internal/v1/app/bootstrap');
+            expect(init?.headers).toMatchObject({
+                Authorization: 'Bearer desktop-token',
+                'X-Or3-Auth-Method': 'shared-secret',
+            });
+            return new Response(JSON.stringify({ status: 'ok' }), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' },
+            });
+        });
+        vi.stubGlobal('fetch', fetchMock);
+
+        const { useOr3Api: useMockedOr3Api } = await import('../../app/composables/useOr3Api');
+        const api = useMockedOr3Api();
+        await expect(api.request('/internal/v1/app/bootstrap')).resolves.toEqual({ status: 'ok' });
+    });
+
+    it('locally cools down Electron host requests after auth rate limiting', async () => {
+        vi.resetModules();
+        const { ref } = await import('vue');
+        const activeHost = ref({
+            id: 'electron-local-host',
+            name: 'This computer',
+            baseUrl: 'http://127.0.0.1:9100',
+            token: 'electron-local-service-token',
+            status: 'online',
+        });
+        vi.doMock('../../app/composables/useActiveHost', () => ({
+            ELECTRON_HOST_PROFILE_ID: 'electron-local-host',
+            useActiveHost: () => ({ activeHost, updateHost: vi.fn() }),
+        }));
+        vi.doMock('../../app/composables/useElectronHostSetup', () => ({
+            useElectronHostSetup: () => ({ isElectronHostMode: ref(true) }),
+        }));
+        vi.stubGlobal('window', {
+            or3Desktop: {
+                intern: {
+                    issueServiceToken: vi.fn(async () => ({ token: 'desktop-token', expiresAt: new Date().toISOString() })),
+                },
+            },
+        });
+
+        const fetchMock = vi.fn(async () => new Response(
+            JSON.stringify({ code: 'auth_rate_limited', error: 'too many authentication attempts', retry_after_seconds: 10 }),
+            { status: 429, headers: { 'Content-Type': 'application/json' } },
+        ));
+        vi.stubGlobal('fetch', fetchMock);
+
+        const { useOr3Api: useMockedOr3Api } = await import('../../app/composables/useOr3Api');
+        const api = useMockedOr3Api();
+        await expect(api.request('/internal/v1/app/bootstrap')).rejects.toMatchObject({ code: 'auth_rate_limited' });
+        await expect(api.request('/internal/v1/app/bootstrap')).rejects.toMatchObject({ code: 'auth_rate_limited' });
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
     it('recognizes lower-case auth service error codes centrally', () => {
         for (const code of [
             'missing_token',

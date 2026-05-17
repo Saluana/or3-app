@@ -18,7 +18,7 @@
                             <p
                                 class="font-mono text-base font-semibold text-(--or3-text)"
                             >
-                                {{ connectionHeadline }}
+                                {{ hostMode ? hostHeadline : connectionHeadline }}
                             </p>
                             <StatusPill
                                 v-if="isPaired"
@@ -30,7 +30,7 @@
                         <p
                             class="mt-1 text-sm leading-6 text-(--or3-text-muted)"
                         >
-                            {{ connectionDescription }}
+                            {{ hostMode ? hostDescription : connectionDescription }}
                         </p>
                     </div>
                 </div>
@@ -67,7 +67,33 @@
                     </div>
                 </div>
 
-                <div v-if="isPaired" class="flex flex-wrap items-center gap-2">
+                <div v-if="hostMode" class="flex flex-wrap items-center gap-2">
+                    <code
+                        v-if="hostStatus.baseUrl"
+                        class="min-w-0 flex-1 truncate rounded-xl border border-(--or3-border) bg-white/70 px-3 py-2 font-mono text-xs text-(--or3-text)"
+                        >{{ hostStatus.baseUrl }}</code
+                    >
+                    <UButton
+                        label="Connect devices"
+                        icon="i-pixelarticons-smartphone"
+                        color="primary"
+                        variant="solid"
+                        size="sm"
+                        class="shrink-0 rounded-full"
+                        to="/computer/connect-device"
+                    />
+                    <UButton
+                        label="Trusted devices"
+                        icon="i-pixelarticons-shield"
+                        color="neutral"
+                        variant="soft"
+                        size="sm"
+                        class="shrink-0 rounded-full"
+                        to="/computer/trusted-devices"
+                    />
+                </div>
+
+                <div v-else-if="isPaired" class="flex flex-wrap items-center gap-2">
                     <code
                         v-if="activeHost?.baseUrl"
                         class="min-w-0 flex-1 truncate rounded-xl border border-(--or3-border) bg-white/70 px-3 py-2 font-mono text-xs text-(--or3-text)"
@@ -105,6 +131,39 @@
                         to="/settings/pair"
                     />
                 </div>
+            </SurfaceCard>
+
+            <SurfaceCard v-if="isElectron" class-name="space-y-3">
+                <div class="flex items-start justify-between gap-3">
+                    <div>
+                        <p class="font-mono text-base font-semibold text-(--or3-text)">
+                            Desktop mode
+                        </p>
+                        <p class="mt-1 text-sm leading-6 text-(--or3-text-muted)">
+                            {{ modeDescription }}
+                        </p>
+                    </div>
+                    <StatusPill :label="hostMode ? 'Use this computer' : 'Control another computer'" :tone="hostMode ? 'green' : 'amber'" />
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <UButton
+                        label="Use this computer"
+                        color="primary"
+                        variant="soft"
+                        :disabled="hostMode"
+                        @click="switchDesktopMode('host')"
+                    />
+                    <UButton
+                        label="Control another computer"
+                        color="neutral"
+                        variant="outline"
+                        :disabled="!hostMode"
+                        @click="switchDesktopMode('remote')"
+                    />
+                </div>
+                <p v-if="hostMode" class="text-xs leading-5 text-(--or3-text-muted)">
+                    Switching to remote mode hides local service controls. If autostart is enabled, review whether the local service should keep running.
+                </p>
             </SurfaceCard>
 
             <SimpleSettingsHome />
@@ -145,6 +204,7 @@ import { useActiveHost } from '../../composables/useActiveHost';
 import { useComputerStatus } from '../../composables/useComputerStatus';
 import { useSettingsSnapshots } from '../../composables/settings/useSettingsSnapshots';
 import { useSimpleSettings } from '../../composables/settings/useSimpleSettings';
+import { useElectronHostSetup } from '../../composables/useElectronHostSetup';
 import { createLogger } from '../../utils/logger';
 
 const logger = createLogger('settings');
@@ -153,8 +213,30 @@ const { activeHost, isConnected, disconnectActiveHost } = useActiveHost();
 const computerStatus = useComputerStatus();
 const snapshots = useSettingsSnapshots();
 const simple = useSimpleSettings();
+const electronHost = useElectronHostSetup();
 const toast = useToast();
 const undoing = ref(false);
+
+void electronHost.ensureLoaded();
+
+const isElectron = electronHost.isElectron;
+const hostMode = electronHost.isElectronHostMode;
+const hostStatus = electronHost.serviceStatus;
+const hostHeadline = computed(() =>
+    hostStatus.value.state === 'online'
+        ? 'OR3 is running on this computer'
+        : 'This computer is set up for OR3',
+);
+const hostDescription = computed(() =>
+    hostStatus.value.state === 'online'
+        ? 'Connect phones, browsers, and remote apps from this desktop host.'
+        : 'Start or fix the local OR3 Intern service from the sidebar status card.',
+);
+const modeDescription = computed(() =>
+    hostMode.value
+        ? 'This desktop app manages the OR3 Intern service on this computer.'
+        : 'This desktop app behaves like web, iOS, and Android clients.',
+);
 
 const isPaired = computed(() => Boolean(activeHost.value?.token));
 const connectionHeadline = computed(() => {
@@ -280,6 +362,15 @@ function disconnectHost() {
         icon: 'i-pixelarticons-close',
         duration: 7000,
     });
+}
+
+async function switchDesktopMode(mode: 'host' | 'remote') {
+    await electronHost.switchMode(mode);
+    if (mode === 'host') {
+        toast.add({ title: 'Host setup ready', description: 'Finish setup to use this computer.', color: 'neutral' });
+    } else {
+        toast.add({ title: 'Remote mode enabled', description: 'Local service controls are hidden. Use pairing to control another computer.', color: 'neutral' });
+    }
 }
 
 async function undoLast() {

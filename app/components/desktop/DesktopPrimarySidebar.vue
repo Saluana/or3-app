@@ -38,7 +38,9 @@
 
         <div class="or3-desktop-primary__spacer" aria-hidden="true" />
 
-        <div class="or3-desktop-primary__status">
+        <ElectronHostStatusCard v-if="isElectronHostMode" />
+
+        <div v-else class="or3-desktop-primary__status">
             <div class="or3-desktop-primary__status-mascot" aria-hidden="true">
                 <img
                     src="/or3-brand-mark.png"
@@ -65,11 +67,15 @@ import { computed } from 'vue';
 import { useRoute } from 'vue-router';
 import { useApprovals } from '../../composables/useApprovals';
 import { useActiveHost } from '../../composables/useActiveHost';
+import { useElectronHostSetup } from '../../composables/useElectronHostSetup';
 
 const route = useRoute();
 const { pendingCount } = useApprovals();
 const { isConnected } = useActiveHost();
+const { isElectronHostMode, ensureLoaded } = useElectronHostSetup();
 const connected = computed(() => Boolean(isConnected.value));
+
+void ensureLoaded();
 
 interface NavItem {
     label: string;
