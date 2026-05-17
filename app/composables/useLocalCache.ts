@@ -92,6 +92,7 @@ function normalizePersistedMessages(
     return messages.map((message) => ({
         ...message,
         attachments: message.attachments ?? [],
+        backendMessageIds: message.backendMessageIds ?? [],
         toolCalls: message.toolCalls ?? [],
         parts: message.parts ?? [],
         activityLog: message.activityLog ?? [],

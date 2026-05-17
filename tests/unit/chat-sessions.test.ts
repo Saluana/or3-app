@@ -148,4 +148,95 @@ describe("useChatSessions", () => {
         expect(chat.messages.value[0]?.approvalRequestId).toBeUndefined();
         expect(chat.messages.value[0]?.approvalState).toBeUndefined();
     });
+
+    it("hydrates backend tool rows into the assistant activity instead of raw chat bubbles", () => {
+        useLocalCache().updateHost({
+            id: "test-host",
+            name: "Test Host",
+            baseUrl: "http://127.0.0.1:9100",
+            token: "secret",
+        });
+
+        const chat = useChatSessions();
+        const session = chat.activateSessionByKey("discord:C1:U1", "Discord C1:U1");
+        if (!session) throw new Error("expected session");
+
+        chat.hydrateBackendMessages(session, [
+            {
+                id: 10,
+                session_key: "discord:C1:U1",
+                role: "assistant",
+                content: "",
+                created_at: 1_717_171_717_000,
+                payload: {
+                    tool_calls: [
+                        {
+                            id: "tc-list",
+                            type: "function",
+                            function: {
+                                name: "list_dir",
+                                arguments: '{"path":"/Users/brendon/Documents/or3-intern"}',
+                            },
+                        },
+                    ],
+                },
+            },
+            {
+                id: 11,
+                session_key: "discord:C1:U1",
+                role: "tool",
+                content: '{"kind":"list_dir","ok":true,"summary":"Listed 26 entries"}',
+                created_at: 1_717_171_718_000,
+                payload: {
+                    tool: "list_dir",
+                    tool_call_id: "tc-list",
+                    args: { path: "/Users/brendon/Documents/or3-intern" },
+                },
+            },
+            {
+                id: 12,
+                session_key: "discord:C1:U1",
+                role: "assistant",
+                content: "Here is what I see.",
+                created_at: 1_717_171_719_000,
+                payload: { in_reply_to: 9 },
+            },
+        ]);
+
+        expect(chat.messages.value).toHaveLength(2);
+        const toolAssistant = chat.messages.value[0];
+        expect(toolAssistant?.content).toBe("");
+        expect(toolAssistant?.toolCalls?.[0]).toMatchObject({
+            id: "tc-list",
+            name: "list_dir",
+            status: "complete",
+            result: "Listed 26 entries",
+        });
+        expect(toolAssistant?.parts?.[0]).toMatchObject({
+            type: "tool",
+            toolCallId: "tc-list",
+            status: "complete",
+        });
+        expect(toolAssistant?.activityLog?.[0]).toMatchObject({
+            type: "tool_call",
+            status: "complete",
+        });
+        expect(chat.latestBackendMessageId(session.id)).toBe(12);
+        expect(chat.messages.value[1]?.content).toBe("Here is what I see.");
+
+        chat.hydrateBackendMessages(session, [
+            {
+                id: 11,
+                session_key: "discord:C1:U1",
+                role: "tool",
+                content: '{"kind":"list_dir","ok":true,"summary":"Listed 26 entries"}',
+                created_at: 1_717_171_718_000,
+                payload: {
+                    tool: "list_dir",
+                    tool_call_id: "tc-list",
+                },
+            },
+        ]);
+        expect(chat.messages.value).toHaveLength(2);
+    });
 });

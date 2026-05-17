@@ -132,6 +132,7 @@ export interface ChatMessage {
     pinned?: boolean;
     jobId?: string;
     backendMessageId?: number;
+    backendMessageIds?: number[];
     sourceMessageId?: string;
     sourceSessionKey?: string;
     runnerId?: string;

@@ -1,5 +1,11 @@
 import { computed } from "vue";
-import type { ChatMessage, ChatSession } from "~/types/app-state";
+import type {
+    ChatActivityEntry,
+    ChatMessage,
+    ChatMessagePart,
+    ChatSession,
+    ChatToolCall,
+} from "~/types/app-state";
 import type { ChatHistoryMessage, ChatSessionMeta } from "~/types/or3-api";
 import { useActiveHost } from "./useActiveHost";
 import { useLocalCache } from "./useLocalCache";
@@ -79,6 +85,106 @@ function normalizeContent(value?: string) {
 
 function messagePreview(value?: string) {
     return normalizeContent(value).replace(/\s+/g, " ").slice(0, 160);
+}
+
+function uniqueBackendIds(...values: Array<number | undefined>) {
+    return [...new Set(values.filter((value): value is number => typeof value === "number" && value > 0))];
+}
+
+function backendIdsForMessage(message: ChatMessage) {
+    return uniqueBackendIds(message.backendMessageId, ...(message.backendMessageIds ?? []));
+}
+
+function appendBackendId(message: ChatMessage, backendID: number) {
+    return uniqueBackendIds(...backendIdsForMessage(message), backendID);
+}
+
+function payloadText(payload: Record<string, unknown>, keys: string[]) {
+    for (const key of keys) {
+        const value = payload[key];
+        if (typeof value === "string" && value.trim()) return value;
+    }
+    return "";
+}
+
+function previewValue(value: unknown, limit = 2_000) {
+    if (value === undefined || value === null) return "";
+    const text = typeof value === "string" ? value : JSON.stringify(value, null, 2) || String(value);
+    return text.length > limit ? `${text.slice(0, limit)}\n...` : text;
+}
+
+function parseToolResult(content: string) {
+    try {
+        const parsed = JSON.parse(content) as unknown;
+        return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+function toolResultPreview(content: string, payload: Record<string, unknown>) {
+    const result = parseToolResult(content);
+    return (
+        payloadText(payload, ["preview", "summary"]) ||
+        (result ? payloadText(result, ["summary", "preview", "status"]) : "") ||
+        messagePreview(content)
+    );
+}
+
+function toolResultStatus(content: string): ChatToolCall["status"] {
+    const result = parseToolResult(content);
+    if (!result) return "complete";
+    if (result.ok === false) return "error";
+    if (String(result.status ?? "").toLowerCase() === "approval_required") return "attention";
+    return "complete";
+}
+
+function normalizeToolCall(raw: unknown, index: number, createdAt: string): ChatToolCall | null {
+    if (!raw || typeof raw !== "object") return null;
+    const record = raw as Record<string, unknown>;
+    const fn = record.function && typeof record.function === "object" ? (record.function as Record<string, unknown>) : undefined;
+    const name = String(fn?.name ?? record.name ?? "tool").trim() || "tool";
+    const id = String(record.id ?? record.tool_call_id ?? `tool_${index}`).trim() || `tool_${index}`;
+    const args = typeof fn?.arguments === "string" ? fn.arguments : typeof record.arguments === "string" ? record.arguments : undefined;
+    return {
+        id,
+        name,
+        status: "running",
+        arguments: args,
+        startedAt: createdAt,
+    };
+}
+
+function toolPart(call: ChatToolCall): ChatMessagePart {
+    return {
+        id: `tool:${call.id}`,
+        type: "tool",
+        toolCallId: call.id,
+        name: call.name,
+        status: call.status,
+        argumentsPreview: previewValue(call.arguments),
+        resultPreview: call.result,
+        errorPreview: call.error,
+    };
+}
+
+function activityForTool(call: ChatToolCall): ChatActivityEntry {
+    return {
+        id: `tool:${call.id}`,
+        type: "tool_call",
+        label: call.status === "running" ? `Running ${call.name}` : `Used ${call.name}`,
+        detail: call.error || call.result || call.arguments,
+        status: call.status === "error" || call.status === "attention" ? call.status : call.status === "complete" ? "complete" : "running",
+        createdAt: call.completedAt || call.startedAt,
+    };
+}
+
+function upsertById<T extends { id: string }>(items: T[] | undefined, item: T) {
+    const next = [...(items ?? [])];
+    const index = next.findIndex((existing) => existing.id === item.id);
+    if (index >= 0) next[index] = { ...next[index], ...item };
+    else next.push(item);
+    return next;
 }
 
 function approvalResolutionKeys(
@@ -528,6 +634,14 @@ export function useChatSessions() {
         ).length;
     }
 
+    function latestBackendMessageId(sessionId = activeSession.value?.id) {
+        if (!sessionId) return 0;
+        return cache.state.value.messages.reduce((latest, message) => {
+            if (message.sessionId !== sessionId) return latest;
+            return Math.max(latest, ...backendIdsForMessage(message));
+        }, 0);
+    }
+
     function setSessionRunnerMetadata(
         sessionId: string,
         patch: Partial<ChatSession>,
@@ -579,11 +693,62 @@ export function useChatSessions() {
                 sessionMessages()
                     .filter(
                         (message) =>
-                            typeof message.backendMessageId === "number",
+                            backendIdsForMessage(message).length > 0,
                     )
-                    .map((message) => [message.backendMessageId, message]),
+                    .flatMap((message) =>
+                        backendIdsForMessage(message).map((id) => [id, message] as const),
+                    ),
             );
         const claimedLocalMessageIds = new Set<string>();
+        const attachToolResultToAssistant = (
+            backend: ChatHistoryMessage,
+            payload: Record<string, unknown>,
+        ) => {
+            const toolCallId = String(payload.tool_call_id ?? payload.call_id ?? "").trim();
+            const toolName = String(payload.tool ?? payload.name ?? "tool").trim() || "tool";
+            const messages = sessionMessages();
+            const assistant = [...messages]
+                .reverse()
+                .find((message) => {
+                    if (message.role !== "assistant") return false;
+                    if (!toolCallId) return Boolean(message.toolCalls?.length || message.parts?.some((part) => part.type === "tool"));
+                    return Boolean(
+                        message.toolCalls?.some((call) => call.id === toolCallId) ||
+                            message.parts?.some((part) => part.toolCallId === toolCallId),
+                    );
+                });
+            if (!assistant) return false;
+
+            const status = toolResultStatus(backend.content);
+            const result = status === "complete" ? toolResultPreview(backend.content, payload) : undefined;
+            const error = status !== "complete" ? toolResultPreview(backend.content, payload) : undefined;
+            const existingCall = assistant.toolCalls?.find((call) => call.id === toolCallId);
+            const call: ChatToolCall = {
+                id: toolCallId || existingCall?.id || `tool_backend_${backend.id}`,
+                name: existingCall?.name || toolName,
+                status,
+                arguments:
+                    existingCall?.arguments ||
+                    previewValue(payload.args ?? payload.arguments),
+                result,
+                error,
+                startedAt: existingCall?.startedAt || msToIso(backend.created_at),
+                completedAt: msToIso(backend.created_at),
+            };
+            updateMessage(assistant.id, {
+                backendMessageIds: appendBackendId(assistant, backend.id),
+                toolCalls: upsertById(assistant.toolCalls, call),
+                parts: upsertById(assistant.parts, toolPart(call)),
+                activityLog: upsertById(assistant.activityLog, activityForTool(call)).slice(-30),
+            });
+            cache.state.value.messages = cache.state.value.messages.filter(
+                (message) =>
+                    message.id === assistant.id ||
+                    !backendIdsForMessage(message).includes(backend.id),
+            );
+            cache.persist();
+            return true;
+        };
         for (const backend of backendMessages) {
             const backendID = backend.id;
             const role = backendRole(backend);
@@ -596,8 +761,19 @@ export function useChatSessions() {
                 typeof payload.runner_permission === "object"
                     ? (payload.runner_permission as Record<string, unknown>)
                     : undefined;
+            if (role === "tool" && attachToolResultToAssistant(backend, payload)) {
+                continue;
+            }
+            const toolCalls = Array.isArray(payload.tool_calls)
+                ? payload.tool_calls
+                      .map((item, index) => normalizeToolCall(item, index, msToIso(backend.created_at)))
+                      .filter((item): item is ChatToolCall => Boolean(item))
+                : [];
+            const toolParts = toolCalls.map(toolPart);
+            const toolActivities = toolCalls.map((call) => activityForTool(call));
             const patch: Partial<ChatMessage> = {
                 backendMessageId: backendID,
+                backendMessageIds: uniqueBackendIds(backendID),
                 sourceSessionKey: session.sessionKey,
                 runnerId:
                     typeof payload.runner_id === "string"
@@ -691,6 +867,22 @@ export function useChatSessions() {
                         ? "attention"
                         : "complete",
             };
+            if (toolCalls.length) {
+                patch.toolCalls = toolCalls;
+                patch.parts = [
+                    ...(backend.content.trim()
+                        ? [
+                              {
+                                  id: `text:${backendID}`,
+                                  type: "text" as const,
+                                  content: backend.content,
+                              },
+                          ]
+                        : []),
+                    ...toolParts,
+                ];
+                patch.activityLog = toolActivities;
+            }
             const existing = existingByBackendID().get(backendID);
             if (existing) {
                 updateMessage(existing.id, patch);
@@ -708,6 +900,7 @@ export function useChatSessions() {
                 claimedLocalMessageIds.add(localMatch.id);
                 updateMessage(localMatch.id, {
                     ...patch,
+                    backendMessageIds: appendBackendId(localMatch, backendID),
                     content: localMatch.content || backend.content,
                     createdAt:
                         localMatch.createdAt || msToIso(backend.created_at),
@@ -747,6 +940,7 @@ export function useChatSessions() {
         clearSessionMessages,
         appendSystemMessage,
         messageCount,
+        latestBackendMessageId,
         setSessionRunnerMetadata,
         bindRunnerChatSession,
         syncBackendSessionMeta,

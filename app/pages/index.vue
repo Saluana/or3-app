@@ -299,7 +299,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { ChatSessionMeta } from '~/types/or3-api';
 
 const chat = useChatSessions();
@@ -332,6 +332,7 @@ const desktopMessageList = ref<{
 } | null>(null);
 const distanceFromBottom = ref(0);
 const isMessageListScrollable = ref(false);
+const liveChannelController = ref<AbortController | null>(null);
 
 const showScrollToBottom = computed(
     () => isMessageListScrollable.value && distanceFromBottom.value > 1,
@@ -394,6 +395,38 @@ function archiveHistorySession(session: ChatSessionMeta, archived: boolean) {
     void sessionHistory.archive(session.session_key, archived);
 }
 
+function isExternalChannelSession(sessionKey?: string | null) {
+    return /^(telegram|discord|slack|whatsapp|email):/.test(
+        String(sessionKey || '').trim(),
+    );
+}
+
+function stopLiveChannelStream() {
+    liveChannelController.value?.abort();
+    liveChannelController.value = null;
+}
+
+function startLiveChannelStream(sessionKey?: string | null) {
+    stopLiveChannelStream();
+    if (!isExternalChannelSession(sessionKey)) return;
+    const controller = new AbortController();
+    liveChannelController.value = controller;
+    void sessionHistory
+        .hydrate(sessionKey as string)
+        .catch(() => null)
+        .then(() => {
+            if (controller.signal.aborted) return;
+            return sessionHistory.followLiveMessages(
+                sessionKey as string,
+                controller.signal,
+            );
+        })
+        .catch((error) => {
+            if (controller.signal.aborted) return;
+            console.warn('live channel stream stopped', error);
+        });
+}
+
 function onNewSession() {
     const session = newSession('New conversation');
     const runner = getRunner(selectedRunnerId.value);
@@ -427,6 +460,12 @@ watch(
         distanceFromBottom.value = 0;
         isMessageListScrollable.value = false;
     },
+);
+
+watch(
+    () => activeSession.value?.sessionKey,
+    (sessionKey) => startLiveChannelStream(sessionKey),
+    { immediate: true },
 );
 
 watch(selectedRunnerId, (runnerId, previous) => {
@@ -490,6 +529,10 @@ function sendWithMode(payload: Parameters<typeof send>[0]) {
 onMounted(() => {
     void refreshRunners();
     void sessionHistory.refresh();
+});
+
+onBeforeUnmount(() => {
+    stopLiveChannelStream();
 });
 </script>
 

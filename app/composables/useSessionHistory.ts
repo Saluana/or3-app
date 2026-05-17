@@ -1,10 +1,12 @@
 import { computed, ref } from 'vue';
 import type {
     ChatMessagePageResponse,
+    ChatHistoryMessage,
     ChatSessionForkRequest,
     ChatSessionListResponse,
     ChatSessionMeta,
     ChatSessionUpdateRequest,
+    Or3SseEvent,
 } from '~/types/or3-api';
 import type { ChatMessage, ChatSession } from '~/types/app-state';
 import { useChatSessions } from './useChatSessions';
@@ -97,6 +99,18 @@ function isChatSessionNotFound(err: unknown) {
     return record.code === 'chat_session_not_found' || record.status === 404;
 }
 
+function isChatHistoryMessage(value: unknown): value is ChatHistoryMessage {
+    if (!value || typeof value !== 'object') return false;
+    const record = value as Record<string, unknown>;
+    return (
+        typeof record.id === 'number' &&
+        typeof record.session_key === 'string' &&
+        typeof record.role === 'string' &&
+        typeof record.content === 'string' &&
+        typeof record.created_at === 'number'
+    );
+}
+
 export function useSessionHistory() {
     const api = useOr3Api();
     const chat = useChatSessions();
@@ -175,6 +189,26 @@ export function useSessionHistory() {
         );
         chat.hydrateBackendMessages(local, response.messages ?? []);
         return local;
+    }
+
+    async function followLiveMessages(sessionKey: string, signal?: AbortSignal) {
+        const local = chat.findSessionByKey(sessionKey) ?? chat.activateSessionByKey(sessionKey);
+        if (!local) return;
+        const afterID = chat.latestBackendMessageId(local.id);
+        const params = new URLSearchParams({ after_id: String(afterID) });
+        const stream = api.stream(
+            `/internal/v1/chat-sessions/${encodeURIComponent(sessionKey)}/messages/stream?${params.toString()}`,
+            { method: 'GET', signal },
+        );
+        for await (const event of stream as AsyncIterable<Or3SseEvent>) {
+            if (signal?.aborted) return;
+            if (event.event !== 'message' || !isChatHistoryMessage(event.json)) {
+                continue;
+            }
+            const current = chat.findSessionByKey(sessionKey) ?? chat.activateSessionByKey(sessionKey);
+            if (!current) continue;
+            chat.hydrateBackendMessages(current, [event.json]);
+        }
     }
 
     async function openSession(meta: ChatSessionMeta) {
@@ -263,6 +297,7 @@ export function useSessionHistory() {
         activeBackendSession,
         refresh,
         hydrate,
+        followLiveMessages,
         openSession,
         rename,
         archive,
