@@ -1,581 +1,616 @@
-import { computed, ref } from 'vue';
+import { computed, ref } from "vue";
 import type {
-    AppBootstrapResponse,
-    DeviceInfo,
-    HealthResponse,
-    PairingExchangeResponse,
-    PairingRequestResponse,
-} from '~/types/or3-api';
-import type { Or3HostProfile } from '~/types/app-state';
-import { useLocalCache } from './useLocalCache';
-import { useOr3Api } from './useOr3Api';
-import { createLogger } from '~/utils/logger';
+  AppBootstrapResponse,
+  DeviceInfo,
+  HealthResponse,
+  PairingExchangeResponse,
+  PairingRequestResponse,
+} from "~/types/or3-api";
+import type { Or3HostProfile } from "~/types/app-state";
+import { useLocalCache } from "./useLocalCache";
+import { useOr3Api } from "./useOr3Api";
+import { createLogger } from "~/utils/logger";
+import {
+  buildEnrollmentProposal,
+  getOrCreateDeviceIdentity,
+  parsePairingQRCode,
+  storeHostEnrollment,
+  type SecureConnectionPairingState,
+} from "~/utils/or3/secure-connections";
 
 interface StartPairingInput {
-    baseUrl: string;
-    displayName: string;
-    deviceName: string;
+  baseUrl: string;
+  displayName: string;
+  deviceName: string;
 }
 
 type DeviceInfoWire = DeviceInfo & {
-    DeviceID?: string;
-    DisplayName?: string;
-    Role?: string;
-    Status?: string;
-    CreatedAt?: string | number;
-    LastSeenAt?: string | number;
+  DeviceID?: string;
+  DisplayName?: string;
+  Role?: string;
+  Status?: string;
+  CreatedAt?: string | number;
+  LastSeenAt?: string | number;
 };
 
-const PENDING_PAIRING_STORAGE_KEY = 'or3-app:v1:pending-pairing';
+const PENDING_PAIRING_STORAGE_KEY = "or3-app:v1:pending-pairing";
 
 const pendingPairing = ref<PairingRequestResponse | null>(null);
 const pairingError = ref<string | null>(null);
 const pairingHost = ref<{
-    baseUrl: string;
-    displayName: string;
-    deviceName: string;
+  baseUrl: string;
+  displayName: string;
+  deviceName: string;
 } | null>(null);
-const pairingStatus = ref<'idle' | 'waiting' | 'connected'>('idle');
+const pairingStatus = ref<"idle" | "waiting" | "connected">("idle");
+const securePairingStatus = ref<SecureConnectionPairingState>("idle");
 const pairingFailureDetails = ref<PairingFailureDetails | null>(null);
-const logger = createLogger('pairing');
+const logger = createLogger("pairing");
 
 export class PairingRequestError extends Error {
-    status?: number;
-    statusText?: string;
-    url?: string;
-    responseBody?: string;
-    responseJson?: unknown;
-    override cause?: unknown;
+  status?: number;
+  statusText?: string;
+  url?: string;
+  responseBody?: string;
+  responseJson?: unknown;
+  override cause?: unknown;
 
-    constructor(message: string, details: Partial<PairingRequestError> = {}) {
-        super(message);
-        this.name = 'PairingRequestError';
-        Object.assign(this, details);
-    }
+  constructor(message: string, details: Partial<PairingRequestError> = {}) {
+    super(message);
+    this.name = "PairingRequestError";
+    Object.assign(this, details);
+  }
 }
 
 export interface PairingFailureDetails {
-    message: string;
-    status?: number;
-    statusText?: string;
-    url?: string;
-    responseBody?: string;
-    responseJson?: unknown;
-    cause?: unknown;
-    updatedAt: string;
+  message: string;
+  status?: number;
+  statusText?: string;
+  url?: string;
+  responseBody?: string;
+  responseJson?: unknown;
+  cause?: unknown;
+  updatedAt: string;
 }
 
 function resolvePairingError(error: unknown, fallbackMessage: string) {
-    if (error instanceof Error && error.message) {
-        return error.message;
-    }
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
 
-    return fallbackMessage;
+  return fallbackMessage;
 }
 
 function setPairingFailure(error: unknown, fallbackMessage: string) {
-    const message = resolvePairingError(error, fallbackMessage);
-    pairingError.value = message;
+  const message = resolvePairingError(error, fallbackMessage);
+  pairingError.value = message;
 
-    if (error instanceof PairingRequestError) {
-        pairingFailureDetails.value = {
-            message,
-            status: error.status,
-            statusText: error.statusText,
-            url: error.url,
-            responseBody: error.responseBody,
-            responseJson: error.responseJson,
-            cause: error.cause,
-            updatedAt: new Date().toISOString(),
-        };
-        return;
-    }
-
+  if (error instanceof PairingRequestError) {
     pairingFailureDetails.value = {
-        message,
-        cause: error,
-        updatedAt: new Date().toISOString(),
+      message,
+      status: error.status,
+      statusText: error.statusText,
+      url: error.url,
+      responseBody: error.responseBody,
+      responseJson: error.responseJson,
+      cause: error.cause,
+      updatedAt: new Date().toISOString(),
     };
+    return;
+  }
+
+  pairingFailureDetails.value = {
+    message,
+    cause: error,
+    updatedAt: new Date().toISOString(),
+  };
 }
 
 async function readPairingFailure(response: Response) {
-    const responseBody = await response.text().catch(() => '');
-    if (!responseBody)
-        return { responseBody: '', responseJson: null, serverMessage: '' };
+  const responseBody = await response.text().catch(() => "");
+  if (!responseBody)
+    return { responseBody: "", responseJson: null, serverMessage: "" };
 
-    try {
-        const responseJson = JSON.parse(responseBody) as Record<
-            string,
-            unknown
-        >;
-        const serverMessage = String(
-            responseJson.message || responseJson.error || '',
-        ).trim();
-        return { responseBody, responseJson, serverMessage };
-    } catch {
-        return {
-            responseBody,
-            responseJson: null,
-            serverMessage: responseBody.trim(),
-        };
-    }
+  try {
+    const responseJson = JSON.parse(responseBody) as Record<string, unknown>;
+    const serverMessage = String(
+      responseJson.message || responseJson.error || "",
+    ).trim();
+    return { responseBody, responseJson, serverMessage };
+  } catch {
+    return {
+      responseBody,
+      responseJson: null,
+      serverMessage: responseBody.trim(),
+    };
+  }
 }
 
 function normalizeDeviceInfo(device: DeviceInfoWire): DeviceInfo {
-    return {
-        device_id: String(device.device_id || device.DeviceID || '').trim(),
-        display_name: device.display_name || device.DisplayName,
-        role: device.role || device.Role,
-        status: device.status || device.Status,
-        created_at: String(device.created_at || device.CreatedAt || ''),
-        last_seen_at: String(device.last_seen_at || device.LastSeenAt || ''),
-    };
+  return {
+    device_id: String(device.device_id || device.DeviceID || "").trim(),
+    display_name: device.display_name || device.DisplayName,
+    role: device.role || device.Role,
+    status: device.status || device.Status,
+    created_at: String(device.created_at || device.CreatedAt || ""),
+    last_seen_at: String(device.last_seen_at || device.LastSeenAt || ""),
+  };
 }
 
 function isVisiblePairedDevice(device: DeviceInfo) {
-    return device.device_id && device.status?.toLowerCase() !== 'revoked';
+  return device.device_id && device.status?.toLowerCase() !== "revoked";
 }
 
 function hostIdFromUrl(baseUrl: string) {
-    return (
-        baseUrl
-            .trim()
-            .replace(/^https?:\/\//, '')
-            .replace(/[^a-z0-9]+/gi, '-')
-            .replace(/^-|-$/g, '')
-            .toLowerCase() || 'local'
-    );
+  return (
+    baseUrl
+      .trim()
+      .replace(/^https?:\/\//, "")
+      .replace(/[^a-z0-9]+/gi, "-")
+      .replace(/^-|-$/g, "")
+      .toLowerCase() || "local"
+  );
 }
 
 function persistPendingPairing() {
-    if (!import.meta.client) return;
-    if (!pendingPairing.value || !pairingHost.value) {
-        localStorage.removeItem(PENDING_PAIRING_STORAGE_KEY);
-        return;
-    }
-    localStorage.setItem(
-        PENDING_PAIRING_STORAGE_KEY,
-        JSON.stringify({
-            pendingPairing: pendingPairing.value,
-            pairingHost: pairingHost.value,
-            pairingStatus: pairingStatus.value,
-        }),
-    );
+  if (!import.meta.client) return;
+  if (!pendingPairing.value || !pairingHost.value) {
+    localStorage.removeItem(PENDING_PAIRING_STORAGE_KEY);
+    return;
+  }
+  localStorage.setItem(
+    PENDING_PAIRING_STORAGE_KEY,
+    JSON.stringify({
+      pendingPairing: pendingPairing.value,
+      pairingHost: pairingHost.value,
+      pairingStatus: pairingStatus.value,
+    }),
+  );
 }
 
 function restorePendingPairing() {
-    if (!import.meta.client || pendingPairing.value || pairingHost.value)
-        return;
-    const raw = localStorage.getItem(PENDING_PAIRING_STORAGE_KEY);
-    if (!raw) return;
-    try {
-        const parsed = JSON.parse(raw) as {
-            pendingPairing?: PairingRequestResponse;
-            pairingHost?: {
-                baseUrl: string;
-                displayName: string;
-                deviceName: string;
-            };
-            pairingStatus?: 'idle' | 'waiting' | 'connected';
-        };
-        if (!parsed.pendingPairing || !parsed.pairingHost) return;
-        pendingPairing.value = parsed.pendingPairing;
-        pairingHost.value = parsed.pairingHost;
-        pairingStatus.value = parsed.pairingStatus || 'waiting';
-    } catch {
-        logger.warn(
-            'pending:restore_invalid',
-            'Stored pairing state could not be restored',
-        );
-        localStorage.removeItem(PENDING_PAIRING_STORAGE_KEY);
-    }
+  if (!import.meta.client || pendingPairing.value || pairingHost.value) return;
+  const raw = localStorage.getItem(PENDING_PAIRING_STORAGE_KEY);
+  if (!raw) return;
+  try {
+    const parsed = JSON.parse(raw) as {
+      pendingPairing?: PairingRequestResponse;
+      pairingHost?: {
+        baseUrl: string;
+        displayName: string;
+        deviceName: string;
+      };
+      pairingStatus?: "idle" | "waiting" | "connected";
+    };
+    if (!parsed.pendingPairing || !parsed.pairingHost) return;
+    pendingPairing.value = parsed.pendingPairing;
+    pairingHost.value = parsed.pairingHost;
+    pairingStatus.value = parsed.pairingStatus || "waiting";
+  } catch {
+    logger.warn(
+      "pending:restore_invalid",
+      "Stored pairing state could not be restored",
+    );
+    localStorage.removeItem(PENDING_PAIRING_STORAGE_KEY);
+  }
 }
 
 export function usePairing() {
-    const cache = useLocalCache();
-    const api = useOr3Api();
-    restorePendingPairing();
-    const isPairing = computed(() => Boolean(pendingPairing.value));
+  const cache = useLocalCache();
+  const api = useOr3Api();
+  restorePendingPairing();
+  const isPairing = computed(() => Boolean(pendingPairing.value));
 
-    async function startPairing(input: StartPairingInput) {
-        pairingError.value = null;
-        pairingFailureDetails.value = null;
-        pairingStatus.value = 'idle';
-        pairingHost.value = input;
-        const baseUrl = input.baseUrl.trim().replace(/\/+$/, '');
-        logger.info('request:start', 'Pairing request started', {
-            baseUrl,
-            hasDisplayName: Boolean(input.displayName?.trim()),
-            hasDeviceName: Boolean(input.deviceName?.trim()),
+  async function startPairing(input: StartPairingInput) {
+    pairingError.value = null;
+    pairingFailureDetails.value = null;
+    pairingStatus.value = "idle";
+    pairingHost.value = input;
+    const baseUrl = input.baseUrl.trim().replace(/\/+$/, "");
+    logger.info("request:start", "Pairing request started", {
+      baseUrl,
+      hasDisplayName: Boolean(input.displayName?.trim()),
+      hasDeviceName: Boolean(input.deviceName?.trim()),
+    });
+    try {
+      const response = await fetch(`${baseUrl}/internal/v1/pairing/requests`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          role: "operator",
+          display_name: input.deviceName || "or3-app",
+          origin: "or3-app",
+        }),
+      });
+
+      if (!response.ok) {
+        const failure = await readPairingFailure(response);
+        if (response.status === 401) {
+          pairingError.value =
+            "This computer is not accepting new device connections yet. On your computer, allow local device pairing in or3-intern, restart the service, and then try again.";
+        } else {
+          pairingError.value =
+            failure.serverMessage ||
+            "Could not start pairing. Confirm the address is correct, that or3-intern is running, and that this phone can reach it over your local network or Tailscale.";
+        }
+        const requestError = new PairingRequestError(pairingError.value, {
+          status: response.status,
+          statusText: response.statusText,
+          url: response.url,
+          responseBody: failure.responseBody,
+          responseJson: failure.responseJson,
         });
-        try {
-            const response = await fetch(
-                `${baseUrl}/internal/v1/pairing/requests`,
-                {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        Accept: 'application/json',
-                    },
-                    body: JSON.stringify({
-                        role: 'operator',
-                        display_name: input.deviceName || 'or3-app',
-                        origin: 'or3-app',
-                    }),
-                },
-            );
-
-            if (!response.ok) {
-                const failure = await readPairingFailure(response);
-                if (response.status === 401) {
-                    pairingError.value =
-                        'This computer is not accepting new device connections yet. On your computer, allow local device pairing in or3-intern, restart the service, and then try again.';
-                } else {
-                    pairingError.value =
-                        failure.serverMessage ||
-                        'Could not start pairing. Confirm the address is correct, that or3-intern is running, and that this phone can reach it over your local network or Tailscale.';
-                }
-                const requestError = new PairingRequestError(
-                    pairingError.value,
-                    {
-                        status: response.status,
-                        statusText: response.statusText,
-                        url: response.url,
-                        responseBody: failure.responseBody,
-                        responseJson: failure.responseJson,
-                    },
-                );
-                logger.warn(
-                    'request:rejected',
-                    'Pairing request was rejected',
-                    {
-                        baseUrl,
-                        status: response.status,
-                        statusText: response.statusText,
-                    },
-                );
-                setPairingFailure(requestError, pairingError.value);
-                throw requestError;
-            }
-
-            pendingPairing.value =
-                (await response.json()) as PairingRequestResponse;
-            pairingStatus.value = 'waiting';
-            persistPendingPairing();
-            logger.info('request:created', 'Pairing request created', {
-                baseUrl,
-                requestId:
-                    pendingPairing.value.request_id ?? pendingPairing.value.id,
-            });
-            return pendingPairing.value;
-        } catch (error) {
-            if (error instanceof PairingRequestError) {
-                throw error;
-            }
-
-            const requestError = new PairingRequestError(
-                resolvePairingError(
-                    error,
-                    'Could not reach this computer. Confirm the address is correct, that or3-intern is listening on the expected port, and that the device can reach it over your local network or Tailscale.',
-                ),
-                {
-                    url: `${baseUrl}/internal/v1/pairing/requests`,
-                    cause: error,
-                },
-            );
-            setPairingFailure(requestError, requestError.message);
-            logger.error('request:error', 'Pairing request failed', {
-                baseUrl,
-                error: requestError.message,
-            });
-            throw requestError;
-        }
-    }
-
-    async function exchangeCode(
-        code = pendingPairing.value?.code,
-        options: { quietPending?: boolean } = {},
-    ) {
-        if (!pendingPairing.value || !pairingHost.value || !code)
-            throw new Error('No pairing request is active');
-        const baseUrl = pairingHost.value.baseUrl.trim().replace(/\/+$/, '');
-        const requestId =
-            pendingPairing.value.request_id ?? pendingPairing.value.id;
-        logger.info('exchange:start', 'Pairing exchange started', {
-            requestId,
-            quietPending: Boolean(options.quietPending),
+        logger.warn("request:rejected", "Pairing request was rejected", {
+          baseUrl,
+          status: response.status,
+          statusText: response.statusText,
         });
-        try {
-            const response = await fetch(
-                `${baseUrl}/internal/v1/pairing/exchange`,
-                {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        Accept: 'application/json',
-                    },
-                    body: JSON.stringify({ request_id: requestId, code }),
-                },
-            );
+        setPairingFailure(requestError, pairingError.value);
+        throw requestError;
+      }
 
-            if (!response.ok) {
-                if (options.quietPending) {
-                    logger.debug(
-                        'exchange:pending',
-                        'Pairing approval is still pending',
-                        { requestId },
-                    );
-                    throw new Error('pairing_pending');
-                }
-                const failure = await readPairingFailure(response);
-                pairingError.value =
-                    failure.serverMessage ||
-                    'Pairing is not approved yet or the code expired.';
-                const requestError = new PairingRequestError(
-                    pairingError.value,
-                    {
-                        status: response.status,
-                        statusText: response.statusText,
-                        url: response.url,
-                        responseBody: failure.responseBody,
-                        responseJson: failure.responseJson,
-                    },
-                );
-                logger.warn(
-                    'exchange:rejected',
-                    'Pairing exchange was rejected',
-                    {
-                        requestId,
-                        status: response.status,
-                        statusText: response.statusText,
-                    },
-                );
-                setPairingFailure(requestError, pairingError.value);
-                throw requestError;
-            }
+      pendingPairing.value = (await response.json()) as PairingRequestResponse;
+      pairingStatus.value = "waiting";
+      persistPendingPairing();
+      logger.info("request:created", "Pairing request created", {
+        baseUrl,
+        requestId: pendingPairing.value.request_id ?? pendingPairing.value.id,
+      });
+      return pendingPairing.value;
+    } catch (error) {
+      if (error instanceof PairingRequestError) {
+        throw error;
+      }
 
-            const exchanged =
-                (await response.json()) as PairingExchangeResponse;
-            const host: Or3HostProfile = {
-                id: hostIdFromUrl(baseUrl),
-                name: pairingHost.value.displayName || 'My Computer',
-                baseUrl,
-                token: exchanged.token,
-                pairedToken: exchanged.token,
-                role: exchanged.role,
-                deviceId: exchanged.device_id,
-                status: 'online',
-                lastSeenAt: new Date().toISOString(),
-            };
-
-            cache.updateHost(host);
-            pairingError.value = null;
-            pairingFailureDetails.value = null;
-            pairingStatus.value = 'connected';
-            pendingPairing.value = null;
-            pairingHost.value = null;
-            persistPendingPairing();
-            logger.info('exchange:complete', 'Pairing exchange completed', {
-                requestId,
-                hostId: host.id,
-            });
-            return host;
-        } catch (error) {
-            if (
-                options.quietPending &&
-                error instanceof Error &&
-                error.message === 'pairing_pending'
-            ) {
-                throw error;
-            }
-
-            if (error instanceof PairingRequestError) {
-                throw error;
-            }
-
-            pairingError.value = resolvePairingError(
-                error,
-                'Could not complete pairing. Confirm this phone can still reach your computer and try again.',
-            );
-            logger.error('exchange:error', 'Pairing exchange failed', {
-                requestId,
-                error: pairingError.value,
-            });
-            throw new Error(pairingError.value);
-        }
+      const requestError = new PairingRequestError(
+        resolvePairingError(
+          error,
+          "Could not reach this computer. Confirm the address is correct, that or3-intern is listening on the expected port, and that the device can reach it over your local network or Tailscale.",
+        ),
+        {
+          url: `${baseUrl}/internal/v1/pairing/requests`,
+          cause: error,
+        },
+      );
+      setPairingFailure(requestError, requestError.message);
+      logger.error("request:error", "Pairing request failed", {
+        baseUrl,
+        error: requestError.message,
+      });
+      throw requestError;
     }
+  }
 
-    async function verifyActiveHost() {
-        let health: HealthResponse;
-        logger.info('verify:start', 'Active host verification started', {
-            hasActiveHost: Boolean(cache.state.value.activeHostId),
-        });
-        try {
-            const bootstrap = await api.request<AppBootstrapResponse>(
-                '/internal/v1/app/bootstrap',
-            );
-            health =
-                bootstrap.status?.health ??
-                ((await api.request<HealthResponse>(
-                    '/internal/v1/health',
-                )) as HealthResponse);
-        } catch (error: any) {
-            if (
-                ![404, 405].includes(error?.status) &&
-                error?.code !== 'capability_unavailable'
-            ) {
-                logger.error(
-                    'verify:error',
-                    'Active host verification failed',
-                    {
-                        error:
-                            error instanceof Error
-                                ? error.message
-                                : String(error ?? 'unknown_error'),
-                    },
-                );
-                throw error;
-            }
-            logger.warn(
-                'verify:fallback',
-                'App bootstrap unavailable, falling back to health endpoint',
-                {
-                    status: error?.status,
-                    code: error?.code,
-                },
-            );
-            health = await api.request<HealthResponse>('/internal/v1/health');
-        }
-        const activeHostId = cache.state.value.activeHostId;
-        const activeHost = cache.state.value.hosts.find(
-            (host) => host.id === activeHostId,
-        );
-        if (activeHost)
-            cache.updateHost({
-                ...activeHost,
-                status: 'online',
-                lastSeenAt: new Date().toISOString(),
-            });
-        logger.info('verify:complete', 'Active host verification completed', {
-            status: health.status,
-            runtimeAvailable: health.runtimeAvailable,
-        });
-        return health;
+  async function parseSecurePairingQR(raw: string) {
+    pairingError.value = null;
+    pairingFailureDetails.value = null;
+    try {
+      const payload = parsePairingQRCode(raw);
+      securePairingStatus.value = "waiting";
+      return payload;
+    } catch (error) {
+      securePairingStatus.value =
+        error instanceof Error &&
+        error.message.toLowerCase().includes("expired")
+          ? "expired"
+          : "failed";
+      setPairingFailure(error, "Could not read this pairing code.");
+      throw error;
     }
+  }
 
-    async function listDevices() {
-        logger.info('devices:list_start', 'Listing paired devices');
-        try {
-            const response = await api.request<
-                { items?: DeviceInfoWire[] } | DeviceInfoWire[]
-            >('/internal/v1/devices');
-            const rawDevices = Array.isArray(response)
-                ? response
-                : (response.items ?? []);
-            const devices = rawDevices
-                .map((device) => normalizeDeviceInfo(device))
-                .filter((device) => isVisiblePairedDevice(device));
-            logger.info('devices:list_complete', 'Paired devices loaded', {
-                count: devices.length,
-            });
-            return devices;
-        } catch (error) {
-            logger.error(
-                'devices:list_error',
-                'Failed to list paired devices',
-                {
-                    error:
-                        error instanceof Error
-                            ? error.message
-                            : String(error ?? 'unknown_error'),
-                },
-            );
-            throw error;
-        }
-    }
-
-    async function revokeDevice(deviceId: string) {
-        const normalizedDeviceId = String(deviceId || '').trim();
-        if (!normalizedDeviceId) {
-            throw new Error('Device ID is required to revoke a paired device.');
-        }
-        logger.info('devices:revoke_start', 'Revoking paired device', {
-            deviceId: normalizedDeviceId,
-        });
-        try {
-            const response = await api.request<{
-                device_id: string;
-                status: string;
-            }>(`/internal/v1/devices/${encodeURIComponent(normalizedDeviceId)}/revoke`, {
-                method: 'POST',
-            });
-            logger.info('devices:revoke_complete', 'Paired device revoked', {
-                deviceId: normalizedDeviceId,
-                status: response.status,
-            });
-            return response;
-        } catch (error) {
-            logger.error(
-                'devices:revoke_error',
-                'Failed to revoke paired device',
-                {
-                    deviceId: normalizedDeviceId,
-                    error:
-                        error instanceof Error
-                            ? error.message
-                            : String(error ?? 'unknown_error'),
-                },
-            );
-            throw error;
-        }
-    }
-
-    async function rotateDevice(deviceId: string) {
-        logger.info('devices:rotate_start', 'Rotating paired device token', {
-            deviceId,
-        });
-        try {
-            const response = await api.request<{
-                device_id: string;
-                token: string;
-            }>(`/internal/v1/devices/${encodeURIComponent(deviceId)}/rotate`, {
-                method: 'POST',
-            });
-            logger.info(
-                'devices:rotate_complete',
-                'Paired device token rotated',
-                {
-                    deviceId,
-                },
-            );
-            return response;
-        } catch (error) {
-            logger.error(
-                'devices:rotate_error',
-                'Failed to rotate paired device token',
-                {
-                    deviceId,
-                    error:
-                        error instanceof Error
-                            ? error.message
-                            : String(error ?? 'unknown_error'),
-                },
-            );
-            throw error;
-        }
-    }
-
+  async function buildSecureEnrollmentProposal(
+    rawQR: string,
+    deviceName = "or3-app",
+  ) {
+    const payload = await parseSecurePairingQR(rawQR);
+    const identity = await getOrCreateDeviceIdentity(deviceName);
     return {
-        pendingPairing,
-        pairingError,
-        pairingFailureDetails,
-        pairingStatus,
-        isPairing,
-        startPairing,
-        exchangeCode,
-        verifyActiveHost,
-        listDevices,
-        revokeDevice,
-        rotateDevice,
+      qr: payload,
+      identity,
+      proposal: buildEnrollmentProposal(
+        identity,
+        "operator",
+        payload.capabilities,
+      ),
     };
+  }
+
+  async function storeSecureEnrollment(input: {
+    hostId: string;
+    hostSigningPublicKey: string;
+    hostNoisePublicKey: string;
+    certificate: unknown;
+    certificateHash?: string;
+    role?: string;
+    capabilities?: string[];
+    trustLevel?:
+      | "native-hardware"
+      | "native-software"
+      | "web-limited"
+      | "legacy";
+  }) {
+    await storeHostEnrollment({
+      hostId: input.hostId,
+      hostSigningPublicKey: input.hostSigningPublicKey,
+      hostNoisePublicKey: input.hostNoisePublicKey,
+      enrollmentCertificate: input.certificate,
+      enrollmentCertificateHash: input.certificateHash,
+      role: input.role || "operator",
+      capabilities: input.capabilities || [],
+      trustLevel: input.trustLevel || "web-limited",
+      storedAtUnixMs: Date.now(),
+    });
+    securePairingStatus.value = "connected";
+  }
+
+  async function exchangeCode(
+    code = pendingPairing.value?.code,
+    options: { quietPending?: boolean } = {},
+  ) {
+    if (!pendingPairing.value || !pairingHost.value || !code)
+      throw new Error("No pairing request is active");
+    const baseUrl = pairingHost.value.baseUrl.trim().replace(/\/+$/, "");
+    const requestId =
+      pendingPairing.value.request_id ?? pendingPairing.value.id;
+    logger.info("exchange:start", "Pairing exchange started", {
+      requestId,
+      quietPending: Boolean(options.quietPending),
+    });
+    try {
+      const response = await fetch(`${baseUrl}/internal/v1/pairing/exchange`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ request_id: requestId, code }),
+      });
+
+      if (!response.ok) {
+        if (options.quietPending) {
+          logger.debug(
+            "exchange:pending",
+            "Pairing approval is still pending",
+            { requestId },
+          );
+          throw new Error("pairing_pending");
+        }
+        const failure = await readPairingFailure(response);
+        pairingError.value =
+          failure.serverMessage ||
+          "Pairing is not approved yet or the code expired.";
+        const requestError = new PairingRequestError(pairingError.value, {
+          status: response.status,
+          statusText: response.statusText,
+          url: response.url,
+          responseBody: failure.responseBody,
+          responseJson: failure.responseJson,
+        });
+        logger.warn("exchange:rejected", "Pairing exchange was rejected", {
+          requestId,
+          status: response.status,
+          statusText: response.statusText,
+        });
+        setPairingFailure(requestError, pairingError.value);
+        throw requestError;
+      }
+
+      const exchanged = (await response.json()) as PairingExchangeResponse;
+      const host: Or3HostProfile = {
+        id: hostIdFromUrl(baseUrl),
+        name: pairingHost.value.displayName || "My Computer",
+        baseUrl,
+        token: exchanged.token,
+        pairedToken: exchanged.token,
+        role: exchanged.role,
+        deviceId: exchanged.device_id,
+        status: "online",
+        lastSeenAt: new Date().toISOString(),
+      };
+
+      cache.updateHost(host);
+      pairingError.value = null;
+      pairingFailureDetails.value = null;
+      pairingStatus.value = "connected";
+      pendingPairing.value = null;
+      pairingHost.value = null;
+      persistPendingPairing();
+      logger.info("exchange:complete", "Pairing exchange completed", {
+        requestId,
+        hostId: host.id,
+      });
+      return host;
+    } catch (error) {
+      if (
+        options.quietPending &&
+        error instanceof Error &&
+        error.message === "pairing_pending"
+      ) {
+        throw error;
+      }
+
+      if (error instanceof PairingRequestError) {
+        throw error;
+      }
+
+      pairingError.value = resolvePairingError(
+        error,
+        "Could not complete pairing. Confirm this phone can still reach your computer and try again.",
+      );
+      logger.error("exchange:error", "Pairing exchange failed", {
+        requestId,
+        error: pairingError.value,
+      });
+      throw new Error(pairingError.value);
+    }
+  }
+
+  async function verifyActiveHost() {
+    let health: HealthResponse;
+    logger.info("verify:start", "Active host verification started", {
+      hasActiveHost: Boolean(cache.state.value.activeHostId),
+    });
+    try {
+      const bootstrap = await api.request<AppBootstrapResponse>(
+        "/internal/v1/app/bootstrap",
+      );
+      health =
+        bootstrap.status?.health ??
+        ((await api.request<HealthResponse>(
+          "/internal/v1/health",
+        )) as HealthResponse);
+    } catch (error: any) {
+      if (
+        ![404, 405].includes(error?.status) &&
+        error?.code !== "capability_unavailable"
+      ) {
+        logger.error("verify:error", "Active host verification failed", {
+          error:
+            error instanceof Error
+              ? error.message
+              : String(error ?? "unknown_error"),
+        });
+        throw error;
+      }
+      logger.warn(
+        "verify:fallback",
+        "App bootstrap unavailable, falling back to health endpoint",
+        {
+          status: error?.status,
+          code: error?.code,
+        },
+      );
+      health = await api.request<HealthResponse>("/internal/v1/health");
+    }
+    const activeHostId = cache.state.value.activeHostId;
+    const activeHost = cache.state.value.hosts.find(
+      (host) => host.id === activeHostId,
+    );
+    if (activeHost)
+      cache.updateHost({
+        ...activeHost,
+        status: "online",
+        lastSeenAt: new Date().toISOString(),
+      });
+    logger.info("verify:complete", "Active host verification completed", {
+      status: health.status,
+      runtimeAvailable: health.runtimeAvailable,
+    });
+    return health;
+  }
+
+  async function listDevices() {
+    logger.info("devices:list_start", "Listing paired devices");
+    try {
+      const response = await api.request<
+        { items?: DeviceInfoWire[] } | DeviceInfoWire[]
+      >("/internal/v1/devices");
+      const rawDevices = Array.isArray(response)
+        ? response
+        : (response.items ?? []);
+      const devices = rawDevices
+        .map((device) => normalizeDeviceInfo(device))
+        .filter((device) => isVisiblePairedDevice(device));
+      logger.info("devices:list_complete", "Paired devices loaded", {
+        count: devices.length,
+      });
+      return devices;
+    } catch (error) {
+      logger.error("devices:list_error", "Failed to list paired devices", {
+        error:
+          error instanceof Error
+            ? error.message
+            : String(error ?? "unknown_error"),
+      });
+      throw error;
+    }
+  }
+
+  async function revokeDevice(deviceId: string) {
+    const normalizedDeviceId = String(deviceId || "").trim();
+    if (!normalizedDeviceId) {
+      throw new Error("Device ID is required to revoke a paired device.");
+    }
+    logger.info("devices:revoke_start", "Revoking paired device", {
+      deviceId: normalizedDeviceId,
+    });
+    try {
+      const response = await api.request<{
+        device_id: string;
+        status: string;
+      }>(
+        `/internal/v1/devices/${encodeURIComponent(normalizedDeviceId)}/revoke`,
+        {
+          method: "POST",
+        },
+      );
+      logger.info("devices:revoke_complete", "Paired device revoked", {
+        deviceId: normalizedDeviceId,
+        status: response.status,
+      });
+      return response;
+    } catch (error) {
+      logger.error("devices:revoke_error", "Failed to revoke paired device", {
+        deviceId: normalizedDeviceId,
+        error:
+          error instanceof Error
+            ? error.message
+            : String(error ?? "unknown_error"),
+      });
+      throw error;
+    }
+  }
+
+  async function rotateDevice(deviceId: string) {
+    logger.info("devices:rotate_start", "Rotating paired device token", {
+      deviceId,
+    });
+    try {
+      const response = await api.request<{
+        device_id: string;
+        token: string;
+      }>(`/internal/v1/devices/${encodeURIComponent(deviceId)}/rotate`, {
+        method: "POST",
+      });
+      logger.info("devices:rotate_complete", "Paired device token rotated", {
+        deviceId,
+      });
+      return response;
+    } catch (error) {
+      logger.error(
+        "devices:rotate_error",
+        "Failed to rotate paired device token",
+        {
+          deviceId,
+          error:
+            error instanceof Error
+              ? error.message
+              : String(error ?? "unknown_error"),
+        },
+      );
+      throw error;
+    }
+  }
+
+  return {
+    pendingPairing,
+    pairingError,
+    pairingFailureDetails,
+    pairingStatus,
+    securePairingStatus,
+    isPairing,
+    startPairing,
+    parseSecurePairingQR,
+    buildSecureEnrollmentProposal,
+    storeSecureEnrollment,
+    exchangeCode,
+    verifyActiveHost,
+    listDevices,
+    revokeDevice,
+    rotateDevice,
+  };
 }
