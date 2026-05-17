@@ -37,12 +37,24 @@
       />
     </div>
   </AppShell>
+
+  <EditNameModal
+    v-model:open="renameOpen"
+    title="Rename note"
+    eyebrow="Note"
+    label="Name"
+    placeholder="Untitled note"
+    submit-label="Save name"
+    :initial-value="noteState?.title || ''"
+    @submit="commitRenameNote"
+  />
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { navigateTo, useRoute } from '#app'
 import { useToast } from '@nuxt/ui/composables'
+import EditNameModal from '~/components/app/EditNameModal.vue'
 import type { Or3AppError } from '~/types/app-state'
 import { useNoteFiles } from '~/composables/useNoteFiles'
 
@@ -57,6 +69,7 @@ const noteState = ref<Awaited<ReturnType<typeof readNote>> | null>(null)
 const loadError = ref<Or3AppError | null>(null)
 const saveError = ref<Or3AppError | null>(null)
 const statusLabel = ref('')
+const renameOpen = ref(false)
 
 const notePath = computed(() => typeof route.query.path === 'string' ? route.query.path : '')
 const unsupportedMessage = computed(() => {
@@ -149,9 +162,13 @@ async function saveNoteDocument(reason: 'manual' | 'autosave' | 'rename') {
   }
 }
 
-async function renameNote() {
+function renameNote() {
   if (!noteState.value || saving.value || unsupportedMessage.value) return
-  const nextTitle = window.prompt('Rename note', noteState.value.title)?.trim()
+  renameOpen.value = true
+}
+
+async function commitRenameNote(nextTitle: string) {
+  if (!noteState.value || saving.value || unsupportedMessage.value) return
   if (!nextTitle || nextTitle === noteState.value.title) return
   draftContent.value = applyMarkdownTitle(draftContent.value, nextTitle)
   const saved = await saveNoteDocument('rename')

@@ -25,7 +25,7 @@
                     class="or3-chip"
                     :class="{ 'is-active': activeFilter === filter.value }"
                     :aria-pressed="activeFilter === filter.value"
-                    @click="activeFilter = filter.value"
+                    @click="setFilter(filter.value)"
                 >
                     <Icon v-if="filter.icon" :name="filter.icon" class="size-3" />
                     {{ filter.label }}
@@ -44,49 +44,85 @@
         <template v-else>
             <template v-for="group in groupedSessions" :key="group.label">
                 <p class="or3-desktop-side-section-label">{{ group.label }}</p>
-                <button
+                <div
                     v-for="session in group.items"
                     :key="session.session_key"
-                    type="button"
                     class="or3-desktop-list-item"
                     :class="{ 'is-active': session.session_key === activeSessionKey }"
-                    @click="onOpen(session)"
                 >
-                    <span class="or3-desktop-list-item__title-row">
-                        <span class="or3-desktop-list-item__title">
-                            <span
-                                v-if="session.session_key === activeSessionKey"
-                                class="or3-live-dot"
-                                aria-hidden="true"
-                            />
-                            {{ session.title || 'Untitled conversation' }}
-                        </span>
-                        <span class="or3-desktop-list-item__meta">{{ formatTime(session.last_message_at || session.updated_at) }}</span>
-                    </span>
-                    <p
-                        v-if="session.last_message_preview"
-                        class="or3-desktop-list-item__preview"
+                    <button
+                        type="button"
+                        class="or3-desktop-list-item__main"
+                        @click="onOpen(session)"
                     >
-                        {{ session.last_message_preview }}
-                    </p>
-                </button>
+                        <span class="or3-desktop-list-item__title-row">
+                            <span class="or3-desktop-list-item__title">
+                                <span
+                                    v-if="session.session_key === activeSessionKey"
+                                    class="or3-live-dot"
+                                    aria-hidden="true"
+                                />
+                                {{ session.title || 'Untitled conversation' }}
+                            </span>
+                            <span class="or3-desktop-list-item__meta">{{ formatTime(session.last_message_at || session.updated_at) }}</span>
+                        </span>
+                        <p
+                            v-if="session.last_message_preview"
+                            class="or3-desktop-list-item__preview"
+                        >
+                            {{ session.last_message_preview }}
+                        </p>
+                    </button>
+                    <span class="or3-desktop-list-item__actions">
+                        <UButton
+                            icon="i-pixelarticons-edit-box"
+                            color="neutral"
+                            variant="ghost"
+                            size="xs"
+                            square
+                            aria-label="Rename conversation"
+                            @click.stop="startRename(session)"
+                        />
+                        <UButton
+                            :icon="session.archived ? 'i-pixelarticons-undo' : 'i-pixelarticons-archive'"
+                            color="neutral"
+                            variant="ghost"
+                            size="xs"
+                            square
+                            :aria-label="session.archived ? 'Unarchive conversation' : 'Archive conversation'"
+                            @click.stop="emit('archive', session, !session.archived)"
+                        />
+                    </span>
+                </div>
             </template>
 
             <div
                 v-if="!groupedSessions.length"
                 class="px-4 py-10 text-center font-mono text-xs text-(--or3-text-muted)"
             >
-                No conversations yet.
+                {{ emptyTitle }}
                 <br />
-                Start a new chat to begin.
+                {{ emptyDetail }}
             </div>
         </template>
     </DesktopSecondarySidebar>
+
+    <EditNameModal
+        v-model:open="renameOpen"
+        title="Rename chat"
+        eyebrow="Conversation"
+        label="Name"
+        placeholder="Untitled conversation"
+        submit-label="Save name"
+        :initial-value="renameTitle"
+        @submit="submitRename"
+    />
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import type { ChatSessionMeta } from '~/types/or3-api';
+import EditNameModal from '~/components/app/EditNameModal.vue';
 
 const props = defineProps<{
     sessions: ChatSessionMeta[];
@@ -98,11 +134,16 @@ const props = defineProps<{
 const emit = defineEmits<{
     open: [session: ChatSessionMeta];
     new: [];
-    refresh: [];
+    refresh: [options: { q?: string; includeArchived?: boolean }];
+    rename: [session: ChatSessionMeta, title: string];
+    archive: [session: ChatSessionMeta, archived: boolean];
 }>();
 
 const query = ref('');
 const activeFilter = ref<'all' | 'recent' | 'archived'>('all');
+const renameOpen = ref(false);
+const renameTarget = ref<ChatSessionMeta | null>(null);
+const renameTitle = computed(() => renameTarget.value?.title || 'Untitled conversation');
 
 const filters = [
     { label: 'All', value: 'all' as const, icon: 'i-pixelarticons-inbox-all' },
@@ -174,6 +215,18 @@ const footerText = computed(() => {
     return total === 1 ? '1 conversation' : `${total} conversations`;
 });
 
+const emptyTitle = computed(() => {
+    if (activeFilter.value === 'archived') return 'No archived conversations.';
+    if (activeFilter.value === 'recent') return 'No recent conversations.';
+    return 'No conversations yet.';
+});
+
+const emptyDetail = computed(() => {
+    if (activeFilter.value === 'archived') return 'Archived chats will show up here.';
+    if (activeFilter.value === 'recent') return 'Recent chats from the last 7 days will show up here.';
+    return 'Start a new chat to begin.';
+});
+
 function formatTime(ms?: number | null) {
     if (!ms) return '';
     const d = new Date(ms);
@@ -192,6 +245,13 @@ function formatTime(ms?: number | null) {
 
 function onSearch(v: string) {
     query.value = v;
+    refresh();
+}
+
+function setFilter(filter: typeof activeFilter.value) {
+    if (activeFilter.value === filter) return;
+    activeFilter.value = filter;
+    refresh();
 }
 
 function onOpen(session: ChatSessionMeta) {
@@ -202,11 +262,24 @@ function onNew() {
     emit('new');
 }
 
+function startRename(session: ChatSessionMeta) {
+    renameTarget.value = session;
+    renameOpen.value = true;
+}
+
+function submitRename(title: string) {
+    if (!renameTarget.value) return;
+    emit('rename', renameTarget.value, title);
+}
+
 function refresh() {
-    emit('refresh');
+    emit('refresh', {
+        q: query.value.trim() || undefined,
+        includeArchived: activeFilter.value === 'archived' || undefined,
+    });
 }
 
 onMounted(() => {
-    emit('refresh');
+    refresh();
 });
 </script>

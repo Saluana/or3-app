@@ -133,6 +133,44 @@ describe('assistant-stream helper composables', () => {
         );
     });
 
+    it('does not recover a pending stream from an inactive session into the active chat', async () => {
+        const isStreaming = ref(false);
+        const send = vi.fn<
+            (message: string | AssistantSendPayload) => Promise<void>
+        >(async () => {});
+        const state = createState();
+        state.sessions.unshift({
+            ...createSession(),
+            id: 'session_active',
+            sessionKey: 'or3-app:test-host:session_active',
+        });
+        state.messages.push({
+            id: 'msg_inactive',
+            sessionId: 'session_1',
+            role: 'assistant',
+            content: 'old paused response',
+            status: 'streaming',
+            createdAt: '2026-05-13T00:00:00.000Z',
+            jobId: 'job_inactive',
+            retryPayload: {
+                text: 'retry inactive',
+                transportText: 'retry inactive',
+            },
+        });
+
+        const { recoverPendingMessages } = useStreamRecovery({
+            activeHost: ref(createHost()),
+            cacheState: ref(state),
+            isStreaming,
+            isClient: true,
+            send,
+        });
+
+        await recoverPendingMessages();
+
+        expect(send).not.toHaveBeenCalled();
+    });
+
     it('hydrates pending approvals for the active session only', async () => {
         const ensureApprovalMessage = vi.fn();
         const chat = {

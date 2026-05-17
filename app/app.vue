@@ -5,7 +5,7 @@
             :class="showUnlockOverlay ? 'invisible pointer-events-none select-none' : ''"
             :aria-hidden="showUnlockOverlay ? 'true' : undefined"
         >
-            <NuxtPage />
+            <NuxtPage :keepalive="{ max: 12 }" />
         </div>
         <PinUnlockOverlay
             :visible="showUnlockOverlay"

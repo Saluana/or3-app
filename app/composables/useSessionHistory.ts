@@ -6,21 +6,133 @@ import type {
     ChatSessionMeta,
     ChatSessionUpdateRequest,
 } from '~/types/or3-api';
+import type { ChatMessage, ChatSession } from '~/types/app-state';
 import { useChatSessions } from './useChatSessions';
 import { useOr3Api } from './useOr3Api';
 
 const historyOpen = ref(false);
 const loading = ref(false);
 const error = ref<string | null>(null);
-const sessions = ref<ChatSessionMeta[]>([]);
+const backendSessions = ref<ChatSessionMeta[]>([]);
 
 function createSessionKey(hostId = 'local') {
     return `or3-app:${hostId}:session_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function isoToMS(value?: string) {
+    if (!value) return 0;
+    const ms = Date.parse(value);
+    return Number.isFinite(ms) ? ms : 0;
+}
+
+function previewText(value?: string) {
+    return (value || '').trim().replace(/\s+/g, ' ').slice(0, 160);
+}
+
+function localSessionToMeta(
+    session: ChatSession,
+    activeMessages: ChatMessage[],
+): ChatSessionMeta {
+    const latestMessage = [...activeMessages]
+        .reverse()
+        .find((message) => previewText(message.content));
+    const lastMessagePreview =
+        latestMessage?.content || session.lastMessagePreview || '';
+    const lastMessageAt =
+        isoToMS(latestMessage?.createdAt) || isoToMS(session.lastMessageAt);
+    return {
+        session_key: session.sessionKey,
+        host_id: session.hostId,
+        title: session.title || 'New conversation',
+        runner_id: session.runnerId,
+        runner_label: session.runnerLabel,
+        runner_chat_session_id: session.runnerChatSessionId,
+        runner_continuation_mode: session.runnerContinuationMode,
+        runner_model: session.runnerModel,
+        runner_mode: session.runnerMode,
+        runner_isolation: session.runnerIsolation,
+        runner_cwd: session.runnerCwd,
+        message_count:
+            activeMessages.length || session.backendMessageCount || 0,
+        last_message_preview: previewText(lastMessagePreview),
+        last_message_at: lastMessageAt || isoToMS(session.updatedAt),
+        parent_session_key: session.parentSessionKey,
+        fork_anchor_message_id: session.forkAnchorMessageId,
+        forked_from_runner_id: session.forkedFromRunnerId,
+        fork_strategy: session.forkStrategy,
+        archived: Boolean(session.archived),
+        created_at: isoToMS(session.createdAt),
+        updated_at: isoToMS(session.updatedAt),
+    };
+}
+
+function mergeSessionMeta(
+    backend: ChatSessionMeta | undefined,
+    local: ChatSessionMeta,
+) {
+    if (!backend) return local;
+    const localFresh =
+        (local.last_message_at || local.updated_at || 0) >=
+        (backend.last_message_at || backend.updated_at || 0);
+    return {
+        ...backend,
+        ...local,
+        message_count: local.message_count || backend.message_count,
+        last_message_preview:
+            localFresh && local.last_message_preview
+                ? local.last_message_preview
+                : backend.last_message_preview || local.last_message_preview,
+        last_message_at:
+            localFresh && local.last_message_at
+                ? local.last_message_at
+                : backend.last_message_at || local.last_message_at,
+        updated_at: Math.max(backend.updated_at || 0, local.updated_at || 0),
+        created_at: backend.created_at || local.created_at,
+    } satisfies ChatSessionMeta;
+}
+
+function isChatSessionNotFound(err: unknown) {
+    if (!err || typeof err !== 'object') return false;
+    const record = err as { code?: unknown; status?: unknown };
+    return record.code === 'chat_session_not_found' || record.status === 404;
+}
+
 export function useSessionHistory() {
     const api = useOr3Api();
     const chat = useChatSessions();
+
+    const sessions = computed(() => {
+        const merged = new Map<string, ChatSessionMeta>();
+        for (const meta of backendSessions.value) {
+            merged.set(meta.session_key, meta);
+        }
+
+        const localSessions =
+            (chat as { sessions?: { value?: ChatSession[] } }).sessions
+                ?.value ?? [];
+        const activeMessages =
+            (chat as { messages?: { value?: ChatMessage[] } }).messages
+                ?.value ?? [];
+        const activeMessageSessionId = chat.activeSession.value?.id;
+
+        for (const local of localSessions) {
+            const localMeta = localSessionToMeta(
+                local,
+                local.id === activeMessageSessionId ? activeMessages : [],
+            );
+            const existing = merged.get(localMeta.session_key);
+            merged.set(
+                localMeta.session_key,
+                mergeSessionMeta(existing, localMeta),
+            );
+        }
+
+        return [...merged.values()].sort(
+            (a, b) =>
+                (b.last_message_at || b.updated_at || 0) -
+                (a.last_message_at || a.updated_at || 0),
+        );
+    });
 
     const activeBackendSession = computed(() => {
         const key = chat.activeSession.value?.sessionKey;
@@ -40,8 +152,8 @@ export function useSessionHistory() {
             const response = await api.request<ChatSessionListResponse>(
                 `/internal/v1/chat-sessions${suffix}`,
             );
-            sessions.value = response.sessions ?? [];
-            for (const meta of sessions.value) chat.syncBackendSessionMeta(meta);
+            backendSessions.value = response.sessions ?? [];
+            for (const meta of backendSessions.value) chat.syncBackendSessionMeta(meta);
             return sessions.value;
         } catch (err) {
             error.value =
@@ -83,13 +195,36 @@ export function useSessionHistory() {
     }
 
     async function archive(sessionKey: string, archived = true) {
-        const meta = await api.request<ChatSessionMeta>(
-            `/internal/v1/chat-sessions/${encodeURIComponent(sessionKey)}`,
-            { method: 'PATCH', body: { archived } satisfies ChatSessionUpdateRequest },
+        const local = chat.findSessionByKey(sessionKey);
+        if (local) {
+            chat.setSessionRunnerMetadata(local.id, { archived });
+        }
+        const backendKnown = backendSessions.value.some(
+            (session) => session.session_key === sessionKey,
         );
-        chat.applyBackendSessionMeta(meta);
-        await refresh({ includeArchived: true });
-        return meta;
+        if (local && !backendKnown) {
+            error.value = null;
+            return localSessionToMeta(
+                { ...local, archived },
+                local.id === chat.activeSession.value?.id ? chat.messages.value : [],
+            );
+        }
+        try {
+            const meta = await api.request<ChatSessionMeta>(
+                `/internal/v1/chat-sessions/${encodeURIComponent(sessionKey)}`,
+                { method: 'PATCH', body: { archived } satisfies ChatSessionUpdateRequest },
+            );
+            chat.applyBackendSessionMeta(meta);
+            await refresh({ includeArchived: true });
+            return meta;
+        } catch (err) {
+            if (!local || !isChatSessionNotFound(err)) throw err;
+            error.value = null;
+            return localSessionToMeta(
+                { ...local, archived },
+                local.id === chat.activeSession.value?.id ? chat.messages.value : [],
+            );
+        }
     }
 
     async function forkSession(options: {

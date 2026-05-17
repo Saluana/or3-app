@@ -77,7 +77,7 @@
                 <template v-else>
                     <p
                         v-if="message.content"
-                        class="whitespace-pre-wrap text-[0.9375rem] leading-6 text-(--or3-text)"
+                        class="or3-msg__user-text text-[0.9375rem] text-(--or3-text)"
                     >
                         {{ message.content }}
                     </p>
@@ -850,6 +850,12 @@ function attachmentTooltip(attachment: ChatAttachment): string {
 
 .or3-msg--user {
     justify-content: flex-end;
+}
+
+.or3-msg__user-text {
+    margin: 0;
+    white-space: pre-line;
+    line-height: 1.42;
 }
 
 .or3-msg__body {

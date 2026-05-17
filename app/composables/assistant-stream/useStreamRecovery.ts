@@ -29,6 +29,12 @@ function sessionsForHost(state: Or3AppState, hostId: string) {
     );
 }
 
+function activeSessionIdForHost(state: Or3AppState, hostId: string) {
+    return (
+        state.sessions.find((session) => session.hostId === hostId)?.id ?? ''
+    );
+}
+
 function pendingStreamingMessages(
     messages: ChatMessage[],
     sessionIds: Set<string>,
@@ -46,8 +52,9 @@ function oldestPendingStreamingMessage(
     state: Or3AppState,
     hostId: string,
 ): ChatMessage | undefined {
-    const sessionIds = sessionsForHost(state, hostId);
-    if (!sessionIds.size) return undefined;
+    const activeSessionId = activeSessionIdForHost(state, hostId);
+    if (!activeSessionId) return undefined;
+    const sessionIds = new Set([activeSessionId]);
 
     return pendingStreamingMessages(state.messages, sessionIds).sort(
         (left, right) =>
@@ -57,7 +64,10 @@ function oldestPendingStreamingMessage(
 }
 
 function recoveryWatchSignature(state: Or3AppState, hostId: string) {
-    const sessionIds = sessionsForHost(state, hostId);
+    const activeSessionId = activeSessionIdForHost(state, hostId);
+    const sessionIds = activeSessionId
+        ? new Set([activeSessionId])
+        : sessionsForHost(state, hostId);
     const pending = pendingStreamingMessages(state.messages, sessionIds)
         .map(
             (message) =>

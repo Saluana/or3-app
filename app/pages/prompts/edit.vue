@@ -59,12 +59,24 @@
       </MarkdownEditor>
     </div>
   </AppShell>
+
+  <EditNameModal
+    v-model:open="renameOpen"
+    title="Rename prompt"
+    eyebrow="Prompt"
+    label="Name"
+    placeholder="Untitled prompt"
+    submit-label="Save name"
+    :initial-value="promptState?.title || ''"
+    @submit="commitRenamePrompt"
+  />
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { navigateTo, useRoute } from '#app'
 import { useToast } from '@nuxt/ui/composables'
+import EditNameModal from '~/components/app/EditNameModal.vue'
 import type { Or3AppError } from '~/types/app-state'
 import { usePromptFiles } from '~/composables/usePromptFiles'
 
@@ -79,6 +91,7 @@ const promptState = ref<Awaited<ReturnType<typeof readPrompt>> | null>(null)
 const loadError = ref<Or3AppError | null>(null)
 const saveError = ref<Or3AppError | null>(null)
 const statusLabel = ref('')
+const renameOpen = ref(false)
 
 const promptPath = computed(() => typeof route.query.path === 'string' ? route.query.path : '')
 const unsupportedMessage = computed(() => {
@@ -171,9 +184,13 @@ async function savePromptDocument(reason: 'manual' | 'autosave' | 'rename') {
   }
 }
 
-async function renamePrompt() {
+function renamePrompt() {
   if (!promptState.value || saving.value || unsupportedMessage.value) return
-  const nextTitle = window.prompt('Rename prompt', promptState.value.title)?.trim()
+  renameOpen.value = true
+}
+
+async function commitRenamePrompt(nextTitle: string) {
+  if (!promptState.value || saving.value || unsupportedMessage.value) return
   if (!nextTitle || nextTitle === promptState.value.title) return
   draftContent.value = applyMarkdownTitle(draftContent.value, nextTitle)
   const saved = await savePromptDocument('rename')

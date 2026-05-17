@@ -112,6 +112,7 @@ describe('ChatMessageList', () => {
                         template:
                             '<article class="chat-message-stub">{{ message.id }}</article>',
                     },
+                    Icon: { template: '<span />' },
                 },
             },
         });
@@ -125,5 +126,54 @@ describe('ChatMessageList', () => {
         expect(wrapper.findAll('.chat-message-stub').length).toBe(
             renderedItems.length,
         );
+    });
+
+    it('emits scroll state for the composer scroll-to-bottom button', async () => {
+        const messages = Array.from({ length: 20 }, (_, index) =>
+            buildMessage(index),
+        );
+
+        const wrapper = mount(ChatMessageList, {
+            props: { messages },
+            attachTo: document.body,
+            global: {
+                stubs: {
+                    ChatMessage: {
+                        props: ['message'],
+                        template:
+                            '<article class="chat-message-stub">{{ message.id }}</article>',
+                    },
+                    Icon: { template: '<span />' },
+                },
+            },
+        });
+
+        await nextTick();
+        await nextTick();
+
+        const scroller = wrapper.findComponent({ name: 'Or3Scroll' });
+        scroller.vm.$emit('scroll', {
+            scrollTop: 500,
+            scrollHeight: 1800,
+            clientHeight: 800,
+            isAtBottom: false,
+        });
+        await nextTick();
+
+        expect(wrapper.emitted('scroll-state')?.at(-1)).toEqual([
+            { distanceFromBottom: 500, isScrollable: true },
+        ]);
+
+        scroller.vm.$emit('scroll', {
+            scrollTop: 1000,
+            scrollHeight: 1800,
+            clientHeight: 800,
+            isAtBottom: true,
+        });
+        await nextTick();
+
+        expect(wrapper.emitted('scroll-state')?.at(-1)).toEqual([
+            { distanceFromBottom: 0, isScrollable: true },
+        ]);
     });
 });

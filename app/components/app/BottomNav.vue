@@ -35,7 +35,7 @@
                         aria-hidden="true"
                     />
                     <NuxtLink
-                        :to="item.to"
+                        :to="navTarget(item)"
                         :aria-label="item.label"
                         :aria-current="isActive(item.to) ? 'page' : undefined"
                         class="or3-nav-link or3-focus-ring"
@@ -83,11 +83,14 @@
 </template>
 
 <script setup lang="ts">
+import { onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { useKeyboardOpen } from '../../composables/useKeyboardOpen';
 
 const route = useRoute();
 const { isKeyboardOpen } = useKeyboardOpen();
+const rememberedRoutes = ref<Record<string, string>>({});
+const rememberedRoutesStorageKey = 'or3:bottom-nav-routes';
 
 const items = [
     { label: 'Chat', to: '/', icon: 'i-pixelarticons-message' },
@@ -101,10 +104,74 @@ const items = [
     },
 ];
 
+type NavItem = (typeof items)[number];
+
+function storageAvailable() {
+    return (
+        process.client && typeof window !== 'undefined' && !!window.localStorage
+    );
+}
+
+function readRememberedRoutes() {
+    if (!storageAvailable()) return;
+    try {
+        const parsed = JSON.parse(
+            window.localStorage.getItem(rememberedRoutesStorageKey) || '{}',
+        );
+        if (parsed && typeof parsed === 'object') {
+            rememberedRoutes.value = parsed as Record<string, string>;
+        }
+    } catch {
+        rememberedRoutes.value = {};
+    }
+}
+
+function writeRememberedRoutes() {
+    if (!storageAvailable()) return;
+    window.localStorage.setItem(
+        rememberedRoutesStorageKey,
+        JSON.stringify(rememberedRoutes.value),
+    );
+}
+
+function tabForPath(path: string) {
+    const match = items
+        .filter((item) => !item.center)
+        .find((item) =>
+            item.to === '/' ? path === '/' : path.startsWith(item.to),
+        );
+    return match?.to;
+}
+
+function rememberCurrentRoute() {
+    const tab = tabForPath(route.path);
+    if (!tab) return;
+    rememberedRoutes.value = {
+        ...rememberedRoutes.value,
+        [tab]: route.fullPath || tab,
+    };
+    writeRememberedRoutes();
+}
+
+function navTarget(item: NavItem) {
+    if (item.center) return item.to;
+    return rememberedRoutes.value[item.to] || item.to;
+}
+
 function isActive(to: string) {
     if (to === '/') return route.path === '/';
     return route.path.startsWith(to);
 }
+
+onMounted(() => {
+    readRememberedRoutes();
+    rememberCurrentRoute();
+});
+
+watch(
+    () => route.fullPath,
+    () => rememberCurrentRoute(),
+);
 </script>
 
 <style scoped>

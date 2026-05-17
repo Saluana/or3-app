@@ -49,6 +49,9 @@ function patchFromBackendSessionMeta(
         runnerCwd: meta.runner_cwd || session.runnerCwd,
         backendMessageCount: meta.message_count,
         lastMessagePreview: meta.last_message_preview,
+        lastMessageAt: meta.last_message_at
+            ? msToIso(meta.last_message_at)
+            : session.lastMessageAt,
         parentSessionKey: meta.parent_session_key || undefined,
         forkAnchorMessageId: meta.fork_anchor_message_id || undefined,
         forkedFromRunnerId: meta.forked_from_runner_id || undefined,
@@ -72,6 +75,10 @@ function backendRole(backend: ChatHistoryMessage): ChatMessage["role"] {
 
 function normalizeContent(value?: string) {
     return (value ?? "").trim();
+}
+
+function messagePreview(value?: string) {
+    return normalizeContent(value).replace(/\s+/g, " ").slice(0, 160);
 }
 
 function approvalResolutionKeys(
@@ -211,6 +218,27 @@ export function useChatSessions() {
         }
     }
 
+    function syncSessionMessageSummary(sessionId: string) {
+        const session = cache.state.value.sessions.find(
+            (item) => item.id === sessionId,
+        );
+        if (!session) return;
+        const sessionMessages = cache.state.value.messages.filter(
+            (message) => message.sessionId === sessionId,
+        );
+        session.backendMessageCount = sessionMessages.length;
+        const latestVisible = [...sessionMessages]
+            .reverse()
+            .find((message) => messagePreview(message.content));
+        if (latestVisible) {
+            session.lastMessagePreview = messagePreview(latestVisible.content);
+            session.lastMessageAt = latestVisible.createdAt;
+        } else {
+            session.lastMessagePreview = undefined;
+            session.lastMessageAt = undefined;
+        }
+    }
+
     function addMessage(
         message: Omit<ChatMessage, "id" | "createdAt"> &
             Partial<Pick<ChatMessage, "id" | "createdAt">>,
@@ -225,6 +253,7 @@ export function useChatSessions() {
             complete.sessionId,
             complete.role === "user" ? complete.content : undefined,
         );
+        syncSessionMessageSummary(complete.sessionId);
         cache.persist();
         return complete;
     }
@@ -236,6 +265,7 @@ export function useChatSessions() {
         if (!message) return;
         Object.assign(message, patch);
         touchSession(message.sessionId);
+        syncSessionMessageSummary(message.sessionId);
         cache.persist();
     }
 
@@ -467,6 +497,9 @@ export function useChatSessions() {
         if (session) {
             session.updatedAt = now();
             session.title = "New conversation";
+            session.backendMessageCount = 0;
+            session.lastMessagePreview = undefined;
+            session.lastMessageAt = undefined;
         }
         cache.persist();
         return removed;

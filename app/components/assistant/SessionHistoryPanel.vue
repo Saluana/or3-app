@@ -67,12 +67,24 @@
             </UCard>
         </template>
     </USlideover>
+
+    <EditNameModal
+        v-model:open="renameOpen"
+        title="Rename chat"
+        eyebrow="Conversation"
+        label="Name"
+        placeholder="Untitled conversation"
+        submit-label="Save name"
+        :initial-value="renameTitle"
+        @submit="submitRename"
+    />
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import type { ChatSessionMeta } from '../../types/or3-api';
 import type { TabsItem } from '@nuxt/ui';
+import EditNameModal from '~/components/app/EditNameModal.vue';
 
 function formatDate(date: number) {
     const d = new Date(date);
@@ -106,6 +118,9 @@ const emit = defineEmits<{
 }>();
 
 const query = ref('');
+const renameOpen = ref(false);
+const renameTarget = ref<ChatSessionMeta | null>(null);
+const renameTitle = computed(() => renameTarget.value?.title || 'Untitled conversation');
 
 const historyView = ref<'all' | 'archived'>('all');
 
@@ -156,9 +171,13 @@ watch(
 );
 
 function renameSession(session: ChatSessionMeta) {
-    const next = window.prompt('Rename conversation', session.title || 'Untitled conversation');
-    if (!next?.trim()) return;
-    emit('rename-session', session, next.trim());
+    renameTarget.value = session;
+    renameOpen.value = true;
+}
+
+function submitRename(title: string) {
+    if (!renameTarget.value) return;
+    emit('rename-session', renameTarget.value, title);
 }
 </script>
 

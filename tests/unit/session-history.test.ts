@@ -12,6 +12,10 @@ async function loadComposable(options?: {
             id: 'local-session',
             sessionKey: 'svc:active',
         }),
+        sessions: ref([]),
+        messages: ref([]),
+        findSessionByKey: vi.fn().mockReturnValue(null),
+        setSessionRunnerMetadata: vi.fn(),
         syncBackendSessionMeta: vi.fn(),
         applyBackendSessionMeta: vi.fn((meta) => ({
             id: `local:${meta.session_key}`,
@@ -83,6 +87,88 @@ describe('useSessionHistory', () => {
         expect(sessionHistory.sessions.value).toEqual([meta]);
         expect(chat.syncBackendSessionMeta).toHaveBeenCalledWith(meta);
         expect(sessionHistory.activeBackendSession.value).toEqual(meta);
+    });
+
+    it('includes local active sessions before backend history refresh catches up', async () => {
+        const localSession = {
+            id: 'local-session',
+            hostId: 'test-host',
+            sessionKey: 'svc:active',
+            title: 'New conversation',
+            createdAt: '2026-05-13T00:00:00.000Z',
+            updatedAt: '2026-05-13T00:01:00.000Z',
+            runnerId: 'or3-intern',
+            runnerLabel: 'OR3 Intern',
+            runnerContinuationMode: 'replay',
+        };
+        const { sessionHistory } = await loadComposable({
+            chatOverrides: {
+                sessions: ref([localSession]),
+                messages: ref([
+                    {
+                        id: 'msg-user',
+                        sessionId: 'local-session',
+                        role: 'user',
+                        content: 'I need a friend right now',
+                        status: 'complete',
+                        createdAt: '2026-05-13T00:01:00.000Z',
+                    },
+                ]),
+            },
+        });
+
+        expect(sessionHistory.sessions.value).toEqual([
+            expect.objectContaining({
+                session_key: 'svc:active',
+                title: 'New conversation',
+                message_count: 1,
+                last_message_preview: 'I need a friend right now',
+            }),
+        ]);
+    });
+
+    it('archives local-only sessions without requiring backend metadata', async () => {
+        const localSession = {
+            id: 'local-session',
+            hostId: 'test-host',
+            sessionKey: 'svc:local-only',
+            title: 'Local only',
+            createdAt: '2026-05-13T00:00:00.000Z',
+            updatedAt: '2026-05-13T00:01:00.000Z',
+            runnerId: 'or3-intern',
+            runnerLabel: 'OR3 Intern',
+            runnerContinuationMode: 'replay',
+        };
+        const { sessionHistory, chat, request } = await loadComposable({
+            chatOverrides: {
+                activeSession: ref({
+                    id: 'local-session',
+                    sessionKey: 'svc:local-only',
+                }),
+                sessions: ref([localSession]),
+                messages: ref([]),
+                findSessionByKey: vi.fn().mockReturnValue(localSession),
+            },
+            requestImpl: async () => {
+                throw {
+                    code: 'chat_session_not_found',
+                    status: 404,
+                    message: 'chat session not found',
+                };
+            },
+        });
+
+        await expect(
+            sessionHistory.archive('svc:local-only', true),
+        ).resolves.toMatchObject({
+            session_key: 'svc:local-only',
+            archived: true,
+        });
+        expect(request).not.toHaveBeenCalled();
+        expect(chat.setSessionRunnerMetadata).toHaveBeenCalledWith(
+            'local-session',
+            { archived: true },
+        );
     });
 
     it('forks through replay, hydrates the new session, and closes the panel', async () => {

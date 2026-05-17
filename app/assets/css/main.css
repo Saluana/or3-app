@@ -438,13 +438,38 @@ html.or3-keyboard-open .or3-mobile-screen {
   padding: 0.5rem 0 calc(var(--or3-bottom-nav-height) + var(--or3-bottom-nav-offset) + 9.5rem);
 }
 
+.or3-chat-shell__body:has(.or3-chat-shell__content--virtualized) {
+  overflow: hidden;
+}
+
+.or3-chat-shell__content--virtualized {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  padding-bottom: 0;
+}
+
+.or3-chat-shell__message-list {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 html.or3-keyboard-open .or3-chat-shell__content {
   padding-bottom: calc(var(--or3-safe-bottom) + 7rem);
+}
+
+html.or3-keyboard-open .or3-chat-shell__content--virtualized {
+  padding-bottom: 0;
 }
 
 @media (max-width: 767px) {
   body:has(input:focus, textarea:focus, select:focus, [contenteditable="true"]:focus, .ProseMirror:focus) .or3-chat-shell__content {
     padding-bottom: calc(var(--or3-safe-bottom) + 7rem);
+  }
+
+  body:has(input:focus, textarea:focus, select:focus, [contenteditable="true"]:focus, .ProseMirror:focus) .or3-chat-shell__content--virtualized {
+    padding-bottom: 0;
   }
 }
 
@@ -1029,6 +1054,7 @@ html.or3-keyboard-open .or3-chat-shell__composer {
 
 /* Generic list item used in secondary sidebar */
 .or3-desktop-list-item {
+  position: relative;
   display: block;
   width: 100%;
   text-align: left;
@@ -1038,7 +1064,7 @@ html.or3-keyboard-open .or3-chat-shell__composer {
   background: transparent;
   color: var(--or3-text);
   text-decoration: none;
-  cursor: pointer;
+  cursor: default;
   transition: background 0.15s ease, border-color 0.15s ease;
   margin-bottom: 0.2rem;
 }
@@ -1050,6 +1076,55 @@ html.or3-keyboard-open .or3-chat-shell__composer {
 .or3-desktop-list-item.is-active {
   background: var(--or3-green-soft);
   border-color: color-mix(in srgb, var(--or3-green) 28%, white 72%);
+}
+
+.or3-desktop-list-item__main {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.or3-desktop-list-item__actions {
+  position: absolute;
+  top: 0.48rem;
+  right: 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.05rem;
+  padding-left: 1.5rem;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--or3-background) 86%, white 14%) 32%
+  );
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.or3-desktop-list-item:hover .or3-desktop-list-item__actions {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--or3-green-soft) 70%, var(--or3-background) 30%) 32%
+  );
+}
+
+.or3-desktop-list-item.is-active .or3-desktop-list-item__actions {
+  background: linear-gradient(90deg, transparent, var(--or3-green-soft) 32%);
+}
+
+.or3-desktop-list-item:hover .or3-desktop-list-item__actions,
+.or3-desktop-list-item:focus-within .or3-desktop-list-item__actions,
+.or3-desktop-list-item.is-active .or3-desktop-list-item__actions {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .or3-desktop-list-item__title-row {
@@ -1374,7 +1449,7 @@ html.or3-keyboard-open .or3-chat-shell__composer {
  * ============================================================ */
 .or3-chat-desktop {
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: auto 1fr min-content;
   height: 100%;
   min-height: 0;
   min-width: 0;
@@ -1382,13 +1457,17 @@ html.or3-keyboard-open .or3-chat-shell__composer {
 }
 
 .or3-chat-desktop__header {
+  position:absolute;
+  top: 0;
+  left: 0;
+  z-index: 100;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 1.5rem;
   padding: 1.5rem 2rem 1.25rem;
-  border-bottom: 1px solid var(--or3-border);
   min-width: 0;
+  width: 100%;
 }
 
 .or3-chat-desktop__header-main {
@@ -1448,15 +1527,29 @@ html.or3-keyboard-open .or3-chat-shell__composer {
   overflow: hidden;
   display: flex;
   justify-content: center;
-  padding: 0 1rem;
 }
 
 .or3-chat-desktop__message-list {
   flex: 1 1 auto;
   width: 100%;
-  max-width: var(--or3-desktop-chat-max);
+  justify-content: center;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  /*max-width: var(--or3-desktop-chat-max);*/
   min-width: 0;
   min-height: 0;
+}
+
+.or3-scroll-track {
+  flex: 1 1 auto;
+  align-self: center;
+  max-width: 720px; 
+}
+
+.or3-scroll-item {
+  margin-left: 12px !important; 
+  margin-right: 12px !important;
 }
 
 .or3-chat-desktop__empty {
@@ -1464,7 +1557,9 @@ html.or3-keyboard-open .or3-chat-shell__composer {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
   padding: 3rem 2rem;
   text-align: center;
   gap: 0.85rem;
@@ -1477,6 +1572,18 @@ html.or3-keyboard-open .or3-chat-shell__composer {
   padding: 1rem 2rem 1.25rem;
   background: color-mix(in srgb, var(--or3-surface) 92%, var(--or3-background) 8%);
   min-width: 0;
+  align-self: end;
+  transition: padding 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+              border-color 0.2s ease,
+              box-shadow 0.25s ease,
+              background-color 0.2s ease;
+}
+
+.or3-chat-desktop__composer:focus-within {
+  padding: 1.15rem 2rem 1.4rem;
+  border-top-color: color-mix(in srgb, var(--or3-green) 30%, var(--or3-border));
+  box-shadow: 0 -6px 24px rgba(42, 35, 25, 0.05);
+  background: color-mix(in srgb, var(--or3-surface) 96%, var(--or3-background) 4%);
 }
 
 .or3-chat-desktop__composer-inner {
@@ -1486,6 +1593,11 @@ html.or3-keyboard-open .or3-chat-shell__composer {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+  transition: gap 0.2s ease;
+}
+
+.or3-chat-desktop__composer:focus-within .or3-chat-desktop__composer-inner {
+  gap: 0.75rem;
 }
 
 .or3-chat-desktop__status {

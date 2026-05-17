@@ -32,6 +32,7 @@ export interface ChatSession {
     runnerCwd?: string;
     backendMessageCount?: number;
     lastMessagePreview?: string;
+    lastMessageAt?: string;
     parentSessionKey?: string;
     forkAnchorMessageId?: number;
     forkedFromRunnerId?: string;

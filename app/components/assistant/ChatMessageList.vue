@@ -1,5 +1,6 @@
 <template>
     <Or3Scroll
+        ref="scroller"
         :items="messages"
         item-key="id"
         :estimate-height="112"
@@ -8,8 +9,9 @@
         :bottom-threshold="24"
         :autoscroll-threshold="2"
         :tail-count="4"
-        :padding-top="24"
+        :padding-top="72"
         class="or3-chat-message-list"
+        @scroll="onScroll"
     >
         <template #default="{ item }">
             <div
@@ -27,16 +29,92 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { Or3Scroll } from 'or3-scroll';
 import type { ChatMessage } from '../../types/app-state';
 
 const props = defineProps<{ messages: ChatMessage[] }>();
+const emit = defineEmits<{
+    (
+        e: 'scroll-state',
+        state: { distanceFromBottom: number; isScrollable: boolean },
+    ): void;
+}>();
+
+type ScrollApi = {
+    scrollToBottom?: (opts?: { smooth?: boolean }) => void;
+    reset?: () => void;
+    refreshMeasurements?: () => void;
+};
+
+const scroller = ref<ScrollApi | null>(null);
+const distanceFromBottom = ref(0);
+const isScrollable = ref(false);
 
 const lastMessageId = computed(() => {
     const lastMessage = props.messages[props.messages.length - 1];
     return lastMessage?.id ?? null;
 });
+
+function scrollToBottom() {
+    scroller.value?.scrollToBottom?.({ smooth: true });
+}
+
+function jumpToBottom() {
+    scroller.value?.scrollToBottom?.();
+}
+
+function onScroll(payload: {
+    scrollTop: number;
+    scrollHeight: number;
+    clientHeight: number;
+    isAtBottom: boolean;
+}) {
+    distanceFromBottom.value =
+        payload.scrollHeight - payload.scrollTop - payload.clientHeight;
+    isScrollable.value = payload.scrollHeight > payload.clientHeight;
+    emit('scroll-state', {
+        distanceFromBottom: distanceFromBottom.value,
+        isScrollable: isScrollable.value,
+    });
+}
+
+function scheduleJumpToBottom() {
+    void nextTick(() => {
+        scroller.value?.reset?.();
+        scroller.value?.refreshMeasurements?.();
+        jumpToBottom();
+        if (typeof requestAnimationFrame !== 'function') return;
+        requestAnimationFrame(() => {
+            scroller.value?.refreshMeasurements?.();
+            jumpToBottom();
+            requestAnimationFrame(() => {
+                scroller.value?.refreshMeasurements?.();
+                jumpToBottom();
+            });
+        });
+    });
+}
+
+onMounted(() => {
+    scheduleJumpToBottom();
+});
+
+watch(
+    () => props.messages[props.messages.length - 1]?.id,
+    (nextId, previousId) => {
+        if (
+            previousId &&
+            nextId !== previousId &&
+            distanceFromBottom.value > 24
+        ) {
+            return;
+        }
+        scheduleJumpToBottom();
+    },
+);
+
+defineExpose({ scrollToBottom, jumpToBottom });
 </script>
 
 <style scoped>

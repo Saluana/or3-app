@@ -8,7 +8,9 @@
                 :active-session-key="activeSession?.sessionKey ?? null"
                 @open="openHistorySession"
                 @new="onNewSession"
-                @refresh="() => refreshHistory({})"
+                @refresh="refreshHistory"
+                @rename="renameHistorySession"
+                @archive="archiveHistorySession"
             />
         </template>
 
@@ -120,8 +122,10 @@
                 >
                     <ChatMessageList
                         :key="activeSession?.id ?? 'active-thread'"
+                        ref="mobileMessageList"
                         :messages="messages"
                         class="or3-chat-shell__message-list"
+                        @scroll-state="updateScrollState"
                     />
                 </div>
             </div>
@@ -130,6 +134,22 @@
 
             <div class="or3-chat-shell__composer">
                 <div class="or3-chat-shell__composer-inner">
+                    <div
+                        v-show="showScrollToBottom"
+                        class="or3-chat-scroll-jump"
+                        :style="{ opacity: scrollToBottomOpacity }"
+                    >
+                        <UButton
+                            icon="i-pixelarticons-arrow-down"
+                            size="sm"
+                            color="primary"
+                            variant="solid"
+                            class="or3-chat-scroll-jump__button"
+                            @click="scrollMessagesToBottom"
+                        >
+                            Scroll to bottom
+                        </UButton>
+                    </div>
                     <div class="or3-chat-shell__status">
                         <AssistantStatusIndicator :active="isStreaming" />
                     </div>
@@ -151,30 +171,17 @@
             <div class="or3-chat-desktop">
                 <div class="or3-chat-desktop__header">
                     <div class="or3-chat-desktop__header-main">
-                        <h1 class="or3-chat-desktop__title">
-                            {{ activeSession?.title || 'New conversation' }}
-                        </h1>
-                        <p class="or3-chat-desktop__subtitle">
-                            <span
-                                v-if="activeSession?.runnerLabel"
-                                class="or3-chat-desktop__runner-label"
-                            >
-                                <span class="or3-live-dot" aria-hidden="true" />
-                                {{ activeSession.runnerLabel }}
-                            </span>
-                            <span v-else
-                                >Pick a runner and start chatting.</span
-                            >
-                        </p>
+     
                     </div>
                     <div class="or3-chat-desktop__header-actions">
+                        <UTooltip text="Approvals">
                         <UButton
                             icon="i-pixelarticons-shield"
-                            color="neutral"
-                            variant="ghost"
+                            color="primary"
+                            variant="subtle"
+                            class="backdrop-blur flex items-center justify-center w-12 h-12 rounded-full relative"
                             @click="approvalsOpen = true"
                         >
-                            Approvals
                             <span
                                 v-if="pendingCount"
                                 class="or3-desktop-badge or3-desktop-badge--amber ml-2"
@@ -182,6 +189,7 @@
                                 {{ pendingCount > 99 ? '99+' : pendingCount }}
                             </span>
                         </UButton>
+                        </UTooltip>
                     </div>
                 </div>
 
@@ -230,14 +238,32 @@
                     <div v-else class="or3-chat-desktop__messages">
                         <ChatMessageList
                             :key="activeSession?.id ?? 'active-thread'"
+                            ref="desktopMessageList"
                             :messages="messages"
                             class="or3-chat-desktop__message-list"
+                            @scroll-state="updateScrollState"
                         />
                     </div>
                 </div>
 
                 <div class="or3-chat-desktop__composer">
                     <div class="or3-chat-desktop__composer-inner">
+                        <div
+                            v-show="showScrollToBottom"
+                            class="or3-chat-scroll-jump"
+                            :style="{ opacity: scrollToBottomOpacity }"
+                        >
+                            <UButton
+                                icon="i-pixelarticons-arrow-down"
+                                size="sm"
+                                color="primary"
+                                variant="solid"
+                                class="or3-chat-scroll-jump__button"
+                                @click="scrollMessagesToBottom"
+                            >
+                                Scroll to bottom
+                            </UButton>
+                        </div>
                         <div class="or3-chat-desktop__status">
                             <AssistantStatusIndicator :active="isStreaming" />
                         </div>
@@ -298,6 +324,21 @@ const { pendingCount } = useApprovals();
 
 const selectedRunnerId = ref('or3-intern');
 const approvalsOpen = ref(false);
+const mobileMessageList = ref<{
+    scrollToBottom?: () => void;
+} | null>(null);
+const desktopMessageList = ref<{
+    scrollToBottom?: () => void;
+} | null>(null);
+const distanceFromBottom = ref(0);
+const isMessageListScrollable = ref(false);
+
+const showScrollToBottom = computed(
+    () => isMessageListScrollable.value && distanceFromBottom.value > 1,
+);
+const scrollToBottomOpacity = computed(() =>
+    Math.min(1, distanceFromBottom.value / 150),
+);
 
 function onPromptSelect(value: string) {
     draft.value = value;
@@ -309,6 +350,19 @@ function openPromptGallery() {
 
 function openFileEditor() {
     void router.push('/computer');
+}
+
+function updateScrollState(state: {
+    distanceFromBottom: number;
+    isScrollable: boolean;
+}) {
+    distanceFromBottom.value = state.distanceFromBottom;
+    isMessageListScrollable.value = state.isScrollable;
+}
+
+function scrollMessagesToBottom() {
+    mobileMessageList.value?.scrollToBottom?.();
+    desktopMessageList.value?.scrollToBottom?.();
 }
 
 const runners = computed(() => selectableRunners.value);
@@ -365,6 +419,14 @@ watch(
             runnerId || defaultRunner.value?.id || 'or3-intern';
     },
     { immediate: true },
+);
+
+watch(
+    () => activeSession.value?.id,
+    () => {
+        distanceFromBottom.value = 0;
+        isMessageListScrollable.value = false;
+    },
 );
 
 watch(selectedRunnerId, (runnerId, previous) => {
@@ -436,6 +498,34 @@ onMounted(() => {
     display: flex;
     justify-content: center;
     pointer-events: none;
+}
+
+.or3-chat-shell__composer-inner,
+.or3-chat-desktop__composer-inner {
+    position: relative;
+}
+
+.or3-chat-scroll-jump {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 100%;
+    margin-bottom: 0.65rem;
+    display: flex;
+    justify-content: center;
+    pointer-events: none;
+    transition: opacity 160ms ease;
+}
+
+.or3-chat-scroll-jump__button {
+    pointer-events: auto;
+    border-radius: 9999px !important;
+    border: 1px solid var(--or3-border) !important;
+    background: color-mix(in srgb, var(--or3-surface) 92%, white 8%) !important;
+    color: var(--or3-text) !important;
+    box-shadow:
+        0 0.65rem 1.5rem rgba(48, 40, 29, 0.12),
+        inset 0 1px 0 rgba(255, 255, 255, 0.75) !important;
 }
 
 .or3-chat-empty__actions {
