@@ -7,6 +7,7 @@ const NATIVE_TOKEN_SERVER = "or3.app.host-tokens";
 const NATIVE_TOKEN_USERNAME = "host-token-map";
 const NATIVE_SECURE_CONNECTION_SERVER = "or3.app.secure-connections";
 const NATIVE_SECURE_CONNECTION_USERNAME = "secure-connections-v1";
+const NATIVE_SECURE_CONNECTION_MARKER = "or3-app:v1:secure-connections-marker";
 
 type NativeBiometricPlugin = {
   setCredentials?: (options: {
@@ -32,6 +33,19 @@ export function getNativeSecureStorageMode() {
   return getNativeBiometricPlugin()
     ? ("native-secure" as const)
     : ("native-plugin-missing" as const);
+}
+
+export function getNativeSecureStorageSignals() {
+  const mode = getNativeSecureStorageMode();
+  return {
+    mode,
+    nativePlatform:
+      typeof window !== "undefined" && Capacitor.isNativePlatform(),
+    pluginAvailable: Boolean(getNativeBiometricPlugin()),
+    debugBuild:
+      typeof import.meta !== "undefined" &&
+      Boolean((import.meta as ImportMeta & { dev?: boolean }).dev),
+  };
 }
 
 export async function readHostTokensFromNativeStorage() {
@@ -86,7 +100,16 @@ export async function readSecureConnectionStateFromNativeStorage() {
       server: NATIVE_SECURE_CONNECTION_SERVER,
     });
     if (!credentials?.password) return null;
-    return JSON.parse(credentials.password) as SecureConnectionStateRecord;
+    const parsed = JSON.parse(
+      credentials.password,
+    ) as SecureConnectionStateRecord;
+    if (
+      typeof localStorage !== "undefined" &&
+      !localStorage.getItem(NATIVE_SECURE_CONNECTION_MARKER)
+    ) {
+      localStorage.setItem(NATIVE_SECURE_CONNECTION_MARKER, String(Date.now()));
+    }
+    return parsed;
   } catch {
     return null;
   }
@@ -104,4 +127,16 @@ export async function writeSecureConnectionStateToNativeStorage(
       password: JSON.stringify(state),
     })
     .catch(() => undefined);
+  if (typeof localStorage !== "undefined")
+    localStorage.setItem(NATIVE_SECURE_CONNECTION_MARKER, String(Date.now()));
+}
+
+export async function deleteSecureConnectionStateFromNativeStorage() {
+  const plugin = getNativeBiometricPlugin();
+  if (!plugin?.deleteCredentials) return;
+  await plugin
+    .deleteCredentials({ server: NATIVE_SECURE_CONNECTION_SERVER })
+    .catch(() => undefined);
+  if (typeof localStorage !== "undefined")
+    localStorage.removeItem(NATIVE_SECURE_CONNECTION_MARKER);
 }

@@ -13,6 +13,12 @@ export type SecureConnectionTrustLevel =
   | "native-software"
   | "web-limited"
   | "legacy";
+export type SecureConnectionStorageState =
+  | "hardware-backed"
+  | "software-backed"
+  | "browser-fallback"
+  | "native-plugin-missing"
+  | "restored-or-wiped";
 export type SecureConnectionPairingState =
   | "idle"
   | "waiting"
@@ -77,11 +83,48 @@ export interface EnrollmentProposalV1 {
   deviceNoisePublicKey: string;
   requestedRole: "viewer" | "operator" | "admin";
   requestedCapabilities: string[];
+  accountBinding?: {
+    accountId: string;
+    verifiedAtUnixMs: number;
+  };
   secureStorageEvidence: {
     mode: ReturnType<typeof getNativeSecureStorageMode>;
+    state: SecureConnectionStorageState;
     trustLevel: SecureConnectionTrustLevel;
   };
   createdAtUnixMs: number;
+}
+
+export interface SecureSessionClaims {
+  host_id: string;
+  device_id: string;
+  enrollment_epoch: number;
+  role: "viewer" | "operator" | "admin";
+  capabilities: string[];
+  trust_level: SecureConnectionTrustLevel;
+  session_id: string;
+  relay_route_id?: string;
+  account_id?: string;
+  step_up_at_unix_ms?: number;
+  issued_at_unix_ms: number;
+  expires_at_unix_ms: number;
+}
+
+export interface SecureFrameV1 {
+  version: 1;
+  kind: "noiseHandshake" | "noiseTransport" | "control";
+  sessionId: string;
+  sequence: number;
+  correlationId: string;
+  sentAtUnixMs: number;
+  body: Uint8Array;
+}
+
+export interface WebEnrollmentPolicy {
+  trustLevel: SecureConnectionTrustLevel;
+  maxCertificateTtlMs: number;
+  allowedCapabilities: string[];
+  requiresStepUp: boolean;
 }
 
 function randomBytes(length: number) {
@@ -126,11 +169,76 @@ export function hashBase64URL(...parts: Uint8Array[]) {
 
 export async function detectSecureConnectionStorage(): Promise<{
   mode: ReturnType<typeof getNativeSecureStorageMode>;
+  state: SecureConnectionStorageState;
   trustLevel: SecureConnectionTrustLevel;
 }> {
   const mode = getNativeSecureStorageMode();
-  if (mode === "native-secure") return { mode, trustLevel: "native-software" };
-  return { mode, trustLevel: "web-limited" };
+  if (mode === "native-secure")
+    return { mode, state: "software-backed", trustLevel: "native-software" };
+  if (mode === "native-plugin-missing")
+    return { mode, state: "native-plugin-missing", trustLevel: "web-limited" };
+  return { mode, state: "browser-fallback", trustLevel: "web-limited" };
+}
+
+export function secureConnectionCapabilityDiscovery() {
+  return {
+    version: 1,
+    supportedProtocolVersions: [1],
+    qrPairingV2: true,
+    relayRendezvous: true,
+    enrollmentCertificates: true,
+    secureFrames: true,
+    legacyPairingRemote: false,
+  };
+}
+
+export function defaultWebEnrollmentPolicy(): WebEnrollmentPolicy {
+  return {
+    trustLevel: "web-limited",
+    maxCertificateTtlMs: 24 * 60 * 60 * 1000,
+    allowedCapabilities: ["chat", "files"],
+    requiresStepUp: true,
+  };
+}
+
+export function applyWebEnrollmentRestrictions(
+  platform: DeviceIdentityRecord["platform"],
+  requestedCapabilities: string[],
+  requestedExpiresAtUnixMs = 0,
+  nowUnixMs = Date.now(),
+) {
+  const normalizedCapabilities = Array.from(
+    new Set(
+      requestedCapabilities
+        .map((item) => item.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  );
+  if (platform !== "web") {
+    return {
+      capabilities: normalizedCapabilities,
+      trustLevel:
+        platform === "ios" || platform === "android"
+          ? "native-software"
+          : "web-limited",
+      expiresAtUnixMs: requestedExpiresAtUnixMs,
+    } satisfies {
+      capabilities: string[];
+      trustLevel: SecureConnectionTrustLevel;
+      expiresAtUnixMs: number;
+    };
+  }
+  const policy = defaultWebEnrollmentPolicy();
+  const allowed = new Set(policy.allowedCapabilities);
+  const maxExpiry = nowUnixMs + policy.maxCertificateTtlMs;
+  return {
+    capabilities: normalizedCapabilities.filter((item) => allowed.has(item)),
+    trustLevel: policy.trustLevel,
+    expiresAtUnixMs:
+      requestedExpiresAtUnixMs > 0
+        ? Math.min(requestedExpiresAtUnixMs, maxExpiry)
+        : maxExpiry,
+  };
 }
 
 export async function loadSecureConnectionState(): Promise<SecureConnectionStateRecord> {
@@ -222,7 +330,15 @@ export function buildEnrollmentProposal(
   identity: DeviceIdentityRecord,
   requestedRole: "viewer" | "operator" | "admin" = "operator",
   requestedCapabilities: string[] = ["chat", "files", "terminal"],
+  accountId = "",
 ): EnrollmentProposalV1 {
+  const restricted = applyWebEnrollmentRestrictions(
+    identity.platform,
+    requestedCapabilities,
+  );
+  const accountBinding = accountId.trim()
+    ? { accountId: accountId.trim(), verifiedAtUnixMs: Date.now() }
+    : undefined;
   return {
     version: 1,
     deviceId: identity.deviceId,
@@ -231,18 +347,76 @@ export function buildEnrollmentProposal(
     deviceSigningPublicKey: identity.deviceSigningPublicKey,
     deviceNoisePublicKey: identity.deviceNoisePublicKey,
     requestedRole,
-    requestedCapabilities: Array.from(
-      new Set(
-        requestedCapabilities
-          .map((item) => item.trim().toLowerCase())
-          .filter(Boolean),
-      ),
-    ),
+    requestedCapabilities: restricted.capabilities,
+    accountBinding,
     secureStorageEvidence: {
       mode: identity.secureStorageMode,
-      trustLevel: identity.trustLevel,
+      state:
+        identity.secureStorageMode === "native-secure"
+          ? "software-backed"
+          : identity.secureStorageMode === "native-plugin-missing"
+            ? "native-plugin-missing"
+            : "browser-fallback",
+      trustLevel: restricted.trustLevel,
     },
     createdAtUnixMs: Date.now(),
+  };
+}
+
+export function shouldRekeySecureSession(
+  claims: Pick<SecureSessionClaims, "issued_at_unix_ms" | "expires_at_unix_ms">,
+  opts: {
+    nowUnixMs?: number;
+    appResumed?: boolean;
+    messageCount?: number;
+    byteCount?: number;
+  } = {},
+) {
+  const now = opts.nowUnixMs ?? Date.now();
+  if (opts.appResumed) return true;
+  if (claims.expires_at_unix_ms <= now + 30_000) return true;
+  if (now - claims.issued_at_unix_ms >= 10 * 60_000) return true;
+  if ((opts.messageCount ?? 0) >= 8192) return true;
+  if ((opts.byteCount ?? 0) >= 32 * 1024 * 1024) return true;
+  return false;
+}
+
+export function rejectSensitiveDeepLink(rawUrl: string) {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return true;
+  }
+  for (const key of parsed.searchParams.keys()) {
+    const normalized = key.toLowerCase();
+    if (
+      normalized.includes("secret") ||
+      normalized.includes("certificate") ||
+      normalized.includes("session") ||
+      normalized.includes("token")
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function buildSecureFrame(
+  input: Omit<SecureFrameV1, "version" | "sentAtUnixMs"> & {
+    sentAtUnixMs?: number;
+  },
+): SecureFrameV1 {
+  if (!input.sessionId || !input.correlationId || input.sequence <= 0)
+    throw new Error("Secure frame metadata is incomplete.");
+  return {
+    version: 1,
+    sentAtUnixMs: input.sentAtUnixMs ?? Date.now(),
+    kind: input.kind,
+    sessionId: input.sessionId,
+    sequence: input.sequence,
+    correlationId: input.correlationId,
+    body: input.body,
   };
 }
 
