@@ -18,6 +18,15 @@
         @use-chat="useTelegramChat"
       />
 
+      <DiscordConversationDiscoveryControl
+        v-if="guideContext === 'discord'"
+        :default-channel-id="String(localValues.default_id ?? '')"
+        :allowed-user-ids="String(localValues.allowlist ?? '')"
+        :token="String(localValues.token ?? '')"
+        @use-conversation="useDiscordConversation"
+        @trust-user="trustDiscordUser"
+      />
+
       <div v-for="field in visibleFields" :key="field.key" class="rounded-2xl border border-(--or3-border) bg-white/70 p-3">
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0 flex-1">
@@ -128,6 +137,7 @@ import { computed, reactive, watch } from 'vue'
 import type { ConfigureField } from '~/types/or3-api'
 import { COMMON_COMMAND_PROGRAMS } from '~/settings/commandPrograms'
 import SettingCommandProgramsControl from './SettingCommandProgramsControl.vue'
+import DiscordConversationDiscoveryControl from './DiscordConversationDiscoveryControl.vue'
 import SettingPathControl from './SettingPathControl.vue'
 import SettingSecondsControl from './SettingSecondsControl.vue'
 import SettingTokenListControl from './SettingTokenListControl.vue'
@@ -166,8 +176,9 @@ const emit = defineEmits<{
 const localValues = reactive<Record<string, unknown>>({})
 
 const visibleFields = computed(() => {
-  if (props.guideContext !== 'telegram') return props.fields
-  return props.fields.filter((field) => !isTelegramManagedField(field))
+  if (props.guideContext === 'telegram') return props.fields.filter((field) => !isTelegramManagedField(field))
+  if (props.guideContext === 'discord') return props.fields.filter((field) => !isDiscordManagedField(field))
+  return props.fields
 })
 
 const saveStatusClass = computed(() => {
@@ -237,6 +248,11 @@ function isTelegramManagedField(field: ConfigureField) {
   return field.key === 'default_id' || field.key === 'allowlist' || field.key === 'access'
 }
 
+function isDiscordManagedField(field: ConfigureField) {
+  if (props.guideContext !== 'discord') return false
+  return field.key === 'default_id' || field.key === 'allowlist' || field.key === 'access'
+}
+
 function addTelegramAllowedChatId(value: string) {
   const next = String(value ?? '').trim()
   if (!next) return
@@ -259,42 +275,133 @@ function useTelegramChat(value: string, options: { primary?: boolean } = {}) {
   localValues.enabled = true
 }
 
+function addDiscordAllowedUserId(value: string) {
+  const next = String(value ?? '').trim()
+  if (!next) return
+  const current = String(localValues.allowlist ?? '')
+    .split(/[\s,]+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+  if (!current.includes(next)) current.push(next)
+  localValues.allowlist = current.join(',')
+}
+
+function trustDiscordUser(value: string) {
+  const userId = String(value ?? '').trim()
+  if (!userId) return
+  addDiscordAllowedUserId(userId)
+  localValues.access = 'allowlist'
+  localValues.enabled = true
+}
+
+function useDiscordConversation(channelId: string, userId?: string) {
+  const nextChannelId = String(channelId ?? '').trim()
+  if (!nextChannelId) return
+  localValues.default_id = nextChannelId
+  if (String(userId ?? '').trim()) trustDiscordUser(String(userId))
+  localValues.enabled = true
+}
+
+function normalizeSaveValues(values: Record<string, unknown>) {
+  const nextValues = { ...values }
+  if (props.guideContext === 'discord' && Boolean(nextValues.enabled)) {
+    const currentAccess = String(nextValues.access ?? '').trim()
+    const allowlist = String(nextValues.allowlist ?? '')
+      .split(/[\s,]+/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+
+    if (!currentAccess) {
+      nextValues.access = allowlist.length ? 'allowlist' : 'deny'
+    }
+  }
+  return nextValues
+}
+
 function fieldGuide(field: ConfigureField): FieldGuide | null {
-  if (props.guideContext !== 'telegram') return null
   const text = fieldText(field)
 
-  if (text.includes('default') && text.includes('chat') && text.includes('id')) {
-    return {
-      title: 'Where does this ID come from?',
-      body: 'Telegram creates this number for each private chat or group. OR3-intern only stores it so it knows where it is allowed to send messages.',
-      tips: [
-        'Message your OR3 bot in Telegram first.',
-        'Then use Telegram getUpdates or a chat ID helper bot to see the chat.id value.',
-        'For a one-person setup, use the same ID here and in Allowed chat IDs.',
-      ],
+  if (props.guideContext === 'telegram') {
+    if (text.includes('default') && text.includes('chat') && text.includes('id')) {
+      return {
+        title: 'Where does this ID come from?',
+        body: 'Telegram creates this number for each private chat or group. OR3-intern only stores it so it knows where it is allowed to send messages.',
+        tips: [
+          'Message your OR3 bot in Telegram first.',
+          'Then use Telegram getUpdates or a chat ID helper bot to see the chat.id value.',
+          'For a one-person setup, use the same ID here and in Allowed chat IDs.',
+        ],
+      }
+    }
+
+    if (text.includes('allowed') && text.includes('chat') && text.includes('id')) {
+      return {
+        title: 'Trusted Telegram chats',
+        body: 'These are the Telegram chats allowed to send commands to OR3. Add them as chips instead of typing a comma-separated string.',
+        tips: [
+          'Private chats usually look like 849393733.',
+          'Groups often start with -100.',
+          'Include your Default chat ID here for personal setups.',
+        ],
+      }
+    }
+
+    if (text.includes('inbound') && text.includes('access')) {
+      return {
+        title: 'Recommended: allowlist',
+        body: 'Allowlist means only the chat IDs you enter below can message OR3. That is the safest choice for a personal bot.',
+        tips: [
+          'Avoid open access unless you understand who can reach the bot.',
+          'Use deny if you want Telegram sending only, with no inbound commands.',
+        ],
+      }
     }
   }
 
-  if (text.includes('allowed') && text.includes('chat') && text.includes('id')) {
-    return {
-      title: 'Trusted Telegram chats',
-      body: 'These are the Telegram chats allowed to send commands to OR3. Add them as chips instead of typing a comma-separated string.',
-      tips: [
-        'Private chats usually look like 849393733.',
-        'Groups often start with -100.',
-        'Include your Default chat ID here for personal setups.',
-      ],
+  if (props.guideContext === 'whatsapp') {
+    if (text.includes('bridge') && text.includes('url')) {
+      return {
+        title: 'What is a bridge URL?',
+        body: 'OR3 expects a separate WhatsApp bridge service that stays connected to WhatsApp and exposes a WebSocket endpoint. The bridge URL is the address of that service.',
+        tips: [
+          'Local setups often use something like ws://127.0.0.1:3001/ws.',
+          'If your bridge gives you an http:// or https:// base URL, OR3 can usually normalize it to /ws.',
+          'If this URL is wrong, WhatsApp will not connect at all.',
+        ],
+      }
     }
-  }
 
-  if (text.includes('inbound') && text.includes('access')) {
-    return {
-      title: 'Recommended: allowlist',
-      body: 'Allowlist means only the chat IDs you enter below can message OR3. That is the safest choice for a personal bot.',
-      tips: [
-        'Avoid open access unless you understand who can reach the bot.',
-        'Use deny if you want Telegram sending only, with no inbound commands.',
-      ],
+    if (text.includes('bridge') && text.includes('token')) {
+      return {
+        title: 'Do I need a bridge token?',
+        body: 'Only if your bridge service protects its WebSocket with Bearer auth. In that case OR3 sends this token when it connects.',
+        tips: [
+          'Leave it blank if your bridge does not require auth.',
+          'Treat it like a password if your bridge does use one.',
+        ],
+      }
+    }
+
+    if (text.includes('default') && (text.includes('recipient') || text.includes('to'))) {
+      return {
+        title: 'Default recipient',
+        body: 'This is only a fallback target for outbound sends started outside an existing WhatsApp chat. Replies to incoming WhatsApp messages already know where to go.',
+        tips: [
+          'You can often leave this blank until you need proactive outbound sends.',
+          'For safer inbound behavior, use Allowed senders or pairing below.',
+        ],
+      }
+    }
+
+    if (text.includes('allowed') && text.includes('sender')) {
+      return {
+        title: 'Trusted WhatsApp senders',
+        body: 'These are the WhatsApp senders allowed to trigger OR3 when access is limited. Use this if you only want replies to a small set of people or groups.',
+        tips: [
+          'Use allowlist or pairing for personal setups.',
+          'Avoid open access unless you understand who can reach the bridged number.',
+        ],
+      }
     }
   }
 
@@ -302,6 +409,6 @@ function fieldGuide(field: ConfigureField): FieldGuide | null {
 }
 
 function emitSave() {
-  emit('save', { ...localValues })
+  emit('save', normalizeSaveValues(localValues))
 }
 </script>

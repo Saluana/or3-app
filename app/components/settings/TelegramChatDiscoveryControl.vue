@@ -22,9 +22,9 @@
       {{ error }}
     </div>
 
-    <div v-if="items.length" class="space-y-2">
+    <div v-if="displayItems.length" class="space-y-2">
       <div
-        v-for="item in items"
+        v-for="item in displayItems"
         :key="item.id"
         class="rounded-xl border border-(--or3-border) bg-white/80 p-3"
       >
@@ -50,7 +50,7 @@
     </div>
 
     <p v-else-if="loaded && !error" class="rounded-xl border border-dashed border-(--or3-border) px-3 py-3 text-center text-xs leading-5 text-(--or3-text-muted)">
-      No recent chats found. Open Telegram, send your bot a message, wait a second, then try again.
+      No chats found yet. Send the bot a message, wait a second, then try again. Once a chat is trusted, it stays listed here.
     </p>
   </div>
 </template>
@@ -90,6 +90,18 @@ const allowedIds = computed(() =>
     .map((item) => item.trim())
     .filter(Boolean),
 )
+
+const knownItems = computed<TelegramChatCandidate[]>(() => {
+  const ids = [...new Set([props.defaultChatId, ...allowedIds.value].map((item) => String(item ?? '').trim()).filter(Boolean))]
+  return ids.map((id) => ({ id, type: 'saved', displayName: props.defaultChatId === id ? 'Primary Telegram chat' : 'Trusted Telegram chat', lastMessageText: 'Saved in OR3 settings.' }))
+})
+
+const displayItems = computed(() => {
+  const byId = new Map<string, TelegramChatCandidate>()
+  for (const item of knownItems.value) byId.set(item.id, item)
+  for (const item of items.value) byId.set(item.id, item)
+  return [...byId.values()]
+})
 
 function isPrimaryChat(id: string) {
   return props.defaultChatId === id

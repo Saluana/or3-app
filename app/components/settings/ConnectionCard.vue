@@ -35,6 +35,16 @@
                 :to="manageHref"
             />
             <UButton
+                v-if="meta.helpHref"
+                size="sm"
+                color="neutral"
+                variant="soft"
+                icon="i-pixelarticons-external-link"
+                :label="meta.helpLabel || 'Learn more'"
+                :to="meta.helpHref"
+                target="_blank"
+            />
+            <UButton
                 v-if="canEnableFromCard"
                 size="sm"
                 color="neutral"
@@ -79,6 +89,8 @@ interface ChannelCardMeta {
     promise: string
     setupSteps: string[]
     connectedSteps: string[]
+    helpLabel?: string
+    helpHref?: string
 }
 
 const CHANNEL_CARD_META: Record<string, ChannelCardMeta> = {
@@ -96,15 +108,19 @@ const CHANNEL_CARD_META: Record<string, ChannelCardMeta> = {
     },
     discord: {
         icon: 'i-pixelarticons-message-text',
-        promise: 'Let OR3 answer from a Discord server or DM.',
-        setupSteps: ['Create a Discord bot.', 'Paste the bot token.', 'Invite the bot to your server.'],
+        promise: 'Let OR3 answer in a Discord server channel or a private DM after the bot receives one message there.',
+        setupSteps: ['Create the bot, turn on Message Content Intent, and copy the bot token.', 'Use OAuth2 → URL Generator to invite the bot with bot + applications.commands.', 'Save the token here, restart, then DM the bot or send one server message and pick the conversation.'],
         connectedSteps: ['Discord is enabled.', 'Bot credentials are saved.', 'You can manage or pause it anytime.'],
+        helpLabel: 'Developer portal',
+        helpHref: 'https://discord.com/developers/applications',
     },
     whatsapp: {
         icon: 'i-pixelarticons-message-text',
-        promise: 'Connect WhatsApp so OR3 can answer from your phone workflow.',
-        setupSteps: ['Open your WhatsApp provider dashboard.', 'Paste the access token.', 'Confirm the sender or webhook details.'],
+        promise: 'Connect OR3 to a separate WhatsApp bridge service so it can receive and send WhatsApp messages.',
+        setupSteps: ['Set up or run a WhatsApp bridge service first — OR3 does not include one by itself.', 'Paste the bridge URL, and a bridge token if your bridge requires auth.', 'Save, enable WhatsApp, then message the bridged WhatsApp account and confirm the trusted sender rules.'],
         connectedSteps: ['WhatsApp is enabled.', 'Provider details are saved.', 'You can manage or pause it anytime.'],
+        helpLabel: 'Bridge docs',
+        helpHref: 'https://wwebjs.dev/guide/creating-your-bot/',
     },
     email: {
         icon: 'i-pixelarticons-mail',

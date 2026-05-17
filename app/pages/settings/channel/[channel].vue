@@ -45,6 +45,20 @@
                     {{ channelMeta.reassurance }}
                 </div>
 
+                <div v-if="channelMeta.resources?.length" class="flex flex-wrap gap-2">
+                    <UButton
+                        v-for="resource in channelMeta.resources"
+                        :key="resource.href"
+                        size="sm"
+                        color="neutral"
+                        variant="soft"
+                        icon="i-pixelarticons-external-link"
+                        :label="resource.label"
+                        :to="resource.href"
+                        target="_blank"
+                    />
+                </div>
+
                 <p v-if="configureError" class="text-sm text-rose-600">{{ configureError }}</p>
             </SurfaceCard>
 
@@ -80,6 +94,7 @@ interface ChannelSetupMeta {
     formDescription: string
     reassurance: string
     steps: Array<{ title: string; body: string }>
+    resources?: Array<{ label: string; href: string }>
 }
 
 const CHANNEL_META: Record<string, ChannelSetupMeta> = {
@@ -110,25 +125,32 @@ const CHANNEL_META: Record<string, ChannelSetupMeta> = {
     discord: {
         label: 'Discord',
         icon: 'i-pixelarticons-message-text',
-        intro: 'Connect Discord by adding one bot token and inviting the bot to a server.',
-        formDescription: 'Paste the Discord bot token, save, then invite the bot to the server where OR3 should answer.',
-        reassurance: 'You can pause Discord from Connected Apps without deleting the token.',
+        intro: 'Connect Discord with one bot token, then invite the bot to a server or DM it directly. OR3 replies in the same Discord conversation automatically, so you should not need to hunt for raw IDs during normal setup.',
+        formDescription: 'Paste the bot token, save, restart or3-intern, then DM the bot once or send one message in a server channel and choose that conversation here.',
+        reassurance: 'Turn on Message Content Intent in the Discord Bot tab or OR3 may see the event but not your message text. DMs should reply directly. In server channels, OR3 may require an @mention if Require mention stays on. The default destination is only for outbound sends started outside Discord.',
         steps: [
-            { title: 'Create bot', body: 'Create an app and bot in the Discord developer portal.' },
-            { title: 'Paste token', body: 'Copy the bot token into the field below.' },
-            { title: 'Invite bot', body: 'Invite the bot to your server and enable the connection.' },
+            { title: 'Create bot', body: 'Open the Discord developer portal, create or open your application, go to Bot, turn on Message Content Intent, then reset and copy the bot token.' },
+            { title: 'Invite bot', body: 'Open OAuth2 → URL Generator, select bot and applications.commands, then grant at least View Channels, Send Messages, and Read Message History before authorizing your server.' },
+            { title: 'Save and test', body: 'Paste the token below, save it, restart or3-intern, then DM the bot once or send one server message. If server replies stay quiet, mention the bot like @YourBot hello.' },
+        ],
+        resources: [
+            { label: 'Open Discord developer portal', href: 'https://discord.com/developers/applications' },
         ],
     },
     whatsapp: {
         label: 'WhatsApp',
         icon: 'i-pixelarticons-message-text',
-        intro: 'Connect WhatsApp with your provider token so OR3 can answer from your mobile messaging workflow.',
-        formDescription: 'Add the WhatsApp provider details exposed by this host.',
-        reassurance: 'Provider dashboards vary, but OR3 only needs the fields shown below.',
+        intro: 'Connect WhatsApp through a separate bridge service. OR3 does not talk to WhatsApp directly — the bridge stays signed into WhatsApp and forwards messages to OR3 over WebSocket.',
+        formDescription: 'Add the bridge URL for your WhatsApp bridge, then save any optional bridge token and sender defaults this host uses.',
+        reassurance: 'A bridge is a small companion service that stays logged into WhatsApp Web and exposes a WebSocket endpoint for OR3. The bridge URL is that endpoint, usually something like ws://host:3001/ws. This repo currently expects a compatible external bridge rather than shipping one built in.',
         steps: [
-            { title: 'Open provider', body: 'Open the WhatsApp provider or business dashboard you use.' },
-            { title: 'Paste token', body: 'Copy the access token or sender details into OR3.' },
-            { title: 'Turn on', body: 'Save the details, then enable WhatsApp.' },
+            { title: 'Run a bridge', body: 'Start or deploy a WhatsApp bridge service first. That bridge is the part that actually connects to WhatsApp and stays paired with your phone or WhatsApp account.' },
+            { title: 'Copy bridge details', body: 'Paste the bridge URL here. If your bridge uses Bearer auth, also paste the bridge token. A plain base URL is often fine because OR3 normalizes it to the WebSocket /ws endpoint.' },
+            { title: 'Save and test', body: 'Enable WhatsApp, save, then send a test message to the bridged WhatsApp account. Use Allowed senders or pairing if you want OR3 to answer only specific people.' },
+        ],
+        resources: [
+            { label: 'Example bridge setup (whatsapp-web.js)', href: 'https://wwebjs.dev/guide/creating-your-bot/' },
+            { label: 'Go WhatsApp library (whatsmeow)', href: 'https://github.com/tulir/whatsmeow' },
         ],
     },
     email: {
@@ -206,8 +228,10 @@ async function onSave(values: Record<string, unknown>) {
     }
     saveStatus.value = channelKey.value === 'telegram'
         ? 'Saved. Restart or3-intern once so the Telegram listener starts with these settings.'
-        : 'Saved.'
-    saveStatusTone.value = channelKey.value === 'telegram' ? 'warning' : 'success'
+        : channelKey.value === 'discord'
+            ? 'Saved. Restart or3-intern once so Discord reconnects and recent conversations can be discovered here.'
+            : 'Saved.'
+    saveStatusTone.value = channelKey.value === 'telegram' || channelKey.value === 'discord' ? 'warning' : 'success'
     await load()
 }
 
