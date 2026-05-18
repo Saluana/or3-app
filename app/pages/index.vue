@@ -124,6 +124,9 @@
                         :key="activeSession?.id ?? 'active-thread'"
                         ref="mobileMessageList"
                         :messages="messages"
+                        :padding-bottom="256"
+                        :keyboard-padding-bottom="112"
+                        :keyboard-open="isKeyboardOpen"
                         class="or3-chat-shell__message-list"
                         @scroll-state="updateScrollState"
                     />
@@ -242,6 +245,8 @@
                             :key="activeSession?.id ?? 'active-thread'"
                             ref="desktopMessageList"
                             :messages="messages"
+                            :padding-bottom="24"
+                            :keyboard-padding-bottom="24"
                             class="or3-chat-desktop__message-list"
                             @scroll-state="updateScrollState"
                         />
@@ -325,6 +330,7 @@ const {
 const sessionHistory = useSessionHistory();
 const router = useRouter();
 const { pendingCount } = useApprovals();
+const { isKeyboardOpen } = useKeyboardOpen();
 
 const selectedRunnerId = ref('or3-intern');
 const selectedRunnerModel = ref('');
