@@ -108,14 +108,15 @@ describe('Electron host components', () => {
         expect(wrapper.text()).toContain('Open pairing');
     });
 
-    it('renders QR primary, CLI fallback, and compatibility section for host mode', async () => {
+    it('renders Add device primary and advanced compatibility section for host mode', async () => {
         const wrapper = mount(ConnectDevicePage, { global: { stubs } });
         await Promise.resolve();
         await Promise.resolve();
 
-        expect(wrapper.text()).toContain('Scan secure QR');
-        expect(wrapper.text()).toContain('Use a code instead');
+        expect(wrapper.text()).toContain('Add device');
+        expect(wrapper.text()).toContain('Copy invite');
         expect(wrapper.text()).toContain('Compatibility options');
+        expect(wrapper.text()).toContain('Generate one-time code');
         expect(mockHost.createSecureInvite).toHaveBeenCalled();
     });
 });

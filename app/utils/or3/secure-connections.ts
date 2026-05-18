@@ -1,4 +1,6 @@
 import { sha256 } from '@noble/hashes/sha2.js';
+import { Capacitor } from '@capacitor/core';
+import jsQR from 'jsqr';
 import {
     getNativeSecureStorageMode,
     readSecureConnectionStateFromNativeStorage,
@@ -6,6 +8,7 @@ import {
 } from '~/utils/auth/nativeSecureStorage';
 
 export const OR3_PAIRING_QR_PREFIX = 'or3pair:v1:';
+export const OR3_PAIRING_INVITE_V2_PREFIX = 'or3pair:v2:';
 const BROWSER_STATE_KEY = 'or3-app:v1:secure-connections';
 const textEncoder = new TextEncoder();
 const ENROLLMENT_PROPOSAL_SIGNATURE_DOMAIN = textEncoder.encode(
@@ -46,10 +49,45 @@ export interface PairingQRCodeV1 {
     hostNoisePublicKey: string;
     pairingSecret: string;
     expiresAtUnixMs: number;
+    serviceBaseUrl?: string;
     requestedAccountId?: string;
     capabilities: string[];
     qrNonce: string;
 }
+
+export interface PairingInviteRouteV2 {
+    kind: 'app-proxy' | 'direct' | 'loopback';
+    baseUrl: string;
+    priority: number;
+}
+
+export interface PairingInviteV2 {
+    version: 2;
+    kind: 'or3.pair.invite';
+    inviteId: string;
+    issuedAtUnixMs: number;
+    expiresAtUnixMs: number;
+    host: {
+        id: string;
+        displayName: string;
+        signingPublicKey: string;
+        noisePublicKey: string;
+    };
+    pairing: {
+        rendezvousId: string;
+        pairingSecret: string;
+        qrNonce: string;
+    };
+    capabilities: string[];
+    routes: PairingInviteRouteV2[];
+    checksum?: string;
+    signature?: string;
+    legacyQr?: string;
+}
+
+export type ParsedPairingInvite =
+    | { version: 1; qr: PairingQRCodeV1; raw: string; routes: PairingInviteRouteV2[] }
+    | { version: 2; invite: PairingInviteV2; raw: string; routes: PairingInviteRouteV2[] };
 
 export interface DeviceIdentityRecord {
     version: 1;
@@ -199,6 +237,124 @@ export function base64URLToBytes(raw: string) {
     const out = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i += 1) out[i] = binary.charCodeAt(i);
     return out;
+}
+
+function bytesToUtf8(bytes: Uint8Array) {
+    return new TextDecoder().decode(bytes);
+}
+
+function utf8ToBytes(value: string) {
+    return new TextEncoder().encode(value);
+}
+
+function extractInviteText(raw: string) {
+    const trimmed = raw.trim();
+    try {
+        const parsed = new URL(trimmed);
+        const hash = new URLSearchParams(parsed.hash.replace(/^#/, ''));
+        const query = parsed.searchParams;
+        return hash.get('invite') || query.get('invite') || trimmed;
+    } catch {
+        const hashIndex = trimmed.indexOf('#');
+        if (hashIndex >= 0) {
+            const hash = new URLSearchParams(trimmed.slice(hashIndex + 1));
+            return hash.get('invite') || trimmed;
+        }
+        return trimmed;
+    }
+}
+
+function normalizeInviteRoutes(routes: PairingInviteRouteV2[] = []) {
+    return routes
+        .filter((route) => route?.baseUrl && route?.kind)
+        .map((route) => ({
+            kind: route.kind,
+            baseUrl: route.baseUrl.trim().replace(/\/+$/g, ''),
+            priority: Number.isFinite(route.priority) ? route.priority : 100,
+        }))
+        .sort((a, b) => a.priority - b.priority);
+}
+
+export function encodePairingInviteV2(invite: PairingInviteV2) {
+    return bytesToBase64URL(utf8ToBytes(JSON.stringify(invite)));
+}
+
+export function encodePairingInviteV2Text(invite: PairingInviteV2) {
+    return `${OR3_PAIRING_INVITE_V2_PREFIX}${encodePairingInviteV2(invite)}`;
+}
+
+export function pairingInviteLink(origin: string, invite: PairingInviteV2) {
+    return `${origin.replace(/\/+$/g, '')}/pair#invite=${encodePairingInviteV2(invite)}`;
+}
+
+export function pairingInviteToQRCodeV1(invite: PairingInviteV2): PairingQRCodeV1 {
+    return {
+        version: 1,
+        relayOrigin: '',
+        rendezvousId: invite.pairing.rendezvousId,
+        hostId: invite.host.id,
+        hostDisplayName: invite.host.displayName,
+        hostSigningPublicKey: invite.host.signingPublicKey,
+        hostNoisePublicKey: invite.host.noisePublicKey,
+        pairingSecret: invite.pairing.pairingSecret,
+        expiresAtUnixMs: invite.expiresAtUnixMs,
+        serviceBaseUrl: normalizeInviteRoutes(invite.routes)[0]?.baseUrl,
+        capabilities: Array.isArray(invite.capabilities) ? invite.capabilities : [],
+        qrNonce: invite.pairing.qrNonce,
+    };
+}
+
+export function parsePairingInvite(raw: string, nowUnixMs = Date.now()): ParsedPairingInvite {
+    const extracted = extractInviteText(raw);
+    if (extracted.startsWith(OR3_PAIRING_QR_PREFIX)) {
+        const qr = parsePairingQRCode(extracted, nowUnixMs);
+        return {
+            version: 1,
+            qr,
+            raw: extracted,
+            routes: qr.serviceBaseUrl
+                ? [{ kind: 'direct', baseUrl: qr.serviceBaseUrl, priority: 50 }]
+                : [],
+        };
+    }
+    const encoded = extracted.startsWith(OR3_PAIRING_INVITE_V2_PREFIX)
+        ? extracted.slice(OR3_PAIRING_INVITE_V2_PREFIX.length)
+        : extracted;
+    let invite: PairingInviteV2;
+    try {
+        invite = JSON.parse(bytesToUtf8(base64URLToBytes(encoded))) as PairingInviteV2;
+    } catch {
+        throw new Error('This is not an OR3 pairing invite.');
+    }
+    if (invite.version !== 2 || invite.kind !== 'or3.pair.invite') {
+        throw new Error('This pairing invite uses an unsupported version.');
+    }
+    if (invite.expiresAtUnixMs <= nowUnixMs) {
+        throw new Error('This code expired. Refresh the QR on your computer.');
+    }
+    if (
+        !invite.inviteId ||
+        !invite.host?.id ||
+        !invite.host?.signingPublicKey ||
+        !invite.host?.noisePublicKey ||
+        !invite.pairing?.rendezvousId ||
+        !invite.pairing?.pairingSecret
+    ) {
+        throw new Error('This pairing invite is incomplete. Refresh the QR on your computer.');
+    }
+    if (base64URLToBytes(invite.pairing.pairingSecret).length < 32) {
+        throw new Error('This pairing invite is not secure enough. Refresh the QR on your computer.');
+    }
+    return {
+        version: 2,
+        invite: {
+            ...invite,
+            capabilities: Array.isArray(invite.capabilities) ? invite.capabilities : [],
+            routes: normalizeInviteRoutes(invite.routes),
+        },
+        raw: extracted,
+        routes: normalizeInviteRoutes(invite.routes),
+    };
 }
 
 export function hashBase64URL(...parts: Uint8Array[]) {
@@ -744,6 +900,13 @@ export async function buildSecureSessionStartPayload(
 }
 
 export async function scanPairingQRCodeWithCamera() {
+    if (
+        typeof window !== 'undefined' &&
+        typeof document !== 'undefined' &&
+        !Capacitor.isNativePlatform()
+    ) {
+        return await scanPairingQRCodeWithBrowserCamera();
+    }
     const { BarcodeScanner } =
         await import('@capacitor-mlkit/barcode-scanning');
     const permission = await BarcodeScanner.requestPermissions();
@@ -755,7 +918,167 @@ export async function scanPairingQRCodeWithCamera() {
     const result = await BarcodeScanner.scan();
     const raw = result.barcodes?.[0]?.rawValue || '';
     if (!raw) throw new Error('No pairing code was found.');
-    return { raw, payload: parsePairingQRCode(raw) };
+    const parsed = parsePairingInvite(raw);
+    return {
+        raw,
+        payload: parsed.version === 2 ? pairingInviteToQRCodeV1(parsed.invite) : parsed.qr,
+    };
+}
+
+async function scanPairingQRCodeWithBrowserCamera() {
+    if (!window.isSecureContext) {
+        throw new Error(
+            'Browser camera scanning requires HTTPS. Open OR3 with https:// or localhost, or paste the QR text instead.',
+        );
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error(
+            'This browser does not expose camera scanning here. Paste the QR text instead.',
+        );
+    }
+
+    let stream: MediaStream;
+    try {
+        stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+                facingMode: { ideal: 'environment' },
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+            },
+            audio: false,
+        });
+    } catch (error) {
+        const name = error instanceof DOMException ? error.name : '';
+        if (name === 'NotAllowedError' || name === 'SecurityError') {
+            throw new Error(
+                'Camera permission was blocked. Allow camera access for this site, or paste the QR text instead.',
+            );
+        }
+        throw new Error(
+            'Could not start the camera. Paste the QR text instead.',
+        );
+    }
+
+    const overlay = document.createElement('div');
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.style.cssText = [
+        'position:fixed',
+        'inset:0',
+        'z-index:9999',
+        'display:grid',
+        'place-items:center',
+        'padding:20px',
+        'background:rgba(32,29,24,.78)',
+    ].join(';');
+
+    const panel = document.createElement('div');
+    panel.style.cssText = [
+        'width:min(520px,100%)',
+        'display:grid',
+        'gap:12px',
+        'padding:14px',
+        'border-radius:20px',
+        'background:#fffdf8',
+        'border:1px solid #ded4c5',
+        'box-shadow:0 18px 48px rgba(0,0,0,.24)',
+    ].join(';');
+
+    const video = document.createElement('video');
+    video.autoplay = true;
+    video.muted = true;
+    video.playsInline = true;
+    video.srcObject = stream;
+    video.style.cssText = [
+        'width:100%',
+        'aspect-ratio:1',
+        'object-fit:cover',
+        'border-radius:14px',
+        'background:#111',
+    ].join(';');
+
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px';
+    const label = document.createElement('div');
+    label.textContent = 'Point the camera at the OR3 QR code.';
+    label.style.cssText = 'font:600 14px ui-monospace,SFMono-Regular,Menlo,monospace;color:#272520';
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.textContent = 'Cancel';
+    cancel.style.cssText = [
+        'border:1px solid #ded4c5',
+        'border-radius:999px',
+        'padding:10px 14px',
+        'background:#f5f1ea',
+        'color:#272520',
+        'font:600 14px system-ui,sans-serif',
+    ].join(';');
+    row.append(label, cancel);
+    panel.append(video, row);
+    overlay.append(panel);
+    document.body.append(overlay);
+
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) {
+        stream.getTracks().forEach((track) => track.stop());
+        overlay.remove();
+        throw new Error('This browser cannot scan QR codes here. Paste the QR text instead.');
+    }
+
+    return await new Promise<{ raw: string; payload: PairingQRCodeV1 }>(
+        (resolve, reject) => {
+            let animationFrame = 0;
+            let done = false;
+
+            const cleanup = () => {
+                done = true;
+                if (animationFrame) cancelAnimationFrame(animationFrame);
+                stream.getTracks().forEach((track) => track.stop());
+                overlay.remove();
+            };
+
+            cancel.addEventListener('click', () => {
+                cleanup();
+                reject(new Error('QR scan canceled.'));
+            });
+
+            const scanFrame = () => {
+                if (done) return;
+                if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+                    const width = video.videoWidth;
+                    const height = video.videoHeight;
+                    if (width > 0 && height > 0) {
+                        canvas.width = width;
+                        canvas.height = height;
+                        context.drawImage(video, 0, 0, width, height);
+                        const image = context.getImageData(0, 0, width, height);
+                        const code = jsQR(image.data, width, height, {
+                            inversionAttempts: 'attemptBoth',
+                        });
+                        const raw = code?.data?.trim() || '';
+                        if (raw) {
+                            try {
+                                const parsed = parsePairingInvite(raw);
+                                const payload = parsed.version === 2 ? pairingInviteToQRCodeV1(parsed.invite) : parsed.qr;
+                                cleanup();
+                                resolve({ raw, payload });
+                                return;
+                            } catch {
+                                // Keep scanning until a valid OR3 QR is in frame.
+                            }
+                        }
+                    }
+                }
+                animationFrame = requestAnimationFrame(scanFrame);
+            };
+
+            video.play().then(scanFrame).catch(() => {
+                cleanup();
+                reject(new Error('Could not start the camera preview. Paste the QR text instead.'));
+            });
+        },
+    );
 }
 
 function concatBytes(...parts: Uint8Array[]) {

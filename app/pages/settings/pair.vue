@@ -27,7 +27,17 @@
             </SurfaceCard>
             <template v-else>
                 <SecurePairingCard />
-                <HostConnectionCard />
+                <details class="rounded-2xl border border-(--or3-border) bg-white/60 p-4">
+                    <summary class="cursor-pointer font-mono text-sm font-semibold text-(--or3-text)">
+                        Compatibility / Advanced
+                    </summary>
+                    <p class="mt-2 text-sm leading-6 text-(--or3-text-muted)">
+                        Use one-time code pairing only for older clients or recovery. Most devices should paste the invite link or scan the QR.
+                    </p>
+                    <div class="mt-3">
+                        <HostConnectionCard />
+                    </div>
+                </details>
                 <SecureDeviceApprovalCard />
                 <DeviceManagementCard />
             </template>

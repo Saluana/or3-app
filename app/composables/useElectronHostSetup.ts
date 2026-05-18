@@ -231,8 +231,12 @@ export function useElectronHostSetup() {
         }
     }
 
-    async function createSecureInvite() {
-        const invite = await desktopBridge()?.intern.createSecureInvite();
+    async function createSecureInvite(input: { requestedRole?: string; capabilities?: string[] } = {}) {
+        const invite = await desktopBridge()?.intern.createSecureInvite({
+            appOrigin: import.meta.client ? window.location.origin : '',
+            requestedRole: input.requestedRole,
+            capabilities: input.capabilities,
+        });
         activeInvite.value = invite ?? null;
         return activeInvite.value;
     }

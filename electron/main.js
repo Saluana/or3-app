@@ -75,7 +75,7 @@ function registerDesktopIpc() {
     registerIpc(IPC_CHANNELS.internStatus, () => serviceStatus());
     registerIpc(IPC_CHANNELS.internIssueServiceToken, (payload) => issueServiceToken(payload));
     registerIpc(IPC_CHANNELS.internSetAutostart, (payload) => setAutostart(Boolean(payload?.enabled)));
-    registerIpc(IPC_CHANNELS.internCreateSecureInvite, () => createSecureInvite());
+    registerIpc(IPC_CHANNELS.internCreateSecureInvite, (payload) => createSecureInvite(payload));
     registerIpc(IPC_CHANNELS.internCreateCliInvite, () => createCliInvite());
     registerIpc(IPC_CHANNELS.internListSecureDevices, () => listSecureDevices());
     registerIpc(IPC_CHANNELS.internRevokeSecureDevice, (payload) => revokeSecureDevice(payload?.deviceId));

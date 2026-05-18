@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+    buildInviteRoutes,
     configureService,
     createSecureInvite,
     installInternPlaceholder,
@@ -13,6 +14,11 @@ import {
     serviceStatus,
     stopService,
 } from '../../electron/host-service.js';
+
+function decodeServiceTokenPayload(token: string) {
+    const [payload] = token.split('.');
+    return JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+}
 
 async function makeFakeIntern(dir: string) {
     const file = join(dir, 'or3-intern');
@@ -111,6 +117,30 @@ describe('Electron host service manager', () => {
         await stopService();
     });
 
+    it('binds desktop service tokens to the decoded Go request path', async () => {
+        const workspace = await mkdtemp(join(tmpdir(), 'or3-workspace-'));
+        await configureService({
+            machineName: 'Desk',
+            workspaceDir: workspace,
+            listenHost: '127.0.0.1',
+            listenPort: 65530,
+            securityPreset: 'private',
+            autostartEnabled: false,
+            serviceBehavior: 'stop-with-app',
+        });
+
+        const token: any = await issueServiceToken({
+            method: 'GET',
+            path: '/internal/v1/chat-sessions/or3-app%3Alocal%3Asession/messages?limit=100',
+        });
+        const payload = decodeServiceTokenPayload(token.token);
+
+        expect(payload).toMatchObject({
+            method: 'GET',
+            path: '/internal/v1/chat-sessions/or3-app:local:session/messages',
+        });
+    });
+
     it('does not report a reachable service as online until desktop auth works', async () => {
         const workspace = await mkdtemp(join(tmpdir(), 'or3-workspace-'));
         await configureService({
@@ -190,5 +220,74 @@ describe('Electron host service manager', () => {
         const persisted = JSON.parse(await readFile(join(dir, 'or3-electron-host.json'), 'utf8'));
         expect(persisted.lastServiceStatus.state).toBe('online');
         expect(persisted.serviceAuth.secret).toBeTypeOf('string');
+    });
+
+    it('does not emit app-proxy routes for packaged app origins', () => {
+        const routes = buildInviteRoutes(
+            { baseUrl: 'http://127.0.0.1:9100' },
+            'app://or3',
+            { hostService: { listenPort: 9100 } },
+        );
+
+        expect(routes.some((route) => route.kind === 'app-proxy')).toBe(false);
+        expect(routes.some((route) => route.kind === 'loopback')).toBe(true);
+    });
+
+    it('keeps dev localhost app-proxy routes when an HTTP app origin exists', () => {
+        const routes = buildInviteRoutes(
+            { baseUrl: 'http://127.0.0.1:9100' },
+            'http://localhost:3060',
+            { hostService: { listenPort: 9100 } },
+        );
+
+        expect(routes).toContainEqual({
+            kind: 'app-proxy',
+            baseUrl: 'http://localhost:3060/api/or3',
+            priority: 10,
+        });
+    });
+
+    it('forwards selected invite permissions to the pairing intent', async () => {
+        const workspace = await mkdtemp(join(tmpdir(), 'or3-workspace-'));
+        await configureService({
+            machineName: 'Desk',
+            workspaceDir: workspace,
+            listenHost: '127.0.0.1',
+            listenPort: 65532,
+            securityPreset: 'home',
+            autostartEnabled: false,
+            serviceBehavior: 'stop-with-app',
+        });
+        let intentBody: any = null;
+        vi.stubGlobal('fetch', vi.fn(async (url: string | URL, init?: RequestInit) => {
+            const text = String(url);
+            if (text.endsWith('/internal/v1/health')) {
+                return new Response(JSON.stringify({ status: 'ok', processId: 12345 }), {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/json' },
+                });
+            }
+            if (text.endsWith('/internal/v1/app/bootstrap')) {
+                return new Response(JSON.stringify({ status: { health: 'ok' } }), {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/json' },
+                });
+            }
+            if (text.endsWith('/internal/v1/secure-connections/pairing/intents')) {
+                intentBody = JSON.parse(String(init?.body || '{}'));
+                return new Response(JSON.stringify({ id: 'invite-1', qr: 'qr-text' }), {
+                    status: 201,
+                    headers: { 'Content-Type': 'application/json' },
+                });
+            }
+            return new Response('{}', { status: 404 });
+        }));
+
+        await createSecureInvite({ requestedRole: 'viewer', capabilities: ['chat'] });
+
+        expect(intentBody).toMatchObject({
+            requested_role: 'viewer',
+            capabilities: ['chat'],
+        });
     });
 });

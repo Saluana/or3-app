@@ -1,6 +1,7 @@
 import { access, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
-import { createHmac, randomBytes } from 'node:crypto';
+import { createHash, createHmac, randomBytes } from 'node:crypto';
+import { networkInterfaces } from 'node:os';
 import { dirname, join } from 'node:path';
 import { execFile, spawn } from 'node:child_process';
 
@@ -77,6 +78,166 @@ function randomSecret() {
     return randomBytes(32).toString('hex');
 }
 
+function base64UrlBuffer(buffer) {
+    return Buffer.from(buffer).toString('base64url');
+}
+
+function decodeBase64Url(raw) {
+    return Buffer.from(String(raw || '').trim(), 'base64url');
+}
+
+function isLoopbackHost(hostname) {
+    const host = String(hostname || '').toLowerCase();
+    return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]';
+}
+
+function safeHttpOrigin(raw) {
+    try {
+        const parsed = new URL(String(raw || ''));
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
+        return parsed.origin;
+    } catch {
+        return '';
+    }
+}
+
+function lanIPv4Addresses() {
+    return Object.values(networkInterfaces())
+        .flat()
+        .filter((item) => item && item.family === 'IPv4' && !item.internal)
+        .map((item) => item.address)
+        .filter(Boolean);
+}
+
+function pushUniqueRoute(routes, route) {
+    const baseUrl = String(route?.baseUrl || '').replace(/\/+$/g, '');
+    if (!baseUrl) return;
+    if (routes.some((item) => item.kind === route.kind && item.baseUrl === baseUrl)) return;
+    routes.push({ kind: route.kind, baseUrl, priority: route.priority });
+}
+
+export function buildInviteRoutes(status, appOrigin, config) {
+    const routes = [];
+    const origin = safeHttpOrigin(appOrigin);
+    if (origin) {
+        const parsedOrigin = new URL(origin);
+        const appPort = Number(parsedOrigin.port || (origin.startsWith('https:') ? 443 : 80));
+        pushUniqueRoute(routes, { kind: 'app-proxy', baseUrl: `${origin}/api/or3`, priority: 10 });
+        if (isLoopbackHost(parsedOrigin.hostname)) {
+            for (const address of lanIPv4Addresses()) {
+                pushUniqueRoute(routes, { kind: 'app-proxy', baseUrl: `http://${address}:${appPort}/api/or3`, priority: 10 });
+            }
+        }
+    }
+    for (const address of lanIPv4Addresses()) {
+        pushUniqueRoute(routes, { kind: 'direct', baseUrl: `http://${address}:${Number(config?.hostService?.listenPort || 9100)}`, priority: 20 });
+    }
+    if (status?.baseUrl) {
+        try {
+            const parsed = new URL(status.baseUrl);
+            pushUniqueRoute(routes, {
+                kind: isLoopbackHost(parsed.hostname) ? 'loopback' : 'direct',
+                baseUrl: parsed.origin,
+                priority: isLoopbackHost(parsed.hostname) ? 90 : 20,
+            });
+        } catch {}
+    }
+    pushUniqueRoute(routes, { kind: 'loopback', baseUrl: `http://127.0.0.1:${Number(config?.hostService?.listenPort || 9100)}`, priority: 90 });
+    return routes.sort((a, b) => a.priority - b.priority);
+}
+
+function readCborValue(data, state = { offset: 0 }) {
+    const first = data[state.offset++];
+    if (first === undefined) throw new Error('Invalid pairing QR payload.');
+    const major = first >> 5;
+    const additional = first & 0x1f;
+    const readLength = () => {
+        if (additional < 24) return additional;
+        if (additional === 24) return data[state.offset++];
+        if (additional === 25) {
+            const value = data.readUInt16BE(state.offset);
+            state.offset += 2;
+            return value;
+        }
+        if (additional === 26) {
+            const value = data.readUInt32BE(state.offset);
+            state.offset += 4;
+            return value;
+        }
+        if (additional === 27) {
+            const value = Number(data.readBigUInt64BE(state.offset));
+            state.offset += 8;
+            return value;
+        }
+        throw new Error('Unsupported pairing QR payload.');
+    };
+    const length = readLength();
+    if (major === 0) return length;
+    if (major === 1) return -1 - length;
+    if (major === 2) {
+        const out = data.subarray(state.offset, state.offset + length);
+        state.offset += length;
+        return out;
+    }
+    if (major === 3) {
+        const out = data.subarray(state.offset, state.offset + length).toString('utf8');
+        state.offset += length;
+        return out;
+    }
+    if (major === 4) {
+        return Array.from({ length }, () => readCborValue(data, state));
+    }
+    if (major === 5) {
+        const out = {};
+        for (let index = 0; index < length; index += 1) {
+            out[String(readCborValue(data, state))] = readCborValue(data, state);
+        }
+        return out;
+    }
+    if (major === 7) {
+        if (additional === 20) return false;
+        if (additional === 21) return true;
+        if (additional === 22 || additional === 23) return null;
+    }
+    throw new Error('Unsupported pairing QR payload.');
+}
+
+function decodeLegacyPairingQR(raw) {
+    const prefix = 'or3pair:v1:';
+    if (!String(raw || '').startsWith(prefix)) throw new Error('Invalid pairing QR prefix.');
+    return readCborValue(decodeBase64Url(String(raw).slice(prefix.length)));
+}
+
+function encodeInviteV2(invite) {
+    return base64UrlBuffer(Buffer.from(JSON.stringify(invite), 'utf8'));
+}
+
+function inviteChecksum(invite) {
+    const unsigned = { ...invite, checksum: '' };
+    return `sha256:${base64UrlBuffer(createHash('sha256').update(JSON.stringify(unsigned)).digest())}`;
+}
+
+function createInviteLink(invite, appOrigin) {
+    const routes = invite.routes || [];
+    const appProxyRoute = routes.find((route) => route.kind === 'app-proxy');
+    const origin = appProxyRoute ? new URL(appProxyRoute.baseUrl).origin : safeHttpOrigin(appOrigin);
+    if (!origin) return '';
+    return `${origin}/pair#invite=${encodeInviteV2(invite)}`;
+}
+
+function normalizeInviteRole(value) {
+    const role = String(value || '').trim().toLowerCase();
+    return role === 'viewer' || role === 'operator' ? role : 'operator';
+}
+
+function normalizeInviteCapabilities(value) {
+    const allowed = new Set(['chat', 'files', 'terminal']);
+    const capabilities = Array.isArray(value)
+        ? value.map((item) => String(item || '').trim().toLowerCase()).filter((item) => allowed.has(item))
+        : [];
+    return [...new Set(capabilities.length ? capabilities : ['chat', 'files', 'terminal'])];
+}
+
 async function ensureServiceAuth(config) {
     const existing = String(config?.serviceAuth?.secret || '').trim();
     if (existing) return { config, secret: existing };
@@ -104,7 +265,8 @@ function normalizeTokenPath(path) {
     const raw = String(path || '').trim();
     if (!raw) return '';
     try {
-        return new URL(raw, 'http://127.0.0.1').pathname;
+        const pathname = new URL(raw, 'http://127.0.0.1').pathname;
+        return decodeURIComponent(pathname);
     } catch {
         return raw.startsWith('/') ? raw : `/${raw}`;
     }
@@ -121,6 +283,24 @@ function issueServiceBearerToken(secret, input = {}) {
     if (path) claims.path = path;
     const payloadPart = base64Url(JSON.stringify(claims));
     return `${payloadPart}.${signServiceToken(secret, payloadPart)}`;
+}
+
+function normalizeExpiry(value, fallbackMs = 5 * 60_000) {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        const ms = value > 10_000_000_000 ? value : value * 1000;
+        return new Date(ms).toISOString();
+    }
+    const text = String(value || '').trim();
+    if (text) {
+        const numeric = Number(text);
+        if (Number.isFinite(numeric)) {
+            const ms = numeric > 10_000_000_000 ? numeric : numeric * 1000;
+            return new Date(ms).toISOString();
+        }
+        const parsed = Date.parse(text);
+        if (Number.isFinite(parsed)) return new Date(parsed).toISOString();
+    }
+    return new Date(Date.now() + fallbackMs).toISOString();
 }
 
 async function authHeadersFor(path, method = 'GET') {
@@ -508,8 +688,9 @@ export async function restartService(context) {
     return startService(context);
 }
 
-export async function createSecureInvite() {
+export async function createSecureInvite(input = {}) {
     const status = await serviceStatus();
+    const config = await readConfig();
     if (status.state !== 'online') {
         return {
             id: `invite-${Date.now()}`,
@@ -523,24 +704,68 @@ export async function createSecureInvite() {
     }
     try {
         const path = '/internal/v1/secure-connections/pairing/intents';
+        const requestedRole = normalizeInviteRole(input?.requestedRole);
+        const requestedCapabilities = normalizeInviteCapabilities(input?.capabilities);
         const response = await fetchJson(status.baseUrl, '/internal/v1/secure-connections/pairing/intents', {
             method: 'POST',
             headers: await authHeadersFor(path, 'POST'),
             body: JSON.stringify({
                 relay_origin: 'https://relay.or3.chat',
                 host_display_name: 'This computer',
-                requested_role: 'operator',
-                capabilities: ['chat', 'files', 'terminal'],
+                requested_role: requestedRole,
+                capabilities: requestedCapabilities,
             }),
         });
         const qrText = String(response.qr || response.qr_text || response.encoded_qr || response.payload || '');
+        let legacyPayload;
+        try {
+            legacyPayload = decodeLegacyPairingQR(qrText);
+        } catch {
+            return {
+                id: String(response.rendezvous_id || response.id || `invite-${Date.now()}`),
+                kind: 'secure-qr',
+                qrText,
+                expiresAt: normalizeExpiry(response.expires_at),
+                serviceBaseUrl: status.baseUrl,
+                instructions: ['Scan this QR or copy the link.', 'It opens pairing and connects automatically.'],
+                status: 'created',
+            };
+        }
+        const routes = buildInviteRoutes(status, input?.appOrigin, config);
+        const invite = {
+            version: 2,
+            kind: 'or3.pair.invite',
+            inviteId: String(response.rendezvous_id || legacyPayload.rendezvousId || response.id || `invite-${Date.now()}`),
+            issuedAtUnixMs: Date.now(),
+            expiresAtUnixMs: Number(response.expires_at || legacyPayload.expiresAtUnixMs || Date.now() + 5 * 60_000),
+            host: {
+                id: String(legacyPayload.hostId || ''),
+                displayName: String(legacyPayload.hostDisplayName || 'This computer'),
+                signingPublicKey: String(legacyPayload.hostSigningPublicKey || ''),
+                noisePublicKey: String(legacyPayload.hostNoisePublicKey || ''),
+            },
+            pairing: {
+                rendezvousId: String(legacyPayload.rendezvousId || response.rendezvous_id || ''),
+                pairingSecret: String(legacyPayload.pairingSecret || ''),
+                qrNonce: String(legacyPayload.qrNonce || ''),
+            },
+            capabilities: Array.isArray(legacyPayload.capabilities) ? legacyPayload.capabilities : requestedCapabilities,
+            routes,
+            checksum: '',
+            legacyQr: qrText,
+        };
+        invite.checksum = inviteChecksum(invite);
+        const inviteLink = createInviteLink(invite, input?.appOrigin);
         return {
-            id: String(response.rendezvous_id || response.id || `invite-${Date.now()}`),
+            id: invite.inviteId,
             kind: 'secure-qr',
-            qrText,
-            expiresAt: String(response.expires_at || new Date(Date.now() + 5 * 60_000).toISOString()),
+            qrText: inviteLink || `or3pair:v2:${encodeInviteV2(invite)}`,
+            inviteLink,
+            legacyQrText: qrText,
+            routes,
+            expiresAt: normalizeExpiry(response.expires_at),
             serviceBaseUrl: status.baseUrl,
-            instructions: ['Open OR3 App on your phone or browser.', 'Choose scan or paste text.', 'Confirm the device when it appears here.'],
+            instructions: ['Scan this QR or copy the link.', 'It opens pairing and connects automatically.'],
             status: 'created',
         };
     } catch (error) {

@@ -57,7 +57,11 @@ contextBridge.exposeInMainWorld(
 				path: String(input?.path || ''),
 			}),
 			setAutostart: (enabled) => invoke(channels.internSetAutostart, { enabled: Boolean(enabled) }),
-			createSecureInvite: () => invoke(channels.internCreateSecureInvite),
+			createSecureInvite: (input) => invoke(channels.internCreateSecureInvite, {
+				appOrigin: String(input?.appOrigin || ''),
+				requestedRole: String(input?.requestedRole || ''),
+				capabilities: Array.isArray(input?.capabilities) ? input.capabilities.map((item) => String(item || '')).filter(Boolean) : [],
+			}),
 			createCliInvite: () => invoke(channels.internCreateCliInvite),
 			listSecureDevices: () => invoke(channels.internListSecureDevices),
 			revokeSecureDevice: (deviceId) => invoke(channels.internRevokeSecureDevice, { deviceId: String(deviceId || '') }),

@@ -70,11 +70,15 @@ After pairing, use **Disconnect this app** in Settings to forget the saved local
 
 On first launch, Electron asks whether to **Use this computer** or **Control another computer**. Host-only service controls are hidden from web, iOS, Android, and Electron remote mode.
 
-During development, start Nuxt first, then run Electron in another terminal:
+During development, run Electron with the Nuxt dev server and Electron-process restart watcher:
 
 ```bash
 bun run electron:dev
 ```
+
+Renderer changes use Nuxt hot reload. Changes under `electron/` restart the Electron process. If you already have Nuxt running separately, use `bun run electron:dev:raw`.
+
+Keep only one Nuxt dev server running for phone testing. If port `3060` is busy, stop the old server before starting `bun run electron:dev`; otherwise phones can keep hitting a stale alternate port.
 
 For a static packaged run:
 

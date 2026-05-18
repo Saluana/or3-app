@@ -73,6 +73,27 @@ export default defineNuxtConfig({
 
     components: [{ path: '~/components', pathPrefix: false }],
 
+    vite: {
+        optimizeDeps: {
+            include: [
+                '@capacitor/core',
+                '@capacitor/keyboard',
+                '@capgo/capacitor-native-biometric',
+                '@noble/ciphers/aes.js',
+                '@noble/hashes/pbkdf2.js',
+                '@noble/hashes/sha2.js',
+                '@tiptap/core',
+                '@tiptap/extension-mention',
+                '@tiptap/extension-placeholder',
+                '@tiptap/starter-kit',
+                '@tiptap/suggestion',
+                '@tiptap/vue-3',
+                'or3-scroll',
+                'streamdown-vue',
+            ],
+        },
+    },
+
     app: {
         head: {
             title: 'or3-app',

@@ -16,6 +16,7 @@ import {
     parsePairingQRCode,
     signEnrollmentProposal,
     storeHostEnrollment,
+    type PairingQRCodeV1,
     type SecureConnectionPairingState,
 } from '~/utils/or3/secure-connections';
 
@@ -37,6 +38,15 @@ type DeviceInfoWire = DeviceInfo & {
     Status?: string;
     CreatedAt?: string | number;
     LastSeenAt?: string | number;
+};
+
+type PairedDeviceWire = {
+    device_id?: string;
+    DeviceID?: string;
+    role?: string;
+    Role?: string;
+    display_name?: string;
+    DisplayName?: string;
 };
 
 const PENDING_PAIRING_STORAGE_KEY = 'or3-app:v1:pending-pairing';
@@ -387,11 +397,10 @@ export function usePairing() {
         }
     }
 
-    async function buildSecureEnrollmentProposal(
-        rawQR: string,
+    async function buildSecureEnrollmentProposalFromPayload(
+        payload: PairingQRCodeV1,
         deviceName = 'or3-app',
     ) {
-        const payload = await parseSecurePairingQR(rawQR);
         const identity = await getOrCreateDeviceIdentity(deviceName);
         return {
             qr: payload,
@@ -402,6 +411,16 @@ export function usePairing() {
                 payload.capabilities,
             ),
         };
+    }
+
+    async function buildSecureEnrollmentProposal(
+        rawQR: string,
+        deviceName = 'or3-app',
+    ) {
+        return buildSecureEnrollmentProposalFromPayload(
+            await parseSecurePairingQR(rawQR),
+            deviceName,
+        );
     }
 
     async function storeSecureEnrollment(input: {
@@ -436,6 +455,42 @@ export function usePairing() {
             storedAtUnixMs: Date.now(),
         });
         securePairingStatus.value = 'connected';
+    }
+
+    function cachePairedTokenHost(input: {
+        baseUrl: string;
+        token: string;
+        pairedDevice?: PairedDeviceWire;
+        fallbackName?: string;
+        fallbackRole?: string;
+        fallbackDeviceId?: string;
+    }) {
+        const pairedDevice = input.pairedDevice || {};
+        cache.updateHost({
+            id: hostIdFromUrl(input.baseUrl),
+            name:
+                pairedDevice.display_name ||
+                pairedDevice.DisplayName ||
+                input.fallbackName ||
+                'My Computer',
+            baseUrl: input.baseUrl,
+            token: input.token,
+            pairedToken: input.token,
+            role:
+                pairedDevice.role ||
+                pairedDevice.Role ||
+                input.fallbackRole ||
+                'operator',
+            deviceId:
+                pairedDevice.device_id ||
+                pairedDevice.DeviceID ||
+                input.fallbackDeviceId,
+            status: 'online',
+            lastSeenAt: new Date().toISOString(),
+        });
+        pairingError.value = null;
+        pairingFailureDetails.value = null;
+        pairingStatus.value = 'connected';
     }
 
     async function exchangeCode(
@@ -837,9 +892,9 @@ export function usePairing() {
         }
     }
 
-    async function upgradeLegacyDeviceToSecure(input: {
+    async function upgradeSecurePairingPayload(input: {
         baseUrl: string;
-        qr: string;
+        qr: PairingQRCodeV1;
         deviceName?: string;
         accountId?: string;
     }) {
@@ -849,7 +904,7 @@ export function usePairing() {
                 'A computer address is required for secure pairing.',
             );
         }
-        const parsed = await buildSecureEnrollmentProposal(
+        const parsed = await buildSecureEnrollmentProposalFromPayload(
             input.qr,
             input.deviceName || 'or3-app',
         );
@@ -865,6 +920,8 @@ export function usePairing() {
             const response = await api.request<{
                 certificate: unknown;
                 certificate_hash?: string;
+                paired_token?: string;
+                paired_device?: PairedDeviceWire;
                 device?: {
                     role?: string;
                     capabilities?: string[];
@@ -877,6 +934,7 @@ export function usePairing() {
             }>('/internal/v1/secure-connections/pairing/approve', {
                 method: 'POST',
                 baseUrl,
+                requireAuth: false,
                 body: {
                     rendezvous_id: parsed.qr.rendezvousId,
                     pairing_secret: parsed.qr.pairingSecret,
@@ -898,6 +956,16 @@ export function usePairing() {
                 trustLevel:
                     response.device?.trust_level || parsed.identity.trustLevel,
             });
+            if (response.paired_token) {
+                cachePairedTokenHost({
+                    baseUrl,
+                    token: response.paired_token,
+                    pairedDevice: response.paired_device,
+                    fallbackName: parsed.qr.hostDisplayName,
+                    fallbackRole: response.device?.role,
+                    fallbackDeviceId: parsed.identity.deviceId,
+                });
+            }
             return { ...parsed, response };
         } catch (error) {
             securePairingStatus.value =
@@ -907,6 +975,76 @@ export function usePairing() {
             setPairingFailure(error, 'Could not finish secure pairing.');
             throw error;
         }
+    }
+
+    async function upgradeLegacyDeviceToSecure(input: {
+        baseUrl: string;
+        qr: string;
+        deviceName?: string;
+        accountId?: string;
+    }) {
+        return upgradeSecurePairingPayload({
+            ...input,
+            qr: await parseSecurePairingQR(input.qr),
+        });
+    }
+
+    async function exchangeSecurePairingPayload(input: {
+        baseUrl: string;
+        qr: PairingQRCodeV1;
+        deviceName?: string;
+    }) {
+        const baseUrl = input.baseUrl.trim().replace(/\/+$/, '');
+        const payload = input.qr;
+        securePairingStatus.value = 'pending_approval';
+        try {
+            const response = await api.request<{
+                token: string;
+                role?: string;
+                device_id?: string;
+                device?: PairedDeviceWire;
+            }>('/internal/v1/secure-connections/pairing/exchange', {
+                method: 'POST',
+                baseUrl,
+                requireAuth: false,
+                body: {
+                    rendezvous_id: payload.rendezvousId,
+                    pairing_secret: payload.pairingSecret,
+                    device_name: input.deviceName || 'or3-app',
+                },
+            });
+            if (!response.token) {
+                throw new Error('Pairing completed without a device token.');
+            }
+            cachePairedTokenHost({
+                baseUrl,
+                token: response.token,
+                pairedDevice: response.device,
+                fallbackName: payload.hostDisplayName,
+                fallbackRole: response.role,
+                fallbackDeviceId: response.device_id,
+            });
+            securePairingStatus.value = 'connected';
+            return { qr: payload, response };
+        } catch (error) {
+            securePairingStatus.value =
+                error instanceof Error && /expired/i.test(error.message)
+                    ? 'expired'
+                    : 'failed';
+            setPairingFailure(error, 'Could not finish pairing.');
+            throw error;
+        }
+    }
+
+    async function exchangeSecurePairingQR(input: {
+        baseUrl: string;
+        qr: string;
+        deviceName?: string;
+    }) {
+        return exchangeSecurePairingPayload({
+            ...input,
+            qr: await parseSecurePairingQR(input.qr),
+        });
     }
 
     return {
@@ -921,11 +1059,14 @@ export function usePairing() {
         parseSecurePairingQR,
         buildSecureEnrollmentProposal,
         storeSecureEnrollment,
+        exchangeSecurePairingQR,
+        exchangeSecurePairingPayload,
         exchangeCode,
         verifyActiveHost,
         listDevices,
         revokeDevice,
         rotateDevice,
+        upgradeSecurePairingPayload,
         upgradeLegacyDeviceToSecure,
     };
 }

@@ -146,7 +146,10 @@ export interface HostDeviceInvite {
     id: string;
     kind: 'secure-qr' | 'cli-code' | 'legacy-code';
     qrText?: string;
+    inviteLink?: string;
+    legacyQrText?: string;
     qrImageDataUrl?: string;
+    routes?: Array<{ kind: 'app-proxy' | 'direct' | 'loopback'; baseUrl: string; priority: number }>;
     requestId?: number;
     code?: string;
     expiresAt: string;
@@ -188,7 +191,7 @@ export interface Or3DesktopBridge {
         status(): Promise<ServiceStatus>;
         issueServiceToken(input: ServiceTokenRequest): Promise<ServiceTokenResult>;
         setAutostart(enabled: boolean): Promise<AutostartStatus>;
-        createSecureInvite(): Promise<HostDeviceInvite>;
+        createSecureInvite(input?: { appOrigin?: string; requestedRole?: string; capabilities?: string[] }): Promise<HostDeviceInvite>;
         createCliInvite(): Promise<HostDeviceInvite>;
         listSecureDevices(): Promise<Array<Record<string, unknown>>>;
         revokeSecureDevice(deviceId: string): Promise<{ deviceId: string; status: string }>;
