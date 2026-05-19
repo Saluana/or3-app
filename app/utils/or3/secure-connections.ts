@@ -10,7 +10,81 @@ import {
 export const OR3_PAIRING_QR_PREFIX = 'or3pair:v1:';
 export const OR3_PAIRING_INVITE_V2_PREFIX = 'or3pair:v2:';
 const BROWSER_STATE_KEY = 'or3-app:v1:secure-connections';
+const BROWSER_PRIVATE_KEY_DB = 'or3-secure-keys';
+const BROWSER_PRIVATE_KEY_STORE = 'device-keys';
 const textEncoder = new TextEncoder();
+
+function openPrivateKeyDB(): Promise<IDBDatabase> {
+    return new Promise((resolve, reject) => {
+        if (typeof indexedDB === 'undefined') {
+            reject(new Error('IndexedDB is not available.'));
+            return;
+        }
+        const request = indexedDB.open(BROWSER_PRIVATE_KEY_DB, 1);
+        request.onupgradeneeded = () => {
+            const db = request.result;
+            if (!db.objectStoreNames.contains(BROWSER_PRIVATE_KEY_STORE)) {
+                db.createObjectStore(BROWSER_PRIVATE_KEY_STORE);
+            }
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function storePrivateKeysIndexedDB(
+    deviceId: string,
+    signingKey: CryptoKey,
+    noiseKey: CryptoKey,
+): Promise<void> {
+    const db = await openPrivateKeyDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(BROWSER_PRIVATE_KEY_STORE, 'readwrite');
+        const store = tx.objectStore(BROWSER_PRIVATE_KEY_STORE);
+        store.put(signingKey, `${deviceId}:sign`);
+        store.put(noiseKey, `${deviceId}:noise`);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+    });
+}
+
+async function loadPrivateKeysIndexedDB(
+    deviceId: string,
+): Promise<{ signingKey: CryptoKey; noiseKey: CryptoKey } | null> {
+    const db = await openPrivateKeyDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(BROWSER_PRIVATE_KEY_STORE, 'readonly');
+        const store = tx.objectStore(BROWSER_PRIVATE_KEY_STORE);
+        const signReq = store.get(`${deviceId}:sign`);
+        const noiseReq = store.get(`${deviceId}:noise`);
+        tx.oncomplete = () => {
+            const signingKey = signReq.result as CryptoKey | undefined;
+            const noiseKey = noiseReq.result as CryptoKey | undefined;
+            if (signingKey && noiseKey) {
+                resolve({ signingKey, noiseKey });
+            } else {
+                resolve(null);
+            }
+        };
+        tx.onerror = () => reject(tx.error);
+    });
+}
+
+async function removePrivateKeysIndexedDB(deviceId: string): Promise<void> {
+    const db = await openPrivateKeyDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(BROWSER_PRIVATE_KEY_STORE, 'readwrite');
+        const store = tx.objectStore(BROWSER_PRIVATE_KEY_STORE);
+        store.delete(`${deviceId}:sign`);
+        store.delete(`${deviceId}:noise`);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+    });
+}
+
+function isIndexedDBAvailable(): boolean {
+    return typeof indexedDB !== 'undefined';
+}
 const ENROLLMENT_PROPOSAL_SIGNATURE_DOMAIN = textEncoder.encode(
     'OR3-ENROLLMENT-PROPOSAL-V1',
 );
@@ -97,9 +171,9 @@ export interface DeviceIdentityRecord {
     trustLevel: SecureConnectionTrustLevel;
     secureStorageMode: ReturnType<typeof getNativeSecureStorageMode>;
     deviceSigningPublicKey: string;
-    deviceSigningPrivateKeyJwk: JsonWebKey;
+    deviceSigningPrivateKeyJwk?: JsonWebKey;
     deviceNoisePublicKey: string;
-    deviceNoisePrivateKeyJwk: JsonWebKey;
+    deviceNoisePrivateKeyJwk?: JsonWebKey;
     createdAtUnixMs: number;
 }
 
@@ -483,13 +557,7 @@ export async function signEnrollmentProposal(
     identity: DeviceIdentityRecord,
     proposal: EnrollmentProposalV1,
 ) {
-    const privateKey = await crypto.subtle.importKey(
-        'jwk',
-        identity.deviceSigningPrivateKeyJwk,
-        { name: 'Ed25519' },
-        false,
-        ['sign'],
-    );
+    const privateKey = await getSigningPrivateKey(identity);
     const signature = await crypto.subtle.sign(
         { name: 'Ed25519' },
         privateKey,
@@ -499,6 +567,40 @@ export async function signEnrollmentProposal(
         ...proposal,
         signature: bytesToBase64URL(new Uint8Array(signature)),
     } satisfies EnrollmentProposalV1;
+}
+
+async function getSigningPrivateKey(identity: DeviceIdentityRecord): Promise<CryptoKey> {
+    if (identity.deviceSigningPrivateKeyJwk) {
+        return crypto.subtle.importKey(
+            'jwk',
+            identity.deviceSigningPrivateKeyJwk,
+            { name: 'Ed25519' } as AlgorithmIdentifier,
+            false,
+            ['sign'],
+        );
+    }
+    if (isIndexedDBAvailable()) {
+        const keys = await loadPrivateKeysIndexedDB(identity.deviceId);
+        if (keys?.signingKey) return keys.signingKey;
+    }
+    throw new Error('Device signing key is not available. Re-pair this device.');
+}
+
+async function getNoisePrivateKey(identity: DeviceIdentityRecord): Promise<CryptoKey> {
+    if (identity.deviceNoisePrivateKeyJwk) {
+        return crypto.subtle.importKey(
+            'jwk',
+            identity.deviceNoisePrivateKeyJwk,
+            { name: 'X25519' } as AlgorithmIdentifier,
+            false,
+            ['deriveBits'],
+        );
+    }
+    if (isIndexedDBAvailable()) {
+        const keys = await loadPrivateKeysIndexedDB(identity.deviceId);
+        if (keys?.noiseKey) return keys.noiseKey;
+    }
+    throw new Error('Device noise key is not available. Re-pair this device.');
 }
 
 export function buildSecureSessionPrologue(
@@ -540,7 +642,7 @@ export async function detectSecureConnectionStorage(): Promise<{
 }> {
     const mode = getNativeSecureStorageMode();
     if (mode === 'native-secure')
-        return { mode, state: 'software-backed', trustLevel: 'web-limited' };
+        return { mode, state: 'software-backed', trustLevel: 'native-software' };
     if (mode === 'native-plugin-missing')
         return {
             mode,
@@ -648,10 +750,51 @@ export async function getOrCreateDeviceIdentity(
     displayName = 'or3-app',
 ): Promise<DeviceIdentityRecord> {
     const state = await loadSecureConnectionState();
-    if (state.deviceIdentity) return state.deviceIdentity;
+    if (state.deviceIdentity) {
+        // If we have an identity but it has JWK private keys in localStorage,
+        // migrate to IndexedDB non-extractable storage.
+        if (
+            state.deviceIdentity.deviceSigningPrivateKeyJwk &&
+            state.deviceIdentity.deviceNoisePrivateKeyJwk &&
+            getNativeSecureStorageMode() === 'browser-fallback' &&
+            isIndexedDBAvailable()
+        ) {
+            try {
+                const signKey = await crypto.subtle.importKey(
+                    'jwk',
+                    state.deviceIdentity.deviceSigningPrivateKeyJwk,
+                    { name: 'Ed25519' } as AlgorithmIdentifier,
+                    false,
+                    ['sign'],
+                );
+                const noiseKey = await crypto.subtle.importKey(
+                    'jwk',
+                    state.deviceIdentity.deviceNoisePrivateKeyJwk,
+                    { name: 'X25519' } as AlgorithmIdentifier,
+                    false,
+                    ['deriveBits'],
+                );
+                await storePrivateKeysIndexedDB(state.deviceIdentity.deviceId, signKey, noiseKey);
+                // Remove private keys from the persisted state
+                const migrated = { ...state.deviceIdentity };
+                delete migrated.deviceSigningPrivateKeyJwk;
+                delete migrated.deviceNoisePrivateKeyJwk;
+                await saveSecureConnectionState({ ...state, deviceIdentity: migrated });
+                return migrated;
+            } catch {
+                // Migration failed; fall through to return existing identity
+            }
+        }
+        return state.deviceIdentity;
+    }
     const storage = await detectSecureConnectionStorage();
+    const isBrowser = getNativeSecureStorageMode() === 'browser-fallback';
+    const canUseBrowserKeyStore = isBrowser && isIndexedDBAvailable();
+    // IndexedDB can persist non-extractable CryptoKeys. If it is unavailable,
+    // fall back to extractable JWKs so the identity remains usable.
+    const extractable = !canUseBrowserKeyStore;
     const sign = (await crypto.subtle
-        .generateKey({ name: 'Ed25519' } as AlgorithmIdentifier, true, [
+        .generateKey({ name: 'Ed25519' } as AlgorithmIdentifier, extractable, [
             'sign',
             'verify',
         ])
@@ -661,7 +804,7 @@ export async function getOrCreateDeviceIdentity(
             );
         })) as CryptoKeyPair;
     const noise = (await crypto.subtle
-        .generateKey({ name: 'X25519' } as AlgorithmIdentifier, true, [
+        .generateKey({ name: 'X25519' } as AlgorithmIdentifier, extractable, [
             'deriveBits',
         ])
         .catch(() => {
@@ -675,14 +818,6 @@ export async function getOrCreateDeviceIdentity(
     const noisePublicRaw = new Uint8Array(
         await crypto.subtle.exportKey('raw', noise.publicKey),
     );
-    const signPrivateJwk = await crypto.subtle.exportKey(
-        'jwk',
-        sign.privateKey,
-    );
-    const noisePrivateJwk = await crypto.subtle.exportKey(
-        'jwk',
-        noise.privateKey,
-    );
     const createdAtUnixMs = Date.now();
     const identity: DeviceIdentityRecord = {
         version: 1,
@@ -692,11 +827,17 @@ export async function getOrCreateDeviceIdentity(
         trustLevel: storage.trustLevel,
         secureStorageMode: storage.mode,
         deviceSigningPublicKey: bytesToBase64URL(signPublicRaw),
-        deviceSigningPrivateKeyJwk: signPrivateJwk,
         deviceNoisePublicKey: bytesToBase64URL(noisePublicRaw),
-        deviceNoisePrivateKeyJwk: noisePrivateJwk,
         createdAtUnixMs,
     };
+    if (canUseBrowserKeyStore) {
+        await storePrivateKeysIndexedDB(identity.deviceId, sign.privateKey, noise.privateKey);
+    } else {
+        const signPrivateJwk = await crypto.subtle.exportKey('jwk', sign.privateKey);
+        const noisePrivateJwk = await crypto.subtle.exportKey('jwk', noise.privateKey);
+        identity.deviceSigningPrivateKeyJwk = signPrivateJwk;
+        identity.deviceNoisePrivateKeyJwk = noisePrivateJwk;
+    }
     await saveSecureConnectionState({ ...state, deviceIdentity: identity });
     return identity;
 }
@@ -789,7 +930,55 @@ export function rejectSensitiveDeepLink(rawUrl: string) {
             return true;
         }
     }
+    // Also scan hash fragments for sensitive material.
+    if (parsed.hash) {
+        const hashParams = new URLSearchParams(parsed.hash.replace(/^#/, ''));
+        for (const key of hashParams.keys()) {
+            const normalized = key.toLowerCase();
+            if (
+                normalized.includes('secret') ||
+                normalized.includes('certificate') ||
+                normalized.includes('session') ||
+                normalized.includes('token')
+            ) {
+                return true;
+            }
+        }
+    }
     return false;
+}
+
+export function validateSecureSessionClaims(
+    claims: unknown,
+): claims is SecureSessionClaims {
+    if (!claims || typeof claims !== 'object') return false;
+    const c = claims as Record<string, unknown>;
+    return (
+        typeof c.host_id === 'string' &&
+        c.host_id.length > 0 &&
+        typeof c.device_id === 'string' &&
+        c.device_id.length > 0 &&
+        typeof c.session_id === 'string' &&
+        c.session_id.length > 0 &&
+        typeof c.enrollment_epoch === 'number' &&
+        Number.isFinite(c.enrollment_epoch) &&
+        c.enrollment_epoch > 0 &&
+        typeof c.expires_at_unix_ms === 'number' &&
+        Number.isFinite(c.expires_at_unix_ms) &&
+        c.expires_at_unix_ms > 0 &&
+        typeof c.issued_at_unix_ms === 'number' &&
+        Number.isFinite(c.issued_at_unix_ms) &&
+        c.issued_at_unix_ms > 0 &&
+        c.issued_at_unix_ms <= c.expires_at_unix_ms &&
+        typeof c.role === 'string' &&
+        ['viewer', 'operator', 'admin'].includes(c.role) &&
+        Array.isArray(c.capabilities) &&
+        c.capabilities.every((capability) => typeof capability === 'string') &&
+        typeof c.trust_level === 'string' &&
+        ['native-hardware', 'native-software', 'web-limited', 'legacy'].includes(
+            c.trust_level,
+        )
+    );
 }
 
 export function buildSecureFrame(
@@ -827,13 +1016,7 @@ export async function buildMobileNoiseHandshake(
         false,
         [],
     );
-    const devicePrivateKey = await crypto.subtle.importKey(
-        'jwk',
-        identity.deviceNoisePrivateKeyJwk,
-        { name: 'X25519' } as AlgorithmIdentifier,
-        false,
-        ['deriveBits'],
-    );
+    const devicePrivateKey = await getNoisePrivateKey(identity);
     const es = new Uint8Array(
         await crypto.subtle.deriveBits(
             { name: 'X25519', public: hostPublicKey } as AlgorithmIdentifier,
@@ -861,10 +1044,7 @@ export async function buildMobileNoiseHandshake(
         es,
         ss,
     );
-    const material = await crypto.subtle.digest(
-        'SHA-256',
-        concatBytes(es, ss, new TextEncoder().encode(transcript)),
-    );
+    const sessionKey = await deriveNoiseSessionKey(prologueHash, transcript, es, ss);
     return {
         init: {
             version: 1,
@@ -874,9 +1054,49 @@ export async function buildMobileNoiseHandshake(
             deviceEphemeralKey: bytesToBase64URL(ephemeralPublic),
             enrollmentCertHash: host.enrollmentCertificateHash || '',
         } satisfies NoiseHandshakeInitV1,
-        sessionKeyPreview: bytesToBase64URL(new Uint8Array(material)),
+        sessionKey,
         transcript,
     };
+}
+
+// deriveNoiseSessionKey matches the Go deriveNoiseSessionKey exactly:
+// shared = HMAC-SHA-256(prologueHash, es || ss)
+// key = HKDF-SHA-256(shared, salt=transcript, info="OR3-NOISE-SESSION-KEY-V1", L=32)
+async function deriveNoiseSessionKey(
+    prologueHash: string,
+    transcript: string,
+    es: Uint8Array,
+    ss: Uint8Array,
+): Promise<Uint8Array> {
+    const sharedKey = await crypto.subtle.importKey(
+        'raw',
+        textEncoder.encode(prologueHash),
+        { name: 'HMAC', hash: 'SHA-256' },
+        false,
+        ['sign'],
+    );
+    const shared = new Uint8Array(
+        await crypto.subtle.sign('HMAC', sharedKey, concatBytes(es, ss)),
+    );
+    const hkdfKey = await crypto.subtle.importKey(
+        'raw',
+        shared,
+        'HKDF',
+        false,
+        ['deriveBits'],
+    );
+    return new Uint8Array(
+        await crypto.subtle.deriveBits(
+            {
+                name: 'HKDF',
+                hash: 'SHA-256',
+                salt: textEncoder.encode(transcript),
+                info: textEncoder.encode('OR3-NOISE-SESSION-KEY-V1'),
+            } satisfies HkdfParams,
+            hkdfKey,
+            256,
+        ),
+    );
 }
 
 export async function buildSecureSessionStartPayload(

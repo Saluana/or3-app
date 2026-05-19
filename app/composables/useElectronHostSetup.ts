@@ -52,7 +52,11 @@ function readRendererState() {
 
 function persistRendererState(state: ElectronSetupState) {
     if (!import.meta.client) return;
-    localStorage.setItem(ELECTRON_SETUP_STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(ELECTRON_SETUP_STORAGE_KEY, JSON.stringify(toPlainData(state)));
+}
+
+function toPlainData<T>(value: T): T {
+    return JSON.parse(JSON.stringify(value)) as T;
 }
 
 async function persistState(input: Partial<ElectronSetupState>) {
@@ -65,7 +69,8 @@ async function persistState(input: Partial<ElectronSetupState>) {
     if (!next) return setupState.value;
 
     const bridge = desktopBridge();
-    setupState.value = bridge ? await bridge.platform.saveSetupState(next) : next;
+    const plainNext = toPlainData(next);
+    setupState.value = bridge ? await bridge.platform.saveSetupState(plainNext) : plainNext;
     persistRendererState(setupState.value);
     return setupState.value;
 }

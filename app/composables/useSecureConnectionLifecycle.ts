@@ -12,18 +12,37 @@ export function useSecureConnectionLifecycle(options: {
 }) {
   const isPaused = ref(false);
   const lastResumeAtUnixMs = ref(0);
+  let transitionPromise: Promise<void> = Promise.resolve();
 
   const pause = async () => {
-    isPaused.value = true;
-    await options.pause?.();
+    transitionPromise = transitionPromise.then(async () => {
+      isPaused.value = true;
+      try {
+        await options.pause?.();
+      } catch {
+        // Pause errors are non-fatal; log but don't propagate.
+      }
+    });
+    await transitionPromise;
   };
+
   const resume = async () => {
-    isPaused.value = false;
-    lastResumeAtUnixMs.value = Date.now();
-    const claims = options.claims?.value;
-    if (claims && shouldRekeySecureSession(claims, { appResumed: true }))
-      await options.rekey?.();
+    transitionPromise = transitionPromise.then(async () => {
+      isPaused.value = false;
+      lastResumeAtUnixMs.value = Date.now();
+      const claims = options.claims?.value;
+      if (claims && shouldRekeySecureSession(claims, { appResumed: true })) {
+        try {
+          await options.rekey?.();
+        } catch {
+          // Rekey failure on resume: session may be stale; the expiry timer
+          // in useSecureConnectionSession will clear it.
+        }
+      }
+    });
+    await transitionPromise;
   };
+
   const handleVisibility = () => {
     if (!import.meta.client) return;
     if (document.visibilityState === "hidden") void pause();
@@ -34,8 +53,9 @@ export function useSecureConnectionLifecycle(options: {
     const url = custom.detail?.url;
     if (url && rejectSensitiveDeepLink(url)) {
       event.preventDefault();
-      throw new Error(
-        "Sensitive secure-connection material is not accepted through app links.",
+      // Log instead of throwing — throwing in an event handler crashes the app.
+      console.warn(
+        "[secure-connections] Blocked deep link containing sensitive material.",
       );
     }
   };

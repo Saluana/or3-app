@@ -1,6 +1,6 @@
 <template>
     <div
-        v-if="ready && shouldShowSetup"
+        v-if="showSetupOverlay"
         class="fixed inset-0 z-50 overflow-auto bg-(--or3-bg)/95 p-4 backdrop-blur"
         data-testid="electron-host-setup"
     >
@@ -163,13 +163,13 @@
                             v-if="serviceStatus.state === 'online'"
                             label="Connect a device"
                             icon="i-pixelarticons-smartphone"
-                            to="/computer/connect-device"
+                            @click="goConnectDevice"
                         />
                         <UButton
                             label="Go to dashboard"
                             color="neutral"
                             variant="ghost"
-                            to="/computer"
+                            @click="goDashboard"
                         />
                     </div>
                 </div>
@@ -179,6 +179,7 @@
 </template>
 
 <script setup lang="ts">
+import { navigateTo } from '#app';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { SECURITY_PRESETS } from '~/utils/electron-host';
 import { useElectronHostSetup } from '~/composables/useElectronHostSetup';
@@ -204,6 +205,7 @@ const {
 
 const step = ref(setupState.value.currentStep);
 const starting = ref(false);
+const dismissed = ref(false);
 const form = reactive({
     machineName: setupState.value.machineName || 'This computer',
     workspaceDir: setupState.value.workspaceDir || setupState.value.workspaceDirDisplay || '',
@@ -221,6 +223,8 @@ const serviceBehaviorOptions = [
     { label: 'Stop service when app quits', value: 'stop-with-app' },
     { label: 'Keep service running in background', value: 'keep-running' },
 ];
+
+const showSetupOverlay = computed(() => ready.value && shouldShowSetup.value && !dismissed.value);
 
 const progress = computed(() => [
     { label: 'Find OR3 Intern', done: Boolean(setupState.value.internBinary) || serviceStatus.value.state !== 'not-installed' },
@@ -313,5 +317,15 @@ async function startSetup() {
     } finally {
         starting.value = false;
     }
+}
+
+async function goDashboard() {
+    dismissed.value = true;
+    await navigateTo('/computer');
+}
+
+async function goConnectDevice() {
+    dismissed.value = true;
+    await navigateTo('/computer/connect-device');
 }
 </script>

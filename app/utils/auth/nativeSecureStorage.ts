@@ -74,21 +74,25 @@ export async function writeHostTokensToNativeStorage(
     await deleteHostTokensFromNativeStorage();
     return;
   }
-  await plugin
-    .setCredentials({
+  try {
+    await plugin.setCredentials({
       server: NATIVE_TOKEN_SERVER,
       username: NATIVE_TOKEN_USERNAME,
       password: JSON.stringify(tokens),
-    })
-    .catch(() => undefined);
+    });
+  } catch (error) {
+    console.warn('[secure-storage] Failed to write host tokens:', error);
+  }
 }
 
 export async function deleteHostTokensFromNativeStorage() {
   const plugin = getNativeBiometricPlugin();
   if (!plugin?.deleteCredentials) return;
-  await plugin
-    .deleteCredentials({ server: NATIVE_TOKEN_SERVER })
-    .catch(() => undefined);
+  try {
+    await plugin.deleteCredentials({ server: NATIVE_TOKEN_SERVER });
+  } catch (error) {
+    console.warn('[secure-storage] Failed to delete host tokens:', error);
+  }
 }
 
 export async function readSecureConnectionStateFromNativeStorage() {
@@ -120,13 +124,15 @@ export async function writeSecureConnectionStateToNativeStorage(
 ) {
   const plugin = getNativeBiometricPlugin();
   if (!plugin?.setCredentials) return;
-  await plugin
-    .setCredentials({
+  try {
+    await plugin.setCredentials({
       server: NATIVE_SECURE_CONNECTION_SERVER,
       username: NATIVE_SECURE_CONNECTION_USERNAME,
       password: JSON.stringify(state),
-    })
-    .catch(() => undefined);
+    });
+  } catch (error) {
+    console.warn('[secure-storage] Failed to write secure connection state:', error);
+  }
   if (typeof localStorage !== "undefined")
     localStorage.setItem(NATIVE_SECURE_CONNECTION_MARKER, String(Date.now()));
 }
@@ -134,9 +140,11 @@ export async function writeSecureConnectionStateToNativeStorage(
 export async function deleteSecureConnectionStateFromNativeStorage() {
   const plugin = getNativeBiometricPlugin();
   if (!plugin?.deleteCredentials) return;
-  await plugin
-    .deleteCredentials({ server: NATIVE_SECURE_CONNECTION_SERVER })
-    .catch(() => undefined);
+  try {
+    await plugin.deleteCredentials({ server: NATIVE_SECURE_CONNECTION_SERVER });
+  } catch (error) {
+    console.warn('[secure-storage] Failed to delete secure connection state:', error);
+  }
   if (typeof localStorage !== "undefined")
     localStorage.removeItem(NATIVE_SECURE_CONNECTION_MARKER);
 }

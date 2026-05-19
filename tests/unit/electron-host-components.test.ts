@@ -1,6 +1,9 @@
 import { mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { nextTick } from 'vue';
+import { navigateTo } from '#app';
 import ElectronHostStatusCard from '../../app/components/electron/ElectronHostStatusCard.vue';
+import ElectronHostSetupWizard from '../../app/components/electron/ElectronHostSetupWizard.vue';
 import ConnectDevicePage from '../../app/pages/computer/connect-device.vue';
 
 const mockHost = vi.hoisted(() => ({
@@ -10,6 +13,15 @@ const mockHost = vi.hoisted(() => ({
     ready: null as any,
     setupState: null as any,
     ensureLoaded: vi.fn(() => Promise.resolve()),
+    chooseMode: vi.fn(() => Promise.resolve()),
+    saveEssentials: vi.fn(() => Promise.resolve()),
+    saveSecurity: vi.fn(() => Promise.resolve()),
+    persistState: vi.fn(() => Promise.resolve()),
+    pickWorkspaceDirectory: vi.fn(() => Promise.resolve({ canceled: true })),
+    pickDataDirectory: vi.fn(() => Promise.resolve({ canceled: true })),
+    pickInternBinary: vi.fn(() => Promise.resolve({ canceled: true })),
+    locateIntern: vi.fn(() => Promise.resolve({ found: true, compatible: true })),
+    configureAndStart: vi.fn(() => Promise.resolve({ state: 'online' })),
     refreshStatus: vi.fn(() => Promise.resolve()),
     startService: vi.fn(() => Promise.resolve()),
     restartService: vi.fn(() => Promise.resolve()),
@@ -59,6 +71,12 @@ const stubs = {
         props: ['label', 'to'],
         template: '<button type="button" @click="$emit(\'click\')">{{ label }}<slot /></button>',
     },
+    BrandMark: { template: '<span />' },
+    UForm: { template: '<form @submit.prevent="$emit(\'submit\')"><slot /></form>' },
+    UFormField: { template: '<label><slot /></label>' },
+    UInput: { template: '<input />' },
+    UCheckbox: { template: '<input type="checkbox" />' },
+    USelect: { template: '<select />' },
     AppShell: { template: '<main><slot name="sidebar" /><slot /></main>' },
     AppHeader: { template: '<header />' },
     ComputerSidebar: { template: '<aside />' },
@@ -74,12 +92,25 @@ describe('Electron host components', () => {
             deviceCount: 2,
         };
         mockHost.isElectronHostMode.value = true;
+        mockHost.shouldShowSetup.value = false;
+        mockHost.ready.value = true;
+        mockHost.setupState.value = { currentStep: 'done', mode: 'host', completed: true };
         mockHost.ensureLoaded.mockClear();
+        mockHost.chooseMode.mockClear();
+        mockHost.saveEssentials.mockClear();
+        mockHost.saveSecurity.mockClear();
+        mockHost.persistState.mockClear();
+        mockHost.pickWorkspaceDirectory.mockClear();
+        mockHost.pickDataDirectory.mockClear();
+        mockHost.pickInternBinary.mockClear();
+        mockHost.locateIntern.mockClear();
+        mockHost.configureAndStart.mockClear();
         mockHost.refreshStatus.mockClear();
         mockHost.startService.mockClear();
         mockHost.restartService.mockClear();
         mockHost.createSecureInvite.mockClear();
         mockHost.createCliInvite.mockClear();
+        vi.mocked(navigateTo).mockClear();
     });
 
     it('shows online host status and connect-device action', () => {
@@ -118,5 +149,23 @@ describe('Electron host components', () => {
         expect(wrapper.text()).toContain('Compatibility options');
         expect(wrapper.text()).toContain('Generate one-time code');
         expect(mockHost.createSecureInvite).toHaveBeenCalled();
+    });
+
+    it('dismisses setup overlay before navigating to dashboard', async () => {
+        mockHost.shouldShowSetup.value = true;
+        mockHost.setupState.value = { currentStep: 'starting', mode: 'host', completed: false };
+        mockHost.serviceStatus.value = { state: 'not-installed', message: 'Host setup is not configured yet.' };
+        const wrapper = mount(ElectronHostSetupWizard, { global: { stubs } });
+
+        expect(wrapper.text()).toContain('Go to dashboard');
+        const dashboard = wrapper
+            .findAll('button')
+            .find((button) => button.text().includes('Go to dashboard'));
+        expect(dashboard).toBeTruthy();
+        await dashboard!.trigger('click');
+        await nextTick();
+
+        expect(navigateTo).toHaveBeenCalledWith('/computer');
+        expect(wrapper.find('[data-testid="electron-host-setup"]').exists()).toBe(false);
     });
 });

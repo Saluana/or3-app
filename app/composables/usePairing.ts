@@ -868,6 +868,19 @@ export function usePairing() {
             }>(`/internal/v1/devices/${encodeURIComponent(deviceId)}/rotate`, {
                 method: 'POST',
             });
+            // Update the local host token cache so subsequent API calls
+            // use the new token instead of the old one.
+            const activeHostId = cache.state.value.activeHostId;
+            const activeHost = cache.state.value.hosts.find(
+                (h) => h.id === activeHostId,
+            );
+            if (activeHost && response.token) {
+                cache.updateHost({
+                    ...activeHost,
+                    token: response.token,
+                    pairedToken: response.token,
+                });
+            }
             logger.info(
                 'devices:rotate_complete',
                 'Paired device token rotated',
