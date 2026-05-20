@@ -117,7 +117,7 @@ import type { DeviceInfo } from '../../types/or3-api';
 import { usePairing } from '../../composables/usePairing';
 import { useActiveHost } from '../../composables/useActiveHost';
 
-const { listDevices, revokeDevice } = usePairing();
+const { listDevices, revokeDevice, securePairingStatus } = usePairing();
 const { activeHost, isConnected, isPaired } = useActiveHost();
 const toast = useToast();
 const devices = ref<DeviceInfo[]>([]);
@@ -179,7 +179,7 @@ async function confirmRevoke() {
 }
 
 watch(
-    [() => activeHost.value?.id, isPaired, isConnected],
+    [() => activeHost.value?.id, isPaired, isConnected, () => securePairingStatus.value],
     ([, paired, connected]) => {
         if (!paired || !connected) {
             devices.value = [];

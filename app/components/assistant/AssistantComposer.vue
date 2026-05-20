@@ -342,6 +342,7 @@ import {
 } from 'vue';
 import { Editor, EditorContent } from '@tiptap/vue-3';
 import { Extension, mergeAttributes } from '@tiptap/core';
+import { PluginKey } from '@tiptap/pm/state';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import Mention from '@tiptap/extension-mention';
@@ -418,6 +419,12 @@ interface SuggestionKeydownProps {
 }
 
 const fileInput = ref<HTMLInputElement | null>(null);
+const fileMentionSuggestionPluginKey = new PluginKey(
+    'assistantFileMentionSuggestion',
+);
+const slashCommandSuggestionPluginKey = new PluginKey(
+    'assistantSlashCommandSuggestion',
+);
 const editor = shallowRef<Editor>();
 const isDragging = ref(false);
 const isFocused = ref(false);
@@ -1437,6 +1444,7 @@ onMounted(() => {
     }).configure({
         deleteTriggerWithBackspace: true,
         suggestion: {
+            pluginKey: fileMentionSuggestionPluginKey,
             char: '@',
             items: async ({ query }: { query: string }) =>
                 await searchMentionFiles(query),
@@ -1471,6 +1479,7 @@ onMounted(() => {
         addProseMirrorPlugins() {
             return [
                 Suggestion({
+                    pluginKey: slashCommandSuggestionPluginKey,
                     editor: this.editor as any,
                     char: '/',
                     startOfLine: true,

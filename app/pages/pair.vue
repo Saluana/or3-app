@@ -47,6 +47,7 @@ const pairing = usePairing();
 const status = ref<'connecting' | 'connected' | 'failed'>('connecting');
 const message = ref('Connecting to This computer…');
 const selectedRoute = ref('');
+const connectedMode = ref<'secure' | 'compatibility' | null>(null);
 
 const title = computed(() => {
     if (status.value === 'connected') return 'Connected to this computer';
@@ -167,15 +168,20 @@ async function connect() {
                 qr,
                 deviceName: 'or3-app',
             });
+            connectedMode.value = 'secure';
         } else {
             await pairing.exchangeSecurePairingPayload({
                 baseUrl: route.baseUrl,
                 qr,
                 deviceName: 'or3-app',
             });
+            connectedMode.value = 'compatibility';
         }
         status.value = 'connected';
-        message.value = 'This device can now use this computer.';
+        message.value =
+            connectedMode.value === 'compatibility'
+                ? 'Connected in compatibility mode because this browser is using plain HTTP. Use HTTPS, localhost, or the OR3 app for a secure device certificate.'
+                : 'This device can now use this computer with a secure enrollment certificate.';
         window.setTimeout(() => {
             void router.push('/computer');
         }, 450);

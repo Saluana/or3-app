@@ -70,13 +70,17 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 import { useToast } from '@nuxt/ui/composables';
 import { useOr3Api } from '../../composables/useOr3Api';
+import { usePairing } from '../../composables/usePairing';
+import { useActiveHost } from '../../composables/useActiveHost';
 
 const devices = ref<Array<Record<string, any>>>([]);
 const api = useOr3Api();
 const toast = useToast();
+const { securePairingStatus } = usePairing();
+const { activeHost } = useActiveHost();
 
 async function refresh() {
     const response = await api
@@ -116,4 +120,13 @@ async function deny(device: Record<string, any>) {
 }
 
 onMounted(refresh);
+
+watch(
+    [() => activeHost.value?.id, () => securePairingStatus.value],
+    ([, status]) => {
+        if (status === 'connected') {
+            void refresh();
+        }
+    },
+);
 </script>
