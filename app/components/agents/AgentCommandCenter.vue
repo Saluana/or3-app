@@ -1031,7 +1031,7 @@ function summarizeText(text: string, maxWords = 12) {
 function updateEditorText(value: string) {
     formState.task = value;
     closeMentionMenu();
-    editor.value?.commands.setContent(value || '', { emitUpdate: false });
+    editor.value?.commands.setContent(value || '', false);
 }
 
 function focusEditor() {

@@ -26,8 +26,8 @@ function get<T>(values: Record<string, unknown>, key: string, fallback: T): T {
 export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
     {
         key: 'providers',
-        label: 'AI Providers',
-        description: 'Connect more than one AI service and keep favorite models handy.',
+        label: 'AI Controls',
+        description: 'Choose AI services, models, and favorite model shortcuts.',
         icon: 'i-pixelarticons-server',
         summaryTemplate: (v) => {
             const openai = get(v, 'provider.openaiApiKey', '');
@@ -54,8 +54,8 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
             },
             {
                 key: 'provider-manager',
-                label: 'Provider cards',
-                description: 'Add OpenAI-compatible providers and check which providers have keys.',
+                label: 'Providers',
+                description: 'Add OpenAI-compatible providers and check which ones have keys.',
                 kind: 'provider-manager',
                 fieldRefs: [{ section: 'provider', field: 'kind' }],
                 advancedKeys: ['providers', 'provider.apiBase', 'provider.apiKey'],
@@ -1148,3 +1148,15 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
         ],
     },
 ];
+
+const providerSection = SIMPLE_SETTING_SECTIONS.find(
+    (section) => section.key === 'providers',
+);
+const modelRolesSection = SIMPLE_SETTING_SECTIONS.find(
+    (section) => section.key === 'ai',
+);
+
+if (providerSection && modelRolesSection) {
+    providerSection.controls.push(...modelRolesSection.controls);
+    modelRolesSection.controls = [];
+}

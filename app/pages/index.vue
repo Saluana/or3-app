@@ -75,7 +75,15 @@
             </div>
 
             <div class="or3-chat-shell__body">
-                <div v-if="!messages.length" class="or3-chat-shell__content">
+                <div v-if="showWelcome" class="or3-chat-shell__content">
+                    <WelcomeCard
+                        :can-host-locally="isElectron"
+                        @setup-host="startLocalHostSetup"
+                        @pair-device="router.push('/settings/pair')"
+                        @learn-more="router.push('/settings/permissions')"
+                    />
+                </div>
+                <div v-else-if="!messages.length" class="or3-chat-shell__content">
                     <section class="or3-chat-empty">
                         <div class="or3-chat-empty__avatar">
                             <img
@@ -200,7 +208,18 @@
 
                 <div class="or3-chat-desktop__body">
                     <div
-                        v-if="!messages.length"
+                        v-if="showWelcome"
+                        class="or3-chat-desktop__empty"
+                    >
+                        <WelcomeCard
+                            :can-host-locally="isElectron"
+                            @setup-host="startLocalHostSetup"
+                            @pair-device="router.push('/settings/pair')"
+                            @learn-more="router.push('/settings/permissions')"
+                        />
+                    </div>
+                    <div
+                        v-else-if="!messages.length"
                         class="or3-chat-desktop__empty"
                     >
                         <div class="or3-chat-empty__avatar">
@@ -331,6 +350,11 @@ const sessionHistory = useSessionHistory();
 const router = useRouter();
 const { pendingCount } = useApprovals();
 const { isKeyboardOpen } = useKeyboardOpen();
+const { isConnected } = useActiveHost();
+const electronHost = useElectronHostSetup();
+const { isElectron } = electronHost;
+
+const showWelcome = computed(() => !isConnected.value && messages.value.length === 0);
 
 const selectedRunnerId = ref('or3-intern');
 const selectedRunnerModel = ref('');
@@ -345,6 +369,11 @@ const desktopMessageList = ref<{
 const distanceFromBottom = ref(0);
 const isMessageListScrollable = ref(false);
 const liveChannelController = ref<AbortController | null>(null);
+
+async function startLocalHostSetup() {
+    await electronHost.ensureLoaded();
+    await electronHost.chooseMode('host');
+}
 
 const showScrollToBottom = computed(
     () => isMessageListScrollable.value && distanceFromBottom.value > 1,

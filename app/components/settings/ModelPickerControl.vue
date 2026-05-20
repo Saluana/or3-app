@@ -299,7 +299,7 @@ function friendlyError(err: any): string {
         return 'This provider has no API base URL configured yet.'
     }
     if (/401|unauthor/i.test(text)) {
-        return 'Provider rejected the saved API key. Check it in the provider cards.'
+        return 'Provider rejected the saved API key. Check it in Providers.'
     }
     if (/not configured/i.test(text)) {
         return 'Set this provider up first (API key + base URL).'

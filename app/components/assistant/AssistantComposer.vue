@@ -649,7 +649,7 @@ watch(
             editor.value &&
             editor.value.getText({ blockSeparator: '\n\n' }) !== value
         ) {
-            editor.value.commands.setContent(value || '', { emitUpdate: false });
+            editor.value.commands.setContent(value || '', false);
         }
     },
 );
@@ -676,7 +676,7 @@ function summarizeText(text: string, maxWords = 12) {
 function updateEditorText(value: string) {
     formState.text = value;
     closeSuggestionMenus();
-    editor.value?.commands.setContent(value || '', { emitUpdate: false });
+    editor.value?.commands.setContent(value || '', false);
 }
 
 function focusEditor() {

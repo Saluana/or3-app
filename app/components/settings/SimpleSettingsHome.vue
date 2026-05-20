@@ -159,8 +159,13 @@
                     Advanced Settings
                 </p>
                 <p class="mt-0.5 text-xs leading-5 text-amber-800/80">
-                    Advanced Settings are for debugging, hosting, and custom
-                    setups. Most people should use Simple Settings.
+                    <template v-if="hiddenSections.length">
+                        {{ hiddenSections.map(s => s.label).join(', ') }} and raw config editing.
+                    </template>
+                    <template v-else>
+                        Raw config editing for debugging, hosting, and custom setups.
+                    </template>
+                    Most people should use Simple Settings.
                 </p>
             </div>
             <Icon
@@ -180,10 +185,26 @@ const simple = useSimpleSettings();
 const { isConnected } = useActiveHost();
 const loading = ref(false);
 
-const sections = computed(() => simple.availableSections.value);
+// Default visible sections capped at 5 per grandma UX design
+const DEFAULT_VISIBLE_KEYS = ['providers', 'workspace', 'safety', 'connections', 'memory'];
+
+const allSections = computed(() => simple.availableSections.value);
+const sections = computed(() => {
+    const visible = DEFAULT_VISIBLE_KEYS.flatMap((key) => {
+        const section = allSections.value.find((s) => s.key === key);
+        return section ? [section] : [];
+    });
+    // If none of the default keys matched, fall back to first 5
+    if (!visible.length) return allSections.value.slice(0, 5);
+    return visible;
+});
+const hiddenSections = computed(() => {
+    const visibleKeys = new Set(sections.value.map(s => s.key));
+    return allSections.value.filter(s => !visibleKeys.has(s.key));
+});
 const summaries = computed(() => {
     const out: Record<string, string> = {};
-    for (const s of sections.value) out[s.key] = simple.summaryFor(s);
+    for (const s of allSections.value) out[s.key] = simple.summaryFor(s);
     return out;
 });
 
