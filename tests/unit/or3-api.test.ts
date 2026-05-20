@@ -249,6 +249,74 @@ describe('useOr3Api', () => {
         ).resolves.toEqual({ status: 'ok' });
     });
 
+    it('strips auth headers when baseUrl points to a different origin', async () => {
+        const cache = useLocalCache();
+        cache.clearAll();
+        cache.updateHost({
+            id: 'test',
+            name: 'Test Mac',
+            baseUrl: 'http://127.0.0.1:9100/',
+            token: 'session-token',
+            pairedToken: 'paired-token',
+            sessionToken: 'session-token',
+        });
+
+        const fetchMock = vi.fn(
+            async (_url: string | URL | Request, init?: RequestInit) => {
+                expect(String(_url)).toBe('http://evil.example/internal/v1/health');
+                expect(init?.headers).not.toMatchObject({
+                    Authorization: expect.any(String),
+                    'X-Or3-Session': expect.any(String),
+                });
+                return new Response(JSON.stringify({ status: 'ok' }), {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/json' },
+                });
+            },
+        );
+        vi.stubGlobal('fetch', fetchMock);
+
+        const api = useOr3Api();
+        await expect(
+            api.request('/internal/v1/health', {
+                baseUrl: 'http://evil.example',
+                requireAuth: false,
+            }),
+        ).resolves.toEqual({ status: 'ok' });
+    });
+
+    it('does not attach session header when requireAuth is false', async () => {
+        const cache = useLocalCache();
+        cache.clearAll();
+        cache.updateHost({
+            id: 'test',
+            name: 'Test Mac',
+            baseUrl: 'http://127.0.0.1:9100/',
+            token: 'session-token',
+            pairedToken: 'paired-token',
+            sessionToken: 'session-token',
+        });
+
+        const fetchMock = vi.fn(
+            async (_url: string | URL | Request, init?: RequestInit) => {
+                expect(init?.headers).not.toMatchObject({
+                    Authorization: expect.any(String),
+                    'X-Or3-Session': expect.any(String),
+                });
+                return new Response(JSON.stringify({ status: 'ok' }), {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/json' },
+                });
+            },
+        );
+        vi.stubGlobal('fetch', fetchMock);
+
+        const api = useOr3Api();
+        await expect(
+            api.request('/internal/v1/auth/session', { requireAuth: false }),
+        ).resolves.toEqual({ status: 'ok' });
+    });
+
     it('keeps app request payloads snake_case', async () => {
         const cache = useLocalCache();
         cache.clearAll();

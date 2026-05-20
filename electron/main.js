@@ -121,6 +121,10 @@ function setAutostart(enabled) {
 }
 
 function createWindow() {
+    const devServerUrl = String(process.env.OR3_ELECTRON_DEV_URL || '').trim();
+    const allowDevNavigation =
+        !app.isPackaged ||
+        process.env.OR3_ELECTRON_ALLOW_DEV_NAVIGATION === 'true';
     const win = new BrowserWindow({
         width: 1180,
         height: 820,
@@ -139,11 +143,16 @@ function createWindow() {
         return { action: 'deny' };
     });
     win.webContents.on('will-navigate', (event, url) => {
-        if (!isAllowedNavigation(url)) event.preventDefault();
+        if (
+            !isAllowedNavigation(url) &&
+            !(allowDevNavigation && devServerUrl && url.startsWith(devServerUrl))
+        ) {
+            event.preventDefault();
+        }
     });
     win.once('ready-to-show', () => win.show());
-    if (process.env.OR3_ELECTRON_DEV_URL) {
-        void win.loadURL(process.env.OR3_ELECTRON_DEV_URL);
+    if (allowDevNavigation && devServerUrl) {
+        void win.loadURL(devServerUrl);
     } else {
         void win.loadURL(process.env.OR3_ELECTRON_START_URL || 'app://or3/');
     }

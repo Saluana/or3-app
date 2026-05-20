@@ -65,10 +65,57 @@ export function createAssistantEventApplier(
     const appliedEventSequenceKeys = new Set<string>();
     const streamedEventPayloadKeys = new Set<string>();
     const completionActivityId = 'activity:completion:final-response';
+    const emptyFinalTextWarning =
+        'Tool work completed, but or3-intern did not return a final assistant message. The last tool result is shown above; retry the turn if it still matters.';
 
     const markVisibleOutput = (value: string) => {
         if (sanitizeAssistantText(value)) {
             options.setSawVisibleOutput(true);
+        }
+    };
+
+    const textPartContent = (part: ChatMessagePart) =>
+        part.type === 'text' ? sanitizeAssistantText(part.content ?? '') : '';
+
+    const isEmptyFinalWarningText = (value: string) =>
+        sanitizeAssistantText(value) === sanitizeAssistantText(emptyFinalTextWarning);
+
+    const removeEmptyFinalWarningParts = () => {
+        const current = options.readAssistant();
+        const parts = current?.parts;
+        if (!parts?.length) return;
+        const nextParts = parts.filter(
+            (part) => !isEmptyFinalWarningText(textPartContent(part)),
+        );
+        if (nextParts.length !== parts.length) {
+            options.updateAssistant({ parts: nextParts });
+        }
+    };
+
+    const recoverEmptyFinalWithText = (assistantText: string) => {
+        const current = options.readAssistant();
+        const wasEmptyFinal =
+            current?.errorCode === 'empty_final_text' ||
+            isEmptyFinalWarningText(current?.content || '') ||
+            Boolean(
+                current?.parts?.some((part) =>
+                    isEmptyFinalWarningText(textPartContent(part)),
+                ),
+            );
+        options.replaceAssistantContent(assistantText);
+        if (wasEmptyFinal) {
+            removeEmptyFinalWarningParts();
+            if (!options.hasTextPartContent(assistantText)) {
+                options.appendCompleteTextPart(assistantText);
+            }
+            options.updateAssistant({
+                error: undefined,
+                errorCode: undefined,
+            });
+            return;
+        }
+        if (!options.hasVisibleTextPart()) {
+            options.appendCompleteTextPart(assistantText);
         }
     };
 
@@ -348,10 +395,7 @@ export function createAssistantEventApplier(
                   ? assistantContent
                   : '';
         if (assistantText.trim()) {
-            options.replaceAssistantContent(assistantText);
-            if (!options.hasVisibleTextPart()) {
-                options.appendCompleteTextPart(assistantText);
-            }
+            recoverEmptyFinalWithText(assistantText);
             markVisibleOutput(assistantText);
         }
         if (type === 'tool_call') {
@@ -604,8 +648,6 @@ export function createAssistantEventApplier(
                 return { failed: false, completed: true };
             }
             if (!finalText && hasToolWork) {
-                const warning =
-                    'Tool work completed, but or3-intern did not return a final assistant message. The last tool result is shown above; retry the turn if it still matters.';
                 options.upsertActivity(
                     createActivity(
                         'completion',
@@ -616,9 +658,9 @@ export function createAssistantEventApplier(
                     ),
                 );
                 if (!sanitizeAssistantText(currentAssistant?.content || '')) {
-                    options.replaceAssistantContent(warning);
-                    if (!options.hasTextPartContent(warning)) {
-                        options.appendCompleteTextPart(warning);
+                    options.replaceAssistantContent(emptyFinalTextWarning);
+                    if (!options.hasTextPartContent(emptyFinalTextWarning)) {
+                        options.appendCompleteTextPart(emptyFinalTextWarning);
                     }
                 }
                 options.setSawVisibleOutput(true);

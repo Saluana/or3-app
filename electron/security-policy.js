@@ -91,9 +91,14 @@ export const IPC_CHANNELS = Object.freeze({
 });
 
 export function isAllowedNavigation(url) {
-    return (
-        url.startsWith('app://or3/') || url.startsWith('http://127.0.0.1:3060/')
-    );
+    if (url.startsWith('app://or3/')) return true;
+    const devServerUrl = String(process.env.OR3_ELECTRON_DEV_URL || '').trim();
+    const allowDevNavigation =
+        process.env.OR3_ELECTRON_ALLOW_DEV_NAVIGATION === 'true';
+    if (allowDevNavigation && devServerUrl && url.startsWith(devServerUrl)) {
+        return true;
+    }
+    return false;
 }
 
 export function validateIpcChannel(channel) {

@@ -169,6 +169,7 @@ export function useAssistantMessageState(
         });
     };
     const appendCompleteTextPart = (value: string) => {
+        if (hasTextPartContent(value)) return;
         closeActiveTextPart();
         appendTextPart(value);
         closeActiveTextPart();

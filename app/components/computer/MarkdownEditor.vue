@@ -558,7 +558,7 @@ function scheduleAutosave() {
 function applyExternalValue(value: string) {
   if (!editor.value) return
   syncFromProps = true
-  editor.value.commands.setContent(markdownToEditorContent(value), false)
+  editor.value.commands.setContent(markdownToEditorContent(value), { emitUpdate: false })
   syncFromProps = false
   lastCommittedValue = value
   updateDirtyState(value)

@@ -49,6 +49,13 @@ export default defineNuxtConfig({
     compatibilityDate: '2025-07-15',
     devtools: { enabled: false },
     ssr: false,
+    experimental: {
+        defaults: {
+            nuxtLink: {
+                prefetch: false,
+            },
+        },
+    },
 
     modules: ['@nuxt/ui', '@nuxt/icon', '@nuxt/fonts'],
 

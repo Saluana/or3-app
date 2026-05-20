@@ -123,6 +123,33 @@ describe('/pair page', () => {
         });
     });
 
+    it('tries the current app proxy even when the invite only lists direct service routes', async () => {
+        const directOnly = {
+            ...invite(),
+            routes: [
+                { kind: 'direct' as const, baseUrl: 'http://192.168.1.78:9100', priority: 20 },
+            ],
+        };
+        history.replaceState(null, '', `/pair#invite=${encodePairingInviteV2(directOnly)}`);
+        Object.defineProperty(globalThis, 'isSecureContext', { value: true, configurable: true });
+        Object.defineProperty(globalThis, 'crypto', {
+            value: { subtle: { generateKey: vi.fn() } },
+            configurable: true,
+        });
+        vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ status: 'ok' }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+        })));
+        const PairPage = (await import('../../app/pages/pair.vue')).default;
+
+        mount(PairPage, { global: { stubs } });
+        await vi.waitFor(() => expect(pairingMocks.upgradeSecurePairingPayload).toHaveBeenCalled());
+
+        expect(pairingMocks.upgradeInputs.at(0)).toMatchObject({
+            baseUrl: 'http://localhost:3000/api/or3',
+        });
+    });
+
     it('skips same-origin app proxy when health returns HTML fallback', async () => {
         history.replaceState(null, '', `/pair#invite=${encodePairingInviteV2(invite())}`);
         Object.defineProperty(globalThis, 'isSecureContext', { value: true, configurable: true });

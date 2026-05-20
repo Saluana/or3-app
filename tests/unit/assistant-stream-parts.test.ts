@@ -305,6 +305,108 @@ describe("assistant stream ordered parts", () => {
         );
     });
 
+    it("replaces an empty-final warning with recovered final text without duplicating it", async () => {
+        useLocalCache().updateHost({
+            id: "test-host",
+            name: "Test Host",
+            baseUrl: "http://127.0.0.1:9100",
+            token: "secret",
+        });
+
+        streamEvents.push(
+            {
+                event: "tool_call",
+                sequence: 1,
+                data: {
+                    name: "exec",
+                    arguments: '{"program":"node","args":["--version"]}',
+                    tool_call_id: "call_node",
+                    job_id: "job_parts",
+                },
+            },
+            {
+                event: "tool_result",
+                sequence: 2,
+                data: {
+                    name: "exec",
+                    result: "v22.21.1",
+                    tool_call_id: "call_node",
+                    job_id: "job_parts",
+                },
+            },
+            {
+                event: "completion",
+                sequence: 3,
+                data: {
+                    status: "completed",
+                    final_text: "",
+                    job_id: "job_parts",
+                },
+            },
+        );
+        snapshotResponse = {
+            job_id: "job_parts",
+            status: "completed",
+            final_text: "",
+            events: [],
+        };
+
+        await useAssistantStream().send("check node");
+
+        const chat = useChatSessions();
+        const assistant = chat.messages.value.find(
+            (message) => message.role === "assistant",
+        );
+        expect(assistant?.status).toBe("attention");
+        expect(assistant?.errorCode).toBe("empty_final_text");
+        expect(assistant?.content).toContain(
+            "did not return a final assistant message",
+        );
+
+        streamEvents.length = 0;
+        snapshotResponse = {
+            job_id: "job_parts",
+            status: "completed",
+            final_text: "Recovered final answer.",
+            events: [],
+        };
+
+        await useAssistantStream().send({
+            text: "",
+            transportText: "",
+            followJobId: "job_parts",
+            continueMessageId: assistant?.id,
+            suppressUserEcho: true,
+        });
+        await useAssistantStream().send({
+            text: "",
+            transportText: "",
+            followJobId: "job_parts",
+            continueMessageId: assistant?.id,
+            suppressUserEcho: true,
+        });
+
+        const latest = chat.messages.value.find(
+            (message) => message.id === assistant?.id,
+        );
+        const textParts =
+            latest?.parts?.filter((part) => part.type === "text") ?? [];
+        expect(latest?.status).toBe("complete");
+        expect(latest?.error).toBeUndefined();
+        expect(latest?.errorCode).toBeUndefined();
+        expect(latest?.content).toBe("Recovered final answer.");
+        expect(
+            textParts.some((part) =>
+                part.content?.includes("did not return a final assistant message"),
+            ),
+        ).toBe(false);
+        expect(
+            textParts.filter(
+                (part) => part.content === "Recovered final answer.",
+            ),
+        ).toHaveLength(1);
+    });
+
     it("surfaces empty completion without tool work as an attention state", async () => {
         useLocalCache().updateHost({
             id: "test-host",

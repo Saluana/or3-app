@@ -9,7 +9,10 @@ import {
     useActiveHost,
 } from './useActiveHost';
 import { useElectronHostSetup } from './useElectronHostSetup';
-import { resolveHostAuthTokens } from './useSecureHostTokens';
+import {
+    normalizedHostOrigin,
+    resolveHostAuthTokens,
+} from './useSecureHostTokens';
 
 let suppressNetworkErrorLogsUntil = 0;
 let hostAuthCooldownUntil = 0;
@@ -41,6 +44,17 @@ interface Or3ApiErrorPayload {
 
 function normalizeBaseUrl(baseUrl: string) {
     return baseUrl.trim().replace(/\/+$/, '');
+}
+
+function destinationMatchesTokenOrigin(
+    activeBaseUrl?: string,
+    destinationBaseUrl?: string,
+) {
+    if (!destinationBaseUrl) return true;
+    const destinationOrigin = normalizedHostOrigin(destinationBaseUrl);
+    const activeOrigin = normalizedHostOrigin(activeBaseUrl);
+    if (!destinationOrigin || !activeOrigin) return false;
+    return destinationOrigin === activeOrigin;
 }
 
 export function suppressOr3ApiNetworkErrorLogsFor(ms: number) {
@@ -318,11 +332,21 @@ export function useOr3Api() {
         await ensureElectronHostLoaded();
         const requiresAuth = options.requireAuth !== false;
         const method = options.method || (options.body === undefined ? 'GET' : 'POST');
+        const destinationAllowsHostAuth = destinationMatchesTokenOrigin(
+            activeHost.value?.baseUrl,
+            options.baseUrl,
+        );
         const cooldown = activeHost.value?.id === ELECTRON_HOST_PROFILE_ID ? hostAuthCooldownError() : null;
         if (cooldown) throw cooldown;
-        const electronAuthToken = await resolveElectronHostToken(method, path);
-        const authToken = electronAuthToken || resolveRequestAuthToken(options.preferPairedToken);
-        const sessionToken = resolveRequestSessionToken();
+        const electronAuthToken = destinationAllowsHostAuth
+            ? await resolveElectronHostToken(method, path)
+            : undefined;
+        const authToken = destinationAllowsHostAuth
+            ? electronAuthToken || resolveRequestAuthToken(options.preferPairedToken)
+            : undefined;
+        const sessionToken = destinationAllowsHostAuth
+            ? resolveRequestSessionToken()
+            : undefined;
         if (requiresAuth && !authToken) {
             throw {
                 code: 'auth_required',
@@ -343,7 +367,8 @@ export function useOr3Api() {
             headers.Authorization = `Bearer ${authToken}`;
         if (electronAuthToken && requiresAuth)
             headers['X-Or3-Auth-Method'] = 'shared-secret';
-        if (sessionToken) headers['X-Or3-Session'] = sessionToken;
+        if (sessionToken && requiresAuth)
+            headers['X-Or3-Session'] = sessionToken;
         const traceId = getActiveTraceId();
         if (traceId && !headers['X-Trace-Id']) headers['X-Trace-Id'] = traceId;
 
@@ -441,11 +466,21 @@ export function useOr3Api() {
         await ensureElectronHostLoaded();
         const requiresAuth = options.requireAuth !== false;
         const method = options.method || 'POST';
+        const destinationAllowsHostAuth = destinationMatchesTokenOrigin(
+            activeHost.value?.baseUrl,
+            options.baseUrl,
+        );
         const cooldown = activeHost.value?.id === ELECTRON_HOST_PROFILE_ID ? hostAuthCooldownError() : null;
         if (cooldown) throw cooldown;
-        const electronAuthToken = await resolveElectronHostToken(method, path);
-        const authToken = electronAuthToken || resolveRequestAuthToken(options.preferPairedToken);
-        const sessionToken = resolveRequestSessionToken();
+        const electronAuthToken = destinationAllowsHostAuth
+            ? await resolveElectronHostToken(method, path)
+            : undefined;
+        const authToken = destinationAllowsHostAuth
+            ? electronAuthToken || resolveRequestAuthToken(options.preferPairedToken)
+            : undefined;
+        const sessionToken = destinationAllowsHostAuth
+            ? resolveRequestSessionToken()
+            : undefined;
         if (requiresAuth && !authToken) {
             throw {
                 code: 'auth_required',
@@ -466,13 +501,14 @@ export function useOr3Api() {
             headers.Authorization = `Bearer ${authToken}`;
         if (electronAuthToken && requiresAuth)
             headers['X-Or3-Auth-Method'] = 'shared-secret';
-        if (sessionToken) headers['X-Or3-Session'] = sessionToken;
+        if (sessionToken && requiresAuth)
+            headers['X-Or3-Session'] = sessionToken;
         const traceId = getActiveTraceId();
         if (traceId && !headers['X-Trace-Id']) headers['X-Trace-Id'] = traceId;
 
         let response: Response;
         try {
-            response = await fetch(buildUrl(path), {
+            response = await fetch(buildUrl(path, options.baseUrl), {
                 method,
                 headers,
                 body:

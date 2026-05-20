@@ -158,6 +158,8 @@ const COMPLETION_ACTIVITY_TYPES = [
 ];
 
 const STREAM_IDLE_TIMEOUT_MS = 45_000;
+const EMPTY_FINAL_TEXT_WARNING =
+    "Tool work completed, but or3-intern did not return a final assistant message. The last tool result is shown above; retry the turn if it still matters.";
 
 function isLiveJobStatus(status: string) {
     return ["queued", "running", "started"].includes(
@@ -193,6 +195,107 @@ function assistantHasToolWork(message: ChatMessage | undefined) {
                 ].includes(entry.type),
             ),
     );
+}
+
+function textPartContent(part: NonNullable<ChatMessage["parts"]>[number]) {
+    return part.type === "text" ? part.content ?? "" : "";
+}
+
+function hasTextPartContent(
+    message: ChatMessage | undefined,
+    content: string,
+    sanitize: (value: string) => string,
+) {
+    const normalized = sanitize(content);
+    if (!normalized) return false;
+    return Boolean(
+        message?.parts?.some(
+            (part) =>
+                part.type === "text" &&
+                sanitize(textPartContent(part)) === normalized,
+        ),
+    );
+}
+
+function removeTextPartsWithContent(
+    message: ChatMessage | undefined,
+    content: string,
+    sanitize: (value: string) => string,
+) {
+    const normalized = sanitize(content);
+    const parts = message?.parts;
+    if (!normalized || !parts?.length) return parts;
+    const nextParts = parts.filter(
+        (part) =>
+            part.type !== "text" || sanitize(textPartContent(part)) !== normalized,
+    );
+    return nextParts.length === parts.length ? parts : nextParts;
+}
+
+function isEmptyFinalTextWarning(
+    value: string | undefined,
+    sanitize: (value: string) => string,
+) {
+    return sanitize(value || "") === sanitize(EMPTY_FINAL_TEXT_WARNING);
+}
+
+function assistantHasEmptyFinalWarning(
+    message: ChatMessage | undefined,
+    sanitize: (value: string) => string,
+) {
+    return Boolean(
+        message?.errorCode === "empty_final_text" ||
+            isEmptyFinalTextWarning(message?.content, sanitize) ||
+            message?.parts?.some(
+                (part) =>
+                    part.type === "text" &&
+                    isEmptyFinalTextWarning(textPartContent(part), sanitize),
+            ),
+    );
+}
+
+function applyRecoveredFinalText(
+    displayText: string,
+    context: AssistantExecutionState,
+) {
+    const normalized = context.sanitizeAssistantText(displayText);
+    if (!normalized) return false;
+
+    const latest = context.readAssistant();
+    const recoveringEmptyFinal = assistantHasEmptyFinalWarning(
+        latest,
+        context.sanitizeAssistantText,
+    );
+
+    if (!recoveringEmptyFinal && context.sawVisibleOutput()) {
+        return false;
+    }
+
+    const partsWithoutWarning = removeTextPartsWithContent(
+        latest,
+        EMPTY_FINAL_TEXT_WARNING,
+        context.sanitizeAssistantText,
+    );
+    if (partsWithoutWarning && partsWithoutWarning !== latest?.parts) {
+        context.updateAssistant({ parts: partsWithoutWarning });
+    }
+
+    context.replaceAssistantContent(displayText);
+    if (
+        !hasTextPartContent(
+            context.readAssistant(),
+            displayText,
+            context.sanitizeAssistantText,
+        )
+    ) {
+        context.appendCompleteTextPart(displayText);
+    }
+    context.setSawVisibleOutput(true);
+    context.updateAssistant({
+        error: undefined,
+        errorCode: undefined,
+    });
+    return true;
 }
 
 async function* withStreamWatchdog<T>(
@@ -244,16 +347,7 @@ export function applyJobSnapshot(
     const latest = context.readAssistant();
     const snapshotText =
         snapshot.final_text?.trim() || snapshot.error?.trim() || "";
-    if (
-        snapshotText &&
-        (!context.sawVisibleOutput() || latest?.errorCode === "empty_final_text")
-    ) {
-        context.replaceAssistantContent(snapshotText);
-        context.appendCompleteTextPart(snapshotText);
-        context.setSawVisibleOutput(
-            Boolean(context.sanitizeAssistantText(snapshotText)),
-        );
-    }
+    applyRecoveredFinalText(snapshotText, context);
     const hasToolWork = assistantHasToolWork(latest);
     const emptyFinalAfterSnapshot =
         !snapshotText &&
@@ -271,8 +365,6 @@ export function applyJobSnapshot(
                 detail: "Tool work completed without a final assistant message.",
             },
         );
-        const warning =
-            "Tool work completed, but or3-intern did not return a final assistant message. The last tool result is shown above; retry the turn if it still matters.";
         context.addActivity(
             createActivity(
                 "completion",
@@ -282,8 +374,16 @@ export function applyJobSnapshot(
             ),
         );
         if (!context.sanitizeAssistantText(latest?.content || "")) {
-            context.replaceAssistantContent(warning);
-            context.appendCompleteTextPart(warning);
+            context.replaceAssistantContent(EMPTY_FINAL_TEXT_WARNING);
+            if (
+                !hasTextPartContent(
+                    context.readAssistant(),
+                    EMPTY_FINAL_TEXT_WARNING,
+                    context.sanitizeAssistantText,
+                )
+            ) {
+                context.appendCompleteTextPart(EMPTY_FINAL_TEXT_WARNING);
+            }
         }
         context.setSawVisibleOutput(true);
         context.updateAssistant({
@@ -315,13 +415,15 @@ export function applyJobSnapshot(
     context.updateAssistant({
         status: nextStatus,
         error:
-            snapshot.status === "approval_required"
+            snapshotText || snapshot.status === "approval_required"
                 ? undefined
                 : snapshot.error,
         errorCode:
-            snapshot.status === "approval_required"
-                ? "approval_required"
-                : context.readAssistant()?.errorCode,
+            snapshotText
+                ? undefined
+                : snapshot.status === "approval_required"
+                  ? "approval_required"
+                  : context.readAssistant()?.errorCode,
         approvalState:
             snapshot.status === "approval_required"
                 ? "pending"
@@ -358,11 +460,7 @@ export async function fetchAndApplyRunnerTurn(
         context.readAssistant()?.runnerId;
     context.applyRunnerStructuredResult?.(turn.final_text, runnerId);
     const displayText = normalizeResultDisplayText(turn.final_text, runnerId);
-    if (displayText.trim() && !context.sawVisibleOutput()) {
-        context.replaceAssistantContent(displayText);
-        context.appendCompleteTextPart(displayText);
-        context.setSawVisibleOutput(true);
-    }
+    applyRecoveredFinalText(displayText, context);
     context.updateAssistant({
         status:
             turn.status === "approval_required"
@@ -372,7 +470,13 @@ export async function fetchAndApplyRunnerTurn(
                     turn.status === "timed_out"
                   ? "failed"
                   : "complete",
-        error: turn.status === "approval_required" ? undefined : turn.error,
+        error:
+            displayText.trim() || turn.status === "approval_required"
+                ? undefined
+                : turn.error,
+        errorCode: displayText.trim()
+            ? undefined
+            : context.readAssistant()?.errorCode,
         approvalState:
             turn.status === "approval_required"
                 ? "pending"

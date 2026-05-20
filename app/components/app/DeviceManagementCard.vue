@@ -75,7 +75,7 @@
             </div>
         </div>
 
-        <UModal v-model="confirmOpen" :ui="{ content: 'sm:max-w-md' }">
+        <UModal v-model:open="confirmOpen" :ui="{ content: 'sm:max-w-md' }">
             <template #content>
                 <div class="space-y-4 p-5">
                     <DangerCallout tone="danger" title="Remove this device?">
@@ -87,6 +87,9 @@
                         right away. Secure certificate-backed devices are
                         managed separately.
                     </DangerCallout>
+                    <p v-if="revokeError" class="text-sm text-(--or3-red)">
+                        {{ revokeError }}
+                    </p>
                     <div class="flex justify-end gap-2">
                         <UButton
                             label="Cancel"
@@ -109,16 +112,19 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue';
+import { useToast } from '@nuxt/ui/composables';
 import type { DeviceInfo } from '../../types/or3-api';
 import { usePairing } from '../../composables/usePairing';
 import { useActiveHost } from '../../composables/useActiveHost';
 
 const { listDevices, revokeDevice } = usePairing();
 const { activeHost, isConnected, isPaired } = useActiveHost();
+const toast = useToast();
 const devices = ref<DeviceInfo[]>([]);
 const confirmOpen = ref(false);
 const pendingDevice = ref<DeviceInfo | null>(null);
 const revoking = ref(false);
+const revokeError = ref('');
 
 function friendlyRole(role?: string) {
     if (!role) return 'User';
@@ -144,17 +150,29 @@ async function refresh() {
 
 function askRevoke(device: DeviceInfo) {
     pendingDevice.value = device;
+    revokeError.value = '';
     confirmOpen.value = true;
 }
 
 async function confirmRevoke() {
     if (!pendingDevice.value) return;
     revoking.value = true;
+    revokeError.value = '';
     try {
-        await revokeDevice(pendingDevice.value.device_id).catch(() => null);
+        await revokeDevice(pendingDevice.value.device_id);
         await refresh();
         confirmOpen.value = false;
         pendingDevice.value = null;
+    } catch (error) {
+        revokeError.value =
+            error instanceof Error
+                ? error.message
+                : 'Could not remove this device.';
+        toast.add({
+            title: 'Could not remove device',
+            description: revokeError.value,
+            color: 'error',
+        });
     } finally {
         revoking.value = false;
     }

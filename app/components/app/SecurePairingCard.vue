@@ -116,26 +116,83 @@ const friendlyStatus = computed(() => {
 
 function inferredLocalServiceBaseUrl() {
     if (typeof window === 'undefined') return '';
+    if (window.location.protocol !== 'http:' && window.location.protocol !== 'https:') return '';
     return `${window.location.origin}/api/or3`;
+}
+
+function normalizedHttpBaseUrl(baseUrl?: string | null) {
+    const raw = baseUrl?.trim().replace(/\/+$/, '');
+    if (!raw) return '';
+    try {
+        const parsed = new URL(raw);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
+        return raw;
+    } catch {
+        return '';
+    }
 }
 
 function resolveInvitePairingBaseUrl(routes?: PairingInviteRouteV2[]) {
     const appProxyRoute = routes?.find((route) => route.kind === 'app-proxy');
-    if (appProxyRoute) return inferredLocalServiceBaseUrl() || appProxyRoute.baseUrl;
-    return routes?.[0]?.baseUrl || '';
+    if (appProxyRoute) return normalizedHttpBaseUrl(appProxyRoute.baseUrl);
+    return '';
 }
 
-function resolvePairingBaseUrl(payload?: PairingQRCodeV1 | null, routeBaseUrl = '') {
-    return (
-        activeHost.value?.baseUrl ||
-        routeBaseUrl ||
-        payload?.serviceBaseUrl ||
-        inferredLocalServiceBaseUrl()
-    ).trim().replace(/\/+$/, '');
+function uniqueBaseUrls(values: Array<string | undefined>) {
+    const seen = new Set<string>();
+    return values
+        .map((value) => normalizedHttpBaseUrl(value))
+        .filter((value) => {
+            if (!value || seen.has(value)) return false;
+            seen.add(value);
+            return true;
+        });
+}
+
+async function routeIsHealthy(baseUrl: string, timeoutMs = 750) {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const response = await fetch(`${baseUrl}/internal/v1/health`, {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+            signal: controller.signal,
+        });
+        const contentType = response.headers.get('content-type') || '';
+        if (!response.ok || !contentType.toLowerCase().includes('application/json')) return false;
+        const health = await response.json().catch(() => null) as {
+            status?: unknown;
+            health?: unknown;
+        } | null;
+        const status = typeof health?.status === 'string'
+            ? health.status.toLowerCase()
+            : typeof health?.health === 'string'
+              ? health.health.toLowerCase()
+              : '';
+        return status === 'ok';
+    } catch {
+        return false;
+    } finally {
+        window.clearTimeout(timeout);
+    }
+}
+
+async function resolvePairingBaseUrl(payload?: PairingQRCodeV1 | null, routeBaseUrl = '') {
+    const candidates = uniqueBaseUrls([
+        inferredLocalServiceBaseUrl(),
+        routeBaseUrl,
+        payload?.serviceBaseUrl,
+        activeHost.value?.baseUrl,
+    ]);
+    if (!candidates.length) return '';
+    for (const candidate of candidates) {
+        if (await routeIsHealthy(candidate)) return candidate;
+    }
+    return candidates[0] || '';
 }
 
 async function enrollFromQR(raw: string, payload?: PairingQRCodeV1 | null, routeBaseUrl = '') {
-    const baseUrl = resolvePairingBaseUrl(payload, routeBaseUrl);
+    const baseUrl = await resolvePairingBaseUrl(payload, routeBaseUrl);
     if (!baseUrl) {
         throw new Error('Could not determine the computer address for this QR code.');
     }

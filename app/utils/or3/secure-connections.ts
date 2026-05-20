@@ -353,6 +353,11 @@ export function encodePairingInviteV2(invite: PairingInviteV2) {
     return bytesToBase64URL(utf8ToBytes(JSON.stringify(invite)));
 }
 
+function pairingInviteChecksum(invite: PairingInviteV2) {
+    const unsigned = { ...invite, checksum: '' };
+    return `sha256:${bytesToBase64URL(sha256(utf8ToBytes(JSON.stringify(unsigned))))}`;
+}
+
 export function encodePairingInviteV2Text(invite: PairingInviteV2) {
     return `${OR3_PAIRING_INVITE_V2_PREFIX}${encodePairingInviteV2(invite)}`;
 }
@@ -418,6 +423,9 @@ export function parsePairingInvite(raw: string, nowUnixMs = Date.now()): ParsedP
     }
     if (base64URLToBytes(invite.pairing.pairingSecret).length < 32) {
         throw new Error('This pairing invite is not secure enough. Refresh the QR on your computer.');
+    }
+    if (invite.checksum && invite.checksum !== pairingInviteChecksum(invite)) {
+        throw new Error('This pairing invite was tampered with. Refresh the QR on your computer.');
     }
     return {
         version: 2,

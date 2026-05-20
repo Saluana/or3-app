@@ -66,9 +66,9 @@ function inviteTextFromLocation() {
     return hash.get('invite') || url.searchParams.get('invite') || '';
 }
 
-function sameOriginProxyRoute(routes: PairingInviteRouteV2[]): PairingInviteRouteV2 | null {
+function sameOriginProxyRoute(_routes: PairingInviteRouteV2[]): PairingInviteRouteV2 | null {
     if (typeof window === 'undefined') return null;
-    if (!routes.some((route) => route.kind === 'app-proxy')) return null;
+    if (window.location.protocol !== 'http:' && window.location.protocol !== 'https:') return null;
     return {
         kind: 'app-proxy',
         baseUrl: `${window.location.origin}/api/or3`,

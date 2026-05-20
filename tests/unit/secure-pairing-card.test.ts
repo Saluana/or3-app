@@ -5,7 +5,9 @@ import { encodePairingInviteV2, type PairingInviteV2 } from '../../app/utils/or3
 
 const pairingMocks = vi.hoisted(() => {
     const upgradeInputs: unknown[] = [];
+    const activeHost = { value: null as null | { baseUrl?: string } };
     return {
+        activeHost,
         upgradeInputs,
         securePairingStatus: { value: 'idle' },
         exchangeSecurePairingPayload: vi.fn(),
@@ -22,7 +24,7 @@ vi.mock('../../app/composables/usePairing', () => ({
 }));
 
 vi.mock('../../app/composables/useActiveHost', () => ({
-    useActiveHost: () => ({ activeHost: { value: null } }),
+    useActiveHost: () => ({ activeHost: pairingMocks.activeHost }),
 }));
 
 vi.mock('@nuxt/ui/composables', () => ({
@@ -50,6 +52,13 @@ const stubs = {
 };
 
 const validSecret = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+
+function healthyJSON() {
+    return new Response(JSON.stringify({ status: 'ok' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+    });
+}
 
 function invite(): PairingInviteV2 {
     return {
@@ -81,7 +90,9 @@ function invite(): PairingInviteV2 {
 describe('SecurePairingCard', () => {
     afterEach(() => {
         vi.clearAllMocks();
+        vi.unstubAllGlobals();
         pairingMocks.upgradeInputs.length = 0;
+        pairingMocks.activeHost.value = null;
         history.replaceState(null, '', '/');
     });
 
@@ -92,6 +103,7 @@ describe('SecurePairingCard', () => {
             value: { subtle: { generateKey: vi.fn() } },
             configurable: true,
         });
+        vi.stubGlobal('fetch', vi.fn(async () => healthyJSON()));
         const wrapper = mount(SecurePairingCard, { global: { stubs } });
         const link = `http://192.168.1.78:3060/pair#invite=${encodePairingInviteV2(invite())}`;
 
@@ -104,5 +116,58 @@ describe('SecurePairingCard', () => {
         });
         expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toBe('');
         expect(wrapper.text()).toContain('Connected. This device can now use this computer.');
+    });
+
+    it('uses the current app proxy when the invite only has a direct LAN route', async () => {
+        history.replaceState(null, '', '/settings/pair');
+        pairingMocks.activeHost.value = { baseUrl: ':9100' };
+        Object.defineProperty(globalThis, 'isSecureContext', { value: true, configurable: true });
+        Object.defineProperty(globalThis, 'crypto', {
+            value: { subtle: { generateKey: vi.fn() } },
+            configurable: true,
+        });
+        vi.stubGlobal('fetch', vi.fn(async () => healthyJSON()));
+        const wrapper = mount(SecurePairingCard, { global: { stubs } });
+        const parsedInvite = {
+            ...invite(),
+            routes: [
+                { kind: 'direct' as const, baseUrl: 'http://192.168.1.78:9100', priority: 20 },
+            ],
+        };
+
+        await wrapper.find('textarea').setValue(`or3pair:v2:${encodePairingInviteV2(parsedInvite)}`);
+        await wrapper.findAll('button')[1]?.trigger('click');
+        await vi.waitFor(() => expect(pairingMocks.upgradeSecurePairingPayload).toHaveBeenCalled());
+
+        expect(pairingMocks.upgradeInputs.at(0)).toMatchObject({
+            baseUrl: 'http://localhost:3000/api/or3',
+        });
+    });
+
+    it('falls back to the invite route when the current app proxy is unavailable', async () => {
+        history.replaceState(null, '', '/settings/pair');
+        Object.defineProperty(globalThis, 'isSecureContext', { value: true, configurable: true });
+        Object.defineProperty(globalThis, 'crypto', {
+            value: { subtle: { generateKey: vi.fn() } },
+            configurable: true,
+        });
+        vi.stubGlobal('fetch', vi.fn(async (url: string | URL | Request) => {
+            if (String(url).startsWith('http://localhost:3000/api/or3/')) {
+                return new Response('<html>fallback</html>', {
+                    status: 200,
+                    headers: { 'Content-Type': 'text/html' },
+                });
+            }
+            return healthyJSON();
+        }));
+        const wrapper = mount(SecurePairingCard, { global: { stubs } });
+
+        await wrapper.find('textarea').setValue(`or3pair:v2:${encodePairingInviteV2(invite())}`);
+        await wrapper.findAll('button')[1]?.trigger('click');
+        await vi.waitFor(() => expect(pairingMocks.upgradeSecurePairingPayload).toHaveBeenCalled());
+
+        expect(pairingMocks.upgradeInputs.at(0)).toMatchObject({
+            baseUrl: 'http://192.168.1.78:3060/api/or3',
+        });
     });
 });

@@ -57,12 +57,15 @@
             </div>
         </details>
 
-        <UModal v-model="confirmOpen" :ui="{ content: 'sm:max-w-md' }">
+        <UModal v-model:open="confirmOpen" :ui="{ content: 'sm:max-w-md' }">
             <template #content>
                 <div class="space-y-4 p-5">
                     <DangerCallout tone="danger" title="Revoke this device?">
                         This stops {{ pendingName }} from using this computer.
                     </DangerCallout>
+                    <p v-if="revokeError" class="text-sm text-(--or3-red)">
+                        {{ revokeError }}
+                    </p>
                     <div class="flex justify-end gap-2">
                         <UButton label="Cancel" color="neutral" variant="ghost" @click="confirmOpen = false" />
                         <UButton label="Revoke" color="error" :loading="revoking" @click="confirmRevoke" />
@@ -83,6 +86,7 @@ const legacyDevices = ref<Array<Record<string, unknown>>>([]);
 const loading = ref(false);
 const revoking = ref(false);
 const error = ref('');
+const revokeError = ref('');
 const confirmOpen = ref(false);
 const pending = ref<{ kind: 'secure' | 'legacy'; device: Record<string, unknown> } | null>(null);
 
@@ -121,12 +125,14 @@ async function refresh() {
 
 function askRevoke(kind: 'secure' | 'legacy', device: Record<string, unknown>) {
     pending.value = { kind, device };
+    revokeError.value = '';
     confirmOpen.value = true;
 }
 
 async function confirmRevoke() {
     if (!pending.value) return;
     revoking.value = true;
+    revokeError.value = '';
     try {
         const bridge = window.or3Desktop;
         const id = deviceId(pending.value.device);
@@ -135,6 +141,8 @@ async function confirmRevoke() {
         confirmOpen.value = false;
         pending.value = null;
         await refresh();
+    } catch (err) {
+        revokeError.value = err instanceof Error ? err.message : 'Could not revoke this device.';
     } finally {
         revoking.value = false;
     }

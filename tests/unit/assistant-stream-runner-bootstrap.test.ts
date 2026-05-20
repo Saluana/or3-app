@@ -2,15 +2,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChatMessage } from '../../app/types/app-state';
 
 const requestMock = vi.fn();
+let runnerStreamEvents: unknown[] = [
+    {
+        event: 'completion',
+        json: {
+            status: 'completed',
+            job_id: 'job_runner_1',
+        },
+    },
+];
 const streamMock = vi.fn(async function* (path: string) {
     if (path.includes('/runner-chat/') && path.endsWith('/stream')) {
-        yield {
-            event: 'completion',
-            json: {
-                status: 'completed',
-                job_id: 'job_runner_1',
-            },
-        };
+        for (const event of runnerStreamEvents) {
+            yield event;
+        }
     }
 });
 
@@ -39,6 +44,15 @@ describe('assistant stream runner bootstrap', () => {
         vi.stubGlobal('useToast', () => ({ add: vi.fn() }));
         requestMock.mockReset();
         streamMock.mockClear();
+        runnerStreamEvents = [
+            {
+                event: 'completion',
+                json: {
+                    status: 'completed',
+                    job_id: 'job_runner_1',
+                },
+            },
+        ];
     });
 
     afterEach(() => {
@@ -186,5 +200,65 @@ describe('assistant stream runner bootstrap', () => {
                 (item) => item.type === 'runner_stats',
             ),
         ).toBe(true);
+    });
+
+    it('recovers runner final text over an existing empty-final warning', async () => {
+        addHost();
+        runnerStreamEvents = [];
+        requestMock.mockImplementation(async (path: string) => {
+            if (path === '/internal/v1/runner-chat/sessions/rcs_recover/turns/rct_recover') {
+                return {
+                    id: 'rct_recover',
+                    session_id: 'rcs_recover',
+                    status: 'succeeded',
+                    final_text: 'Runner recovered final answer.',
+                    agent_cli_job_id: 'job_runner_recover',
+                };
+            }
+            throw new Error(`Unexpected request path: ${path}`);
+        });
+
+        const chat = useChatSessions();
+        const session = chat.ensureSession();
+        const warning =
+            'Tool work completed, but or3-intern did not return a final assistant message. The last tool result is shown above; retry the turn if it still matters.';
+        const assistant = chat.addMessage({
+            sessionId: session.id,
+            role: 'assistant',
+            content: warning,
+            status: 'attention',
+            error: 'or3-intern completed without a final assistant message.',
+            errorCode: 'empty_final_text',
+            runnerId: 'opencode',
+            runnerChatSessionId: 'rcs_recover',
+            runnerChatTurnId: 'rct_recover',
+            parts: [
+                {
+                    id: 'text:1',
+                    type: 'text',
+                    content: warning,
+                },
+            ],
+        });
+
+        await useAssistantStream().send({
+            text: '',
+            transportText: '',
+            runnerChatSessionId: 'rcs_recover',
+            runnerChatTurnId: 'rct_recover',
+            continueMessageId: assistant.id,
+            suppressUserEcho: true,
+        });
+
+        const latest = chat.messages.value.find(
+            (message) => message.id === assistant.id,
+        );
+        expect(latest?.status).toBe('complete');
+        expect(latest?.error).toBeUndefined();
+        expect(latest?.errorCode).toBeUndefined();
+        expect(latest?.content).toBe('Runner recovered final answer.');
+        expect(latest?.parts?.map((part) => part.content)).toEqual([
+            'Runner recovered final answer.',
+        ]);
     });
 });

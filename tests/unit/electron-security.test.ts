@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
     buildElectronCsp,
     extractInlineScriptHashes,
@@ -22,6 +22,11 @@ function scriptSrcDirective(csp: string) {
 }
 
 describe('Electron security baseline', () => {
+    afterEach(() => {
+        delete process.env.OR3_ELECTRON_DEV_URL;
+        delete process.env.OR3_ELECTRON_ALLOW_DEV_NAVIGATION;
+    });
+
     it('keeps renderer isolation and sandbox enabled', () => {
         const main = readFileSync(appFile('electron/main.js'), 'utf8');
         expect(main).toContain('nodeIntegration: false');
@@ -66,6 +71,16 @@ describe('Electron security baseline', () => {
         expect(validateIpcChannel('shell:open')).toBe(false);
         expect(isAllowedNavigation('app://or3/index.html')).toBe(true);
         expect(isAllowedNavigation('https://example.com')).toBe(false);
+    });
+
+    it('only allows dev navigation when explicitly enabled', () => {
+        process.env.OR3_ELECTRON_DEV_URL = 'http://127.0.0.1:3060/';
+
+        expect(isAllowedNavigation('http://127.0.0.1:3060/')).toBe(false);
+
+        process.env.OR3_ELECTRON_ALLOW_DEV_NAVIGATION = 'true';
+
+        expect(isAllowedNavigation('http://127.0.0.1:3060/')).toBe(true);
     });
 
     it('exposes only the typed desktop bridge in preload', () => {

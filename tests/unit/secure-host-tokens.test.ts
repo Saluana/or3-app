@@ -7,15 +7,15 @@ describe('useSecureHostTokens', () => {
     localStorage.clear()
   })
 
-  it('keeps paired and session tokens in persistent browser storage', () => {
+  it('keeps paired and session tokens in session-scoped browser storage by default', () => {
     const store = useSecureHostTokens()
 
     store.setTokens('host-1', { pairedToken: 'paired-token', sessionToken: 'session-token', origin: 'http://127.0.0.1:9100' })
 
     expect(store.getTokens('host-1')).toEqual({ pairedToken: 'paired-token', sessionToken: 'session-token', origin: 'http://127.0.0.1:9100' })
     expect(store.loadAllTokens()).toEqual({ 'host-1': { pairedToken: 'paired-token', sessionToken: 'session-token', origin: 'http://127.0.0.1:9100' } })
-    expect(localStorage.getItem('or3-app:v1:secure-host-tokens')).toContain('paired-token')
-    expect(sessionStorage.getItem('or3-app:v1:secure-host-tokens')).toBeNull()
+    expect(sessionStorage.getItem('or3-app:v1:secure-host-tokens')).toContain('paired-token')
+    expect(localStorage.getItem('or3-app:v1:secure-host-tokens')).toBeNull()
   })
 
   it('prefers session tokens while preserving paired enrollment tokens', () => {
@@ -55,8 +55,8 @@ describe('useSecureHostTokens', () => {
     })).toBeUndefined()
   })
 
-  it('migrates legacy sessionStorage tokens to persistent localStorage', () => {
-    sessionStorage.setItem('or3-app:v1:secure-host-tokens', JSON.stringify({
+  it('migrates legacy localStorage tokens into session storage', () => {
+    localStorage.setItem('or3-app:v1:secure-host-tokens', JSON.stringify({
       'host-1': { pairedToken: 'paired-token', origin: 'http://127.0.0.1:9100' },
     }))
 
@@ -68,8 +68,8 @@ describe('useSecureHostTokens', () => {
 
     store.replaceTokens([{ id: 'host-1', pairedToken: 'paired-token', baseUrl: 'http://127.0.0.1:9100' }])
 
-    expect(localStorage.getItem('or3-app:v1:secure-host-tokens')).toContain('paired-token')
-    expect(sessionStorage.getItem('or3-app:v1:secure-host-tokens')).toBeNull()
+    expect(sessionStorage.getItem('or3-app:v1:secure-host-tokens')).toContain('paired-token')
+    expect(localStorage.getItem('or3-app:v1:secure-host-tokens')).toBeNull()
   })
 
   it('clears browser fallback storage when no host tokens remain', () => {

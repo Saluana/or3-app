@@ -3,10 +3,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useLocalCache } from '../../app/composables/useLocalCache';
 import { usePairing } from '../../app/composables/usePairing';
 import {
+    bytesToBase64URL,
     encodePairingInviteV2,
     parsePairingInvite,
     type PairingInviteV2,
 } from '../../app/utils/or3/secure-connections';
+import { sha256 } from '@noble/hashes/sha2.js';
 
 const validSecret = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
 
@@ -35,6 +37,14 @@ function testInvite(overrides: Partial<PairingInviteV2> = {}): PairingInviteV2 {
         ],
         signature: 'sha256:test',
         ...overrides,
+    };
+}
+
+function withChecksum(invite: PairingInviteV2): PairingInviteV2 {
+    const unsigned = { ...invite, checksum: '' };
+    return {
+        ...invite,
+        checksum: `sha256:${bytesToBase64URL(sha256(new TextEncoder().encode(JSON.stringify(unsigned))))}`,
     };
 }
 
@@ -189,7 +199,7 @@ describe('usePairing', () => {
 
 describe('PairingInviteV2', () => {
     it('encodes and decodes v2 invite links', () => {
-        const invite = testInvite();
+        const invite = withChecksum(testInvite());
         const encoded = encodePairingInviteV2(invite);
         const parsed = parsePairingInvite(`http://192.168.1.78:3060/pair#invite=${encoded}`);
 
@@ -201,11 +211,30 @@ describe('PairingInviteV2', () => {
     });
 
     it('rejects expired v2 invites with friendly copy', () => {
-        const invite = testInvite({ expiresAtUnixMs: Date.now() - 1 });
+        const invite = withChecksum(testInvite({ expiresAtUnixMs: Date.now() - 1 }));
 
         expect(() => parsePairingInvite(encodePairingInviteV2(invite))).toThrow(
             /expired.*Refresh the QR/i,
         );
+    });
+
+    it('rejects v2 invites with an invalid checksum', () => {
+        const invite = withChecksum(testInvite());
+        invite.routes = [{ kind: 'direct', baseUrl: 'http://evil.example', priority: 1 }];
+
+        expect(() => parsePairingInvite(encodePairingInviteV2(invite))).toThrow(
+            /tampered/i,
+        );
+    });
+
+    it('accepts v2 invites with a valid checksum', () => {
+        const invite = withChecksum(testInvite());
+
+        const parsed = parsePairingInvite(encodePairingInviteV2(invite));
+
+        expect(parsed.version).toBe(2);
+        if (parsed.version !== 2) throw new Error('expected v2 invite');
+        expect(parsed.invite.checksum).toBe(invite.checksum);
     });
 
     it('keeps v1 QR parsing backward compatible', () => {
