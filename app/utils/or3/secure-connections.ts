@@ -12,6 +12,11 @@ export const OR3_PAIRING_INVITE_V2_PREFIX = 'or3pair:v2:';
 const BROWSER_STATE_KEY = 'or3-app:v1:secure-connections';
 const BROWSER_PRIVATE_KEY_DB = 'or3-secure-keys';
 const BROWSER_PRIVATE_KEY_STORE = 'device-keys';
+const MAX_PAIRING_INVITE_FUTURE_SKEW_MS = 5 * 60_000;
+const MIN_SECURE_SESSION_TTL_SECONDS = 60;
+const MAX_SECURE_SESSION_TTL_SECONDS = 60 * 60;
+const SECURE_FRAME_SEQUENCE_SOFT_LIMIT = Number.MAX_SAFE_INTEGER - 1024;
+const BROWSER_QR_SCAN_TIMEOUT_MS = 60_000;
 const textEncoder = new TextEncoder();
 
 function openPrivateKeyDB(): Promise<IDBDatabase> {
@@ -410,6 +415,9 @@ export function parsePairingInvite(raw: string, nowUnixMs = Date.now()): ParsedP
     }
     if (invite.expiresAtUnixMs <= nowUnixMs) {
         throw new Error('This code expired. Refresh the QR on your computer.');
+    }
+    if (invite.issuedAtUnixMs > nowUnixMs + MAX_PAIRING_INVITE_FUTURE_SKEW_MS) {
+        throw new Error('This pairing invite is not valid yet. Refresh the QR on your computer.');
     }
     if (
         !invite.inviteId ||
@@ -909,10 +917,12 @@ export function shouldRekeySecureSession(
         appResumed?: boolean;
         messageCount?: number;
         byteCount?: number;
+        sequence?: number;
     } = {},
 ) {
     const now = opts.nowUnixMs ?? Date.now();
     if (opts.appResumed) return true;
+    if ((opts.sequence ?? 0) >= SECURE_FRAME_SEQUENCE_SOFT_LIMIT) return true;
     if (claims.expires_at_unix_ms <= now + 30_000) return true;
     if (now - claims.issued_at_unix_ms >= 10 * 60_000) return true;
     if ((opts.messageCount ?? 0) >= 8192) return true;
@@ -921,36 +931,59 @@ export function shouldRekeySecureSession(
 }
 
 export function rejectSensitiveDeepLink(rawUrl: string) {
+    const allowlistedKeys = new Set(['pagination_token', 'page_token']);
+    const sensitiveKeyPatterns = [
+        /(^|_)access_token$/,
+        /(^|_)refresh_token$/,
+        /(^|_)id_token$/,
+        /(^|_)session(_id|_token)?$/,
+        /(^|_)pairing_secret$/,
+        /(^|_)secret(_commitment)?$/,
+        /(^|_)certificate(_hash)?$/,
+        /(^|_)code_verifier$/,
+        /(^|_)jwt$/,
+        /^token$/,
+    ];
+    const sensitiveValuePatterns = [
+        /^or3pair:v[12]:/i,
+        /^[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}$/,
+        /^[A-Za-z0-9_-]{43,}$/,
+    ];
+    const hasSensitiveMaterial = (key: string, value: string) => {
+        const normalizedKey = key.trim().toLowerCase();
+        if (allowlistedKeys.has(normalizedKey)) return false;
+        if (sensitiveKeyPatterns.some((pattern) => pattern.test(normalizedKey))) {
+            return true;
+        }
+        const normalizedValue = value.trim();
+        return sensitiveValuePatterns.some((pattern) => pattern.test(normalizedValue));
+    };
     let parsed: URL;
     try {
         parsed = new URL(rawUrl);
     } catch {
         return true;
     }
-    for (const key of parsed.searchParams.keys()) {
-        const normalized = key.toLowerCase();
-        if (
-            normalized.includes('secret') ||
-            normalized.includes('certificate') ||
-            normalized.includes('session') ||
-            normalized.includes('token')
-        ) {
+    for (const [key, value] of parsed.searchParams.entries()) {
+        if (hasSensitiveMaterial(key, value)) {
             return true;
         }
     }
-    // Also scan hash fragments for sensitive material.
     if (parsed.hash) {
-        const hashParams = new URLSearchParams(parsed.hash.replace(/^#/, ''));
-        for (const key of hashParams.keys()) {
-            const normalized = key.toLowerCase();
-            if (
-                normalized.includes('secret') ||
-                normalized.includes('certificate') ||
-                normalized.includes('session') ||
-                normalized.includes('token')
-            ) {
+        const rawHash = parsed.hash.replace(/^#/, '');
+        const hashParams = new URLSearchParams(rawHash);
+        for (const [key, value] of hashParams.entries()) {
+            if (hasSensitiveMaterial(key, value)) {
                 return true;
             }
+        }
+        const decodedHash = decodeURIComponent(rawHash);
+        if (
+            /(access_token|refresh_token|id_token|session_id|pairing_secret|secret_commitment|certificate_hash)=/i.test(
+                decodedHash,
+            ) || /^or3pair:v[12]:/i.test(decodedHash)
+        ) {
+            return true;
         }
     }
     return false;
@@ -994,7 +1027,12 @@ export function buildSecureFrame(
         sentAtUnixMs?: number;
     },
 ): SecureFrameV1 {
-    if (!input.sessionId || !input.correlationId || input.sequence <= 0)
+    if (
+        !input.sessionId ||
+        !input.correlationId ||
+        input.sequence <= 0 ||
+        !Number.isSafeInteger(input.sequence)
+    )
         throw new Error('Secure frame metadata is incomplete.');
     return {
         version: 1,
@@ -1084,7 +1122,7 @@ async function deriveNoiseSessionKey(
         ['sign'],
     );
     const shared = new Uint8Array(
-        await crypto.subtle.sign('HMAC', sharedKey, concatBytes(es, ss)),
+        await crypto.subtle.sign('HMAC', sharedKey, concatByteArrays(es, ss)),
     );
     const hkdfKey = await crypto.subtle.importKey(
         'raw',
@@ -1114,6 +1152,10 @@ export async function buildSecureSessionStartPayload(
     ttlSeconds = 20 * 60,
 ): Promise<SecureSessionStartRequest> {
     const handshake = await buildMobileNoiseHandshake(identity, host, routeId);
+    const normalizedTTLSeconds = Math.min(
+        MAX_SECURE_SESSION_TTL_SECONDS,
+        Math.max(MIN_SECURE_SESSION_TTL_SECONDS, Math.floor(ttlSeconds)),
+    );
     return {
         device_id: identity.deviceId,
         device_noise_public_key: identity.deviceNoisePublicKey,
@@ -1123,7 +1165,7 @@ export async function buildSecureSessionStartPayload(
         enrollment_certificate_hash: host.enrollmentCertificateHash || '',
         account_id: host.accountId?.trim() || undefined,
         noise_handshake: handshake.init,
-        ttl_seconds: Math.max(60, ttlSeconds),
+        ttl_seconds: normalizedTTLSeconds,
     };
 }
 
@@ -1250,7 +1292,7 @@ async function scanPairingQRCodeWithBrowserCamera() {
     const context = canvas.getContext('2d', { willReadFrequently: true });
     if (!context) {
         stream.getTracks().forEach((track) => track.stop());
-        overlay.remove();
+        if (overlay.isConnected) overlay.remove();
         throw new Error('This browser cannot scan QR codes here. Paste the QR text instead.');
     }
 
@@ -1258,18 +1300,29 @@ async function scanPairingQRCodeWithBrowserCamera() {
         (resolve, reject) => {
             let animationFrame = 0;
             let done = false;
+            let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
 
             const cleanup = () => {
+                if (done) return;
                 done = true;
                 if (animationFrame) cancelAnimationFrame(animationFrame);
+                if (timeoutHandle) {
+                    clearTimeout(timeoutHandle);
+                    timeoutHandle = null;
+                }
                 stream.getTracks().forEach((track) => track.stop());
-                overlay.remove();
+                if (overlay.isConnected) overlay.remove();
             };
 
             cancel.addEventListener('click', () => {
                 cleanup();
                 reject(new Error('QR scan canceled.'));
-            });
+            }, { once: true });
+
+            timeoutHandle = setTimeout(() => {
+                cleanup();
+                reject(new Error('QR scan timed out. Paste the QR text instead.'));
+            }, BROWSER_QR_SCAN_TIMEOUT_MS);
 
             const scanFrame = () => {
                 if (done) return;
@@ -1307,18 +1360,6 @@ async function scanPairingQRCodeWithBrowserCamera() {
             });
         },
     );
-}
-
-function concatBytes(...parts: Uint8Array[]) {
-    const out = new Uint8Array(
-        parts.reduce((total, part) => total + part.length, 0),
-    );
-    let offset = 0;
-    for (const part of parts) {
-        out.set(part, offset);
-        offset += part.length;
-    }
-    return out;
 }
 
 export async function storeHostEnrollment(record: HostEnrollmentRecord) {
@@ -1370,9 +1411,24 @@ export function parsePairingQRCode(
 
 function detectPlatform(): DeviceIdentityRecord['platform'] {
     if (typeof navigator === 'undefined') return 'web';
+    const nav = navigator as Navigator & {
+        userAgentData?: { platform?: string; mobile?: boolean };
+    };
     const ua = navigator.userAgent.toLowerCase();
-    if (ua.includes('android')) return 'android';
-    if (ua.includes('iphone') || ua.includes('ipad')) return 'ios';
+    const platform = String(nav.userAgentData?.platform || navigator.platform || '').toLowerCase();
+    const maxTouchPoints = Number(navigator.maxTouchPoints || 0);
+    const isiPadDesktopUA = ua.includes('macintosh') && maxTouchPoints > 1;
+    if (ua.includes('android') || platform.includes('android')) return 'android';
+    if (
+        ua.includes('iphone') ||
+        ua.includes('ipad') ||
+        platform.includes('iphone') ||
+        platform.includes('ipad') ||
+        platform === 'ios' ||
+        isiPadDesktopUA
+    ) {
+        return 'ios';
+    }
     return 'web';
 }
 

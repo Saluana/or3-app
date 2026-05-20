@@ -169,6 +169,7 @@ describe('usePairing', () => {
         });
         expect(usePairing().pendingPairing.value).toBeNull();
         expect(localStorage.getItem('or3-app:v1:pending-pairing')).toBeNull();
+        expect(sessionStorage.getItem('or3-app:v1:pending-pairing')).toBeNull();
     });
 
     it('does not show an app-created code when CLI pairing cannot reach the service', async () => {
@@ -193,6 +194,34 @@ describe('usePairing', () => {
 
         expect(pairing.pendingPairing.value).toBeNull();
         expect(pairing.pairingStatus.value).toBe('idle');
+        expect(localStorage.getItem('or3-app:v1:pending-pairing')).toBeNull();
+        expect(sessionStorage.getItem('or3-app:v1:pending-pairing')).toBeNull();
+    });
+
+    it('stores app-created pending pairing only in session storage', async () => {
+        vi.stubGlobal(
+            'fetch',
+            vi.fn(async () =>
+                new Response(
+                    JSON.stringify({ request_id: 42, code: '123456' }),
+                    {
+                        status: 200,
+                        headers: { 'Content-Type': 'application/json' },
+                    },
+                ),
+            ),
+        );
+
+        const pairing = usePairing();
+        await pairing.startPairing({
+            baseUrl: 'http://127.0.0.1:9100',
+            displayName: 'Studio Mac',
+            deviceName: 'Phone',
+        });
+
+        expect(sessionStorage.getItem('or3-app:v1:pending-pairing')).toContain(
+            '123456',
+        );
         expect(localStorage.getItem('or3-app:v1:pending-pairing')).toBeNull();
     });
 });

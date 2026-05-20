@@ -227,12 +227,16 @@ function hostFromExchange(
 }
 
 function persistPendingPairing() {
-    if (!import.meta.client) return;
+    if (typeof window === 'undefined') return;
+    const storage = typeof sessionStorage !== 'undefined' ? sessionStorage : null;
     if (!pendingPairing.value || !pairingHost.value) {
-        localStorage.removeItem(PENDING_PAIRING_STORAGE_KEY);
+        storage?.removeItem(PENDING_PAIRING_STORAGE_KEY);
+        if (typeof localStorage !== 'undefined') {
+            localStorage.removeItem(PENDING_PAIRING_STORAGE_KEY);
+        }
         return;
     }
-    localStorage.setItem(
+    storage?.setItem(
         PENDING_PAIRING_STORAGE_KEY,
         JSON.stringify({
             pendingPairing: pendingPairing.value,
@@ -241,12 +245,23 @@ function persistPendingPairing() {
             source: PENDING_PAIRING_SOURCE,
         }),
     );
+    if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem(PENDING_PAIRING_STORAGE_KEY);
+    }
 }
 
 function restorePendingPairing() {
-    if (!import.meta.client || pendingPairing.value || pairingHost.value)
+    if (typeof window === 'undefined' || pendingPairing.value || pairingHost.value)
         return;
-    const raw = localStorage.getItem(PENDING_PAIRING_STORAGE_KEY);
+    const sessionRaw =
+        typeof sessionStorage !== 'undefined'
+            ? sessionStorage.getItem(PENDING_PAIRING_STORAGE_KEY)
+            : null;
+    const legacyRaw =
+        !sessionRaw && typeof localStorage !== 'undefined'
+            ? localStorage.getItem(PENDING_PAIRING_STORAGE_KEY)
+            : null;
+    const raw = sessionRaw || legacyRaw;
     if (!raw) return;
     try {
         const parsed = JSON.parse(raw) as {
@@ -260,19 +275,25 @@ function restorePendingPairing() {
             source?: string;
         };
         if (parsed.source !== PENDING_PAIRING_SOURCE) {
-            localStorage.removeItem(PENDING_PAIRING_STORAGE_KEY);
+            sessionStorage?.removeItem(PENDING_PAIRING_STORAGE_KEY);
+            localStorage?.removeItem(PENDING_PAIRING_STORAGE_KEY);
             return;
         }
         if (!parsed.pendingPairing || !parsed.pairingHost) return;
         pendingPairing.value = parsed.pendingPairing;
         pairingHost.value = parsed.pairingHost;
         pairingStatus.value = parsed.pairingStatus || 'waiting';
+        if (legacyRaw && typeof sessionStorage !== 'undefined') {
+            sessionStorage.setItem(PENDING_PAIRING_STORAGE_KEY, raw);
+            localStorage?.removeItem(PENDING_PAIRING_STORAGE_KEY);
+        }
     } catch {
         logger.warn(
             'pending:restore_invalid',
             'Stored pairing state could not be restored',
         );
-        localStorage.removeItem(PENDING_PAIRING_STORAGE_KEY);
+        sessionStorage?.removeItem(PENDING_PAIRING_STORAGE_KEY);
+        localStorage?.removeItem(PENDING_PAIRING_STORAGE_KEY);
     }
 }
 

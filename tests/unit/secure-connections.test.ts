@@ -9,13 +9,40 @@ import {
     buildSecureSessionStartPayload,
     buildSecureFrame,
     bytesToBase64URL,
+    encodePairingInviteV2,
+    parsePairingInvite,
     rejectSensitiveDeepLink,
     secureConnectionCapabilityDiscovery,
     signEnrollmentProposal,
     shouldRekeySecureSession,
     type DeviceIdentityRecord,
     type HostEnrollmentRecord,
+    type PairingInviteV2,
 } from '~/utils/or3/secure-connections';
+
+function makeInvite(overrides: Partial<PairingInviteV2> = {}): PairingInviteV2 {
+    return {
+        version: 2,
+        kind: 'or3.pair.invite',
+        inviteId: 'invite-1',
+        issuedAtUnixMs: Date.now(),
+        expiresAtUnixMs: Date.now() + 60_000,
+        host: {
+            id: 'host-1',
+            displayName: 'Studio Mac',
+            signingPublicKey: 'signing-public-key',
+            noisePublicKey: 'noise-public-key',
+        },
+        pairing: {
+            rendezvousId: 'rv-1',
+            pairingSecret: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+            qrNonce: 'nonce-1',
+        },
+        capabilities: ['chat'],
+        routes: [{ kind: 'direct', baseUrl: 'http://192.168.1.78:9100', priority: 10 }],
+        ...overrides,
+    };
+}
 
 async function makeDeviceIdentity(): Promise<DeviceIdentityRecord> {
     const signing = (await crypto.subtle.generateKey(
@@ -96,6 +123,8 @@ describe('secure connection helpers', () => {
     it('rejects sensitive deep-link query material', () => {
         expect(rejectSensitiveDeepLink('or3://pair?token=abc')).toBe(true);
         expect(rejectSensitiveDeepLink('or3://pair?session_id=abc')).toBe(true);
+        expect(rejectSensitiveDeepLink('or3://pair#access_token=abc')).toBe(true);
+        expect(rejectSensitiveDeepLink('or3://pair?pagination_token=abc')).toBe(false);
         expect(rejectSensitiveDeepLink('or3://pair?code=123456')).toBe(false);
     });
 
@@ -135,6 +164,16 @@ describe('secure connection helpers', () => {
                 sentAtUnixMs: 1_000,
             }),
         ).toMatchObject({ version: 1, sessionId: 'session', sequence: 1 });
+        expect(() =>
+            buildSecureFrame({
+                kind: 'control',
+                sessionId: 'session',
+                sequence: Number.MAX_SAFE_INTEGER + 1,
+                correlationId: 'corr',
+                body: new Uint8Array([1]),
+                sentAtUnixMs: 1_000,
+            }),
+        ).toThrow(/metadata is incomplete/i);
     });
 
     it('reports v2 feature discovery without remote legacy pairing', () => {
@@ -215,6 +254,20 @@ describe('secure connection helpers', () => {
         );
         expect(payload.noise_handshake.prologueHash).toBe(
             buildSecureSessionPrologueHash(prologue),
+        );
+        const capped = await buildSecureSessionStartPayload(
+            identity,
+            host,
+            'route-1',
+            99_999,
+        );
+        expect(capped.ttl_seconds).toBe(3600);
+    });
+
+    it('rejects future-dated v2 invites', () => {
+        const invite = makeInvite({ issuedAtUnixMs: Date.now() + 10 * 60_000 });
+        expect(() => parsePairingInvite(encodePairingInviteV2(invite))).toThrow(
+            /not valid yet/i,
         );
     });
 });

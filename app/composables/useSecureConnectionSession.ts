@@ -77,6 +77,11 @@ export function useSecureConnectionSession() {
         body: Uint8Array,
     ) {
         if (!claims.value) throw new Error('No secure session is active.');
+        if (sequence.value >= Number.MAX_SAFE_INTEGER - 1) {
+            throw new Error(
+                'Secure session sequence is exhausted. Reconnect before sending more messages.',
+            );
+        }
         sequence.value += 1;
         return buildSecureFrame({
             kind,
@@ -89,7 +94,11 @@ export function useSecureConnectionSession() {
     }
 
     function needsRekey() {
-        return claims.value ? shouldRekeySecureSession(claims.value) : false;
+        return claims.value
+            ? shouldRekeySecureSession(claims.value, {
+                  sequence: sequence.value,
+              })
+            : false;
     }
 
     function clear() {
