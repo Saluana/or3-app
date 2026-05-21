@@ -1,9 +1,6 @@
 <template>
-    <AppShell
-    desktop-title="Settings"
-    desktop-subtitle="Configure or3-intern."
-  >
-    <template #sidebar><SettingsSidebar /></template>
+    <AppShell desktop-title="Settings" desktop-subtitle="Configure or3-intern.">
+        <template #sidebar><SettingsSidebar /></template>
         <AppHeader subtitle="ADVANCED SETTINGS" />
 
         <div class="space-y-4">
@@ -32,56 +29,17 @@
                 </div>
             </SurfaceCard>
 
-            <!-- Connection summary card -->
-            <SurfaceCard class-name="space-y-3">
-                <div class="flex items-start gap-3">
-                    <BrandMark size="md" />
-                    <div class="min-w-0 flex-1">
-                        <div class="flex flex-wrap items-center gap-2">
-                            <p
-                                class="font-mono text-base font-semibold text-(--or3-text)"
-                            >
-                                {{
-                                    activeHost?.token
-                                        ? `Connected to ${activeHost.name || 'My Computer'}`
-                                        : 'No computer paired'
-                                }}
-                            </p>
-                            <StatusPill
-                                v-if="activeHost?.token"
-                                label="Connected"
-                                tone="green"
-                                pulse
-                            />
-                        </div>
-                        <p
-                            class="mt-1 text-sm leading-6 text-(--or3-text-muted)"
-                        >
-                            {{
-                                activeHost?.token
-                                    ? 'Your or3-intern app is connected and ready.'
-                                    : 'Pair this app to your computer to get started.'
-                            }}
-                        </p>
-                    </div>
-                </div>
-                <div class="flex items-center gap-2">
-                    <code
-                        v-if="activeHost?.baseUrl"
-                        class="min-w-0 flex-1 truncate rounded-xl border border-(--or3-border) bg-white/70 px-3 py-2 font-mono text-xs text-(--or3-text)"
-                        >{{ activeHost.baseUrl }}</code
-                    >
-                    <UButton
-                        label="Pair new computer"
-                        icon="i-pixelarticons-link"
-                        color="primary"
-                        variant="solid"
-                        size="sm"
-                        class="shrink-0 rounded-full"
-                        to="/settings/pair"
-                    />
-                </div>
-            </SurfaceCard>
+            <ConnectionSummaryCard
+                :headline="connectionHeadline"
+                :description="connectionDescription"
+                :active-host="activeHost"
+                :is-paired="isPaired"
+                :is-connected="isConnected"
+                :pill-label="connectionPillLabel"
+                :pill-tone="connectionPillTone"
+                unpaired-layout="compact"
+                @disconnect="disconnectHost"
+            />
 
             <SurfaceCard class-name="space-y-3">
                 <div class="flex items-start gap-3">
@@ -394,17 +352,29 @@
 
             <p class="or3-command pb-3 text-center text-xs">or3-app v1.0.0</p>
         </div>
+        <DestructiveActionConfirmModal
+            v-model:open="disconnectConfirmOpen"
+            title="Disconnect this app?"
+            :item-name="activeHost?.name || 'This computer'"
+            consequence="This app will forget the saved computer and stop using its chat and computer tools."
+            undo-availability="There is no undo in this app. You can pair this app again later. Trusted device records on the computer stay there until revoked."
+            confirm-label="Disconnect"
+            @confirm="confirmDisconnectHost"
+        />
     </AppShell>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue';
+import { useToast } from '@nuxt/ui/composables';
 import { useRouter } from 'vue-router';
 import { useConfigure } from '../../composables/useConfigure';
 import { useActiveHost } from '../../composables/useActiveHost';
 
 const router = useRouter();
 const searchTerm = ref('');
+const toast = useToast();
+const disconnectConfirmOpen = ref(false);
 
 type FilterKey =
     | 'connection'
@@ -423,7 +393,42 @@ const {
     allFieldsLoading,
     loadAllFields,
 } = useConfigure();
-const { activeHost } = useActiveHost();
+const { activeHost, isConnected, isPaired, disconnectActiveHost } = useActiveHost();
+const connectionHeadline = computed(() => {
+    if (!isPaired.value) return 'No computer paired';
+    return isConnected.value
+        ? `Connected to ${activeHost.value?.name || 'My Computer'}`
+        : `Paired to ${activeHost.value?.name || 'My Computer'}`;
+});
+const connectionDescription = computed(() => {
+    if (!isPaired.value)
+        return 'Pair this app to your computer to get started.';
+    if (isConnected.value) return 'Your or3-intern app is connected and ready.';
+    return 'This app still has a saved pairing, but it cannot reach that computer right now.';
+});
+const connectionPillLabel = computed(() =>
+    isConnected.value ? 'Connected' : 'Unavailable',
+);
+const connectionPillTone = computed<'green' | 'amber'>(() =>
+    isConnected.value ? 'green' : 'amber',
+);
+
+function disconnectHost() {
+    disconnectConfirmOpen.value = true;
+}
+
+function confirmDisconnectHost() {
+    if (!disconnectActiveHost()) return;
+    disconnectConfirmOpen.value = false;
+    toast.add({
+        title: 'Disconnected',
+        description:
+            'This app forgot the saved computer. Revoke the device on the computer only if you want to remove trust there too.',
+        color: 'neutral',
+        icon: 'i-pixelarticons-close',
+        duration: 7000,
+    });
+}
 
 const filters: Array<{ key: FilterKey; label: string }> = [
     { key: 'connection', label: 'Connection' },

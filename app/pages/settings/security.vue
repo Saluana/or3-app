@@ -68,7 +68,7 @@
           <UButton label="Refresh session" icon="i-pixelarticons-reload" color="neutral" variant="soft" :loading="loading" @click="refreshAll" />
           <UButton v-if="!session?.session?.id" label="Sign in with passkey" icon="i-pixelarticons-lock" color="primary" :loading="loading" @click="signIn" />
           <UButton v-else label="Verify now" icon="i-pixelarticons-shield" color="primary" variant="soft" :loading="loading" @click="stepUpOpen = true" />
-          <UButton v-if="session?.session?.id" label="Sign out" icon="i-pixelarticons-logout" color="neutral" variant="ghost" :loading="loading" @click="signOut" />
+          <UButton v-if="session?.session?.id" label="Sign out" icon="i-pixelarticons-logout" color="neutral" variant="ghost" :loading="loading" @click="signOutConfirmOpen = true" />
         </div>
       </SurfaceCard>
 
@@ -94,6 +94,16 @@
       :loading="loading"
       @confirm="verifyNow"
     />
+    <DestructiveActionConfirmModal
+      v-model:open="signOutConfirmOpen"
+      title="Sign out of this session?"
+      item-name="Current passkey session"
+      consequence="Sensitive settings will require you to sign in with a passkey again before continuing."
+      undo-availability="You can sign in again with an available passkey."
+      confirm-label="Sign out"
+      :loading="loading"
+      @confirm="signOut"
+    />
   </AppShell>
 </template>
 
@@ -112,6 +122,7 @@ const mobileAuthSupport = useMobileAuthSupport()
 const passkeys = usePasskeys()
 const loading = ref(false)
 const stepUpOpen = ref(false)
+const signOutConfirmOpen = ref(false)
 
 const capabilities = computed(() => authSession.capabilities.value)
 const session = computed(() => authSession.session.value)
@@ -171,6 +182,7 @@ async function signOut() {
   loading.value = true
   try {
     await authSession.logout('settings-security')
+    signOutConfirmOpen.value = false
   } finally {
     loading.value = false
   }

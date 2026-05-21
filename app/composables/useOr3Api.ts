@@ -4,16 +4,40 @@ import type { Or3SseEvent } from '~/types/or3-api';
 import { createLogger } from '~/utils/logger';
 import { getActiveTraceId } from '~/utils/logTrace';
 import { readSseStream } from '~/utils/or3/sse';
-import { useActiveHost } from './useActiveHost';
-import { resolveHostAuthTokens } from './useSecureHostTokens';
+import {
+    buildSecureSessionStartPayload,
+    loadSecureConnectionState,
+    validateSecureSessionClaims,
+    type SecureSessionClaims,
+} from '~/utils/or3/secure-connections';
+import {
+    ELECTRON_HOST_PROFILE_ID,
+    useActiveHost,
+} from './useActiveHost';
+import { useElectronHostSetup } from './useElectronHostSetup';
+import {
+    normalizedHostOrigin,
+    resolveHostAuthTokens,
+} from './useSecureHostTokens';
 
 let suppressNetworkErrorLogsUntil = 0;
+let hostAuthCooldownUntil = 0;
+let hostAuthCooldownMessage = '';
+
+const secureSessionCache: Record<
+    string,
+    {
+        claims?: SecureSessionClaims;
+        pending?: Promise<SecureSessionClaims>;
+    }
+> = {};
 
 export interface Or3ApiRequestOptions {
     method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
     body?: unknown;
     headers?: Record<string, string>;
     signal?: AbortSignal;
+    baseUrl?: string;
     acceptSse?: boolean;
     requireAuth?: boolean;
     preferPairedToken?: boolean;
@@ -36,6 +60,17 @@ function normalizeBaseUrl(baseUrl: string) {
     return baseUrl.trim().replace(/\/+$/, '');
 }
 
+function destinationMatchesTokenOrigin(
+    activeBaseUrl?: string,
+    destinationBaseUrl?: string,
+) {
+    if (!destinationBaseUrl) return true;
+    const destinationOrigin = normalizedHostOrigin(destinationBaseUrl);
+    const activeOrigin = normalizedHostOrigin(activeBaseUrl);
+    if (!destinationOrigin || !activeOrigin) return false;
+    return destinationOrigin === activeOrigin;
+}
+
 export function suppressOr3ApiNetworkErrorLogsFor(ms: number) {
     const duration = Math.max(0, Number(ms) || 0);
     suppressNetworkErrorLogsUntil = Math.max(
@@ -46,6 +81,25 @@ export function suppressOr3ApiNetworkErrorLogsFor(ms: number) {
 
 function shouldLogNetworkError() {
     return Date.now() > suppressNetworkErrorLogsUntil;
+}
+
+function hostAuthCooldownError(): Or3AppError | null {
+    const remaining = hostAuthCooldownUntil - Date.now();
+    if (remaining <= 0) return null;
+    return {
+        code: 'auth_rate_limited',
+        status: 429,
+        message: hostAuthCooldownMessage || 'The local OR3 service is catching up. Try again in a moment.',
+        retryAfterMs: remaining,
+        retryAfterSeconds: Math.max(1, Math.ceil(remaining / 1000)),
+    };
+}
+
+function noteHostAuthCooldown(error: Or3AppError) {
+    if (error.status !== 429 && error.code !== 'auth_rate_limited') return;
+    const retryAfterMs = Math.min(Math.max(error.retryAfterMs || 0, 5_000), 30_000);
+    hostAuthCooldownUntil = Math.max(hostAuthCooldownUntil, Date.now() + retryAfterMs);
+    hostAuthCooldownMessage = error.message;
 }
 
 function normalizeChallengeCode(
@@ -211,8 +265,50 @@ async function readError(response: Response) {
 }
 
 export function useOr3Api() {
-    const { activeHost } = useActiveHost();
+    const { activeHost, updateHost } = useActiveHost();
+    const electronHost = useElectronHostSetup();
     const logger = createLogger('api');
+
+    async function ensureElectronHostLoaded() {
+        if (typeof window === 'undefined' || !window.or3Desktop) return;
+        await electronHost.ensureLoaded?.().catch(() => undefined);
+    }
+
+    function canUpdateActiveHostStatus(explicitBaseUrl?: string) {
+        if (!activeHost.value) return false;
+        if (activeHost.value.id === ELECTRON_HOST_PROFILE_ID) return false;
+        if (!explicitBaseUrl) return true;
+        return (
+            normalizeBaseUrl(explicitBaseUrl) ===
+            normalizeBaseUrl(activeHost.value.baseUrl)
+        );
+    }
+
+    function updateActiveHostStatus(
+        status: 'online' | 'offline' | 'unauthorized' | 'unknown',
+        explicitBaseUrl?: string,
+    ) {
+        if (!canUpdateActiveHostStatus(explicitBaseUrl) || !activeHost.value)
+            return;
+
+        const nextLastSeenAt =
+            status === 'online'
+                ? new Date().toISOString()
+                : activeHost.value.lastSeenAt;
+
+        if (
+            activeHost.value.status === status &&
+            nextLastSeenAt === activeHost.value.lastSeenAt
+        ) {
+            return;
+        }
+
+        updateHost({
+            ...activeHost.value,
+            status,
+            lastSeenAt: nextLastSeenAt,
+        });
+    }
 
     function buildUrl(path: string, explicitBaseUrl?: string) {
         const baseUrl = explicitBaseUrl || activeHost.value?.baseUrl;
@@ -221,7 +317,16 @@ export function useOr3Api() {
         return `${normalizeBaseUrl(baseUrl)}${normalizedPath}`;
     }
 
+    async function resolveElectronHostToken(method: string, path: string) {
+        if (!electronHost.isElectronHostMode.value) return undefined;
+        if (activeHost.value?.id !== ELECTRON_HOST_PROFILE_ID) return undefined;
+        if (typeof window === 'undefined') return undefined;
+        const token = await window.or3Desktop?.intern.issueServiceToken({ method, path }).catch(() => null);
+        return token?.token?.trim() || undefined;
+    }
+
     function resolveRequestAuthToken(preferPairedToken?: boolean) {
+        if (activeHost.value?.id === ELECTRON_HOST_PROFILE_ID) return undefined;
         const tokens = resolveHostAuthTokens(activeHost.value);
         if (!preferPairedToken) return tokens.authToken;
         return activeHost.value?.tokenOrigin && !tokens.authToken
@@ -230,16 +335,103 @@ export function useOr3Api() {
     }
 
     function resolveRequestSessionToken() {
+        if (activeHost.value?.id === ELECTRON_HOST_PROFILE_ID) return undefined;
         return resolveHostAuthTokens(activeHost.value).sessionToken;
+    }
+
+    async function resolveSecureSessionToken(explicitBaseUrl?: string) {
+        const host = activeHost.value;
+        if (!host || host.authMode !== 'secure-session') return undefined;
+        if (!destinationMatchesTokenOrigin(host.baseUrl, explicitBaseUrl)) return undefined;
+        const hostId = host.secureHostId || host.id;
+        const cached = secureSessionCache[hostId];
+        const now = Date.now();
+        if (cached?.claims && cached.claims.expires_at_unix_ms > now + 30_000) {
+            return cached.claims.session_id;
+        }
+        if (cached?.pending) return (await cached.pending).session_id;
+
+        const pending = (async () => {
+            const state = await loadSecureConnectionState();
+            const identity = state.deviceIdentity;
+            const enrollment = state.hosts?.[hostId];
+            if (!identity || !enrollment) {
+                throw {
+                    code: 'auth_required',
+                    status: 401,
+                    message: 'This secure device enrollment is missing. Pair this device again.',
+                } satisfies Or3AppError;
+            }
+            const routeId = host.secureSessionRouteId || `direct:${normalizeBaseUrl(host.baseUrl)}`;
+            const body = await buildSecureSessionStartPayload(identity, enrollment, routeId);
+            const response = await fetch(
+                `${normalizeBaseUrl(explicitBaseUrl || host.baseUrl)}/internal/v1/secure-connections/sessions`,
+                {
+                    method: 'POST',
+                    headers: {
+                        Accept: 'application/json',
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(body),
+                },
+            );
+            if (!response.ok) {
+                const payload = await readError(response);
+                throw mapError(response.status, payload);
+            }
+            const result = (await response.json()) as { claims?: unknown };
+            if (!validateSecureSessionClaims(result.claims)) {
+                throw {
+                    code: 'auth_required',
+                    status: 401,
+                    message: 'The computer returned an invalid secure session.',
+                } satisfies Or3AppError;
+            }
+            updateHost({
+                ...host,
+                status: 'online',
+                lastSeenAt: new Date().toISOString(),
+            });
+            return result.claims;
+        })();
+
+        secureSessionCache[hostId] = { pending };
+        try {
+            const claims = await pending;
+            secureSessionCache[hostId] = { claims };
+            return claims.session_id;
+        } catch (error) {
+            delete secureSessionCache[hostId];
+            updateActiveHostStatus('unauthorized', explicitBaseUrl);
+            throw error;
+        }
     }
 
     async function request<T>(
         path: string,
         options: Or3ApiRequestOptions = {},
     ): Promise<T> {
+        await ensureElectronHostLoaded();
         const requiresAuth = options.requireAuth !== false;
-        const authToken = resolveRequestAuthToken(options.preferPairedToken);
-        const sessionToken = resolveRequestSessionToken();
+        const method = options.method || (options.body === undefined ? 'GET' : 'POST');
+        const destinationAllowsHostAuth = destinationMatchesTokenOrigin(
+            activeHost.value?.baseUrl,
+            options.baseUrl,
+        );
+        const cooldown = activeHost.value?.id === ELECTRON_HOST_PROFILE_ID ? hostAuthCooldownError() : null;
+        if (cooldown) throw cooldown;
+        const electronAuthToken = requiresAuth && destinationAllowsHostAuth
+            ? await resolveElectronHostToken(method, path)
+            : undefined;
+        const secureSessionToken = requiresAuth && destinationAllowsHostAuth
+            ? await resolveSecureSessionToken(options.baseUrl)
+            : undefined;
+        const authToken = destinationAllowsHostAuth
+            ? electronAuthToken || secureSessionToken || resolveRequestAuthToken(options.preferPairedToken)
+            : undefined;
+        const sessionToken = destinationAllowsHostAuth
+            ? resolveRequestSessionToken()
+            : undefined;
         if (requiresAuth && !authToken) {
             throw {
                 code: 'auth_required',
@@ -258,16 +450,19 @@ export function useOr3Api() {
             headers['Content-Type'] = 'application/json';
         if (authToken && requiresAuth)
             headers.Authorization = `Bearer ${authToken}`;
-        if (sessionToken) headers['X-Or3-Session'] = sessionToken;
+        if (electronAuthToken && requiresAuth)
+            headers['X-Or3-Auth-Method'] = 'shared-secret';
+        if (secureSessionToken && requiresAuth)
+            headers['X-Or3-Auth-Method'] = 'secure-session';
+        if (sessionToken && requiresAuth)
+            headers['X-Or3-Session'] = sessionToken;
         const traceId = getActiveTraceId();
         if (traceId && !headers['X-Trace-Id']) headers['X-Trace-Id'] = traceId;
 
         let response: Response;
         try {
-            response = await fetch(buildUrl(path), {
-                method:
-                    options.method ||
-                    (options.body === undefined ? 'GET' : 'POST'),
+            response = await fetch(buildUrl(path, options.baseUrl), {
+                method,
                 headers,
                 body:
                     options.body === undefined
@@ -276,17 +471,24 @@ export function useOr3Api() {
                 signal: options.signal,
             });
         } catch (error) {
+            updateActiveHostStatus('offline', options.baseUrl);
             const payload = {
                 path,
-                method:
-                    options.method ||
-                    (options.body === undefined ? 'GET' : 'POST'),
+                method,
                 error: error instanceof Error ? error.message : String(error),
             };
             if (shouldLogNetworkError()) {
-                logger.error('request:network_error', 'Could not reach host', payload);
+                logger.error(
+                    'request:network_error',
+                    'Could not reach host',
+                    payload,
+                );
             } else {
-                logger.debug('request:network_error_suppressed', 'Host is restarting', payload);
+                logger.debug(
+                    'request:network_error_suppressed',
+                    'Host is restarting',
+                    payload,
+                );
             }
             throw {
                 code: 'host_unreachable',
@@ -297,6 +499,11 @@ export function useOr3Api() {
 
         if (!response.ok) {
             const payload = await readError(response);
+            if (response.status === 401 || response.status === 403) {
+                updateActiveHostStatus('unauthorized', options.baseUrl);
+            } else {
+                updateActiveHostStatus('online', options.baseUrl);
+            }
             const challenge = toAuthChallenge(payload, response.status);
             if (challenge && options.onAuthChallenge) {
                 const shouldRetry = await options.onAuthChallenge(challenge);
@@ -326,8 +533,15 @@ export function useOr3Api() {
                             : undefined),
                 },
             );
-            throw mapError(response.status, payload);
+            const error = mapError(response.status, payload);
+            if (activeHost.value?.id === ELECTRON_HOST_PROFILE_ID) noteHostAuthCooldown(error);
+            throw error;
         }
+        if (activeHost.value?.id === ELECTRON_HOST_PROFILE_ID) {
+            hostAuthCooldownUntil = 0;
+            hostAuthCooldownMessage = '';
+        }
+        updateActiveHostStatus('online', options.baseUrl);
         if (response.status === 204) return undefined as T;
         return (await response.json()) as T;
     }
@@ -336,9 +550,27 @@ export function useOr3Api() {
         path: string,
         options: Or3ApiRequestOptions = {},
     ): AsyncIterable<Or3SseEvent> {
+        await ensureElectronHostLoaded();
         const requiresAuth = options.requireAuth !== false;
-        const authToken = resolveRequestAuthToken(options.preferPairedToken);
-        const sessionToken = resolveRequestSessionToken();
+        const method = options.method || 'POST';
+        const destinationAllowsHostAuth = destinationMatchesTokenOrigin(
+            activeHost.value?.baseUrl,
+            options.baseUrl,
+        );
+        const cooldown = activeHost.value?.id === ELECTRON_HOST_PROFILE_ID ? hostAuthCooldownError() : null;
+        if (cooldown) throw cooldown;
+        const electronAuthToken = requiresAuth && destinationAllowsHostAuth
+            ? await resolveElectronHostToken(method, path)
+            : undefined;
+        const secureSessionToken = requiresAuth && destinationAllowsHostAuth
+            ? await resolveSecureSessionToken(options.baseUrl)
+            : undefined;
+        const authToken = destinationAllowsHostAuth
+            ? electronAuthToken || secureSessionToken || resolveRequestAuthToken(options.preferPairedToken)
+            : undefined;
+        const sessionToken = destinationAllowsHostAuth
+            ? resolveRequestSessionToken()
+            : undefined;
         if (requiresAuth && !authToken) {
             throw {
                 code: 'auth_required',
@@ -357,14 +589,19 @@ export function useOr3Api() {
             headers['Content-Type'] = 'application/json';
         if (authToken && requiresAuth)
             headers.Authorization = `Bearer ${authToken}`;
-        if (sessionToken) headers['X-Or3-Session'] = sessionToken;
+        if (electronAuthToken && requiresAuth)
+            headers['X-Or3-Auth-Method'] = 'shared-secret';
+        if (secureSessionToken && requiresAuth)
+            headers['X-Or3-Auth-Method'] = 'secure-session';
+        if (sessionToken && requiresAuth)
+            headers['X-Or3-Session'] = sessionToken;
         const traceId = getActiveTraceId();
         if (traceId && !headers['X-Trace-Id']) headers['X-Trace-Id'] = traceId;
 
         let response: Response;
         try {
-            response = await fetch(buildUrl(path), {
-                method: options.method || 'POST',
+            response = await fetch(buildUrl(path, options.baseUrl), {
+                method,
                 headers,
                 body:
                     options.body === undefined
@@ -378,7 +615,7 @@ export function useOr3Api() {
                 'Could not reach host stream',
                 {
                     path,
-                    method: options.method || 'POST',
+                    method,
                     error:
                         error instanceof Error ? error.message : String(error),
                 },

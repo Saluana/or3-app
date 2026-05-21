@@ -50,6 +50,21 @@
   --ui-color-primary-900: #233a23;
   --ui-color-primary-950: #142214;
   --ui-primary: var(--or3-green);
+
+  /* Re-tint Nuxt UI's `neutral` to the warm cream palette so that
+     `color="neutral"` components feel at home on the or3 background
+     instead of pulling in cool stone grays. */
+  --ui-color-neutral-50:  #faf8f3;
+  --ui-color-neutral-100: #f5f0e6;
+  --ui-color-neutral-200: #ebe4d6;
+  --ui-color-neutral-300: #ddd4c7;
+  --ui-color-neutral-400: #c9beaf;
+  --ui-color-neutral-500: #a89b8a;
+  --ui-color-neutral-600: #8a7d6e;
+  --ui-color-neutral-700: #6f6a60;
+  --ui-color-neutral-800: #4a453d;
+  --ui-color-neutral-900: #24241f;
+  --ui-color-neutral-950: #141411;
 }
 
 @media (display-mode: standalone) {
@@ -849,6 +864,7 @@ html.or3-keyboard-open .or3-chat-shell__composer {
   flex-direction: column;
   gap: 0.1rem;
   min-width: 0;
+  flex: 1 1 auto;
 }
 
 .or3-desktop-primary__status-name {
@@ -878,6 +894,20 @@ html.or3-keyboard-open .or3-chat-shell__composer {
 .or3-desktop-primary__status-dot[data-tone="green"] {
   background: var(--or3-green);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--or3-green) 25%, transparent);
+}
+
+.electron-host-status-actions {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+}
+
+.electron-host-status-actions a,
+.electron-host-status-actions button {
+  min-width: 0;
+  max-width: 100%;
+  justify-content: center;
+  overflow: hidden;
 }
 
 /* ----- Secondary sidebar (page-specific) ----- */

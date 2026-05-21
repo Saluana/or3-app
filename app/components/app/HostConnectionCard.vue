@@ -4,30 +4,49 @@
             <RetroIcon name="i-pixelarticons-link" />
             <div class="min-w-0 flex-1">
                 <p class="font-mono text-base font-semibold text-(--or3-text)">
-                    Connect to your computer
+                    Connect with code
                 </p>
                 <p class="mt-1 text-sm leading-6 text-(--or3-text-muted)">
-                    Pairing enrolls this phone or tablet as a trusted device.
-                    Passkeys are a separate owner check that you can add later
-                    for sensitive changes.
+                    Use the exact service address from or3-intern, then finish
+                    pairing with a CLI code first. The older short-code
+                    compatibility flow is still available lower on this card.
                 </p>
             </div>
         </div>
 
-        <DangerCallout tone="info" title="One-time setup">
-            You'll get a short code below. On your computer, approve that code
-            once to trust this device. After pairing, you can add passkeys to
-            confirm the owner during sensitive actions.
-        </DangerCallout>
-
-        <DangerCallout v-if="activeHost?.token" tone="tip" title="Connected">
-            This app is connected to
-            <span class="font-semibold">{{
-                activeHost.name || 'your computer'
-            }}</span>
-            at
-            <span class="font-mono">{{ activeHost.baseUrl }}</span
-            >.
+        <DangerCallout
+            v-if="isPaired"
+            :tone="isConnected ? 'tip' : 'caution'"
+            :title="isConnected ? 'Connected' : 'Saved pairing'"
+        >
+            <template v-if="isConnected">
+                This app is connected to
+                <span class="font-semibold">{{
+                    activeHost?.name || 'your computer'
+                }}</span>
+                at
+                <span class="font-mono">{{ activeHost?.baseUrl }}</span
+                >.
+            </template>
+            <template v-else>
+                This app still has a saved pairing for
+                <span class="font-semibold">{{
+                    activeHost?.name || 'your computer'
+                }}</span>
+                at
+                <span class="font-mono">{{ activeHost?.baseUrl }}</span
+                >, but it cannot reach that computer right now.
+            </template>
+            <template #actions>
+                <UButton
+                    label="Disconnect this app"
+                    icon="i-pixelarticons-close"
+                    color="neutral"
+                    variant="soft"
+                    size="sm"
+                    @click="disconnect"
+                />
+            </template>
         </DangerCallout>
 
         <UForm :state="formState" class="space-y-4" @submit.prevent="start">
@@ -35,7 +54,7 @@
                 <UFormField
                     label="Your computer's address"
                     name="baseUrl"
-                    description="It usually starts with http:// — your computer screen will show the right one."
+                    description="Use the exact address printed by or3-intern service. Localhost only works when the service is listening on localhost on this same device."
                 >
                     <UInput
                         v-model="formState.baseUrl"
@@ -46,6 +65,13 @@
                         autocorrect="off"
                     />
                 </UFormField>
+                <p
+                    v-if="isLoopbackServiceUrl"
+                    class="text-xs leading-5 text-(--or3-text-muted)"
+                >
+                    If the service says it is listening on a LAN or Tailscale
+                    address, enter that address here instead of 127.0.0.1.
+                </p>
                 <UFormField
                     label="A friendly name for the computer"
                     name="displayName"
@@ -70,8 +96,67 @@
                 </UFormField>
             </div>
 
+            <div
+                class="rounded-2xl border border-(--or3-border) bg-white/65 p-4"
+            >
+                <div class="flex items-start gap-3">
+                    <RetroIcon name="i-pixelarticons-terminal" size="sm" />
+                    <div class="min-w-0 flex-1">
+                        <p
+                            class="font-mono text-sm font-semibold text-(--or3-text)"
+                        >
+                            Connect with a CLI code
+                        </p>
+                        <p
+                            class="mt-1 text-xs leading-5 text-(--or3-text-muted)"
+                        >
+                            Run
+                            <span class="font-mono"
+                                >or3-intern connect-device</span
+                            >
+                            on your computer, then enter the request ID and code
+                            it prints here. This path exchanges the CLI code
+                            directly.
+                        </p>
+                    </div>
+                </div>
+                <div class="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
+                    <UFormField label="Request ID" name="cliRequestId">
+                        <UInput
+                            v-model="cliFormState.requestId"
+                            class="w-full font-mono"
+                            inputmode="numeric"
+                            placeholder="42"
+                        />
+                    </UFormField>
+                    <UFormField label="Code" name="cliCode">
+                        <UInput
+                            v-model="cliFormState.code"
+                            class="w-full font-mono"
+                            inputmode="numeric"
+                            placeholder="123-456"
+                        />
+                    </UFormField>
+                    <UButton
+                        label="Connect"
+                        icon="i-pixelarticons-check"
+                        color="primary"
+                        type="button"
+                        class="self-end"
+                        :loading="loading"
+                        @click="connectWithCliCode"
+                    />
+                </div>
+            </div>
+
+            <DangerCallout tone="caution" title="Legacy compatibility fallback">
+                This creates the older bearer-token pairing. Use it only when
+                you need the legacy short-code bootstrap path, then finish
+                secure QR enrollment above.
+            </DangerCallout>
+
             <UButton
-                label="Get pairing code"
+                label="Get legacy pairing code"
                 icon="i-pixelarticons-lock"
                 type="submit"
                 size="lg"
@@ -104,7 +189,7 @@
             </p>
             <p class="mt-2 text-sm text-(--or3-text-muted)">
                 Leave this screen open. After you approve it, this app will
-                connect automatically.
+                connect automatically so you can finish secure enrollment.
             </p>
             <div
                 class="mt-3 flex items-center gap-2 text-sm font-semibold text-(--or3-green-dark)"
@@ -123,6 +208,15 @@
                 @click="exchange"
             />
         </div>
+        <DestructiveActionConfirmModal
+            v-model:open="disconnectConfirmOpen"
+            title="Disconnect this app?"
+            :item-name="activeHost?.name || 'This computer'"
+            consequence="This app will forget the saved computer and stop using its chat and computer tools."
+            undo-availability="There is no undo in this app. You can pair this app again later. Trusted device records on the computer stay there until revoked."
+            confirm-label="Disconnect"
+            @confirm="confirmDisconnect"
+        />
     </SurfaceCard>
 </template>
 
@@ -137,9 +231,12 @@ const {
     pairingError,
     pairingFailureDetails,
     startPairing,
+    exchangeExistingPairing,
     exchangeCode,
+    verifyActiveHost,
 } = usePairing();
-const { activeHost } = useActiveHost();
+const { activeHost, isConnected, isPaired, disconnectActiveHost } =
+    useActiveHost();
 const toast = useToast();
 let autoFinishTimer: ReturnType<typeof setInterval> | null = null;
 function isLoopbackHost(hostname: string) {
@@ -164,8 +261,20 @@ const formState = reactive({
     displayName: 'My Computer',
     deviceName: 'or3-app',
 });
+const cliFormState = reactive({
+    requestId: '',
+    code: '',
+});
 const loading = ref(false);
+const disconnectConfirmOpen = ref(false);
 const suggestedBaseUrl = computed(defaultServiceBaseUrl);
+const isLoopbackServiceUrl = computed(() => {
+    try {
+        return isLoopbackHost(new URL(formState.baseUrl).hostname);
+    } catch {
+        return false;
+    }
+});
 
 function describePairingToast(error: unknown) {
     const failure = pairingFailureDetails.value;
@@ -248,6 +357,50 @@ async function exchange() {
     }
 }
 
+async function connectWithCliCode() {
+    loading.value = true;
+    try {
+        await exchangeExistingPairing({
+            baseUrl: formState.baseUrl,
+            displayName: formState.displayName,
+            deviceName: formState.deviceName,
+            requestId: cliFormState.requestId,
+            code: cliFormState.code,
+        });
+        stopAutoFinish();
+        toast.add({
+            title: 'Connected',
+            description:
+                'This device is paired. You can use chat and computer tools now.',
+            color: 'success',
+            icon: 'i-pixelarticons-check',
+            duration: 6000,
+        });
+    } catch (error) {
+        showPairingToast('Could not finish CLI pairing', error);
+    } finally {
+        loading.value = false;
+    }
+}
+
+function disconnect() {
+    disconnectConfirmOpen.value = true;
+}
+
+function confirmDisconnect() {
+    if (!disconnectActiveHost()) return;
+    disconnectConfirmOpen.value = false;
+    stopAutoFinish();
+    toast.add({
+        title: 'Disconnected',
+        description:
+            'This app forgot the saved computer. Any trusted device records on the computer stay there until you revoke them.',
+        color: 'neutral',
+        icon: 'i-pixelarticons-close',
+        duration: 7000,
+    });
+}
+
 function startAutoFinish() {
     stopAutoFinish();
     autoFinishTimer = setInterval(async () => {
@@ -274,9 +427,14 @@ onMounted(() => {
     const suggested = suggestedBaseUrl.value;
     if (!suggested) return;
     let host = formState.baseUrl;
-    try { host = new URL(formState.baseUrl).hostname; } catch {}
+    try {
+        host = new URL(formState.baseUrl).hostname;
+    } catch {}
     if (isLoopbackHost(host) || !formState.baseUrl) {
         formState.baseUrl = suggested;
+    }
+    if (isPaired.value) {
+        void verifyActiveHost().catch(() => {});
     }
 });
 

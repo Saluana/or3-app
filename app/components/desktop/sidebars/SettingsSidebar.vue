@@ -6,7 +6,9 @@
         scroll-key="settings"
     >
         <template #filters>
-            <span class="text-[11px] font-mono uppercase tracking-[0.16em] text-(--or3-text-muted)">
+            <span
+                class="text-[11px] font-mono uppercase tracking-[0.16em] text-(--or3-text-muted)"
+            >
                 Preferences
             </span>
         </template>
@@ -42,10 +44,14 @@
 import { computed, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { useSimpleSettings } from '~/composables/settings/useSimpleSettings';
+import { useElectronHostSetup } from '~/composables/useElectronHostSetup';
 
 const route = useRoute();
 const simple = useSimpleSettings();
+const { isElectronHostMode, ensureLoaded } = useElectronHostSetup();
 const query = ref('');
+
+void ensureLoaded();
 
 interface SidebarItem {
     label: string;
@@ -65,10 +71,20 @@ const baseItems = computed<SidebarItem[]>(() => {
 
     const fixed: SidebarItem[] = [
         {
-            label: 'Pair computer',
-            description: 'Connect or re-pair this app to or3-intern.',
+            label: isElectronHostMode.value ? 'Connect devices' : 'Pair computer',
+            description: isElectronHostMode.value
+                ? 'Add phones, browsers, and trusted devices to this computer.'
+                : 'Connect or re-pair this app to or3-intern.',
             icon: 'i-pixelarticons-link',
-            to: '/settings/pair',
+            to: isElectronHostMode.value ? '/computer/connect-device' : '/settings/pair',
+        },
+        {
+            label: isElectronHostMode.value ? 'Trusted devices' : 'Connected devices',
+            description: isElectronHostMode.value
+                ? 'Review and revoke devices trusted by this computer.'
+                : 'Review secure and legacy devices on the paired computer.',
+            icon: 'i-pixelarticons-shield',
+            to: isElectronHostMode.value ? '/computer/trusted-devices' : '/settings/pair',
         },
         {
             label: 'Health check',
@@ -91,7 +107,7 @@ const baseItems = computed<SidebarItem[]>(() => {
         {
             label: 'Add-ons',
             description: 'Manage external tools and advanced add-ons.',
-            icon: 'i-pixelarticons-plug',
+            icon: 'i-lucide-plug',
             to: '/settings/addons',
         },
         {

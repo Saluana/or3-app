@@ -75,7 +75,15 @@
             </div>
 
             <div class="or3-chat-shell__body">
-                <div v-if="!messages.length" class="or3-chat-shell__content">
+                <div v-if="showWelcome" class="or3-chat-shell__content">
+                    <WelcomeCard
+                        :can-host-locally="isElectron"
+                        @setup-host="startLocalHostSetup"
+                        @pair-device="openPairing"
+                        @learn-more="router.push('/settings/permissions')"
+                    />
+                </div>
+                <div v-else-if="!messages.length" class="or3-chat-shell__content">
                     <section class="or3-chat-empty">
                         <div class="or3-chat-empty__avatar">
                             <img
@@ -99,7 +107,7 @@
                         <div class="or3-chat-empty__actions">
                             <UButton
                                 icon="i-pixelarticons-book"
-                                color="neutral"
+                                color="primary"
                                 variant="soft"
                                 @click="openPromptGallery"
                             >
@@ -107,7 +115,7 @@
                             </UButton>
                             <UButton
                                 icon="i-pixelarticons-edit-box"
-                                color="neutral"
+                                color="primary"
                                 variant="ghost"
                                 @click="openFileEditor"
                             >
@@ -124,6 +132,9 @@
                         :key="activeSession?.id ?? 'active-thread'"
                         ref="mobileMessageList"
                         :messages="messages"
+                        :padding-bottom="256"
+                        :keyboard-padding-bottom="112"
+                        :keyboard-open="isKeyboardOpen"
                         class="or3-chat-shell__message-list"
                         @scroll-state="updateScrollState"
                     />
@@ -197,7 +208,18 @@
 
                 <div class="or3-chat-desktop__body">
                     <div
-                        v-if="!messages.length"
+                        v-if="showWelcome"
+                        class="or3-chat-desktop__empty"
+                    >
+                        <WelcomeCard
+                            :can-host-locally="isElectron"
+                            @setup-host="startLocalHostSetup"
+                            @pair-device="openPairing"
+                            @learn-more="router.push('/settings/permissions')"
+                        />
+                    </div>
+                    <div
+                        v-else-if="!messages.length"
                         class="or3-chat-desktop__empty"
                     >
                         <div class="or3-chat-empty__avatar">
@@ -242,6 +264,8 @@
                             :key="activeSession?.id ?? 'active-thread'"
                             ref="desktopMessageList"
                             :messages="messages"
+                            :padding-bottom="24"
+                            :keyboard-padding-bottom="24"
                             class="or3-chat-desktop__message-list"
                             @scroll-state="updateScrollState"
                         />
@@ -299,6 +323,7 @@
         />
 
         <ApprovalsSlideover v-model:open="approvalsOpen" />
+        <PairingSheet v-model:open="pairingOpen" />
     </AppShell>
 </template>
 
@@ -325,11 +350,18 @@ const {
 const sessionHistory = useSessionHistory();
 const router = useRouter();
 const { pendingCount } = useApprovals();
+const { isKeyboardOpen } = useKeyboardOpen();
+const { isConnected } = useActiveHost();
+const electronHost = useElectronHostSetup();
+const { isElectron } = electronHost;
+
+const showWelcome = computed(() => !isConnected.value && messages.value.length === 0);
 
 const selectedRunnerId = ref('or3-intern');
 const selectedRunnerModel = ref('');
 const selectedRunnerThinkingLevel = ref('');
 const approvalsOpen = ref(false);
+const pairingOpen = ref(false);
 const mobileMessageList = ref<{
     scrollToBottom?: () => void;
 } | null>(null);
@@ -339,6 +371,11 @@ const desktopMessageList = ref<{
 const distanceFromBottom = ref(0);
 const isMessageListScrollable = ref(false);
 const liveChannelController = ref<AbortController | null>(null);
+
+async function startLocalHostSetup() {
+    await electronHost.ensureLoaded();
+    await electronHost.chooseMode('host');
+}
 
 const showScrollToBottom = computed(
     () => isMessageListScrollable.value && distanceFromBottom.value > 1,
@@ -357,6 +394,10 @@ function openPromptGallery() {
 
 function openFileEditor() {
     void router.push('/computer');
+}
+
+function openPairing() {
+    pairingOpen.value = true;
 }
 
 function updateScrollState(state: {

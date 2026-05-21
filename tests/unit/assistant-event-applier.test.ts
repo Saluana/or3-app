@@ -58,34 +58,24 @@ function createApplier() {
             assistant.value.parts.push({
                 id: `part-${assistant.value.parts.length + 1}`,
                 type: 'text',
-                text: value,
-                state: 'streaming',
+                content: value,
             });
         },
         appendCompleteTextPart: (value) => {
             assistant.value.parts.push({
                 id: `part-${assistant.value.parts.length + 1}`,
                 type: 'text',
-                text: value,
-                state: 'complete',
+                content: value,
             });
         },
-        closeActiveTextPart: () => {
-            const activePart = [...assistant.value.parts]
-                .reverse()
-                .find(
-                    (part) =>
-                        part.type === 'text' && part.state === 'streaming',
-                );
-            if (activePart) activePart.state = 'complete';
-        },
+        closeActiveTextPart: () => undefined,
         hasVisibleTextPart: () =>
             assistant.value.parts.some(
-                (part) => part.type === 'text' && Boolean(part.text?.trim()),
+                (part) => part.type === 'text' && Boolean(part.content?.trim()),
             ),
         hasTextPartContent: (content) =>
             assistant.value.parts.some(
-                (part) => part.type === 'text' && part.text === content,
+                (part) => part.type === 'text' && part.content === content,
             ),
         addActivity: (entry) => {
             assistant.value.activityLog.push(entry);
@@ -270,5 +260,60 @@ describe('createAssistantEventApplier', () => {
             label: 'Completed turn',
             status: 'complete',
         });
+    });
+
+    it('removes the empty-final warning when a late final text event arrives', () => {
+        const { applyEvent, assistant } = createApplier();
+        const warning =
+            'Tool work completed, but or3-intern did not return a final assistant message. The last tool result is shown above; retry the turn if it still matters.';
+        assistant.value.content = warning;
+        assistant.value.status = 'attention';
+        assistant.value.error = 'or3-intern completed without a final assistant message.';
+        assistant.value.errorCode = 'empty_final_text';
+        assistant.value.parts = [
+            {
+                id: 'part-warning',
+                type: 'text',
+                content: warning,
+            },
+        ];
+
+        applyEvent(
+            {
+                event: 'done',
+                json: {
+                    type: 'done',
+                    sequence: 40,
+                    status: 'completed',
+                    job_id: 'job-2',
+                    final_text: 'Recovered answer.',
+                },
+            },
+            'stream',
+        );
+        applyEvent(
+            {
+                event: 'done',
+                json: {
+                    type: 'done',
+                    sequence: 41,
+                    status: 'completed',
+                    job_id: 'job-2',
+                    final_text: 'Recovered answer.',
+                },
+            },
+            'stream',
+        );
+
+        expect(assistant.value.content).toBe('Recovered answer.');
+        expect(assistant.value.error).toBeUndefined();
+        expect(assistant.value.errorCode).toBeUndefined();
+        expect(assistant.value.parts).toEqual([
+            {
+                id: 'part-1',
+                type: 'text',
+                content: 'Recovered answer.',
+            },
+        ]);
     });
 });

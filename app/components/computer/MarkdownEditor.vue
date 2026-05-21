@@ -109,6 +109,7 @@
       </div>
       <EditorContent
         v-else-if="editor"
+        ref="editorSurface"
         :editor="editor"
         class="or3-markdown-editor"
       />
@@ -119,7 +120,7 @@
 
     <!-- Floating formatting toolbar -->
     <Transition name="or3-md-toolbar-fade">
-      <div v-if="showFormattingToolbar" class="or3-md-toolbar-wrap">
+      <div v-if="showFormattingToolbar" class="or3-md-toolbar-wrap" :style="toolbarWrapStyle">
         <div class="or3-md-toolbar">
           <template v-for="action in primaryFormatActions" :key="action.id">
             <UPopover
@@ -182,7 +183,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import Placeholder from '@tiptap/extension-placeholder'
 import { Editor, EditorContent } from '@tiptap/vue-3'
 import type { EditorCommandAction } from '~/composables/useEditorCommands'
@@ -265,61 +266,10 @@ const statusTitle = computed(() => {
   return statusText.value
 })
 
-const actionSuccessMessages: Record<string, { title: string, description: string }> = {
-  bold: {
-    title: 'Bold updated',
-    description: 'The current selection was toggled as bold.',
-  },
-  italic: {
-    title: 'Italic updated',
-    description: 'The current selection was toggled as italic.',
-  },
-  heading: {
-    title: 'Heading updated',
-    description: 'The current block was toggled as a heading.',
-  },
-  'bullet-list': {
-    title: 'Bullet list updated',
-    description: 'The current block was toggled as a bullet list.',
-  },
-  'ordered-list': {
-    title: 'Numbered list updated',
-    description: 'The current block was toggled as a numbered list.',
-  },
-  'inline-code': {
-    title: 'Inline code updated',
-    description: 'Inline code formatting was toggled for the selection.',
-  },
-  'code-block': {
-    title: 'Code block updated',
-    description: 'The current block was toggled as a code block.',
-  },
-  'horizontal-rule': {
-    title: 'Divider inserted',
-    description: 'A divider was added to the document.',
-  },
-  undo: {
-    title: 'Undo complete',
-    description: 'The previous editor change was reverted.',
-  },
-  redo: {
-    title: 'Redo complete',
-    description: 'The last reverted editor change was restored.',
-  },
-}
-
-const actionSuccessIcons: Record<string, string> = {
-  bold: 'gridicons:bold',
-  italic: 'gridicons:italic',
-  heading: 'gridicons:heading',
-  'bullet-list': 'i-pixelarticons-list',
-  'ordered-list': 'i-pixelarticons-list',
-  'inline-code': 'i-pixelarticons-code',
-  'code-block': 'i-pixelarticons-terminal',
-  'horizontal-rule': 'i-pixelarticons-minus',
-  undo: 'i-pixelarticons-undo',
-  redo: 'i-pixelarticons-redo',
-}
+const editorSurface = ref<InstanceType<typeof EditorContent> | HTMLElement | null>(null)
+const toolbarCenterX = ref<number | null>(null)
+let toolbarResizeObserver: ResizeObserver | null = null
+let toolbarAnimationFrame: number | null = null
 
 const showFormattingToolbar = computed(() => {
   return mode.value === 'edit'
@@ -327,6 +277,44 @@ const showFormattingToolbar = computed(() => {
     && !props.readOnly
     && Boolean(editor.value)
 })
+
+const toolbarWrapStyle = computed(() => {
+  if (toolbarCenterX.value === null) return undefined
+  return {
+    left: `${toolbarCenterX.value}px`,
+  }
+})
+
+function getEditorSurfaceElement(): HTMLElement | null {
+  const surface = editorSurface.value as any
+  return surface?.$el ?? surface ?? null
+}
+
+function updateToolbarAlignment() {
+  toolbarAnimationFrame = null
+  if (!import.meta.client) return
+  if (!window.matchMedia('(min-width: 1024px)').matches) {
+    toolbarCenterX.value = null
+    return
+  }
+  const surface = getEditorSurfaceElement()
+  if (!surface) {
+    toolbarCenterX.value = null
+    return
+  }
+  const rect = surface.getBoundingClientRect()
+  if (rect.width <= 0) {
+    toolbarCenterX.value = null
+    return
+  }
+  toolbarCenterX.value = rect.left + (rect.width / 2)
+}
+
+function scheduleToolbarAlignment() {
+  if (!import.meta.client) return
+  if (toolbarAnimationFrame !== null) cancelAnimationFrame(toolbarAnimationFrame)
+  toolbarAnimationFrame = requestAnimationFrame(updateToolbarAlignment)
+}
 
 function setMode(next: 'edit' | 'read') {
   if (next === mode.value) {
@@ -458,14 +446,6 @@ function setHeadingLevel(level: HeadingLevel) {
   if (!editor.value) return
   if (!canSetHeading(level)) return
   (editor.value.chain().focus() as any).toggleHeading({ level }).run()
-  toast.add({
-    title: `Heading ${level} updated`,
-    description: 'The current block was toggled as a heading.',
-    color: 'success',
-    icon: `gridicons:heading-h${level}`,
-    close: true,
-    duration: 2000,
-  })
 }
 
 // Everything else lives behind the toolbar "..." menu
@@ -558,7 +538,7 @@ function scheduleAutosave() {
 function applyExternalValue(value: string) {
   if (!editor.value) return
   syncFromProps = true
-  editor.value.commands.setContent(markdownToEditorContent(value), false)
+  editor.value.commands.setContent(markdownToEditorContent(value), { emitUpdate: false })
   syncFromProps = false
   lastCommittedValue = value
   updateDirtyState(value)
@@ -568,16 +548,6 @@ async function runAction(action: EditorCommandAction) {
   if (action.disabled) return
   try {
     await action.run()
-    const successMessage = actionSuccessMessages[action.id]
-    if (successMessage) {
-      toast.add({
-        ...successMessage,
-        color: 'success',
-        icon: actionSuccessIcons[action.id] || 'i-pixelarticons-save',
-        close: true,
-        duration: 2200,
-      })
-    }
   } catch (error: any) {
     toast.add({
       title: 'Action unavailable',
@@ -631,14 +601,40 @@ onMounted(() => {
       scheduleAutosave()
     },
   })
+
+  nextTick(() => {
+    scheduleToolbarAlignment()
+    if (import.meta.client) {
+      toolbarResizeObserver = new ResizeObserver(() => scheduleToolbarAlignment())
+      const surface = getEditorSurfaceElement()
+      if (surface) toolbarResizeObserver.observe(surface)
+      window.addEventListener('resize', scheduleToolbarAlignment)
+      window.visualViewport?.addEventListener('resize', scheduleToolbarAlignment)
+    }
+  })
 })
 
 watch(() => [props.readOnly, props.unsupportedMessage, mode.value] as const, ([readOnly, unsupported, m]) => {
   editor.value?.setEditable(!readOnly && !unsupported && m === 'edit')
 })
 
+watch(showFormattingToolbar, async (show) => {
+  if (!show) {
+    toolbarCenterX.value = null
+    return
+  }
+  await nextTick()
+  scheduleToolbarAlignment()
+})
+
 onBeforeUnmount(() => {
   clearAutosaveTimer()
+  if (toolbarAnimationFrame !== null && import.meta.client) cancelAnimationFrame(toolbarAnimationFrame)
+  toolbarResizeObserver?.disconnect()
+  if (import.meta.client) {
+    window.removeEventListener('resize', scheduleToolbarAlignment)
+    window.visualViewport?.removeEventListener('resize', scheduleToolbarAlignment)
+  }
   editor.value?.destroy()
 })
 </script>
@@ -884,7 +880,7 @@ onBeforeUnmount(() => {
   bottom: calc(var(--or3-safe-bottom) + 5.25rem);
   z-index: 35;
   pointer-events: none;
-  width: max-content;
+  width: fit-content;
   max-width: calc(100vw - 1.5rem);
 }
 .or3-md-toolbar {

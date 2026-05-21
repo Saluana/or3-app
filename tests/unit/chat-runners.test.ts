@@ -65,32 +65,32 @@ describe('useChatRunners', () => {
         await chatRunners.refresh();
 
         expect(chatRunners.runners.value.map((runner) => runner.id)).toEqual(['or3-intern', 'opencode']);
-        expect(request).toHaveBeenCalledTimes(1);
+        expect(request).toHaveBeenCalledTimes(2);
 
         activeHost.value = { id: 'host-b' };
         await nextTick();
         await chatRunners.refresh();
 
         expect(chatRunners.runners.value.map((runner) => runner.id)).toEqual(['or3-intern', 'claude']);
-        expect(request).toHaveBeenCalledTimes(2);
+        expect(request).toHaveBeenCalledTimes(4);
 
         activeHost.value = { id: 'host-a' };
         await nextTick();
         await chatRunners.refresh();
 
         expect(chatRunners.runners.value.map((runner) => runner.id)).toEqual(['or3-intern', 'opencode']);
-        expect(request).toHaveBeenCalledTimes(3);
+        expect(request).toHaveBeenCalledTimes(6);
     });
 
-    it('falls back to OR3 when discovery fails and exposes an error', async () => {
+    it('falls back to OR3 when both endpoints fail and exposes errors', async () => {
         const { chatRunners, request } = await loadComposable(async () => {
             throw new Error('runner discovery offline');
         });
 
         await chatRunners.refresh();
 
-        expect(request).toHaveBeenCalledTimes(1);
-        expect(chatRunners.error.value).toBe('runner discovery offline');
+        expect(request).toHaveBeenCalledTimes(2);
+        expect(chatRunners.error.value).toContain('runner discovery offline');
         expect(chatRunners.runners.value).toHaveLength(1);
         expect(chatRunners.runners.value[0]?.id).toBe('or3-intern');
         expect(chatRunners.defaultRunner.value?.id).toBe('or3-intern');

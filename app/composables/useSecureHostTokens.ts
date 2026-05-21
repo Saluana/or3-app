@@ -3,6 +3,7 @@ import { deleteHostTokensFromNativeStorage, getNativeSecureStorageMode, readHost
 import { isPinEnabled, needsUnlock, getDecryptedTokens, encryptAndStore } from './usePinLock'
 
 const HOST_TOKEN_STORAGE_KEY = 'or3-app:v1:secure-host-tokens'
+let inMemoryHostTokenMap: Record<string, HostTokenRecord> = {}
 
 export interface HostTokenRecord {
   pairedToken?: string
@@ -35,8 +36,18 @@ function hostTokenOriginMatches(host?: Partial<Or3HostProfile> | null) {
 }
 
 function readTokenStorage(): string | null {
+  if (typeof sessionStorage !== 'undefined') {
+    const sessionValue = sessionStorage.getItem(HOST_TOKEN_STORAGE_KEY)
+    if (sessionValue) return sessionValue
+  }
   if (typeof localStorage === 'undefined') return null
-  return localStorage.getItem(HOST_TOKEN_STORAGE_KEY)
+  const legacyValue = localStorage.getItem(HOST_TOKEN_STORAGE_KEY)
+  if (!legacyValue) return null
+  if (typeof sessionStorage !== 'undefined') {
+    sessionStorage.setItem(HOST_TOKEN_STORAGE_KEY, legacyValue)
+  }
+  localStorage.removeItem(HOST_TOKEN_STORAGE_KEY)
+  return legacyValue
 }
 
 function readHostTokenMap() {
@@ -48,18 +59,19 @@ function readHostTokenMap() {
   }
 
   let raw = readTokenStorage()
-  if (!raw) {
-    if (typeof sessionStorage !== 'undefined') {
-      raw = sessionStorage.getItem(HOST_TOKEN_STORAGE_KEY)
-    }
+  if (!raw && Object.keys(inMemoryHostTokenMap).length) {
+    return Object.fromEntries(Object.entries(inMemoryHostTokenMap).map(([hostId, value]) => [hostId, normalizeHostTokens(value)])) as Record<string, HostTokenRecord>
   }
   if (!raw) return {} as Record<string, HostTokenRecord>
   try {
     const parsed = JSON.parse(raw) as Record<string, HostTokenRecord>
-    return Object.fromEntries(Object.entries(parsed).map(([hostId, value]) => [hostId, normalizeHostTokens(value)]))
+    const normalized = Object.fromEntries(Object.entries(parsed).map(([hostId, value]) => [hostId, normalizeHostTokens(value)])) as Record<string, HostTokenRecord>
+    inMemoryHostTokenMap = normalized
+    return normalized
   } catch {
     if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(HOST_TOKEN_STORAGE_KEY)
     if (typeof localStorage !== 'undefined') localStorage.removeItem(HOST_TOKEN_STORAGE_KEY)
+    inMemoryHostTokenMap = {}
     return {} as Record<string, HostTokenRecord>
   }
 }
@@ -81,7 +93,8 @@ function writeHostTokenMap(tokens: Record<string, HostTokenRecord>) {
     }
     return
   }
-  if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(HOST_TOKEN_STORAGE_KEY)
+  inMemoryHostTokenMap = normalized
+  if (typeof localStorage !== 'undefined') localStorage.removeItem(HOST_TOKEN_STORAGE_KEY)
 
   if (isPinEnabled()) {
     if (!encryptAndStore(normalized)) {
@@ -91,10 +104,13 @@ function writeHostTokenMap(tokens: Record<string, HostTokenRecord>) {
   }
 
   if (!Object.keys(normalized).length) {
-    localStorage.removeItem(HOST_TOKEN_STORAGE_KEY)
+    if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(HOST_TOKEN_STORAGE_KEY)
     return
   }
-  localStorage.setItem(HOST_TOKEN_STORAGE_KEY, JSON.stringify(normalized))
+  if (typeof sessionStorage !== 'undefined') {
+    sessionStorage.setItem(HOST_TOKEN_STORAGE_KEY, JSON.stringify(normalized))
+    return
+  }
 }
 
 export function resolveHostAuthTokens(host?: Partial<Or3HostProfile> | null) {
@@ -159,8 +175,8 @@ export function useSecureHostTokens() {
     writeHostTokenMap(current)
   }
 
-  function replaceTokens(hosts: Array<Pick<Or3HostProfile, 'id' | 'baseUrl' | 'pairedToken' | 'sessionToken' | 'token' | 'tokenOrigin'>>) {
-    const next = Object.fromEntries(hosts.map((host) => {
+  function replaceTokens(hosts: Array<Pick<Or3HostProfile, 'id' | 'baseUrl' | 'pairedToken' | 'sessionToken' | 'token' | 'tokenOrigin' | 'authMode'>>) {
+    const next = Object.fromEntries(hosts.filter((host) => host.authMode !== 'secure-session').map((host) => {
       const resolved = withResolvedHostTokens(host)
       return [host.id, { pairedToken: resolved.pairedToken, sessionToken: resolved.sessionToken, origin: resolved.tokenOrigin }]
     })) as Record<string, HostTokenRecord>

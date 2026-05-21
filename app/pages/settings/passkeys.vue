@@ -84,6 +84,15 @@
       :loading="loading"
       @confirm="confirmSensitiveAction"
     />
+    <DestructiveActionConfirmModal
+      v-model:open="revokeConfirmOpen"
+      title="Remove this passkey?"
+      :item-name="pendingRevokeName"
+      consequence="This passkey will no longer be able to verify sensitive security changes."
+      undo-availability="There is no undo. Add a new passkey if you need this device or security key again."
+      confirm-label="Continue"
+      @confirm="confirmRevokeGate"
+    />
   </AppShell>
 </template>
 
@@ -101,10 +110,12 @@ const loading = ref(false)
 const registerForm = reactive({ nickname: '' })
 const nicknameDrafts = reactive<Record<string, string>>({})
 const stepUpOpen = ref(false)
+const revokeConfirmOpen = ref(false)
 const pendingAction = ref<{ type: 'rename' | 'revoke'; passkey: AuthPasskey; nickname?: string } | null>(null)
 
 const passkeyItems = computed(() => passkeys.passkeys.value)
 const errorMessage = computed(() => passkeys.errorMessage.value)
+const pendingRevokeName = computed(() => pendingAction.value?.passkey.nickname || pendingAction.value?.passkey.id || 'This passkey')
 const stepUpTitle = computed(() => pendingAction.value?.type === 'revoke' ? 'Verify before removing this passkey' : 'Verify before renaming this passkey')
 const stepUpMessage = computed(() => pendingAction.value?.type === 'revoke'
   ? 'Removing a passkey is sensitive. Confirm with your passkey first, then the selected credential will be revoked.'
@@ -161,6 +172,12 @@ function prepareRename(passkey: AuthPasskey) {
 
 function prepareRevoke(passkey: AuthPasskey) {
   pendingAction.value = { type: 'revoke', passkey }
+  revokeConfirmOpen.value = true
+}
+
+function confirmRevokeGate() {
+  if (!pendingAction.value || pendingAction.value.type !== 'revoke') return
+  revokeConfirmOpen.value = false
   stepUpOpen.value = true
 }
 

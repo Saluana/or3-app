@@ -70,7 +70,7 @@ import {
 } from '../../utils/logger';
 
 const debugLogging = ref(false);
-const { activeHost } = useActiveHost();
+const { activeHost, isPaired } = useActiveHost();
 const {
     latestEntries: latestChatRuntimeEntries,
     exportText: chatRuntimeExportText,
@@ -115,7 +115,7 @@ async function copyAllLogs() {
 
 onMounted(() => {
     debugLogging.value = isDebugLoggingEnabled();
-    if (activeHost.value?.token) connectServerLogStream();
+    if (isPaired.value) connectServerLogStream();
 });
 
 onBeforeUnmount(() => {

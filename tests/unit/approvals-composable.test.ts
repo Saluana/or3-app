@@ -60,6 +60,27 @@ describe('useApprovals', () => {
         expect(approveRequests).toBe(1);
     });
 
+    it('skips approval requests when the active host is already offline', async () => {
+        useLocalCache().updateHost({
+            id: 'test',
+            name: 'Test Mac',
+            baseUrl: 'http://127.0.0.1:59999/',
+            token: 'secret',
+            status: 'offline',
+        });
+        const fetchMock = vi.fn();
+        vi.stubGlobal('fetch', fetchMock);
+
+        const { loadPendingCount, loadApprovals, pendingCount, approvals } =
+            useApprovals();
+        await loadPendingCount();
+        await loadApprovals('pending');
+
+        expect(fetchMock).not.toHaveBeenCalled();
+        expect(pendingCount.value).toBe(0);
+        expect(approvals.value).toEqual([]);
+    });
+
     it('stores and consumes approval tokens for later chat retries', async () => {
         useLocalCache().updateHost({
             id: 'test',

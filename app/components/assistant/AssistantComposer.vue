@@ -342,7 +342,11 @@ import {
 } from 'vue';
 import { Editor, EditorContent } from '@tiptap/vue-3';
 import { Extension, mergeAttributes } from '@tiptap/core';
-import StarterKit from '@tiptap/starter-kit';
+import { PluginKey } from '@tiptap/pm/state';
+import Document from '@tiptap/extension-document';
+import Paragraph from '@tiptap/extension-paragraph';
+import Text from '@tiptap/extension-text';
+import HardBreak from '@tiptap/extension-hard-break';
 import Placeholder from '@tiptap/extension-placeholder';
 import Mention from '@tiptap/extension-mention';
 import Suggestion from '@tiptap/suggestion';
@@ -642,7 +646,7 @@ watch(
             editor.value &&
             editor.value.getText({ blockSeparator: '\n\n' }) !== value
         ) {
-            editor.value.commands.setContent(value || '', false);
+            editor.value.commands.setContent(value || '', { emitUpdate: false });
         }
     },
 );
@@ -669,7 +673,7 @@ function summarizeText(text: string, maxWords = 12) {
 function updateEditorText(value: string) {
     formState.text = value;
     closeSuggestionMenus();
-    editor.value?.commands.setContent(value || '', false);
+    editor.value?.commands.setContent(value || '', { emitUpdate: false });
 }
 
 function focusEditor() {
@@ -1396,6 +1400,13 @@ onMounted(() => {
 
     const mentionRenderHooks = createMentionRenderHooks();
     const slashRenderHooks = createSlashRenderHooks();
+    const editorInstanceId = Math.random().toString(36).slice(2);
+    const fileMentionSuggestionPluginKey = new PluginKey(
+        `assistantFileMentionSuggestion-${editorInstanceId}`,
+    );
+    const slashCommandSuggestionPluginKey = new PluginKey(
+        `assistantSlashCommandSuggestion-${editorInstanceId}`,
+    );
 
     const FileMention = Mention.extend({
         name: 'fileMention',
@@ -1437,6 +1448,7 @@ onMounted(() => {
     }).configure({
         deleteTriggerWithBackspace: true,
         suggestion: {
+            pluginKey: fileMentionSuggestionPluginKey,
             char: '@',
             items: async ({ query }: { query: string }) =>
                 await searchMentionFiles(query),
@@ -1471,6 +1483,7 @@ onMounted(() => {
         addProseMirrorPlugins() {
             return [
                 Suggestion({
+                    pluginKey: slashCommandSuggestionPluginKey,
                     editor: this.editor as any,
                     char: '/',
                     startOfLine: true,
@@ -1493,14 +1506,10 @@ onMounted(() => {
     editor.value = new Editor({
         content: props.modelValue || '',
         extensions: [
-            StarterKit.configure({
-                heading: false,
-                blockquote: false,
-                bulletList: false,
-                orderedList: false,
-                codeBlock: false,
-                horizontalRule: false,
-            }),
+            Document,
+            Paragraph,
+            Text,
+            HardBreak,
             Placeholder.configure({
                 placeholder: 'Ask or3-intern for help…',
             }),

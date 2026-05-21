@@ -8,6 +8,9 @@ export interface Or3HostProfile {
     pairedToken?: string;
     sessionToken?: string;
     tokenOrigin?: string;
+    authMode?: 'paired-token' | 'secure-session';
+    secureHostId?: string;
+    secureSessionRouteId?: string;
     role?: 'operator' | 'admin' | string;
     deviceId?: string;
     lastSeenAt?: string;

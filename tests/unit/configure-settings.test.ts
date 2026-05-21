@@ -226,6 +226,28 @@ describe('settings configure mappings', () => {
         ).resolves.toMatchObject({ ok: true });
     });
 
+    it('stops simple settings loading after the host is unreachable', async () => {
+        useLocalCache().updateHost({
+            id: 'host-1',
+            name: 'Host',
+            baseUrl: 'http://127.0.0.1:59999',
+            token: 'paired-token',
+            pairedToken: 'paired-token',
+        });
+        const fetchMock = vi.fn(async () => {
+            throw new TypeError('Failed to fetch');
+        });
+        vi.stubGlobal('fetch', fetchMock);
+
+        const simple = useSimpleSettings();
+        await expect(simple.ensureLoaded()).resolves.toBeUndefined();
+
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(simple.lastError.value).toBe(
+            'Could not reach the selected computer.',
+        );
+    });
+
     it('exposes tools settings and maps them to raw configure fields', async () => {
         useLocalCache().updateHost({
             id: 'host-1',

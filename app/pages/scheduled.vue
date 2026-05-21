@@ -217,6 +217,16 @@
             :edit-job="editingJob"
             @save="onSave"
         />
+        <DestructiveActionConfirmModal
+            v-model:open="deleteConfirmOpen"
+            title="Delete this scheduled task?"
+            :item-name="deleteTargetName"
+            consequence="This task will stop running and will be removed from the schedule."
+            undo-availability="There is no undo. You can create the task again later."
+            confirm-label="Delete task"
+            :loading="Boolean(actionId?.endsWith(':delete'))"
+            @confirm="confirmRemove"
+        />
     </AppShell>
 </template>
 
@@ -251,6 +261,8 @@ const formOpen = ref(false);
 const editingJob = ref<CronJob | null>(null);
 const actionId = ref<string | null>(null);
 const activeTab = ref<'upcoming' | 'active' | 'all'>('upcoming');
+const deleteConfirmOpen = ref(false);
+const deleteTarget = ref<CronJob | null>(null);
 
 const cronAvailable = computed(() => cronStatus.value?.available !== false && cronStatus.value?.enabled !== false);
 
@@ -290,6 +302,7 @@ const filteredJobs = computed(() => {
             return cronJobs.value;
     }
 });
+const deleteTargetName = computed(() => deleteTarget.value?.name || deleteTarget.value?.id || 'This scheduled task');
 
 onMounted(() => {
     void refreshAll();
@@ -361,10 +374,18 @@ async function toggle(job: CronJob) {
 }
 
 async function remove(job: CronJob) {
-    if (!confirm(`Delete scheduled task "${job.name || job.id}"?`)) return;
+    deleteTarget.value = job;
+    deleteConfirmOpen.value = true;
+}
+
+async function confirmRemove() {
+    const job = deleteTarget.value;
+    if (!job) return;
     actionId.value = `${job.id}:delete`;
     try {
         await deleteJob(job.id);
+        deleteConfirmOpen.value = false;
+        deleteTarget.value = null;
         toast.add({ title: 'Scheduled task deleted', color: 'success', icon: 'i-pixelarticons-trash' });
     } catch (error) {
         toast.add({ title: 'Delete failed', description: describeError(error, 'Unable to delete task.'), color: 'error' });

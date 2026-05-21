@@ -9,84 +9,52 @@
         <AppHeader subtitle="SETTINGS" />
 
         <div class="space-y-4">
-            <!-- Connection summary card -->
-            <SurfaceCard class-name="space-y-4">
-                <div class="flex items-start gap-3">
-                    <BrandMark size="md" />
-                    <div class="min-w-0 flex-1">
-                        <div class="flex flex-wrap items-center gap-2">
-                            <p
-                                class="font-mono text-base font-semibold text-(--or3-text)"
-                            >
-                                {{
-                                    activeHost?.token
-                                        ? `Connected to ${activeHost.name || 'My Computer'}`
-                                        : 'No computer paired'
-                                }}
-                            </p>
-                            <StatusPill
-                                v-if="activeHost?.token"
-                                label="Connected"
-                                tone="green"
-                                pulse
-                            />
-                        </div>
-                        <p
-                            class="mt-1 text-sm leading-6 text-(--or3-text-muted)"
-                        >
-                            {{
-                                activeHost?.token
-                                    ? 'Your or3-intern app is connected and ready.'
-                                    : 'Pair this app to your computer to get started.'
-                            }}
+            <ConnectionSummaryCard
+                :headline="hostMode ? hostHeadline : connectionHeadline"
+                :description="hostMode ? hostDescription : connectionDescription"
+                :active-host="activeHost"
+                :is-paired="isPaired"
+                :is-connected="isConnected"
+                :pill-label="connectionPillLabel"
+                :pill-tone="connectionPillTone"
+                :stats="connectionStats"
+                :host-mode="hostMode"
+                :host-base-url="hostStatus.baseUrl"
+                unpaired-layout="large"
+                @disconnect="disconnectHost"
+            />
+
+            <SurfaceCard v-if="isElectron" class-name="space-y-3">
+                <div class="flex items-start justify-between gap-3">
+                    <div>
+                        <p class="font-mono text-base font-semibold text-(--or3-text)">
+                            Desktop mode
+                        </p>
+                        <p class="mt-1 text-sm leading-6 text-(--or3-text-muted)">
+                            {{ modeDescription }}
                         </p>
                     </div>
+                    <StatusPill :label="hostMode ? 'Use this computer' : 'Control another computer'" :tone="hostMode ? 'green' : 'amber'" />
                 </div>
-
-                <div
-                    v-if="activeHost?.token"
-                    class="flex overflow-hidden rounded-2xl border border-(--or3-border) bg-white/70"
-                >
-                    <div
-                        v-for="stat in connectionStats"
-                        :key="stat.label"
-                        class="min-w-1/4 border-(--or3-border) px-3 py-3 text-center not-last:border-r sm:border-r"
-                    >
-                        <Icon
-                            :name="stat.icon"
-                            class="mx-auto size-4 text-(--or3-text-muted)"
-                        />
-                        <p
-                            class="mt-2 font-mono text-[10px] font-light uppercase text-(--or3-text-muted)"
-                        >
-                            {{ stat.label }}
-                        </p>
-                        <p
-                            :class="[
-                                'mt-1 truncate font-mono text-[8px] font-extralight ',
-                                stat.tone === 'green'
-                                    ? 'text-(--or3-green-dark)'
-                                    : 'text-(--or3-text)',
-                            ]"
-                            :title="stat.value"
-                        >
-                            {{ stat.value }}
-                        </p>
-                    </div>
-                </div>
-
-                <div v-if="!activeHost?.token">
+                <div class="flex flex-wrap gap-2">
                     <UButton
-                        label="Pair new computer"
-                        icon="i-pixelarticons-link"
+                        label="Use this computer"
                         color="primary"
-                        variant="solid"
-                        size="xl"
-                        block
-                        class="min-h-14 rounded-2xl font-mono text-base shadow-(--or3-shadow-soft)"
-                        to="/settings/pair"
+                        variant="soft"
+                        :disabled="hostMode"
+                        @click="switchDesktopMode('host')"
+                    />
+                    <UButton
+                        label="Control another computer"
+                        color="neutral"
+                        variant="outline"
+                        :disabled="!hostMode"
+                        @click="switchDesktopMode('remote')"
                     />
                 </div>
+                <p v-if="hostMode" class="text-xs leading-5 text-(--or3-text-muted)">
+                    Switching to remote mode hides local service controls. If autostart is enabled, review whether the local service should keep running.
+                </p>
             </SurfaceCard>
 
             <SimpleSettingsHome />
@@ -117,26 +85,78 @@
                 </div>
             </SurfaceCard>
         </div>
+        <DestructiveActionConfirmModal
+            v-model:open="disconnectConfirmOpen"
+            title="Disconnect this app?"
+            :item-name="activeHost?.name || 'This computer'"
+            consequence="This app will forget the saved computer and stop using its chat and computer tools."
+            undo-availability="There is no undo in this app. You can pair this app again later. Trusted device records on the computer stay there until revoked."
+            confirm-label="Disconnect"
+            @confirm="confirmDisconnectHost"
+        />
     </AppShell>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
-import { useActiveHost } from '~/composables/useActiveHost';
-import { useComputerStatus } from '~/composables/useComputerStatus';
-import { useSettingsSnapshots } from '~/composables/settings/useSettingsSnapshots';
-import { useSimpleSettings } from '~/composables/settings/useSimpleSettings';
-import { createLogger } from '~/utils/logger';
+import { useToast } from '@nuxt/ui/composables';
+import { useActiveHost } from '../../composables/useActiveHost';
+import { useComputerStatus } from '../../composables/useComputerStatus';
+import { useSettingsSnapshots } from '../../composables/settings/useSettingsSnapshots';
+import { useSimpleSettings } from '../../composables/settings/useSimpleSettings';
+import { useElectronHostSetup } from '../../composables/useElectronHostSetup';
+import { createLogger } from '../../utils/logger';
 
 const logger = createLogger('settings');
 
-const { activeHost } = useActiveHost();
+const { activeHost, isConnected, isPaired, disconnectActiveHost } = useActiveHost();
 const computerStatus = useComputerStatus();
 const snapshots = useSettingsSnapshots();
 const simple = useSimpleSettings();
+const electronHost = useElectronHostSetup();
+const toast = useToast();
 const undoing = ref(false);
+const disconnectConfirmOpen = ref(false);
 
-const isPaired = computed(() => Boolean(activeHost.value?.token));
+void electronHost.ensureLoaded();
+
+const isElectron = electronHost.isElectron;
+const hostMode = electronHost.isElectronHostMode;
+const hostStatus = electronHost.serviceStatus;
+const hostHeadline = computed(() =>
+    hostStatus.value.state === 'online'
+        ? 'OR3 is running on this computer'
+        : 'This computer is set up for OR3',
+);
+const hostDescription = computed(() =>
+    hostStatus.value.state === 'online'
+        ? 'Connect phones, browsers, and remote apps from this desktop host.'
+        : 'Start or fix the local OR3 Intern service from the sidebar status card.',
+);
+const modeDescription = computed(() =>
+    hostMode.value
+        ? 'This desktop app manages the OR3 Intern service on this computer.'
+        : 'This desktop app behaves like web, iOS, and Android clients.',
+);
+
+const connectionHeadline = computed(() => {
+    if (!isPaired.value) return 'No computer paired';
+    return isConnected.value
+        ? `Connected to ${activeHost.value?.name || 'My Computer'}`
+        : `Paired to ${activeHost.value?.name || 'My Computer'}`;
+});
+const connectionDescription = computed(() => {
+    if (!isPaired.value)
+        return 'Pair this app to your computer to get started.';
+    if (isConnected.value) return 'Your or3-intern app is connected and ready.';
+    return 'This app still has a saved pairing, but it cannot reach that computer right now.';
+});
+const connectionPillLabel = computed(() =>
+    isConnected.value ? 'Connected' : 'Unavailable',
+);
+const connectionPillTone = computed<'green' | 'amber'>(() =>
+    isConnected.value ? 'green' : 'amber',
+);
 const activeJobCount = computed(
     () => computerStatus.bootstrap.value?.counts?.active_jobs ?? 0,
 );
@@ -203,6 +223,11 @@ const formattedTime = computed(() => {
 
 async function refreshConnectionStats() {
     if (!isPaired.value) return;
+    if (
+        activeHost.value?.status === 'offline' ||
+        activeHost.value?.status === 'unauthorized'
+    )
+        return;
     try {
         await computerStatus.refreshStatus();
     } catch (err) {
@@ -226,6 +251,32 @@ watch(
         void refreshConnectionStats();
     },
 );
+
+function disconnectHost() {
+    disconnectConfirmOpen.value = true;
+}
+
+function confirmDisconnectHost() {
+    if (!disconnectActiveHost()) return;
+    disconnectConfirmOpen.value = false;
+    toast.add({
+        title: 'Disconnected',
+        description:
+            'This app forgot the saved computer. Revoke the device on the computer only if you want to remove trust there too.',
+        color: 'neutral',
+        icon: 'i-pixelarticons-close',
+        duration: 7000,
+    });
+}
+
+async function switchDesktopMode(mode: 'host' | 'remote') {
+    await electronHost.switchMode(mode);
+    if (mode === 'host') {
+        toast.add({ title: 'Host setup ready', description: 'Finish setup to use this computer.', color: 'neutral' });
+    } else {
+        toast.add({ title: 'Remote mode enabled', description: 'Local service controls are hidden. Use pairing to control another computer.', color: 'neutral' });
+    }
+}
 
 async function undoLast() {
     const s = snapshots.latest();

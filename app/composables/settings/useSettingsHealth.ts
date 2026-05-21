@@ -32,7 +32,7 @@ export interface HealthFinding {
 
 export function useSettingsHealth() {
     const api = useOr3Api();
-    const { activeHost } = useActiveHost();
+    const { activeHost, isPaired } = useActiveHost();
     const simple = useSimpleSettings();
 
     const findings = ref<HealthFinding[]>([]);
@@ -69,12 +69,13 @@ export function useSettingsHealth() {
         loading.value = true;
         try {
             logger.info('run:start', 'Settings health check started', {
-                hasActiveHost: Boolean(activeHost.value?.token),
+                hasActiveHost: isPaired.value,
             });
             const next: HealthFinding[] = [];
 
             // 1. App is connected to intern.
-            if (!activeHost.value?.token) {
+            const host = activeHost.value;
+            if (!isPaired.value || !host) {
                 next.push({
                     id: 'connection',
                     label: 'Connected to your computer',
@@ -88,7 +89,7 @@ export function useSettingsHealth() {
                     id: 'connection',
                     label: 'Connected to your computer',
                     status: 'ok',
-                    detail: `Paired with ${activeHost.value.name || 'your computer'}.`,
+                    detail: `Paired with ${host.name || 'your computer'}.`,
                 });
             }
 

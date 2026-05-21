@@ -10,6 +10,7 @@
         :autoscroll-threshold="2"
         :tail-count="4"
         :padding-top="72"
+        :padding-bottom="effectivePaddingBottom"
         class="or3-chat-message-list"
         @scroll="onScroll"
     >
@@ -33,7 +34,19 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { Or3Scroll } from 'or3-scroll';
 import type { ChatMessage } from '../../types/app-state';
 
-const props = defineProps<{ messages: ChatMessage[] }>();
+const props = withDefaults(
+    defineProps<{
+        messages: ChatMessage[];
+        paddingBottom?: number;
+        keyboardPaddingBottom?: number;
+        keyboardOpen?: boolean;
+    }>(),
+    {
+        paddingBottom: 16,
+        keyboardPaddingBottom: 16,
+        keyboardOpen: false,
+    },
+);
 const emit = defineEmits<{
     (
         e: 'scroll-state',
@@ -55,6 +68,10 @@ const lastMessageId = computed(() => {
     const lastMessage = props.messages[props.messages.length - 1];
     return lastMessage?.id ?? null;
 });
+
+const effectivePaddingBottom = computed(() =>
+    props.keyboardOpen ? props.keyboardPaddingBottom : props.paddingBottom,
+);
 
 function scrollToBottom() {
     scroller.value?.scrollToBottom?.({ smooth: true });
@@ -121,8 +138,6 @@ defineExpose({ scrollToBottom, jumpToBottom });
 .or3-chat-message-list {
     width: 100%;
     height: 100%;
-    --or3-chat-bottom-gap: 1rem;
-    --or3-chat-bottom-gap-keyboard: 6rem;
 }
 
 .or3-chat-message-list__item {
@@ -130,27 +145,6 @@ defineExpose({ scrollToBottom, jumpToBottom });
 }
 
 .or3-chat-message-list__item--last {
-    padding-bottom: calc(var(--or3-safe-bottom) + var(--or3-chat-bottom-gap));
-}
-
-html.or3-keyboard-open .or3-chat-message-list__item--last {
-    padding-bottom: calc(
-        var(--or3-safe-bottom) + var(--or3-chat-bottom-gap-keyboard)
-    );
-}
-
-@media (max-width: 767px) {
-    body:has(
-            input:focus,
-            textarea:focus,
-            select:focus,
-            [contenteditable='true']:focus,
-            .ProseMirror:focus
-        )
-        .or3-chat-message-list__item--last {
-        padding-bottom: calc(
-            var(--or3-safe-bottom) + var(--or3-chat-bottom-gap-keyboard)
-        );
-    }
+    padding-bottom: 1.25rem;
 }
 </style>

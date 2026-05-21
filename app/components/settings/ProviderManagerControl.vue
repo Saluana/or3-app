@@ -206,6 +206,17 @@
                 </div>
             </template>
         </USlideover>
+        <DestructiveActionConfirmModal
+            v-model:open="deleteConfirmOpen"
+            title="Delete this provider?"
+            :item-name="deleteTargetKey || 'This provider'"
+            consequence="Roles using this provider will need to be reassigned before they can work again."
+            undo-availability="There is no undo. You can add the provider again later."
+            confirm-label="Delete provider"
+            :loading="saving"
+            :error="error"
+            @confirm="confirmRemove"
+        />
     </div>
 </template>
 
@@ -225,6 +236,8 @@ const saving = ref(false)
 const error = ref('')
 const testingKey = ref<string>('')
 const testResults = ref<Record<string, { ok: boolean; message: string }>>({})
+const deleteConfirmOpen = ref(false)
+const deleteTargetKey = ref('')
 
 const slideoverSide = computed<'bottom' | 'right'>(() => (isDesktop.value ? 'right' : 'bottom'))
 const contentClass = computed(() =>
@@ -352,12 +365,19 @@ async function clearApiKey() {
 }
 
 async function remove(key: string) {
-    if (typeof window !== 'undefined' && !window.confirm(`Delete provider "${key}"? Roles using it will need to be reassigned.`)) {
-        return
-    }
+    deleteTargetKey.value = key
+    error.value = ''
+    deleteConfirmOpen.value = true
+}
+
+async function confirmRemove() {
+    const key = deleteTargetKey.value
+    if (!key) return
     saving.value = true
     try {
         await settings.deleteProvider(key)
+        deleteConfirmOpen.value = false
+        deleteTargetKey.value = ''
     } catch (err: any) {
         error.value = err?.message ?? 'Unable to delete provider.'
     } finally {

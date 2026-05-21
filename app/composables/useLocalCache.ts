@@ -55,6 +55,7 @@ function isLoopbackHost(hostname: string) {
 function serviceBaseUrlForCurrentBrowser() {
     if (!import.meta.client) return '';
     const { protocol, hostname } = window.location;
+    if (protocol !== 'http:' && protocol !== 'https:') return '';
     if (!hostname || isLoopbackHost(hostname)) return '';
     return `${protocol}//${hostname}:9100`;
 }

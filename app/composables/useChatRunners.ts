@@ -1,6 +1,8 @@
 import { computed, ref, watch } from 'vue';
 import type {
     AgentRunnerId,
+    AgentRunnerInfo,
+    AgentRunnersResponse,
     ChatRunnerInfo,
     ChatRunnersResponse,
 } from '~/types/or3-api';
@@ -80,61 +82,114 @@ export function useChatRunners() {
         logger.info('refresh:start', 'Chat runner discovery started', {
             hostId: currentHost,
         });
+
+        let chatRunners: ChatRunnerInfo[] | null = null;
+        let agentRunners: AgentRunnerInfo[] | null = null;
+        let errors: string[] = [];
+
         try {
             const response = await api.request<ChatRunnersResponse>(
                 '/internal/v1/chat-runners',
             );
-            const normalized = normalizeChatRunners(response.runners ?? []);
+            chatRunners = response.runners ?? [];
+        } catch (err) {
+            const msg =
+                err && typeof err === 'object' && 'message' in err
+                    ? String((err as { message?: unknown }).message)
+                    : 'chat-runners failed';
+            errors.push(msg);
+            logger.warn('refresh:chat-error', 'Chat runner discovery failed', {
+                hostId: currentHost,
+                error: msg,
+            });
+        }
+
+        try {
+            const response = await api.request<AgentRunnersResponse>(
+                '/internal/v1/agent-runners',
+            );
+            agentRunners = response.runners ?? [];
+        } catch (err) {
+            const msg =
+                err && typeof err === 'object' && 'message' in err
+                    ? String((err as { message?: unknown }).message)
+                    : 'agent-runners failed';
+            errors.push(msg);
+            logger.warn(
+                'refresh:agent-error',
+                'Agent runner discovery failed',
+                { hostId: currentHost, error: msg },
+            );
+        }
+
+        const merged = mergeRunnerResults(chatRunners, agentRunners);
+        if (merged.length > 0) {
+            const normalized = normalizeChatRunners(merged);
             runnersByHost.value[currentHost] = normalized;
             logger.info('refresh:complete', 'Chat runner discovery completed', {
                 hostId: currentHost,
                 runnerCount: normalized.length,
                 selectableCount: normalized.filter(isSelectableRunner).length,
             });
-        } catch (err) {
-            errorByHost.value[currentHost] =
-                err && typeof err === 'object' && 'message' in err
-                    ? String(
-                          (err as { message?: unknown }).message ||
-                              'Runner discovery failed',
-                      )
-                    : 'Runner discovery failed';
-            logger.warn('refresh:error', 'Chat runner discovery failed', {
-                hostId: currentHost,
-                error: errorByHost.value[currentHost],
-            });
-            if (!runnersByHost.value[currentHost]?.length) {
-                runnersByHost.value[currentHost] = [
-                    {
-                        id: 'or3-intern',
-                        display_name: 'OR3 Intern',
-                        status: 'available',
-                        auth_status: 'ready',
-                        supports: {
-                            structuredOutput: false,
-                            streamingJson: false,
-                            modelFlag: true,
-                            permissionsMode: false,
-                            safeSandboxFlag: false,
-                            dangerousBypassFlag: false,
-                            stdinPrompt: false,
-                            chat: { chatSelectable: true, chatReplay: true },
-                        },
-                        chat_capabilities: {
-                            chatSelectable: true,
-                            chatReplay: true,
-                        },
+        } else {
+            errorByHost.value[currentHost] = errors.join('; ') || 'Runner discovery failed';
+            runnersByHost.value[currentHost] = [
+                {
+                    id: 'or3-intern',
+                    display_name: 'OR3 Intern',
+                    status: 'available',
+                    auth_status: 'ready',
+                    supports: {
+                        structuredOutput: false,
+                        streamingJson: false,
+                        modelFlag: true,
+                        permissionsMode: false,
+                        safeSandboxFlag: false,
+                        dangerousBypassFlag: false,
+                        stdinPrompt: false,
+                        chat: { chatSelectable: true, chatReplay: true },
                     },
-                ];
-                logger.info(
-                    'refresh:fallback',
-                    'Fell back to the built-in OR3 runner',
-                    { hostId: currentHost },
-                );
-            }
-        } finally {
-            loadingByHost.value[currentHost] = false;
+                    chat_capabilities: {
+                        chatSelectable: true,
+                        chatReplay: true,
+                    },
+                },
+            ];
+            logger.info(
+                'refresh:fallback',
+                'Fell back to the built-in OR3 runner',
+                { hostId: currentHost },
+            );
         }
+
+        loadingByHost.value[currentHost] = false;
+    }
+
+    function mergeRunnerResults(
+        chatRunners: ChatRunnerInfo[] | null,
+        agentRunners: AgentRunnerInfo[] | null,
+    ): ChatRunnerInfo[] {
+        const seen = new Set<string>();
+        const out: ChatRunnerInfo[] = [];
+
+        for (const runner of chatRunners ?? []) {
+            seen.add(runner.id);
+            out.push(runner);
+        }
+
+        for (const runner of agentRunners ?? []) {
+            if (seen.has(runner.id)) continue;
+            seen.add(runner.id);
+            out.push({
+                ...runner,
+                chat_capabilities:
+                    runner.supports?.chat && Object.keys(runner.supports.chat).length > 0
+                        ? runner.supports.chat
+                        : undefined,
+            });
+        }
+
+        return out;
     }
 
     function getRunner(id?: AgentRunnerId | string) {

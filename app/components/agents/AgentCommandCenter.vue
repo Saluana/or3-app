@@ -620,8 +620,12 @@ import {
 } from 'vue';
 import { Editor, EditorContent } from '@tiptap/vue-3';
 import { mergeAttributes } from '@tiptap/core';
-import StarterKit from '@tiptap/starter-kit';
+import Document from '@tiptap/extension-document';
+import Paragraph from '@tiptap/extension-paragraph';
+import Text from '@tiptap/extension-text';
+import HardBreak from '@tiptap/extension-hard-break';
 import Mention from '@tiptap/extension-mention';
+import { PluginKey } from '@tiptap/pm/state';
 import {
     useFileMentionSuggestions,
     type FileMentionSuggestionItem,
@@ -1031,7 +1035,7 @@ function summarizeText(text: string, maxWords = 12) {
 function updateEditorText(value: string) {
     formState.task = value;
     closeMentionMenu();
-    editor.value?.commands.setContent(value || '', false);
+    editor.value?.commands.setContent(value || '', { emitUpdate: false });
 }
 
 function focusEditor() {
@@ -1483,6 +1487,10 @@ watch(
 
 onMounted(() => {
     const mentionRenderHooks = createMentionRenderHooks();
+    const editorInstanceId = Math.random().toString(36).slice(2);
+    const agentFileMentionSuggestionPluginKey = new PluginKey(
+        `agentFileMentionSuggestion-${editorInstanceId}`,
+    );
 
     const FileMention = Mention.extend({
         name: 'fileMention',
@@ -1518,6 +1526,7 @@ onMounted(() => {
     }).configure({
         deleteTriggerWithBackspace: true,
         suggestion: {
+            pluginKey: agentFileMentionSuggestionPluginKey,
             char: '@',
             items: async ({ query }: { query: string }) =>
                 await searchMentionFiles(query),
@@ -1551,14 +1560,10 @@ onMounted(() => {
         content: '',
         editable: !(props.disabled || props.submitting),
         extensions: [
-            StarterKit.configure({
-                heading: false,
-                blockquote: false,
-                bulletList: false,
-                orderedList: false,
-                codeBlock: false,
-                horizontalRule: false,
-            }),
+            Document,
+            Paragraph,
+            Text,
+            HardBreak,
             FileMention as any,
         ],
         autofocus: false,
