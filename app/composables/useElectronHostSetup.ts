@@ -59,6 +59,17 @@ function toPlainData<T>(value: T): T {
     return JSON.parse(JSON.stringify(value)) as T;
 }
 
+function shouldRepairInviteFailure(invite: HostDeviceInvite) {
+    const message = String(invite.message || '').toLowerCase();
+    return (
+        message.includes('operator access') ||
+        message.includes('does not trust') ||
+        message.includes('rate-limit') ||
+        message.includes('not online') ||
+        message === 'forbidden'
+    );
+}
+
 async function persistState(input: Partial<ElectronSetupState>) {
     const next = sanitizeSetupState({
         ...setupState.value,
@@ -96,6 +107,45 @@ async function startCompletedHostService(bridge: NonNullable<ReturnType<typeof d
     if (serviceStatus.value.state === 'starting' || serviceStatus.value.state === 'stopped') {
         await pollServiceUntilSettled(bridge);
     }
+    if (serviceStatus.value.state === 'online') {
+        await persistState({
+            completed: true,
+            currentStep: 'done',
+            serviceBaseUrl: serviceStatus.value.baseUrl || setupState.value.serviceBaseUrl,
+        });
+    }
+}
+
+async function reconcilePendingHostSetup(bridge: NonNullable<ReturnType<typeof desktopBridge>>) {
+    if (!canShowHostUi(capabilities.value, setupState.value.mode)) return;
+    if (serviceStatus.value.state === 'online') {
+        if (!setupState.value.completed || setupState.value.currentStep !== 'done') {
+            await persistState({
+                completed: true,
+                currentStep: 'done',
+                serviceBaseUrl: serviceStatus.value.baseUrl || setupState.value.serviceBaseUrl,
+            });
+        }
+        return;
+    }
+    if (setupState.value.completed) {
+        await startCompletedHostService(bridge);
+        return;
+    }
+    if (setupState.value.currentStep !== 'starting') return;
+    if (serviceStatus.value.state === 'not-installed' || serviceStatus.value.state === 'error') return;
+
+    serviceStatus.value = await bridge.intern.start().catch(() => serviceStatus.value);
+    if (serviceStatus.value.state === 'starting' || serviceStatus.value.state === 'stopped') {
+        await pollServiceUntilSettled(bridge);
+    }
+    if (serviceStatus.value.state === 'online') {
+        await persistState({
+            completed: true,
+            currentStep: 'done',
+            serviceBaseUrl: serviceStatus.value.baseUrl || setupState.value.serviceBaseUrl,
+        });
+    }
 }
 
 export function useElectronHostSetup() {
@@ -130,7 +180,7 @@ export function useElectronHostSetup() {
                 sanitizeSetupState(persistedSetup) ?? readRendererState() ?? defaultSetupState();
             persistRendererState(setupState.value);
             serviceStatus.value = await bridge.intern.status().catch(() => ({ state: 'stopped' }));
-            await startCompletedHostService(bridge);
+            await reconcilePendingHostSetup(bridge);
             ready.value = true;
         })();
         await loading;
@@ -202,6 +252,9 @@ export function useElectronHostSetup() {
         }
         await bridge.intern.setAutostart(config.autostartEnabled).catch(() => null);
         serviceStatus.value = await bridge.intern.start();
+        if (serviceStatus.value.state === 'starting' || serviceStatus.value.state === 'stopped') {
+            await pollServiceUntilSettled(bridge);
+        }
         await persistState({
             completed: serviceStatus.value.state === 'online',
             currentStep: serviceStatus.value.state === 'online' ? 'done' : 'starting',
@@ -237,11 +290,22 @@ export function useElectronHostSetup() {
     }
 
     async function createSecureInvite(input: { requestedRole?: string; capabilities?: string[] } = {}) {
-        const invite = await desktopBridge()?.intern.createSecureInvite({
+        const bridge = desktopBridge();
+        const payload = {
             appOrigin: import.meta.client ? window.location.origin : '',
             requestedRole: input.requestedRole,
             capabilities: input.capabilities,
-        });
+        };
+        let invite = await bridge?.intern.createSecureInvite(payload);
+        if (bridge && invite?.status === 'failed' && shouldRepairInviteFailure(invite)) {
+            serviceStatus.value = await bridge?.intern.start().catch(() => serviceStatus.value) ?? serviceStatus.value;
+            if (serviceStatus.value.state === 'starting' || serviceStatus.value.state === 'stopped') {
+                await pollServiceUntilSettled(bridge);
+            }
+            if (serviceStatus.value.state === 'online') {
+                invite = await bridge?.intern.createSecureInvite(payload) ?? invite;
+            }
+        }
         activeInvite.value = invite ?? null;
         return activeInvite.value;
     }

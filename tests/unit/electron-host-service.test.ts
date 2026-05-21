@@ -176,6 +176,101 @@ describe('Electron host service manager', () => {
         });
     });
 
+    it('discovers an already-running service on a local network address', async () => {
+        const workspace = await mkdtemp(join(tmpdir(), 'or3-workspace-'));
+        await configureService({
+            machineName: 'Desk',
+            workspaceDir: workspace,
+            listenHost: '127.0.0.1',
+            listenPort: 65531,
+            securityPreset: 'private',
+            autostartEnabled: false,
+            serviceBehavior: 'stop-with-app',
+        });
+        const configFile = join(dir, 'or3-electron-host.json');
+        const config = JSON.parse(await readFile(configFile, 'utf8'));
+        await writeFile(
+            configFile,
+            JSON.stringify({
+                ...config,
+                lastServiceStatus: { state: 'online', baseUrl: 'http://10.1.2.3:65531' },
+            }),
+        );
+        const fetchMock = vi.fn(async (url: string | URL) => {
+            const text = String(url);
+            if (text === 'http://127.0.0.1:65531/internal/v1/health') {
+                throw new TypeError('connection refused');
+            }
+            if (text === 'http://10.1.2.3:65531/internal/v1/health') {
+                return new Response(JSON.stringify({ status: 'ok', processId: 12345 }), {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/json' },
+                });
+            }
+            if (text === 'http://10.1.2.3:65531/internal/v1/app/bootstrap') {
+                return new Response(JSON.stringify({ status: { health: 'ok' } }), {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/json' },
+                });
+            }
+            if (text === 'http://10.1.2.3:65531/internal/v1/secure-connections/capabilities') {
+                return new Response(JSON.stringify({ qr_pairing_v2: true }), {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/json' },
+                });
+            }
+            return new Response('{}', { status: 404 });
+        });
+        vi.stubGlobal('fetch', fetchMock);
+
+        const status: any = await serviceStatus();
+
+        expect(status.state).toBe('online');
+        expect(status.baseUrl).toBe('http://10.1.2.3:65531');
+    });
+
+    it('does not report a reachable service as online until desktop auth has operator access', async () => {
+        const workspace = await mkdtemp(join(tmpdir(), 'or3-workspace-'));
+        await configureService({
+            machineName: 'Desk',
+            workspaceDir: workspace,
+            listenHost: '127.0.0.1',
+            listenPort: 65531,
+            securityPreset: 'private',
+            autostartEnabled: false,
+            serviceBehavior: 'stop-with-app',
+        });
+        vi.stubGlobal('fetch', vi.fn(async (url: string | URL) => {
+            const text = String(url);
+            if (text.endsWith('/internal/v1/health')) {
+                return new Response(JSON.stringify({ status: 'ok', processId: 12345 }), {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/json' },
+                });
+            }
+            if (text.endsWith('/internal/v1/app/bootstrap')) {
+                return new Response(JSON.stringify({ status: { health: 'ok' } }), {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/json' },
+                });
+            }
+            if (text.endsWith('/internal/v1/secure-connections/capabilities')) {
+                return new Response(JSON.stringify({ code: 'forbidden', error: 'forbidden' }), {
+                    status: 403,
+                    headers: { 'Content-Type': 'application/json' },
+                });
+            }
+            return new Response('{}', { status: 404 });
+        }));
+
+        const status: any = await serviceStatus();
+
+        expect(status.state).toBe('unhealthy');
+        expect(status.authMismatch).toBe(true);
+        expect(status.roleMismatch).toBe(true);
+        expect(status.message).toContain('operator access');
+    });
+
     it('serializes concurrent config writes from status and invite refreshes', async () => {
         const workspace = await mkdtemp(join(tmpdir(), 'or3-workspace-'));
         await configureService({
@@ -197,6 +292,12 @@ describe('Electron host service manager', () => {
             }
             if (text.endsWith('/internal/v1/app/bootstrap')) {
                 return new Response(JSON.stringify({ status: { health: 'ok' } }), {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/json' },
+                });
+            }
+            if (text.endsWith('/internal/v1/secure-connections/capabilities')) {
+                return new Response(JSON.stringify({ qr_pairing_v2: true }), {
                     status: 200,
                     headers: { 'Content-Type': 'application/json' },
                 });
@@ -269,6 +370,12 @@ describe('Electron host service manager', () => {
             }
             if (text.endsWith('/internal/v1/app/bootstrap')) {
                 return new Response(JSON.stringify({ status: { health: 'ok' } }), {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/json' },
+                });
+            }
+            if (text.endsWith('/internal/v1/secure-connections/capabilities')) {
+                return new Response(JSON.stringify({ qr_pairing_v2: true }), {
                     status: 200,
                     headers: { 'Content-Type': 'application/json' },
                 });

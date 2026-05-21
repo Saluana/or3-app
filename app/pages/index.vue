@@ -79,7 +79,7 @@
                     <WelcomeCard
                         :can-host-locally="isElectron"
                         @setup-host="startLocalHostSetup"
-                        @pair-device="router.push('/settings/pair')"
+                        @pair-device="openPairing"
                         @learn-more="router.push('/settings/permissions')"
                     />
                 </div>
@@ -214,7 +214,7 @@
                         <WelcomeCard
                             :can-host-locally="isElectron"
                             @setup-host="startLocalHostSetup"
-                            @pair-device="router.push('/settings/pair')"
+                            @pair-device="openPairing"
                             @learn-more="router.push('/settings/permissions')"
                         />
                     </div>
@@ -323,6 +323,7 @@
         />
 
         <ApprovalsSlideover v-model:open="approvalsOpen" />
+        <PairingSheet v-model:open="pairingOpen" />
     </AppShell>
 </template>
 
@@ -360,6 +361,7 @@ const selectedRunnerId = ref('or3-intern');
 const selectedRunnerModel = ref('');
 const selectedRunnerThinkingLevel = ref('');
 const approvalsOpen = ref(false);
+const pairingOpen = ref(false);
 const mobileMessageList = ref<{
     scrollToBottom?: () => void;
 } | null>(null);
@@ -392,6 +394,10 @@ function openPromptGallery() {
 
 function openFileEditor() {
     void router.push('/computer');
+}
+
+function openPairing() {
+    pairingOpen.value = true;
 }
 
 function updateScrollState(state: {

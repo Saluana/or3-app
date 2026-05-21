@@ -51,6 +51,12 @@ const stubs = {
     UBadge: { template: '<span><slot /></span>' },
 };
 
+async function clickUseText(wrapper: ReturnType<typeof mount>) {
+    const button = wrapper.findAll('button').find((node) => node.text().includes('Use text'));
+    expect(button).toBeTruthy();
+    await button?.trigger('click');
+}
+
 const validSecret = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
 
 function healthyJSON() {
@@ -108,14 +114,14 @@ describe('SecurePairingCard', () => {
         const link = `http://192.168.1.78:3060/pair#invite=${encodePairingInviteV2(invite())}`;
 
         await wrapper.find('textarea').setValue(link);
-        await wrapper.findAll('button')[1]?.trigger('click');
+        await clickUseText(wrapper);
         await vi.waitFor(() => expect(pairingMocks.upgradeSecurePairingPayload).toHaveBeenCalled());
 
         expect(pairingMocks.upgradeInputs.at(0)).toMatchObject({
             baseUrl: 'http://localhost:3000/api/or3',
         });
         expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toBe('');
-        expect(wrapper.text()).toContain('Connected. This device can now use this computer.');
+        expect(wrapper.text()).toContain('Connected securely. This device now has an enrollment certificate.');
     });
 
     it('uses the current app proxy when the invite only has a direct LAN route', async () => {
@@ -136,7 +142,7 @@ describe('SecurePairingCard', () => {
         };
 
         await wrapper.find('textarea').setValue(`or3pair:v2:${encodePairingInviteV2(parsedInvite)}`);
-        await wrapper.findAll('button')[1]?.trigger('click');
+        await clickUseText(wrapper);
         await vi.waitFor(() => expect(pairingMocks.upgradeSecurePairingPayload).toHaveBeenCalled());
 
         expect(pairingMocks.upgradeInputs.at(0)).toMatchObject({
@@ -163,7 +169,7 @@ describe('SecurePairingCard', () => {
         const wrapper = mount(SecurePairingCard, { global: { stubs } });
 
         await wrapper.find('textarea').setValue(`or3pair:v2:${encodePairingInviteV2(invite())}`);
-        await wrapper.findAll('button')[1]?.trigger('click');
+        await clickUseText(wrapper);
         await vi.waitFor(() => expect(pairingMocks.upgradeSecurePairingPayload).toHaveBeenCalled());
 
         expect(pairingMocks.upgradeInputs.at(0)).toMatchObject({

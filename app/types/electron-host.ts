@@ -92,6 +92,8 @@ export interface ServiceStatus {
     startedAt?: string;
     deviceCount?: number;
     health?: 'ok' | 'warning' | 'failed';
+    authMismatch?: boolean;
+    roleMismatch?: boolean;
     message?: string;
 }
 

@@ -16,6 +16,16 @@ const DEFAULT_CONFIG = Object.freeze({
     autostart: { enabled: false, supported: true },
     lastServiceStatus: DEFAULT_STATUS,
 });
+const DEFAULT_TRUSTED_BROWSER_CIDRS = [
+    '127.0.0.0/8',
+    '::1/128',
+    '10.0.0.0/8',
+    '172.16.0.0/12',
+    '192.168.0.0/16',
+    '100.64.0.0/10',
+    'fc00::/7',
+    'fe80::/10',
+];
 
 let serviceProcess = null;
 let startedAt = '';
@@ -65,6 +75,57 @@ function delay(ms) {
 function baseUrlFromServiceConfig(config) {
     const host = config?.listenHost === 'private' ? '127.0.0.1' : config?.listenHost || '127.0.0.1';
     return `http://${host}:${Number(config?.listenPort || 9100)}`;
+}
+
+function uniqueBaseUrls(values) {
+    const seen = new Set();
+    return values
+        .map((value) => String(value || '').trim().replace(/\/+$/g, ''))
+        .filter((value) => {
+            if (!value || seen.has(value)) return false;
+            try {
+                const parsed = new URL(value);
+                if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+            } catch {
+                return false;
+            }
+            seen.add(value);
+            return true;
+        });
+}
+
+function isNetworkListenHost(host) {
+    const value = String(host || '').trim().toLowerCase();
+    return value === 'private' || value === '0.0.0.0' || value === '::' || value === '[::]';
+}
+
+function serviceCandidateBaseUrls(config) {
+    const port = Number(config?.hostService?.listenPort || 9100);
+    const candidates = [
+        baseUrlFromServiceConfig(config?.hostService),
+        config?.lastServiceStatus?.baseUrl,
+        config?.setupState?.serviceBaseUrl,
+    ];
+    for (const address of lanIPv4Addresses()) {
+        candidates.push(`http://${address}:${port}`);
+    }
+    return uniqueBaseUrls(candidates);
+}
+
+async function migrateHostServiceConfig(config) {
+    if (
+        config?.hostService?.securityPreset === 'home' &&
+        config.hostService.listenHost === '127.0.0.1'
+    ) {
+        const hostService = { ...config.hostService, listenHost: 'private' };
+        const setupState = config.setupState
+            ? { ...config.setupState, serviceBaseUrl: baseUrlFromServiceConfig(hostService), updatedAt: now() }
+            : config.setupState;
+        const next = { ...config, hostService, setupState };
+        await writeConfig(next);
+        return next;
+    }
+    return config;
 }
 
 function mergeCommaList(...values) {
@@ -119,6 +180,8 @@ function pushUniqueRoute(routes, route) {
 export function buildInviteRoutes(status, appOrigin, config) {
     const routes = [];
     const origin = safeHttpOrigin(appOrigin);
+    const listenHost = config?.hostService?.listenHost;
+    const serviceIsNetworkReachable = isNetworkListenHost(listenHost);
     if (origin) {
         const parsedOrigin = new URL(origin);
         const appPort = Number(parsedOrigin.port || (origin.startsWith('https:') ? 443 : 80));
@@ -129,8 +192,10 @@ export function buildInviteRoutes(status, appOrigin, config) {
             }
         }
     }
-    for (const address of lanIPv4Addresses()) {
-        pushUniqueRoute(routes, { kind: 'direct', baseUrl: `http://${address}:${Number(config?.hostService?.listenPort || 9100)}`, priority: 20 });
+    if (serviceIsNetworkReachable) {
+        for (const address of lanIPv4Addresses()) {
+            pushUniqueRoute(routes, { kind: 'direct', baseUrl: `http://${address}:${Number(config?.hostService?.listenPort || 9100)}`, priority: 20 });
+        }
     }
     if (status?.baseUrl) {
         try {
@@ -219,7 +284,15 @@ function inviteChecksum(invite) {
 
 function createInviteLink(invite, appOrigin) {
     const routes = invite.routes || [];
-    const appProxyRoute = routes.find((route) => route.kind === 'app-proxy');
+    const appProxyRoute =
+        routes.find((route) => {
+            if (route.kind !== 'app-proxy') return false;
+            try {
+                return !isLoopbackHost(new URL(route.baseUrl).hostname);
+            } catch {
+                return false;
+            }
+        }) || routes.find((route) => route.kind === 'app-proxy');
     const origin = appProxyRoute ? new URL(appProxyRoute.baseUrl).origin : safeHttpOrigin(appOrigin);
     if (!origin) return '';
     return `${origin}/pair#invite=${encodeInviteV2(invite)}`;
@@ -467,6 +540,15 @@ async function healthFor(baseUrl) {
     }
 }
 
+async function healthForConfiguredService(config) {
+    const candidates = serviceCandidateBaseUrls(config);
+    for (const baseUrl of candidates) {
+        const result = await healthFor(baseUrl);
+        if (result.ok) return { ...result, baseUrl };
+    }
+    return { ok: false, baseUrl: candidates[0] || baseUrlFromServiceConfig(config?.hostService) };
+}
+
 async function authenticatedBootstrapFor(baseUrl) {
     const path = '/internal/v1/app/bootstrap';
     try {
@@ -474,6 +556,18 @@ async function authenticatedBootstrapFor(baseUrl) {
             headers: await authHeadersFor(path, 'GET'),
         });
         return { ok: true, bootstrap };
+    } catch (error) {
+        return { ok: false, error };
+    }
+}
+
+async function authenticatedOperatorAccessFor(baseUrl) {
+    const path = '/internal/v1/secure-connections/capabilities';
+    try {
+        const capabilities = await fetchJson(baseUrl, path, {
+            headers: await authHeadersFor(path, 'GET'),
+        });
+        return { ok: true, capabilities };
     } catch (error) {
         return { ok: false, error };
     }
@@ -572,10 +666,11 @@ export async function installInternPlaceholder() {
 }
 
 export async function serviceStatus() {
-    const config = await readConfig();
-    const baseUrl = baseUrlFromServiceConfig(config.hostService);
+    const config = await migrateHostServiceConfig(await readConfig());
+    const configuredBaseUrl = baseUrlFromServiceConfig(config.hostService);
     if (!config.hostService) return { state: 'stopped', message: 'Host setup is not configured yet.' };
-    const health = await healthFor(baseUrl);
+    const health = await healthForConfiguredService(config);
+    const baseUrl = health.baseUrl || configuredBaseUrl;
     if (health.ok) {
         const processId = Number(health.health?.processId || health.health?.process_id || serviceProcess?.pid || 0) || undefined;
         const authenticated = await authenticatedBootstrapFor(baseUrl);
@@ -594,6 +689,23 @@ export async function serviceStatus() {
             await writeConfig({ ...config, lastServiceStatus: status });
             return status;
         }
+        const operatorAccess = await authenticatedOperatorAccessFor(baseUrl);
+        if (!operatorAccess.ok) {
+            const statusCode = typeof operatorAccess.error?.status === 'number' ? operatorAccess.error.status : undefined;
+            const status = {
+                state: 'unhealthy',
+                baseUrl,
+                processId,
+                health: 'warning',
+                authMismatch: statusCode === 401 || statusCode === 403 || statusCode === 429,
+                roleMismatch: statusCode === 403,
+                message: statusCode === 403
+                    ? 'The local OR3 service is running, but this desktop session does not have host operator access yet.'
+                    : 'The local OR3 service is running, but this desktop session cannot manage host pairing yet.',
+            };
+            await writeConfig({ ...config, lastServiceStatus: status });
+            return status;
+        }
         const status = {
             state: 'online',
             baseUrl,
@@ -606,11 +718,11 @@ export async function serviceStatus() {
         return status;
     }
     if (serviceProcess && !serviceProcess.killed) return processStatus(config);
-    return { state: 'stopped', baseUrl, message: 'OR3 Intern is not running.' };
+    return { state: 'stopped', baseUrl: configuredBaseUrl, message: 'OR3 Intern is not running.' };
 }
 
 export async function startService({ appPath = '', resourcesPath = '' } = {}) {
-    let config = await readConfig();
+    let config = await migrateHostServiceConfig(await readConfig());
     if (!config.hostService) return { state: 'error', message: 'Host setup is not configured yet.' };
     const auth = await ensureServiceAuth(config);
     config = auth.config;
@@ -639,6 +751,7 @@ export async function startService({ appPath = '', resourcesPath = '' } = {}) {
         OR3_SERVICE_SHARED_SECRET_ROLE: 'operator',
         OR3_SERVICE_ALLOW_UNAUTHENTICATED_PAIRING: config.hostService.securityPreset === 'private' ? 'false' : 'true',
         OR3_SERVICE_TRUSTED_BROWSER_ORIGINS: mergeCommaList(process.env.OR3_SERVICE_TRUSTED_BROWSER_ORIGINS, 'app://or3'),
+        OR3_SERVICE_TRUSTED_BROWSER_CIDRS: mergeCommaList(process.env.OR3_SERVICE_TRUSTED_BROWSER_CIDRS, ...DEFAULT_TRUSTED_BROWSER_CIDRS),
         OR3_APP_WORKSPACE_DIR: config.hostService.workspaceDir,
     };
     if (config.hostService.dataDir) env.OR3_DATA_DIR = config.hostService.dataDir;

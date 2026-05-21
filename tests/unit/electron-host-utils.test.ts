@@ -67,7 +67,7 @@ describe('electron host setup utilities', () => {
                 workspaceDir: '/tmp/work',
                 securityPreset: 'home',
             }).listenHost,
-        ).toBe('127.0.0.1');
+        ).toBe('private');
         expect(
             mapPresetToServiceConfig({
                 machineName: 'Desk',

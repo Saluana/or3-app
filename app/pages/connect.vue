@@ -124,11 +124,13 @@
                 </p>
             </main>
         </div>
+
+        <PairingSheet v-model:open="pairingOpen" />
     </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useConnectionGate } from '~/composables/useConnectionGate';
 import { useElectronHostSetup } from '~/composables/useElectronHostSetup';
 
@@ -144,6 +146,7 @@ const { isGated, isConnected, isPaired, lockScreenSections } =
 
 const electronHost = useElectronHostSetup();
 const { isElectron } = electronHost;
+const pairingOpen = ref(false);
 
 const statusLabel = computed(() => {
     if (isConnected.value) return 'Connected';
@@ -163,7 +166,7 @@ async function onSetupHost() {
 }
 
 function onPairDevice() {
-    void router.push('/settings/pair');
+    pairingOpen.value = true;
 }
 
 function onLearnMore() {

@@ -113,11 +113,21 @@ async function pickInternBinary() {
 }
 
 function setAutostart(enabled) {
-    app.setLoginItemSettings({ openAtLogin: enabled, openAsHidden: true });
-    return {
-        enabled: app.getLoginItemSettings().openAtLogin,
-        supported: true,
-    };
+    try {
+        app.setLoginItemSettings({ openAtLogin: enabled, openAsHidden: true });
+        return {
+            enabled: app.getLoginItemSettings().openAtLogin,
+            supported: true,
+        };
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'macOS did not allow login item changes.';
+        console.warn('or3-app autostart unavailable:', message);
+        return {
+            enabled: false,
+            supported: false,
+            message,
+        };
+    }
 }
 
 function createWindow() {

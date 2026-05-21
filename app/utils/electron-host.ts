@@ -25,12 +25,12 @@ export const SECURITY_PRESETS: Record<SecurityPresetId, SecurityPreset> = {
     home: {
         id: 'home',
         label: 'Home network',
-        shortDescription: 'Create secure invites while OR3 stays local to this computer.',
-        serviceListenMode: 'loopback',
+        shortDescription: 'Expose OR3 on your private LAN or Tailscale so trusted devices can pair.',
+        serviceListenMode: 'private-network',
         allowLegacyPairing: false,
         preferSecureQr: true,
         requireApprovals: true,
-        exposeOnLan: false,
+        exposeOnLan: true,
     },
     advanced: {
         id: 'advanced',
