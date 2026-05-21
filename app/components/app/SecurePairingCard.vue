@@ -22,8 +22,17 @@
                 aria-label="Pairing invite link or QR text"
                 placeholder="Paste invite link or QR text"
                 autoresize
+                @paste="onPaste"
             />
             <div class="flex flex-col gap-2">
+                <UButton
+                    label="Paste"
+                    icon="i-pixelarticons-clipboard"
+                    color="neutral"
+                    variant="soft"
+                    :loading="loading"
+                    @click="pasteAndParse"
+                />
                 <UButton
                     label="Scan"
                     icon="i-pixelarticons-camera"
@@ -42,6 +51,9 @@
         </div>
         <p v-if="browserCameraNotice" class="text-sm leading-6 text-(--or3-text-muted)">
             {{ browserCameraNotice }}
+        </p>
+        <p class="text-xs leading-5 text-(--or3-text-muted)">
+            Tip: paste an invite link or QR text here and OR3 will try to connect automatically.
         </p>
 
         <div
@@ -286,21 +298,66 @@ async function scan() {
 }
 
 async function parse() {
+    await parsePairingText(qrText.value, {
+        title: 'Could not read code',
+        fallback: 'Use a fresh QR code.',
+    });
+}
+
+async function parsePairingText(rawText: string, errorCopy: { title: string; fallback: string }) {
+    if (loading.value) return;
+    const input = rawText.trim();
+    if (!input) {
+        toast.add({
+            title: 'Nothing to pair yet',
+            description: 'Paste an invite link or QR text first.',
+            color: 'warning',
+        });
+        return;
+    }
     loading.value = true;
     successMessage.value = '';
     connectedMode.value = null;
     try {
-        const parsed = parsePairingInvite(qrText.value);
+        qrText.value = input;
+        const parsed = parsePairingInvite(input);
         summary.value = parsed.version === 2 ? pairingInviteToQRCodeV1(parsed.invite) : parsed.qr;
-        await enrollFromQR(qrText.value, summary.value, resolveInvitePairingBaseUrl(parsed.routes));
+        await enrollFromQR(input, summary.value, resolveInvitePairingBaseUrl(parsed.routes));
     } catch (error) {
         toast.add({
-            title: 'Could not read code',
-            description: pairingErrorMessage(error, 'Use a fresh QR code.'),
+            title: errorCopy.title,
+            description: pairingErrorMessage(error, errorCopy.fallback),
             color: 'error',
         });
     } finally {
         loading.value = false;
     }
+}
+
+async function pasteAndParse() {
+    if (loading.value) return;
+    try {
+        const pasted = await navigator.clipboard.readText();
+        await parsePairingText(pasted, {
+            title: 'Could not use clipboard',
+            fallback: 'Paste the invite link manually, then try again.',
+        });
+    } catch (error) {
+        toast.add({
+            title: 'Clipboard access blocked',
+            description: pairingErrorMessage(error, 'Use your browser paste shortcut, then OR3 will connect automatically.'),
+            color: 'warning',
+        });
+    }
+}
+
+function onPaste(event: ClipboardEvent) {
+    const pasted = event.clipboardData?.getData('text/plain')?.trim();
+    if (!pasted) return;
+    event.preventDefault();
+    void parsePairingText(pasted, {
+        title: 'Could not read pasted code',
+        fallback: 'Use a fresh invite link or QR text.',
+    });
 }
 </script>
