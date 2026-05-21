@@ -6,11 +6,13 @@ const mockState = vi.hoisted(() => ({
     activeHost: null as any,
     isPaired: null as any,
     isConnected: null as any,
+    securePairingStatus: null as any,
     listDevices: vi.fn(async () => []),
     revokeDevice: vi.fn(async () => ({
         device_id: 'device-1',
         status: 'revoked',
     })),
+    toastAdd: vi.fn(),
 }));
 
 vi.mock('../../app/composables/useActiveHost', async () => {
@@ -46,7 +48,14 @@ vi.mock('../../app/composables/usePairing', () => ({
     usePairing: () => ({
         listDevices: mockState.listDevices,
         revokeDevice: mockState.revokeDevice,
+        securePairingStatus:
+            mockState.securePairingStatus ??
+            (mockState.securePairingStatus = { value: 'ready' }),
     }),
+}));
+
+vi.mock('@nuxt/ui/composables', () => ({
+    useToast: () => ({ add: mockState.toastAdd }),
 }));
 
 function mountCard() {
@@ -69,6 +78,20 @@ function mountCard() {
                     template: '<div><slot /></div>',
                     props: ['tone', 'title'],
                 },
+                DestructiveActionConfirmModal: {
+                    props: [
+                        'open',
+                        'itemName',
+                        'consequence',
+                        'undoAvailability',
+                        'confirmLabel',
+                        'loading',
+                        'error',
+                    ],
+                    emits: ['update:open', 'confirm'],
+                    template:
+                        '<div data-test="confirm-modal">{{ itemName }}<button type="button" @click="$emit(\'confirm\')">{{ confirmLabel }}</button></div>',
+                },
             },
         },
     });
@@ -85,6 +108,7 @@ describe('DeviceManagementCard', () => {
         mockState.listDevices.mockClear();
         mockState.listDevices.mockResolvedValue([]);
         mockState.revokeDevice.mockClear();
+        mockState.toastAdd.mockClear();
     });
 
     afterEach(() => {

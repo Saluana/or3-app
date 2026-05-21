@@ -75,38 +75,17 @@
             </div>
         </div>
 
-        <UModal v-model:open="confirmOpen" :ui="{ content: 'sm:max-w-md' }">
-            <template #content>
-                <div class="space-y-4 p-5">
-                    <DangerCallout tone="danger" title="Remove this device?">
-                        This will remove the legacy token for
-                        <span class="font-semibold">{{
-                            pendingDevice?.display_name ||
-                            pendingDevice?.device_id
-                        }}</span>
-                        right away. Secure certificate-backed devices are
-                        managed separately.
-                    </DangerCallout>
-                    <p v-if="revokeError" class="text-sm text-(--or3-red)">
-                        {{ revokeError }}
-                    </p>
-                    <div class="flex justify-end gap-2">
-                        <UButton
-                            label="Cancel"
-                            color="neutral"
-                            variant="ghost"
-                            @click="confirmOpen = false"
-                        />
-                        <UButton
-                            label="Yes, remove"
-                            color="error"
-                            :loading="revoking"
-                            @click="confirmRevoke"
-                        />
-                    </div>
-                </div>
-            </template>
-        </UModal>
+        <DestructiveActionConfirmModal
+            v-model:open="confirmOpen"
+            title="Remove this device?"
+            :item-name="pendingDevice?.display_name || pendingDevice?.device_id || 'This device'"
+            consequence="This removes the legacy token for this app or device. Secure certificate-backed devices are managed separately."
+            undo-availability="There is no undo. You can pair the device again later."
+            confirm-label="Yes, remove"
+            :loading="revoking"
+            :error="revokeError"
+            @confirm="confirmRevoke"
+        />
     </SurfaceCard>
 </template>
 

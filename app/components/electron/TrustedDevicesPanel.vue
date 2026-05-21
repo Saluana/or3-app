@@ -57,22 +57,17 @@
             </div>
         </details>
 
-        <UModal v-model:open="confirmOpen" :ui="{ content: 'sm:max-w-md' }">
-            <template #content>
-                <div class="space-y-4 p-5">
-                    <DangerCallout tone="danger" title="Revoke this device?">
-                        This stops {{ pendingName }} from using this computer.
-                    </DangerCallout>
-                    <p v-if="revokeError" class="text-sm text-(--or3-red)">
-                        {{ revokeError }}
-                    </p>
-                    <div class="flex justify-end gap-2">
-                        <UButton label="Cancel" color="neutral" variant="ghost" @click="confirmOpen = false" />
-                        <UButton label="Revoke" color="error" :loading="revoking" @click="confirmRevoke" />
-                    </div>
-                </div>
-            </template>
-        </UModal>
+        <DestructiveActionConfirmModal
+            v-model:open="confirmOpen"
+            title="Revoke this device?"
+            :item-name="pendingName"
+            consequence="This device will stop being able to use this computer."
+            undo-availability="There is no undo. Pair the device again if you trust it later."
+            confirm-label="Revoke"
+            :loading="revoking"
+            :error="revokeError"
+            @confirm="confirmRevoke"
+        />
     </div>
 </template>
 

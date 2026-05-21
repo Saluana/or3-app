@@ -101,6 +101,20 @@ function mountCard() {
                     template:
                         '<button type="button">{{ label }}<slot /></button>',
                 },
+                DestructiveActionConfirmModal: {
+                    props: [
+                        'open',
+                        'itemName',
+                        'consequence',
+                        'undoAvailability',
+                        'confirmLabel',
+                        'loading',
+                        'error',
+                    ],
+                    emits: ['update:open', 'confirm'],
+                    template:
+                        '<div data-test="confirm-modal">{{ itemName }}<button type="button" @click="$emit(\'confirm\')">{{ confirmLabel }}</button></div>',
+                },
             },
         },
     });

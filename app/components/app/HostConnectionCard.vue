@@ -208,6 +208,15 @@
                 @click="exchange"
             />
         </div>
+        <DestructiveActionConfirmModal
+            v-model:open="disconnectConfirmOpen"
+            title="Disconnect this app?"
+            :item-name="activeHost?.name || 'This computer'"
+            consequence="This app will forget the saved computer and stop using its chat and computer tools."
+            undo-availability="There is no undo in this app. You can pair this app again later. Trusted device records on the computer stay there until revoked."
+            confirm-label="Disconnect"
+            @confirm="confirmDisconnect"
+        />
     </SurfaceCard>
 </template>
 
@@ -257,6 +266,7 @@ const cliFormState = reactive({
     code: '',
 });
 const loading = ref(false);
+const disconnectConfirmOpen = ref(false);
 const suggestedBaseUrl = computed(defaultServiceBaseUrl);
 const isLoopbackServiceUrl = computed(() => {
     try {
@@ -374,7 +384,12 @@ async function connectWithCliCode() {
 }
 
 function disconnect() {
+    disconnectConfirmOpen.value = true;
+}
+
+function confirmDisconnect() {
     if (!disconnectActiveHost()) return;
+    disconnectConfirmOpen.value = false;
     stopAutoFinish();
     toast.add({
         title: 'Disconnected',

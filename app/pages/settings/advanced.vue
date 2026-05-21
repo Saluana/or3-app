@@ -352,6 +352,15 @@
 
             <p class="or3-command pb-3 text-center text-xs">or3-app v1.0.0</p>
         </div>
+        <DestructiveActionConfirmModal
+            v-model:open="disconnectConfirmOpen"
+            title="Disconnect this app?"
+            :item-name="activeHost?.name || 'This computer'"
+            consequence="This app will forget the saved computer and stop using its chat and computer tools."
+            undo-availability="There is no undo in this app. You can pair this app again later. Trusted device records on the computer stay there until revoked."
+            confirm-label="Disconnect"
+            @confirm="confirmDisconnectHost"
+        />
     </AppShell>
 </template>
 
@@ -365,6 +374,7 @@ import { useActiveHost } from '../../composables/useActiveHost';
 const router = useRouter();
 const searchTerm = ref('');
 const toast = useToast();
+const disconnectConfirmOpen = ref(false);
 
 type FilterKey =
     | 'connection'
@@ -404,7 +414,12 @@ const connectionPillTone = computed<'green' | 'amber'>(() =>
 );
 
 function disconnectHost() {
+    disconnectConfirmOpen.value = true;
+}
+
+function confirmDisconnectHost() {
     if (!disconnectActiveHost()) return;
+    disconnectConfirmOpen.value = false;
     toast.add({
         title: 'Disconnected',
         description:

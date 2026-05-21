@@ -85,6 +85,15 @@
                 </div>
             </SurfaceCard>
         </div>
+        <DestructiveActionConfirmModal
+            v-model:open="disconnectConfirmOpen"
+            title="Disconnect this app?"
+            :item-name="activeHost?.name || 'This computer'"
+            consequence="This app will forget the saved computer and stop using its chat and computer tools."
+            undo-availability="There is no undo in this app. You can pair this app again later. Trusted device records on the computer stay there until revoked."
+            confirm-label="Disconnect"
+            @confirm="confirmDisconnectHost"
+        />
     </AppShell>
 </template>
 
@@ -107,6 +116,7 @@ const simple = useSimpleSettings();
 const electronHost = useElectronHostSetup();
 const toast = useToast();
 const undoing = ref(false);
+const disconnectConfirmOpen = ref(false);
 
 void electronHost.ensureLoaded();
 
@@ -243,7 +253,12 @@ watch(
 );
 
 function disconnectHost() {
+    disconnectConfirmOpen.value = true;
+}
+
+function confirmDisconnectHost() {
     if (!disconnectActiveHost()) return;
+    disconnectConfirmOpen.value = false;
     toast.add({
         title: 'Disconnected',
         description:
