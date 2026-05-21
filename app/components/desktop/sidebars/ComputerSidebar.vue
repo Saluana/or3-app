@@ -56,7 +56,7 @@ import { useActiveHost } from '../../../composables/useActiveHost';
 import { useApprovals } from '../../../composables/useApprovals';
 
 const route = useRoute();
-const { activeHost, isConnected } = useActiveHost();
+const { activeHost, isConnected, isPaired } = useActiveHost();
 const { pendingCount } = useApprovals();
 const connected = computed(() => Boolean(isConnected.value));
 const activeHostName = computed(() => activeHost.value?.name || 'My Computer');
@@ -77,7 +77,7 @@ const items = computed<SidebarItem[]>(() => [
         label: 'My Computer',
         description: connected.value
             ? `${activeHostName.value} · Connected`
-            : activeHost.value?.token
+            : isPaired.value
               ? `${activeHostName.value} · Unreachable`
               : 'Pair to get started',
         icon: 'i-pixelarticons-monitor',

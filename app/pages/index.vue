@@ -107,7 +107,7 @@
                         <div class="or3-chat-empty__actions">
                             <UButton
                                 icon="i-pixelarticons-book"
-                                color="neutral"
+                                color="primary"
                                 variant="soft"
                                 @click="openPromptGallery"
                             >
@@ -115,7 +115,7 @@
                             </UButton>
                             <UButton
                                 icon="i-pixelarticons-edit-box"
-                                color="neutral"
+                                color="primary"
                                 variant="ghost"
                                 @click="openFileEditor"
                             >

@@ -292,7 +292,7 @@ import {
 } from '~/utils/or3/computerAttention';
 import { formatReadinessDetail } from '~/utils/or3/readiness';
 
-const { activeHost, isConnected } = useActiveHost();
+const { activeHost, isConnected, isPaired } = useActiveHost();
 const {
     health,
     readiness,
@@ -660,14 +660,14 @@ async function handleRestartService() {
 }
 
 watch(
-    () => activeHost.value?.token,
-    (token) => {
-        if (token) void refreshStatus().catch(() => {});
+    isPaired,
+    (paired) => {
+        if (paired) void refreshStatus().catch(() => {});
     },
 );
 
 onMounted(async () => {
-    if (activeHost.value?.token) {
+    if (isPaired.value) {
         void refreshStatus().catch(() => {});
     }
     void loadApprovals().catch(() => {});

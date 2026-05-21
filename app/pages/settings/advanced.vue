@@ -29,58 +29,17 @@
                 </div>
             </SurfaceCard>
 
-            <!-- Connection summary card -->
-            <SurfaceCard class-name="space-y-3">
-                <div class="flex items-start gap-3">
-                    <BrandMark size="md" />
-                    <div class="min-w-0 flex-1">
-                        <div class="flex flex-wrap items-center gap-2">
-                            <p
-                                class="font-mono text-base font-semibold text-(--or3-text)"
-                            >
-                                {{ connectionHeadline }}
-                            </p>
-                            <StatusPill
-                                v-if="isPaired"
-                                :label="connectionPillLabel"
-                                :tone="connectionPillTone"
-                                :pulse="isConnected"
-                            />
-                        </div>
-                        <p
-                            class="mt-1 text-sm leading-6 text-(--or3-text-muted)"
-                        >
-                            {{ connectionDescription }}
-                        </p>
-                    </div>
-                </div>
-                <div class="flex items-center gap-2">
-                    <code
-                        v-if="activeHost?.baseUrl"
-                        class="min-w-0 flex-1 truncate rounded-xl border border-(--or3-border) bg-white/70 px-3 py-2 font-mono text-xs text-(--or3-text)"
-                        >{{ activeHost.baseUrl }}</code
-                    >
-                    <UButton
-                        label="Pair new computer"
-                        icon="i-pixelarticons-link"
-                        color="primary"
-                        variant="solid"
-                        size="sm"
-                        class="shrink-0 rounded-full"
-                        to="/settings/pair"
-                    />
-                    <UButton
-                        v-if="isPaired"
-                        label="Disconnect this app"
-                        icon="i-pixelarticons-close"
-                        color="neutral"
-                        variant="ghost"
-                        size="sm"
-                        class="shrink-0 rounded-full"
-                        @click="disconnectHost"
-                    />
-                </div>
-            </SurfaceCard>
+            <ConnectionSummaryCard
+                :headline="connectionHeadline"
+                :description="connectionDescription"
+                :active-host="activeHost"
+                :is-paired="isPaired"
+                :is-connected="isConnected"
+                :pill-label="connectionPillLabel"
+                :pill-tone="connectionPillTone"
+                unpaired-layout="compact"
+                @disconnect="disconnectHost"
+            />
 
             <SurfaceCard class-name="space-y-3">
                 <div class="flex items-start gap-3">
@@ -424,8 +383,7 @@ const {
     allFieldsLoading,
     loadAllFields,
 } = useConfigure();
-const { activeHost, isConnected, disconnectActiveHost } = useActiveHost();
-const isPaired = computed(() => Boolean(activeHost.value?.token));
+const { activeHost, isConnected, isPaired, disconnectActiveHost } = useActiveHost();
 const connectionHeadline = computed(() => {
     if (!isPaired.value) return 'No computer paired';
     return isConnected.value

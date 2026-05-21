@@ -60,6 +60,7 @@ export function useSecureConnectionSession() {
                 method: 'POST',
                 body: payload,
                 baseUrl: host.serviceBaseUrl,
+                requireAuth: false,
             },
         );
         if (!validateSecureSessionClaims(response.claims)) {

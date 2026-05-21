@@ -44,7 +44,12 @@ export function useActiveHost() {
         );
     });
 
-    const isPaired = computed(() => Boolean(activeHost.value?.token));
+    const isPaired = computed(() =>
+        Boolean(
+            activeHost.value?.token ||
+                activeHost.value?.authMode === 'secure-session',
+        ),
+    );
     const isConnected = computed(
         () => isPaired.value && activeHost.value?.status === 'online',
     );

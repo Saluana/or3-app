@@ -5,6 +5,12 @@ import { createLogger } from '~/utils/logger';
 import { getActiveTraceId } from '~/utils/logTrace';
 import { readSseStream } from '~/utils/or3/sse';
 import {
+    buildSecureSessionStartPayload,
+    loadSecureConnectionState,
+    validateSecureSessionClaims,
+    type SecureSessionClaims,
+} from '~/utils/or3/secure-connections';
+import {
     ELECTRON_HOST_PROFILE_ID,
     useActiveHost,
 } from './useActiveHost';
@@ -17,6 +23,14 @@ import {
 let suppressNetworkErrorLogsUntil = 0;
 let hostAuthCooldownUntil = 0;
 let hostAuthCooldownMessage = '';
+
+const secureSessionCache: Record<
+    string,
+    {
+        claims?: SecureSessionClaims;
+        pending?: Promise<SecureSessionClaims>;
+    }
+> = {};
 
 export interface Or3ApiRequestOptions {
     method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -325,6 +339,74 @@ export function useOr3Api() {
         return resolveHostAuthTokens(activeHost.value).sessionToken;
     }
 
+    async function resolveSecureSessionToken(explicitBaseUrl?: string) {
+        const host = activeHost.value;
+        if (!host || host.authMode !== 'secure-session') return undefined;
+        if (!destinationMatchesTokenOrigin(host.baseUrl, explicitBaseUrl)) return undefined;
+        const hostId = host.secureHostId || host.id;
+        const cached = secureSessionCache[hostId];
+        const now = Date.now();
+        if (cached?.claims && cached.claims.expires_at_unix_ms > now + 30_000) {
+            return cached.claims.session_id;
+        }
+        if (cached?.pending) return (await cached.pending).session_id;
+
+        const pending = (async () => {
+            const state = await loadSecureConnectionState();
+            const identity = state.deviceIdentity;
+            const enrollment = state.hosts?.[hostId];
+            if (!identity || !enrollment) {
+                throw {
+                    code: 'auth_required',
+                    status: 401,
+                    message: 'This secure device enrollment is missing. Pair this device again.',
+                } satisfies Or3AppError;
+            }
+            const routeId = host.secureSessionRouteId || `direct:${normalizeBaseUrl(host.baseUrl)}`;
+            const body = await buildSecureSessionStartPayload(identity, enrollment, routeId);
+            const response = await fetch(
+                `${normalizeBaseUrl(explicitBaseUrl || host.baseUrl)}/internal/v1/secure-connections/sessions`,
+                {
+                    method: 'POST',
+                    headers: {
+                        Accept: 'application/json',
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(body),
+                },
+            );
+            if (!response.ok) {
+                const payload = await readError(response);
+                throw mapError(response.status, payload);
+            }
+            const result = (await response.json()) as { claims?: unknown };
+            if (!validateSecureSessionClaims(result.claims)) {
+                throw {
+                    code: 'auth_required',
+                    status: 401,
+                    message: 'The computer returned an invalid secure session.',
+                } satisfies Or3AppError;
+            }
+            updateHost({
+                ...host,
+                status: 'online',
+                lastSeenAt: new Date().toISOString(),
+            });
+            return result.claims;
+        })();
+
+        secureSessionCache[hostId] = { pending };
+        try {
+            const claims = await pending;
+            secureSessionCache[hostId] = { claims };
+            return claims.session_id;
+        } catch (error) {
+            delete secureSessionCache[hostId];
+            updateActiveHostStatus('unauthorized', explicitBaseUrl);
+            throw error;
+        }
+    }
+
     async function request<T>(
         path: string,
         options: Or3ApiRequestOptions = {},
@@ -338,11 +420,14 @@ export function useOr3Api() {
         );
         const cooldown = activeHost.value?.id === ELECTRON_HOST_PROFILE_ID ? hostAuthCooldownError() : null;
         if (cooldown) throw cooldown;
-        const electronAuthToken = destinationAllowsHostAuth
+        const electronAuthToken = requiresAuth && destinationAllowsHostAuth
             ? await resolveElectronHostToken(method, path)
             : undefined;
+        const secureSessionToken = requiresAuth && destinationAllowsHostAuth
+            ? await resolveSecureSessionToken(options.baseUrl)
+            : undefined;
         const authToken = destinationAllowsHostAuth
-            ? electronAuthToken || resolveRequestAuthToken(options.preferPairedToken)
+            ? electronAuthToken || secureSessionToken || resolveRequestAuthToken(options.preferPairedToken)
             : undefined;
         const sessionToken = destinationAllowsHostAuth
             ? resolveRequestSessionToken()
@@ -367,6 +452,8 @@ export function useOr3Api() {
             headers.Authorization = `Bearer ${authToken}`;
         if (electronAuthToken && requiresAuth)
             headers['X-Or3-Auth-Method'] = 'shared-secret';
+        if (secureSessionToken && requiresAuth)
+            headers['X-Or3-Auth-Method'] = 'secure-session';
         if (sessionToken && requiresAuth)
             headers['X-Or3-Session'] = sessionToken;
         const traceId = getActiveTraceId();
@@ -472,11 +559,14 @@ export function useOr3Api() {
         );
         const cooldown = activeHost.value?.id === ELECTRON_HOST_PROFILE_ID ? hostAuthCooldownError() : null;
         if (cooldown) throw cooldown;
-        const electronAuthToken = destinationAllowsHostAuth
+        const electronAuthToken = requiresAuth && destinationAllowsHostAuth
             ? await resolveElectronHostToken(method, path)
             : undefined;
+        const secureSessionToken = requiresAuth && destinationAllowsHostAuth
+            ? await resolveSecureSessionToken(options.baseUrl)
+            : undefined;
         const authToken = destinationAllowsHostAuth
-            ? electronAuthToken || resolveRequestAuthToken(options.preferPairedToken)
+            ? electronAuthToken || secureSessionToken || resolveRequestAuthToken(options.preferPairedToken)
             : undefined;
         const sessionToken = destinationAllowsHostAuth
             ? resolveRequestSessionToken()
@@ -501,6 +591,8 @@ export function useOr3Api() {
             headers.Authorization = `Bearer ${authToken}`;
         if (electronAuthToken && requiresAuth)
             headers['X-Or3-Auth-Method'] = 'shared-secret';
+        if (secureSessionToken && requiresAuth)
+            headers['X-Or3-Auth-Method'] = 'secure-session';
         if (sessionToken && requiresAuth)
             headers['X-Or3-Session'] = sessionToken;
         const traceId = getActiveTraceId();

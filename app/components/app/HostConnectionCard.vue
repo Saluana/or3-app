@@ -418,7 +418,7 @@ onMounted(() => {
     if (isLoopbackHost(host) || !formState.baseUrl) {
         formState.baseUrl = suggested;
     }
-    if (activeHost.value?.token) {
+    if (isPaired.value) {
         void verifyActiveHost().catch(() => {});
     }
 });

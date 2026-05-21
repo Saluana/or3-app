@@ -175,8 +175,8 @@ export function useSecureHostTokens() {
     writeHostTokenMap(current)
   }
 
-  function replaceTokens(hosts: Array<Pick<Or3HostProfile, 'id' | 'baseUrl' | 'pairedToken' | 'sessionToken' | 'token' | 'tokenOrigin'>>) {
-    const next = Object.fromEntries(hosts.map((host) => {
+  function replaceTokens(hosts: Array<Pick<Or3HostProfile, 'id' | 'baseUrl' | 'pairedToken' | 'sessionToken' | 'token' | 'tokenOrigin' | 'authMode'>>) {
+    const next = Object.fromEntries(hosts.filter((host) => host.authMode !== 'secure-session').map((host) => {
       const resolved = withResolvedHostTokens(host)
       return [host.id, { pairedToken: resolved.pairedToken, sessionToken: resolved.sessionToken, origin: resolved.tokenOrigin }]
     })) as Record<string, HostTokenRecord>

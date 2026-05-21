@@ -9,129 +9,20 @@
         <AppHeader subtitle="SETTINGS" />
 
         <div class="space-y-4">
-            <!-- Connection summary card -->
-            <SurfaceCard class-name="space-y-4">
-                <div class="flex items-start gap-3">
-                    <BrandMark size="md" />
-                    <div class="min-w-0 flex-1">
-                        <div class="flex flex-wrap items-center gap-2">
-                            <p
-                                class="font-mono text-base font-semibold text-(--or3-text)"
-                            >
-                                {{ hostMode ? hostHeadline : connectionHeadline }}
-                            </p>
-                            <StatusPill
-                                v-if="isPaired"
-                                :label="connectionPillLabel"
-                                :tone="connectionPillTone"
-                                :pulse="isConnected"
-                            />
-                        </div>
-                        <p
-                            class="mt-1 text-sm leading-6 text-(--or3-text-muted)"
-                        >
-                            {{ hostMode ? hostDescription : connectionDescription }}
-                        </p>
-                    </div>
-                </div>
-
-                <div
-                    v-if="isPaired"
-                    class="flex overflow-hidden rounded-2xl border border-(--or3-border) bg-white/70"
-                >
-                    <div
-                        v-for="stat in connectionStats"
-                        :key="stat.label"
-                        class="min-w-1/4 border-(--or3-border) px-3 py-3 text-center not-last:border-r sm:border-r"
-                    >
-                        <Icon
-                            :name="stat.icon"
-                            class="mx-auto size-4 text-(--or3-text-muted)"
-                        />
-                        <p
-                            class="mt-2 font-mono text-[10px] font-light uppercase text-(--or3-text-muted)"
-                        >
-                            {{ stat.label }}
-                        </p>
-                        <p
-                            :class="[
-                                'mt-1 truncate font-mono text-[8px] font-extralight ',
-                                stat.tone === 'green'
-                                    ? 'text-(--or3-green-dark)'
-                                    : 'text-(--or3-text)',
-                            ]"
-                            :title="stat.value"
-                        >
-                            {{ stat.value }}
-                        </p>
-                    </div>
-                </div>
-
-                <div v-if="hostMode" class="flex flex-wrap items-center gap-2">
-                    <code
-                        v-if="hostStatus.baseUrl"
-                        class="min-w-0 flex-1 truncate rounded-xl border border-(--or3-border) bg-white/70 px-3 py-2 font-mono text-xs text-(--or3-text)"
-                        >{{ hostStatus.baseUrl }}</code
-                    >
-                    <UButton
-                        label="Connect devices"
-                        icon="i-pixelarticons-smartphone"
-                        color="primary"
-                        variant="solid"
-                        size="sm"
-                        class="shrink-0 rounded-full"
-                        to="/computer/connect-device"
-                    />
-                    <UButton
-                        label="Trusted devices"
-                        icon="i-pixelarticons-shield"
-                        color="neutral"
-                        variant="soft"
-                        size="sm"
-                        class="shrink-0 rounded-full"
-                        to="/computer/trusted-devices"
-                    />
-                </div>
-
-                <div v-else-if="isPaired" class="flex flex-wrap items-center gap-2">
-                    <code
-                        v-if="activeHost?.baseUrl"
-                        class="min-w-0 flex-1 truncate rounded-xl border border-(--or3-border) bg-white/70 px-3 py-2 font-mono text-xs text-(--or3-text)"
-                        >{{ activeHost.baseUrl }}</code
-                    >
-                    <UButton
-                        label="Pair new computer"
-                        icon="i-pixelarticons-link"
-                        color="primary"
-                        variant="solid"
-                        size="sm"
-                        class="shrink-0 rounded-full"
-                        to="/settings/pair"
-                    />
-                    <UButton
-                        label="Disconnect this app"
-                        icon="i-pixelarticons-close"
-                        color="neutral"
-                        variant="ghost"
-                        size="sm"
-                        class="shrink-0 rounded-full"
-                        @click="disconnectHost"
-                    />
-                </div>
-
-                <div v-else>
-                    <UButton
-                        label="Pair new computer"
-                        icon="i-pixelarticons-link"
-                        color="primary"
-                        variant="solid"
-                        size="xl"
-                        block
-                        class="min-h-14 rounded-2xl font-mono text-base shadow-(--or3-shadow-soft)"
-                        to="/settings/pair"
-                    />
-                </div>
-            </SurfaceCard>
+            <ConnectionSummaryCard
+                :headline="hostMode ? hostHeadline : connectionHeadline"
+                :description="hostMode ? hostDescription : connectionDescription"
+                :active-host="activeHost"
+                :is-paired="isPaired"
+                :is-connected="isConnected"
+                :pill-label="connectionPillLabel"
+                :pill-tone="connectionPillTone"
+                :stats="connectionStats"
+                :host-mode="hostMode"
+                :host-base-url="hostStatus.baseUrl"
+                unpaired-layout="large"
+                @disconnect="disconnectHost"
+            />
 
             <SurfaceCard v-if="isElectron" class-name="space-y-3">
                 <div class="flex items-start justify-between gap-3">
@@ -209,7 +100,7 @@ import { createLogger } from '../../utils/logger';
 
 const logger = createLogger('settings');
 
-const { activeHost, isConnected, disconnectActiveHost } = useActiveHost();
+const { activeHost, isConnected, isPaired, disconnectActiveHost } = useActiveHost();
 const computerStatus = useComputerStatus();
 const snapshots = useSettingsSnapshots();
 const simple = useSimpleSettings();
@@ -238,7 +129,6 @@ const modeDescription = computed(() =>
         : 'This desktop app behaves like web, iOS, and Android clients.',
 );
 
-const isPaired = computed(() => Boolean(activeHost.value?.token));
 const connectionHeadline = computed(() => {
     if (!isPaired.value) return 'No computer paired';
     return isConnected.value

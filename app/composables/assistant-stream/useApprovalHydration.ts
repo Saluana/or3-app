@@ -29,9 +29,12 @@ export function useApprovalHydration(options: UseApprovalHydrationOptions) {
         if (!isClient || options.isStreaming.value) return;
 
         const hostId = options.activeHost.value?.id?.trim();
-        const hasAuthToken = Boolean(options.activeHost.value?.token?.trim());
+        const hasAuth = Boolean(
+            options.activeHost.value?.token?.trim() ||
+                options.activeHost.value?.authMode === 'secure-session',
+        );
         const sessionKey = options.chat.activeSession.value?.sessionKey?.trim();
-        if (!hostId || !hasAuthToken || !sessionKey) return;
+        if (!hostId || !hasAuth || !sessionKey) return;
 
         const hydrationKey = `${hostId}:${sessionKey}`;
         if (approvalHydrationInFlight.has(hydrationKey)) return;
@@ -113,7 +116,11 @@ export function useApprovalHydration(options: UseApprovalHydrationOptions) {
         watch(
             () => ({
                 hostId: options.activeHost.value?.id ?? '',
-                token: options.activeHost.value?.token ? 'ready' : 'none',
+                token:
+                    options.activeHost.value?.token ||
+                    options.activeHost.value?.authMode === 'secure-session'
+                        ? 'ready'
+                        : 'none',
                 sessionKey: options.chat.activeSession.value?.sessionKey ?? '',
                 streaming: options.isStreaming.value,
             }),

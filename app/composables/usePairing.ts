@@ -475,6 +475,19 @@ export function usePairing() {
             trustLevel: input.trustLevel || 'web-limited',
             storedAtUnixMs: Date.now(),
         });
+        if (input.serviceBaseUrl) {
+            cache.updateHost({
+                id: input.hostId,
+                name: input.hostId,
+                baseUrl: input.serviceBaseUrl,
+                authMode: 'secure-session',
+                secureHostId: input.hostId,
+                secureSessionRouteId: `direct:${input.serviceBaseUrl}`,
+                role: input.role || 'operator',
+                status: 'online',
+                lastSeenAt: new Date().toISOString(),
+            });
+        }
         securePairingStatus.value = 'connected';
     }
 
@@ -990,6 +1003,18 @@ export function usePairing() {
                 trustLevel:
                     response.device?.trust_level || parsed.identity.trustLevel,
             });
+            const activeHost = cache.state.value.hosts.find(
+                (host) => host.id === parsed.qr.hostId,
+            );
+            if (activeHost) {
+                cache.updateHost({
+                    ...activeHost,
+                    name: parsed.qr.hostDisplayName || activeHost.name,
+                    deviceId: parsed.identity.deviceId,
+                    status: 'online',
+                    lastSeenAt: new Date().toISOString(),
+                });
+            }
             if (response.paired_token) {
                 cachePairedTokenHost({
                     baseUrl,

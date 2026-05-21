@@ -2,7 +2,7 @@
     <SurfaceCard class-name="space-y-4">
         <div class="flex items-center justify-between gap-3">
             <div class="flex items-start gap-3">
-                <RetroIcon name="i-pixelarticons-smartphone" />
+                <RetroIcon class="shrink-0" name="i-pixelarticons-smartphone" />
                 <div>
                     <p
                         class="font-mono text-base font-semibold text-(--or3-text)"

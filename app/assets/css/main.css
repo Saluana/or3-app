@@ -50,6 +50,21 @@
   --ui-color-primary-900: #233a23;
   --ui-color-primary-950: #142214;
   --ui-primary: var(--or3-green);
+
+  /* Re-tint Nuxt UI's `neutral` to the warm cream palette so that
+     `color="neutral"` components feel at home on the or3 background
+     instead of pulling in cool stone grays. */
+  --ui-color-neutral-50:  #faf8f3;
+  --ui-color-neutral-100: #f5f0e6;
+  --ui-color-neutral-200: #ebe4d6;
+  --ui-color-neutral-300: #ddd4c7;
+  --ui-color-neutral-400: #c9beaf;
+  --ui-color-neutral-500: #a89b8a;
+  --ui-color-neutral-600: #8a7d6e;
+  --ui-color-neutral-700: #6f6a60;
+  --ui-color-neutral-800: #4a453d;
+  --ui-color-neutral-900: #24241f;
+  --ui-color-neutral-950: #141411;
 }
 
 @media (display-mode: standalone) {

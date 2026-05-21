@@ -84,8 +84,11 @@ export function useStreamRecovery(options: UseStreamRecoveryOptions) {
         if (!isClient || options.isStreaming.value) return;
 
         const hostId = options.activeHost.value?.id?.trim();
-        const hasAuthToken = Boolean(options.activeHost.value?.token?.trim());
-        if (!hostId || !hasAuthToken) return;
+        const hasAuth = Boolean(
+            options.activeHost.value?.token?.trim() ||
+                options.activeHost.value?.authMode === 'secure-session',
+        );
+        if (!hostId || !hasAuth) return;
 
         const pendingMessage = oldestPendingStreamingMessage(
             options.cacheState.value,

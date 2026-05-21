@@ -26,7 +26,8 @@ function publicProxyRoute(path: string, method: string) {
         path === 'internal/v1/pairing/requests' ||
         path === 'internal/v1/pairing/exchange' ||
         path === 'internal/v1/secure-connections/pairing/approve' ||
-        path === 'internal/v1/secure-connections/pairing/exchange'
+        path === 'internal/v1/secure-connections/pairing/exchange' ||
+        path === 'internal/v1/secure-connections/sessions'
     );
 }
 
