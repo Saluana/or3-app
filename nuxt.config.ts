@@ -45,6 +45,24 @@ const nuxtUiClientIcons = [
     'lucide:x',
 ];
 
+const appClientIcons = [
+    'mdi:code-tags',
+    'mdi:format-bold',
+    'mdi:format-header-2',
+    'mdi:format-italic',
+    'mdi:format-list-bulleted',
+    'mdi:format-list-numbered',
+    'mdi:information-symbol',
+    'mdi:minus',
+    'gridicons:bold',
+    'gridicons:heading',
+    'gridicons:heading-h1',
+    'gridicons:heading-h2',
+    'gridicons:heading-h3',
+    'gridicons:heading-h4',
+    'gridicons:italic',
+];
+
 export default defineNuxtConfig({
     compatibilityDate: '2025-07-15',
     devtools: { enabled: false },
@@ -73,6 +91,7 @@ export default defineNuxtConfig({
             icons: [
                 'pixelarticons:scan-barcode',
                 'tabler:activity-heartbeat',
+                ...appClientIcons,
                 ...nuxtUiClientIcons,
             ],
         },
