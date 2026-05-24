@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { getBootstrapWarningGuidance } from '../../app/utils/or3/computerAttention'
+import {
+  getBootstrapWarningGuidance,
+  getReadinessGuidance,
+} from '../../app/utils/or3/computerAttention'
 import type { AppBootstrapWarning } from '../../app/types/or3-api'
 
 describe('computer attention guidance', () => {
@@ -19,5 +22,40 @@ describe('computer attention guidance', () => {
     expect(guidance.title).toBe(title)
     expect(guidance.summary).toBe(`${code} warning`)
     expect(guidance.action.href).toBe(href)
+  })
+
+  it('routes sandbox readiness issues to the health report first', () => {
+    const guidance = getReadinessGuidance({
+      ready: false,
+      status: 'not ready',
+      findings: [
+        {
+          id: 'sandbox',
+          severity: 'block',
+          summary:
+            'privileged tools are enabled without Bubblewrap sandboxing.',
+        },
+      ],
+    })
+
+    expect(guidance.action.href).toBe('/settings/health')
+    expect(guidance.secondaryAction).toBeUndefined()
+  })
+
+  it('routes host_not_ready bootstrap warnings to the health report', () => {
+    const guidance = getBootstrapWarningGuidance(
+      {
+        code: 'host_not_ready',
+        message: 'Host is not ready',
+        severity: 'warning',
+      },
+      {
+        ready: false,
+        status: 'not ready',
+        findings: [{ severity: 'block', summary: 'sandbox issue' }],
+      },
+    )
+
+    expect(guidance.action.href).toBe('/settings/health')
   })
 })

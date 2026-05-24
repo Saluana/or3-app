@@ -194,10 +194,12 @@ export function useSettingsHealth() {
                 detail,
                 fixHref:
                     hasWarnings || !readiness.ready
-                        ? '/computer/attention'
+                        ? '/computer'
                         : undefined,
                 fixLabel:
-                    hasWarnings || !readiness.ready ? 'Learn more' : undefined,
+                    hasWarnings || !readiness.ready
+                        ? 'View computer status'
+                        : undefined,
             });
         } else {
             next.push({
@@ -262,11 +264,11 @@ export function useSettingsHealth() {
                     detail,
                     fixHref:
                         hasWarnings || !readiness.ready
-                            ? '/computer/attention'
+                            ? '/computer'
                             : undefined,
                     fixLabel:
                         hasWarnings || !readiness.ready
-                            ? 'Learn more'
+                            ? 'View computer status'
                             : undefined,
                 });
             } else {
@@ -487,8 +489,8 @@ export function useSettingsHealth() {
                         label: 'Basic Doctor is unavailable',
                         status: 'warning',
                         detail: 'The app could not reach the backend Doctor, so these are local client-side checks.',
-                        fixHref: '/computer/attention',
-                        fixLabel: 'Connection help',
+                        fixHref: '/computer',
+                        fixLabel: 'View computer status',
                     },
                     ...clientFindings,
                 ];

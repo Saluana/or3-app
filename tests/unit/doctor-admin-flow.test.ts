@@ -1,7 +1,7 @@
 import { mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import SettingsChangePreviewCard from '../../app/components/doctor/SettingsChangePreviewCard.vue';
-import RecommendedFixCard from '../../app/components/doctor/RecommendedFixCard.vue';
+import DoctorDiagnosticResultCard from '../../app/components/doctor/DoctorDiagnosticResultCard.vue';
 import RiskApprovalCard from '../../app/components/doctor/RiskApprovalCard.vue';
 import UndoFixCard from '../../app/components/doctor/UndoFixCard.vue';
 import {
@@ -106,7 +106,7 @@ describe('Doctor admin flow app integration', () => {
         expect(undo.text()).toContain('Undo available');
         expect(undo.text()).not.toContain('scr_1');
 
-        const recommendedFix = mount(RecommendedFixCard, {
+        const findingCard = mount(DoctorDiagnosticResultCard, {
             props: {
                 card: {
                     id: 'provider.key',
@@ -118,9 +118,10 @@ describe('Doctor admin flow app integration', () => {
             },
             global: { stubs },
         });
-        expect(recommendedFix.text()).toContain('Fix it');
-        await recommendedFix.find('button').trigger('click');
-        expect(recommendedFix.emitted('fix')).toHaveLength(1);
+        expect(findingCard.text()).toContain('Recommended fix');
+        expect(findingCard.text()).toContain('Fix it');
+        await findingCard.find('.or3-doctor-finding__fix-button').trigger('click');
+        expect(findingCard.emitted('fix')).toHaveLength(1);
     });
 
     it('loads Doctor findings before local readiness checks for paired hosts', async () => {
@@ -2271,7 +2272,7 @@ describe('Doctor admin chat message ordering', () => {
         expect(merged[1]?.content).toBe('longer persisted reply');
     });
 
-    it('finalizeDoctorMessagesAfterReload drops duplicate streaming assistant', () => {
+    it('finalizeDoctorMessagesAfterReload merges streaming parts into persisted assistant', () => {
         const server = [
             { id: 1, role: 'user', content: 'change model' },
             {
@@ -2285,9 +2286,23 @@ describe('Doctor admin chat message ordering', () => {
             role: 'assistant',
             content: 'Done. Here is the plan.',
             status: 'complete' as const,
+            parts: [
+                {
+                    id: 'text:1',
+                    type: 'text',
+                    content: 'Let me inspect the settings.',
+                },
+                {
+                    id: 'tool:1',
+                    type: 'tool',
+                    name: 'doctor_plan',
+                    status: 'complete',
+                },
+            ],
         };
         const result = finalizeDoctorMessagesAfterReload(server, placeholder);
         expect(result.map((message) => message.id)).toEqual([1, 2]);
+        expect(result[1]?.parts).toHaveLength(2);
     });
 
     it('finalizeDoctorMessagesAfterReload keeps unique streaming placeholder', () => {
@@ -2329,6 +2344,32 @@ describe('Doctor admin chat message ordering', () => {
         expect(display[1]?.text).toBe('Here is the plan.');
     });
 
+    it('preserves inline tool and text order from persisted turn rows', () => {
+        const display = buildDoctorChatDisplayMessages([
+            { id: 1, role: 'user', content: 'investigate sandbox' },
+            { id: 2, role: 'assistant', content: 'Let me inspect the host.' },
+            {
+                id: 3,
+                role: 'tool',
+                content: '{"kind":"doctor_config_search","ok":true,"summary":"Found 7 fields."}',
+                meta: {
+                    doctor_tool_result: {
+                        kind: 'doctor_config_search',
+                        ok: true,
+                        summary: 'Found 7 fields.',
+                    },
+                },
+            },
+            {
+                id: 4,
+                role: 'assistant',
+                content: 'Here is what I found next.',
+            },
+        ]);
+        const partTypes = display[1]?.parts.map((part) => part.type);
+        expect(partTypes).toEqual(['text', 'tool', 'text']);
+    });
+
     it('collapses assistant, tool, and follow-up assistant rows into one turn bubble', () => {
         const intro = 'Let me dig into how access profiles work so I can give you a concrete answer.';
         const display = buildDoctorChatDisplayMessages([
@@ -2352,13 +2393,13 @@ describe('Doctor admin chat message ordering', () => {
         ]);
         expect(display).toHaveLength(2);
         expect(display[1]?.role).toBe('assistant');
-        expect(display[1]?.text).toBe(intro);
-        expect(
-            display[1]?.parts.filter((part) => part.type === 'text'),
-        ).toHaveLength(0);
         expect(display[1]?.parts.some((part) => part.type === 'tool')).toBe(
             true,
         );
+        expect(
+            display[1]?.parts.filter((part) => part.type === 'text').length,
+        ).toBeGreaterThan(0);
+        expect(display[1]?.text).toBe('');
     });
 
     it('does not merge assistant messages separated by a user turn', () => {

@@ -10,7 +10,18 @@
                 <Icon :name="iconName" :class="['size-4', iconColor]" />
             </div>
             <div class="min-w-0 flex-1">
-                <p :class="['font-semibold', titleColor]">{{ title }}</p>
+                <div class="flex items-start justify-between gap-2">
+                    <p :class="['font-semibold', titleColor]">{{ title }}</p>
+                    <button
+                        v-if="dismissible"
+                        type="button"
+                        class="or3-callout-dismiss or3-focus-ring"
+                        :aria-label="dismissLabel"
+                        @click="$emit('dismiss')"
+                    >
+                        <Icon name="i-pixelarticons-close" class="size-4" />
+                    </button>
+                </div>
                 <div
                     v-if="$slots.default || description"
                     :class="['mt-1', bodyColor]"
@@ -31,14 +42,24 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 
+defineEmits<{
+    dismiss: [];
+}>();
+
 const props = withDefaults(
     defineProps<{
         title: string;
         description?: string;
         /** info = blue, tip = green, caution = amber, danger = red */
         tone?: 'info' | 'tip' | 'caution' | 'warning' | 'danger';
+        dismissible?: boolean;
+        dismissLabel?: string;
     }>(),
-    { tone: 'caution' },
+    {
+        tone: 'caution',
+        dismissible: false,
+        dismissLabel: 'Dismiss',
+    },
 );
 
 const resolvedTone = computed(() =>
@@ -105,3 +126,28 @@ const iconName = computed(
         })[resolvedTone.value],
 );
 </script>
+
+<style scoped>
+.or3-callout-dismiss {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    flex-shrink: 0;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+    background: rgba(255, 255, 255, 0.55);
+    color: inherit;
+    opacity: 0.72;
+    transition:
+        opacity 0.15s ease,
+        background 0.15s ease,
+        border-color 0.15s ease;
+}
+
+.or3-callout-dismiss:hover {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.9);
+}
+</style>

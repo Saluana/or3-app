@@ -72,7 +72,7 @@
                 <section class="or3-doctor-empty__hero">
                     <div class="or3-doctor-empty__avatar">
                         <img
-                            src="/computer-icons/chat-guy.webp"
+                            src="/computer-icons/doctor-guy.webp"
                             alt="Doctor avatar"
                             class="or3-doctor-empty__avatar-image"
                         />
@@ -128,6 +128,10 @@
                             <FindingCard
                                 :finding="finding"
                                 @ask="askAboutFinding(finding)"
+                                @fix="
+                                    finding.doctorCard &&
+                                    askDoctorToFix(finding.doctorCard)
+                                "
                             />
                         </li>
                     </ul>
@@ -152,6 +156,10 @@
                                 <FindingCard
                                     :finding="finding"
                                     @ask="askAboutFinding(finding)"
+                                    @fix="
+                                        finding.doctorCard &&
+                                        askDoctorToFix(finding.doctorCard)
+                                    "
                                 />
                             </li>
                         </ul>
@@ -172,6 +180,10 @@
                                 <FindingCard
                                     :finding="finding"
                                     @ask="askAboutFinding(finding)"
+                                    @fix="
+                                        finding.doctorCard &&
+                                        askDoctorToFix(finding.doctorCard)
+                                    "
                                 />
                             </li>
                         </ul>
@@ -295,6 +307,7 @@
                                 <StreamingMarkdown
                                     v-if="
                                         message.text &&
+                                        !doctorHasOrderedParts(message) &&
                                         !doctorSummaryInParts(
                                             message.text,
                                             message.parts,
@@ -415,11 +428,8 @@
                                     class="contents"
                                 >
                                     <DoctorDiagnosticResultCard
-                                        v-if="card.type === 'finding'"
-                                        :card="card.card"
-                                    />
-                                    <RecommendedFixCard
-                                        v-else-if="
+                                        v-if="
+                                            card.type === 'finding' ||
                                             card.type === 'recommended_fix'
                                         "
                                         :card="card.card"
@@ -555,6 +565,12 @@
                     <AssistantStatusIndicator :active="chat.loading.value" />
                 </div>
                 <p
+                    v-if="doctorApprovalHydrationError"
+                    class="mb-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-center text-xs leading-5 text-amber-800"
+                >
+                    {{ doctorApprovalHydrationError }}
+                </p>
+                <p
                     v-if="chat.error.value"
                     class="mb-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-center text-xs leading-5 text-rose-700"
                 >
@@ -615,6 +631,8 @@ import {
 } from '~/utils/or3/doctor-plan-outcome';
 import { resolveDoctorRunnerID } from '~/utils/doctorRunnerSelection';
 import { scrubDoctorUserMessageContent } from '~/utils/doctor/doctorContent';
+import { buildDoctorInvestigationPrompt } from '~/utils/doctor/doctorFixPrompt';
+import { useDoctorApprovalHydration } from '~/composables/doctor/useDoctorApprovalHydration';
 
 const router = useRouter();
 defineProps<{ desktop?: boolean }>();
@@ -622,6 +640,11 @@ const toast = useToast();
 const health = useSettingsHealth();
 const chat = useDoctorAdminChat();
 const approvals = useApprovals();
+const {
+    doctorApprovalHydrationError,
+    hydratePendingDoctorApprovals,
+    installDoctorApprovalHydrationWatcher,
+} = useDoctorApprovalHydration();
 const authSession = useAuthSession();
 const draft = ref('');
 const chatMode = ref<'ask' | 'work' | 'admin'>('admin');
@@ -821,6 +844,15 @@ function clearConversation() {
     planPostCheckResults.value = {};
     rememberApproval.value = {};
     dismissedPlanKeys.value = {};
+}
+
+function doctorHasOrderedParts(message: Pick<DoctorDisplayMessage, 'parts'>) {
+    return message.parts.some((part) => {
+        if (part.type === 'text') {
+            return Boolean(String(part.content ?? '').trim());
+        }
+        return Boolean(part.name || part.toolCallId);
+    });
 }
 
 function doctorMessageHasToolParts(message: Pick<DoctorDisplayMessage, 'parts'>) {
@@ -1055,6 +1087,7 @@ async function applyDoctorPlan(plan: DoctorSettingsChangePlan) {
 async function runDoctorPostChecks(planId?: string) {
     if (!planId) return;
     const result = await chat.runPostChecks(planId);
+    if (!result) return;
     planPostCheckResults.value = {
         ...planPostCheckResults.value,
         [planId]: result,
@@ -1164,14 +1197,10 @@ function askAboutFinding(finding: HealthFinding) {
 }
 
 function askDoctorToFix(card: NonNullable<HealthFinding['doctorCard']>) {
-    const visible = card.what_i_found || 'Recommended fix';
-    const prompt = [
-        'Please prepare an Apply button for this recommended fix if OR3 can safely change the setting.',
-        `Problem: ${card.what_i_found}`,
-        `Meaning: ${card.what_this_means}`,
-        `Recommended fix: ${card.recommended_fix}`,
-    ].join('\n');
-    void sendDoctorMessage({ text: visible, transportText: prompt });
+    void sendDoctorMessage({
+        text: card.what_i_found || 'Doctor finding',
+        transportText: buildDoctorInvestigationPrompt(card),
+    });
 }
 
 function stopDoctorMessage() {
@@ -1240,11 +1269,21 @@ void _typeKeep;
 
 onMounted(() => {
     chat.clearError();
+    installDoctorApprovalHydrationWatcher();
     void health.run();
     void chat.loadAdminBrain().catch(() => undefined);
     void refreshRunners().catch(() => undefined);
     void chat.hydratePersistedSession().catch(() => undefined);
 });
+
+watch(
+    () => chat.loading.value,
+    (loading, wasLoading) => {
+        if (wasLoading && !loading) {
+            void hydratePendingDoctorApprovals();
+        }
+    },
+);
 
 onUnmounted(() => {
     clearPlanOutcomeDismissTimer();
@@ -1346,12 +1385,10 @@ watch(
 }
 
 .or3-doctor-empty__avatar {
-    width: 5.5rem;
-    height: 5.5rem;
+    width: 10rem;
+    height: 10rem;
     border-radius: 1.25rem;
     overflow: hidden;
-    border: 1px solid var(--or3-border);
-    background: var(--or3-surface);
     display: grid;
     place-items: center;
 }

@@ -1,0 +1,1 @@
+{"root":["./electron/security-policy.d.ts","./electron/host-service.js","./electron/main.js","./electron/security-policy.js","./tests/unit/electron-host-service.test.ts","./tests/unit/electron-security.test.ts","./tests/unit/settings-review-overlay.test.ts","./vitest.config.ts"],"version":"6.0.3"}

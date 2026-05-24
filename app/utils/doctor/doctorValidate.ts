@@ -12,6 +12,19 @@ function nonEmptyString(value: unknown) {
     return text || undefined;
 }
 
+function configDiffValue(value: unknown): string | undefined {
+    if (value === undefined || value === null) return undefined;
+    if (typeof value === 'string') return value;
+    if (typeof value === 'boolean' || typeof value === 'number') {
+        return String(value);
+    }
+    try {
+        return JSON.stringify(value);
+    } catch {
+        return String(value);
+    }
+}
+
 export function parseFindingCard(value: unknown): DoctorFindingCard | null {
     if (!isRecord(value)) return null;
     const id = nonEmptyString(value.id);
@@ -62,15 +75,22 @@ export function parsePlan(value: unknown): DoctorSettingsChangePlan | null {
         plan.exact_config_diff = value.exact_config_diff.filter(isRecord).map(
             (row) => ({
                 path: nonEmptyString(row.path) ?? '',
-                old_value: row.old_value,
-                new_value: row.new_value,
+                old_value: configDiffValue(row.old_value),
+                new_value: configDiffValue(row.new_value),
             }),
         );
     }
     if (Array.isArray(value.post_apply_checks)) {
-        plan.post_apply_checks = value.post_apply_checks.filter(
-            (item): item is string => typeof item === 'string',
-        );
+        plan.post_apply_checks = value.post_apply_checks
+            .filter(isRecord)
+            .map((item) => ({
+                id: nonEmptyString(item.id) ?? '',
+                description: nonEmptyString(item.description) ?? '',
+                ...(typeof item.timeout_seconds === 'number'
+                    ? { timeout_seconds: item.timeout_seconds }
+                    : {}),
+            }))
+            .filter((item) => item.id && item.description);
     }
     return plan;
 }

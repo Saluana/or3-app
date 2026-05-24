@@ -188,6 +188,8 @@ import { useChatSessions } from "~/composables/useChatSessions";
 import { useOr3Api } from "~/composables/useOr3Api";
 import { approvalActionErrorMessage } from "~/utils/assistantApproval";
 import { formatApprovalSubjectPreview } from "~/utils/or3/approval-display";
+import { resolveApprovalResumeTarget } from "~/utils/or3/approval-resume-target";
+import { useDoctorAdminChat } from "~/composables/useDoctorAdminChat";
 
 const filters = [
     { label: "Waiting", value: "pending", icon: "" },
@@ -218,6 +220,7 @@ const {
     updateMessage,
 } = chat;
 const { send, isStreaming } = useAssistantStream();
+const doctorChat = useDoctorAdminChat();
 const { activeHost } = useActiveHost();
 const api = useOr3Api();
 const runtimeLog = useChatRuntimeLog();
@@ -344,6 +347,25 @@ async function followApprovalResumeJob(
         approval?.requester_session_id?.trim() ||
         activeSession.value?.sessionKey?.trim() ||
         "";
+    const target = resolveApprovalResumeTarget({
+        approval,
+        response,
+    });
+
+    if (target?.surface === "doctor_health") {
+        if (router.currentRoute.value.path !== target.path) {
+            await router.push(target.path);
+            await nextTick();
+        }
+        await doctorChat.resumeApprovedApprovalFromDesk({
+            resumeJobId: jobId,
+            approvalRequestId: response?.request_id ?? approval?.id,
+            sessionKey: target.sessionKey || targetSessionKey,
+            approval,
+        });
+        return;
+    }
+
     if (targetSessionKey) {
         activateSessionByKey(targetSessionKey, "Approval follow-up");
     }
@@ -366,8 +388,9 @@ async function followApprovalResumeJob(
             error: undefined,
         });
     }
-    if (router.currentRoute.value.path !== "/") {
-        await router.push("/");
+    const chatPath = target?.path ?? "/";
+    if (router.currentRoute.value.path !== chatPath) {
+        await router.push(chatPath);
         await nextTick();
     }
     await send({

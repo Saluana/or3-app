@@ -8,6 +8,7 @@ import type {
     DoctorPostCheckResponse,
     DoctorSettingsChangePlan,
 } from '~/types/or3-api';
+import { previewValue } from '~/utils/assistant-stream/activity';
 import { scrubDoctorUserMessageContent } from './doctorContent';
 import type { DoctorChatMessage } from './doctorTypes';
 import { parseFindingCard, parsePlan } from './doctorValidate';
@@ -86,7 +87,9 @@ const jsonBlockPattern = /```(?:json)?\s*([\s\S]*?)```/gi;
 const telemetryOnlyToolKinds = new Set([
     'doctor_status',
     'doctor_logs',
+    'doctor_docs_index',
     'doctor_docs_search',
+    'doctor_docs_section',
     'doctor_config_search',
     'doctor_config_catalog',
     'doctor_config_metadata',
@@ -302,8 +305,6 @@ function doctorCardsForResult(
     if (!fromToolMessage || result.kind !== 'doctor_status') {
         for (const card of findingCards) {
             cards.push({ type: 'finding', card });
-            if (card.recommended_fix)
-                cards.push({ type: 'recommended_fix', card });
         }
     }
 
@@ -718,16 +719,89 @@ export function sortDoctorMessages(
     return repairDoctorConversationOrder(items);
 }
 
+function doctorAssistantMessageMatches(
+    message: DoctorChatMessage,
+    placeholder: DoctorChatMessage,
+) {
+    if (message.role !== 'assistant' || placeholder.role !== 'assistant') {
+        return false;
+    }
+    const content = String(placeholder.content ?? '').trim();
+    const itemContent = String(message.content ?? '').trim();
+    const error = String(placeholder.error ?? '').trim();
+    const itemError = String(message.error ?? '').trim();
+    const approvalRequestId = Number(placeholder.approvalRequestId ?? 0);
+    const itemApprovalRequestId = Number(message.approvalRequestId ?? 0);
+    if (content && itemContent && itemContent === content) return true;
+    if (error && itemError && itemError === error) return true;
+    if (
+        approvalRequestId > 0 &&
+        itemApprovalRequestId > 0 &&
+        itemApprovalRequestId === approvalRequestId
+    ) {
+        return true;
+    }
+    return false;
+}
+
+export function mergeDoctorStreamingState(
+    server: DoctorChatMessage,
+    local: DoctorChatMessage,
+): DoctorChatMessage {
+    const serverParts = server.parts ?? [];
+    const localParts = local.parts ?? [];
+    const parts =
+        localParts.length > serverParts.length
+            ? localParts
+            : serverParts.length > 0
+              ? serverParts
+              : localParts;
+    const serverToolCalls = server.toolCalls ?? [];
+    const localToolCalls = local.toolCalls ?? [];
+    const toolCalls =
+        localToolCalls.length > serverToolCalls.length
+            ? localToolCalls
+            : serverToolCalls.length > 0
+              ? serverToolCalls
+              : localToolCalls;
+    const activityById = new Map<string, ChatActivityEntry>();
+    for (const entry of [
+        ...(server.activityLog ?? []),
+        ...(local.activityLog ?? []),
+    ]) {
+        activityById.set(entry.id, entry);
+    }
+    const serverContent = String(server.content ?? '').trim();
+    const localContent = String(local.content ?? '').trim();
+    return {
+        ...server,
+        parts,
+        toolCalls,
+        activityLog: [...activityById.values()],
+        meta: server.meta ?? local.meta,
+        content:
+            serverContent.length >= localContent.length
+                ? server.content
+                : local.content,
+        status:
+            local.status === 'streaming' || local.status === 'attention'
+                ? local.status
+                : server.status ?? local.status,
+        error: server.error ?? local.error,
+        errorCode: server.errorCode ?? local.errorCode,
+        approvalRequestId: server.approvalRequestId ?? local.approvalRequestId,
+        approvalState: server.approvalState ?? local.approvalState,
+        reasoningText: server.reasoningText ?? local.reasoningText,
+        jobId: server.jobId ?? local.jobId,
+        retryPayload: server.retryPayload ?? local.retryPayload,
+    };
+}
+
 function preferDoctorMessage(
     existing: DoctorChatMessage,
     incoming: DoctorChatMessage,
 ): DoctorChatMessage {
-    const score = (message: DoctorChatMessage) =>
-        (message.parts?.length ?? 0) +
-        (message.toolCalls?.length ?? 0) +
-        (message.activityLog?.length ?? 0) +
-        String(message.content ?? '').length;
-    return score(incoming) >= score(existing) ? incoming : existing;
+    return mergeDoctorStreamingState(existing, incoming);
 }
 
 export function mergeDoctorMessages(
@@ -860,7 +934,12 @@ export function finalizeDoctorMessagesAfterReload(
         return sorted;
     }
     if (doctorMessagesContainEquivalentAssistant(sorted, placeholder)) {
-        return sorted;
+        return sorted.map((message) => {
+            if (!doctorAssistantMessageMatches(message, placeholder)) {
+                return message;
+            }
+            return mergeDoctorStreamingState(message, placeholder);
+        });
     }
     const placeholderText = doctorVisibleTextForMessage(placeholder).trim();
     if (
@@ -902,6 +981,101 @@ function doctorTelemetrySummaryFromPart(part: ChatMessagePart) {
     const summary = parsed?.summary?.trim();
     if (summary) return summary;
     return '';
+}
+
+function isValidDoctorDisplayPart(part: ChatMessagePart) {
+    if (part.type === 'text') {
+        return Boolean(String(part.content ?? '').trim());
+    }
+    return Boolean(part.name || part.toolCallId);
+}
+
+function doctorToolPartFromMessage(
+    message: DoctorChatMessage,
+): ChatMessagePart | null {
+    const results = parseDoctorToolResults(message.content, message.meta);
+    const primary = results[0];
+    if (!primary && message.role !== 'tool') return null;
+    const name =
+        primary?.kind ||
+        String(
+            (message.meta as Record<string, unknown> | undefined)
+                ?.tool_name ?? 'doctor_tool',
+        );
+    const toolCallId = `persisted:${message.id ?? name}`;
+    const resultPreview = previewValue(
+        primary
+            ? {
+                  kind: primary.kind,
+                  ok: primary.ok,
+                  status: primary.status,
+                  summary: primary.summary,
+                  preview: primary.preview,
+                  stats: primary.stats,
+              }
+            : message.content,
+        4_000,
+    );
+    return {
+        id: `tool:${toolCallId}`,
+        type: 'tool',
+        toolCallId,
+        name,
+        status: primary?.ok === false ? 'error' : 'complete',
+        resultPreview,
+        errorPreview:
+            primary?.ok === false
+                ? doctorToolResultText(primary) || undefined
+                : undefined,
+    };
+}
+
+function buildOrderedPartsFromTurnMessages(
+    messages: DoctorChatMessage[],
+    isStreamingTurn: boolean,
+) {
+    const parts: ChatMessagePart[] = [];
+    const seenPartIds = new Set<string>();
+    const filterInterimPreface =
+        isStreamingTurn &&
+        messages.filter((message) => message.role === 'assistant').length === 1;
+
+    const pushPart = (part: ChatMessagePart) => {
+        if (seenPartIds.has(part.id)) return;
+        seenPartIds.add(part.id);
+        parts.push(part);
+    };
+
+    for (const message of messages) {
+        const persistedParts = (message.parts ?? []).filter(isValidDoctorDisplayPart);
+        if (persistedParts.length) {
+            for (const part of persistedParts) {
+                pushPart(part);
+            }
+            continue;
+        }
+        if (message.role === 'tool') {
+            const toolPart = doctorToolPartFromMessage(message);
+            if (toolPart) pushPart(toolPart);
+            continue;
+        }
+        if (message.role !== 'assistant') continue;
+        const msgText = doctorVisibleTextForMessage(message).trim();
+        if (!msgText) continue;
+        if (
+            filterInterimPreface &&
+            isDoctorInterimStreamingText(msgText) &&
+            !parts.some((part) => part.type === 'tool')
+        ) {
+            continue;
+        }
+        pushPart({
+            id: `text:${message.id ?? parts.length}`,
+            type: 'text',
+            content: msgText,
+        });
+    }
+    return parts;
 }
 
 function dedupeDoctorTextParts(
@@ -973,39 +1147,6 @@ function collapseDoctorAssistantTurn(
             status = message.status;
         }
 
-        const incomingParts = (message.parts ?? []).filter((part) => {
-            if (part.type === 'text') {
-                const content = String(part.content ?? '').trim();
-                if (!content) return false;
-                if (
-                    isStreamingTurn &&
-                    isDoctorInterimStreamingText(content) &&
-                    !parts.some((item) => item.type === 'tool')
-                ) {
-                    return false;
-                }
-                return true;
-            }
-            return Boolean(part.name || part.toolCallId);
-        });
-        if (incomingParts.length) parts = [...parts, ...incomingParts];
-
-        if (message.role !== 'tool') {
-            const msgText = doctorVisibleTextForMessage(message).trim();
-            if (msgText) {
-                const hideInterimWhileStreaming =
-                    isStreamingTurn &&
-                    isDoctorInterimStreamingText(msgText) &&
-                    !parts.some((part) => part.type === 'tool');
-                if (!hideInterimWhileStreaming) {
-                    text = combineDoctorAssistantText(text, msgText);
-                    if (isDoctorEmptyFinalTextWarning(msgText)) {
-                        isEmptyFinalSummary = true;
-                    }
-                }
-            }
-        }
-
         if (message.activityLog?.length) {
             activityLog = [...activityLog, ...message.activityLog];
         }
@@ -1016,6 +1157,36 @@ function collapseDoctorAssistantTurn(
         if (message.approvalRequestId) {
             approvalRequestId = message.approvalRequestId;
             approvalState = message.approvalState;
+        }
+    }
+
+    parts = buildOrderedPartsFromTurnMessages(messages, isStreamingTurn);
+
+    if (!parts.length) {
+        for (const message of messages) {
+            if (message.role === 'tool') continue;
+            const msgText = doctorVisibleTextForMessage(message).trim();
+            if (!msgText) continue;
+            const hideInterimWhileStreaming =
+                isStreamingTurn &&
+                isDoctorInterimStreamingText(msgText) &&
+                !parts.some((part) => part.type === 'tool');
+            if (!hideInterimWhileStreaming) {
+                text = combineDoctorAssistantText(text, msgText);
+                if (isDoctorEmptyFinalTextWarning(msgText)) {
+                    isEmptyFinalSummary = true;
+                }
+            }
+        }
+    } else if (!isStreamingTurn) {
+        for (const message of messages) {
+            if (message.role === 'tool') continue;
+            const msgText = doctorVisibleTextForMessage(message).trim();
+            if (!msgText) continue;
+            text = combineDoctorAssistantText(text, msgText);
+            if (isDoctorEmptyFinalTextWarning(msgText)) {
+                isEmptyFinalSummary = true;
+            }
         }
     }
 
@@ -1031,9 +1202,15 @@ function collapseDoctorAssistantTurn(
         text = stripDoctorInterimPreface(text);
     }
 
-    parts = dedupeDoctorTextParts(parts, text);
-    if (text && doctorSummaryInParts(text, parts)) {
-        text = '';
+    if (parts.length > 0) {
+        if (isStreamingTurn || doctorSummaryInParts(text, parts)) {
+            text = '';
+        }
+    } else {
+        parts = dedupeDoctorTextParts(parts, text);
+        if (text && doctorSummaryInParts(text, parts)) {
+            text = '';
+        }
     }
     if (
         text &&

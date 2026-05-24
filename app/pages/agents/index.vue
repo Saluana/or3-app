@@ -13,19 +13,6 @@
         <AppHeader subtitle="AGENTS" />
 
         <div class="space-y-6">
-            <div class="or3-sched-tabs">
-                <button
-                    v-for="tab in pageTabs"
-                    :key="tab.value"
-                    type="button"
-                    class="or3-sched-tab"
-                    :aria-pressed="activePageTab === tab.value"
-                    @click="activePageTab = tab.value"
-                >
-                    <Icon :name="tab.icon" class="or3-sched-tab__icon" />
-                    <span class="or3-sched-tab__label">{{ tab.label }}</span>
-                </button>
-            </div>
 
             <AgentCommandCenter
                 ref="commandCenterRef"
@@ -39,6 +26,20 @@
                 @submit="createJob"
                 @dismiss-error="submitError = null"
             />
+
+                        <div class="or3-sched-tabs">
+                <button
+                    v-for="tab in pageTabs"
+                    :key="tab.value"
+                    type="button"
+                    class="or3-sched-tab"
+                    :aria-pressed="activePageTab === tab.value"
+                    @click="activePageTab = tab.value"
+                >
+                    <Icon :name="tab.icon" class="or3-sched-tab__icon" />
+                    <span class="or3-sched-tab__label">{{ tab.label }}</span>
+                </button>
+            </div>
 
             <template v-if="activePageTab === 'overview'">
                 <div

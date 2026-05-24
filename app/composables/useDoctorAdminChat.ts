@@ -24,6 +24,12 @@ import { createAssistantEventApplier } from '~/utils/assistant-stream/event-appl
 import { suppressOr3ApiNetworkErrorLogsFor, useOr3Api } from './useOr3Api';
 import { useAuthSession } from './useAuthSession';
 import { useApprovals } from './useApprovals';
+import {
+    ensureDoctorApprovalMessage,
+    markDoctorApprovalResolved,
+} from './doctor/useDoctorApprovalHydration';
+import { pendingApprovalPlaceholderContent } from '~/utils/assistant-stream/approval';
+import type { ApprovalRequest } from '~/types/or3-api';
 
 type RawDoctorChatMessage = NonNullable<
     DoctorChatSessionResponse['messages']
@@ -170,12 +176,21 @@ function hasAssistantAfter(items: DoctorChatMessage[], afterID: number) {
     );
 }
 
+type PlaceholderID = number | string;
+
+function messageIdKey(id: PlaceholderID) {
+    return String(id);
+}
+
 function appendOrUpdateStreamingAssistant(
-    id: number,
+    id: PlaceholderID,
     content: string,
     status: ChatMessage['status'],
 ) {
-    const existing = store().messages.value.findIndex((message) => message.id === id);
+    const key = messageIdKey(id);
+    const existing = store().messages.value.findIndex(
+        (message) => messageIdKey(message.id ?? '') === key,
+    );
     const current = existing >= 0 ? store().messages.value[existing] : null;
     const latestCreatedAt = store().messages.value.reduce((max, item) => {
         const created = item.created_at ?? 0;
@@ -186,7 +201,7 @@ function appendOrUpdateStreamingAssistant(
         (latestCreatedAt > 0
             ? latestCreatedAt + 1
             : Math.floor(Date.now() / 1000));
-    const message: DoctorChatMessage = {
+    const message = {
         ...(current ?? {}),
         id,
         role: 'assistant',
@@ -194,7 +209,7 @@ function appendOrUpdateStreamingAssistant(
         created_at: createdAt,
         meta: { ...(parseRecordJSON(current?.meta) ?? {}), status },
         status,
-    };
+    } as DoctorChatMessage;
     if (existing >= 0) {
         store().messages.value = store().messages.value.map((item, index) =>
             index === existing ? message : item,
@@ -223,16 +238,20 @@ function patchStreamingAssistant(
 }
 
 function mutateStreamingAssistant(
-    id: number,
+    id: PlaceholderID,
     mutate: (message: DoctorMessageState) => DoctorMessageState,
 ) {
+    const key = messageIdKey(id);
     store().messages.value = store().messages.value.map((message) =>
-        message.id === id ? mutate(message) : message,
+        messageIdKey(message.id ?? '') === key ? mutate(message) : message,
     );
 }
 
-function readStreamingAssistant(id: number) {
-    return store().messages.value.find((message) => message.id === id);
+function readStreamingAssistant(id: PlaceholderID) {
+    const key = messageIdKey(id);
+    return store().messages.value.find(
+        (message) => messageIdKey(message.id ?? '') === key,
+    );
 }
 
 function doctorMessageToChatMessage(
@@ -271,7 +290,7 @@ function upsertById<T extends { id: string }>(items: T[] | undefined, item: T) {
     );
 }
 
-function createDoctorStreamApplier(placeholderID: number) {
+function createDoctorStreamApplier(placeholderID: PlaceholderID) {
     let activeTextPartID = '';
     const now = () => new Date().toISOString();
     const readDoctorMessage = () => readStreamingAssistant(placeholderID);
@@ -470,12 +489,15 @@ function removeMessage(id: number) {
     store().messages.value = store().messages.value.filter((message) => message.id !== id);
 }
 
-function removeStreamingAssistant(id: number) {
-    store().messages.value = store().messages.value.filter((message) => message.id !== id);
+function removeStreamingAssistant(id: PlaceholderID) {
+    const key = messageIdKey(id);
+    store().messages.value = store().messages.value.filter(
+        (message) => messageIdKey(message.id ?? '') !== key,
+    );
 }
 
 function applyDoctorRecoveredFinalText(
-    placeholderID: number,
+    placeholderID: PlaceholderID,
     displayText: string,
 ) {
     const normalized = displayText.trim();
@@ -549,13 +571,13 @@ function applyDoctorRecoveredFinalText(
 }
 
 function doctorResolveFinalSummary(
-    placeholderID: number,
+    placeholderID: PlaceholderID,
     snapshotText: string,
 ) {
     const message = readStreamingAssistant(placeholderID);
     const userMessage = doctorLastUserMessageBefore(
         store().messages.value,
-        placeholderID,
+        typeof placeholderID === 'number' ? placeholderID : undefined,
     );
     const synthesized = doctorSynthesizeFinalSummary(message, { userMessage });
     const snapshot = snapshotText.trim();
@@ -629,7 +651,7 @@ function isDoctorTerminalJobStatus(status: string | undefined) {
 
 async function reconcileDoctorJobSnapshot(
     jobID: string,
-    placeholderID: number,
+    placeholderID: PlaceholderID,
     requestJobSnapshot: (jobID: string) => Promise<JobSnapshot>,
 ) {
     const snapshot = await requestJobSnapshot(jobID);
@@ -757,7 +779,7 @@ function doctorMessagesContainEquivalentAssistant(
 }
 
 async function reloadSessionPreservingStreamingAssistant(
-    placeholderID: number,
+    placeholderID: PlaceholderID,
     reloadSession: () => Promise<unknown>,
 ) {
     const placeholder = readStreamingAssistant(placeholderID);
@@ -818,7 +840,7 @@ function stopStreaming() {
 async function streamDoctorEvents(
     input: {
         path: string;
-        placeholderID: number;
+        placeholderID: PlaceholderID;
         requestOptions?: Record<string, unknown>;
     },
     streamEvents: (path: string, options: any) => AsyncIterable<unknown>,
@@ -1474,6 +1496,11 @@ export function useDoctorAdminChat() {
                 error: undefined,
                 approvalRequestId: undefined,
             });
+            markDoctorApprovalResolved(
+                approvalRequestId,
+                'approved',
+                store().sessionKey.value ?? undefined,
+            );
             await loadSession().catch(() => undefined);
             return true;
         } catch (err) {
@@ -1501,7 +1528,81 @@ export function useDoctorAdminChat() {
             error: undefined,
             approvalRequestId: undefined,
         });
+        markDoctorApprovalResolved(
+            approvalRequestId,
+            'denied',
+            store().sessionKey.value ?? undefined,
+        );
         await loadSession().catch(() => undefined);
+        return true;
+    }
+
+    async function resumeApprovedApprovalFromDesk(
+        options: {
+            resumeJobId: string;
+            approvalRequestId?: number | string;
+            sessionKey?: string;
+            approval?: ApprovalRequest | null;
+        },
+    ) {
+        const resumeJobId = String(options.resumeJobId ?? '').trim();
+        const sessionKey = String(
+            options.sessionKey?.trim() || store().sessionKey.value || '',
+        ).trim();
+        if (!resumeJobId || !sessionKey) return false;
+
+        if (store().sessionKey.value !== sessionKey) {
+            await loadSession(sessionKey);
+        }
+
+        const approvalRequestId = options.approvalRequestId;
+        let message = approvalRequestId
+            ? resolveDoctorMessageRef(store().messages.value, approvalRequestId)
+            : undefined;
+        if (!message && approvalRequestId) {
+            message = ensureDoctorApprovalMessage(store(), {
+                approvalRequestId,
+                sessionKey,
+                content: pendingApprovalPlaceholderContent(
+                    options.approval ??
+                        ({
+                            id: approvalRequestId,
+                            type: 'tool_quota',
+                        } as ApprovalRequest),
+                ),
+            });
+        }
+        const placeholderID =
+            message?.id ?? store().nextOptimisticMessageID();
+        patchStreamingAssistant(placeholderID, {
+            approvalState: 'retrying',
+            status: 'attention',
+            error: undefined,
+        });
+        await followJobStream(
+            {
+                jobID: resumeJobId,
+                placeholderID,
+            },
+            (path, requestOptions) => api.stream(path, requestOptions),
+            (jobID) =>
+                api.request<JobSnapshot>(
+                    `/internal/v1/jobs/${encodeURIComponent(jobID)}`,
+                ),
+            () => loadSession(store().sessionKey.value),
+        );
+        const latest = readStreamingAssistant(placeholderID);
+        if (
+            !(
+                latest?.approvalState === 'pending' && latest.approvalRequestId
+            )
+        ) {
+            markDoctorApprovalResolved(
+                approvalRequestId ?? resumeJobId,
+                'approved',
+                sessionKey,
+            );
+        }
         return true;
     }
 
@@ -1592,6 +1693,7 @@ export function useDoctorAdminChat() {
         runPostChecks,
         approvePendingApproval,
         denyPendingApproval,
+        resumeApprovedApprovalFromDesk,
         clearMessages,
         clearError,
         stopStreaming: stopActiveTurn,

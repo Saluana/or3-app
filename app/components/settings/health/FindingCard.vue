@@ -1,13 +1,10 @@
 <template>
-    <div class="space-y-2">
-        <template v-if="finding.doctorCard">
-            <DoctorDiagnosticResultCard :card="finding.doctorCard" />
-            <RecommendedFixCard
-                v-if="finding.doctorCard.recommended_fix"
-                :card="finding.doctorCard"
-                @fix="$emit('ask')"
-            />
-        </template>
+    <div>
+        <DoctorDiagnosticResultCard
+            v-if="finding.doctorCard"
+            :card="finding.doctorCard"
+            @fix="$emit('fix')"
+        />
         <div
             v-else
             class="rounded-xl border px-3 py-2 text-sm"
@@ -51,7 +48,7 @@ import type {
 } from '~/composables/settings/useSettingsHealth';
 
 const props = defineProps<{ finding: HealthFinding }>();
-defineEmits<{ (e: 'ask'): void }>();
+defineEmits<{ (e: 'ask'): void; (e: 'fix'): void }>();
 
 const toneClass = computed(() => {
     switch (props.finding.status as HealthStatus) {

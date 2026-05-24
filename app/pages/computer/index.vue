@@ -43,9 +43,11 @@
             </section>
 
             <DangerCallout
-                v-if="showConnectingHelp"
+                v-if="showConnectingHelpCallout"
                 tone="caution"
                 title="Still checking the connection"
+                dismissible
+                @dismiss="dismissConnectingCallout"
             >
                 The app has a saved pairing token, but it has not confirmed the
                 computer health yet. Check that the address below is the
@@ -58,9 +60,11 @@
             </DangerCallout>
 
             <DangerCallout
-                v-if="readiness && !readiness.ready"
+                v-if="showReadinessCallout"
                 tone="caution"
                 title="Your computer needs attention"
+                dismissible
+                @dismiss="dismissReadinessCallout"
             >
                 <p>{{ readinessMessage }}</p>
                 <p
@@ -70,22 +74,18 @@
                     {{ mergedConnectionWarningMessage }}
                 </p>
                 <template #actions>
-                    <NuxtLink to="/computer/attention" class="or3-callout-link">
-                        Learn more
-                    </NuxtLink>
-                    <NuxtLink
-                        :to="readinessGuidance.action.href"
-                        class="or3-callout-link or3-callout-link--secondary"
-                    >
-                        {{ readinessGuidance.action.label }}
+                    <NuxtLink to="/settings/health" class="or3-callout-link">
+                        See what's wrong
                     </NuxtLink>
                 </template>
             </DangerCallout>
 
             <DangerCallout
-                v-if="showBootstrapWarningCard"
+                v-if="showBootstrapWarningCallout"
                 :tone="bootstrapWarningTone"
                 title="Connection warning"
+                dismissible
+                @dismiss="dismissBootstrapCallout"
             >
                 {{ bootstrapWarningMessage }}
                 <template #actions>
@@ -287,12 +287,18 @@ import { computed, onMounted, ref, watch } from 'vue';
 import type { HealthResponse } from '~/types/or3-api';
 import {
     getBootstrapWarningGuidance,
-    getReadinessGuidance,
     isDuplicateReadinessWarning,
 } from '~/utils/or3/computerAttention';
+import {
+    bootstrapCalloutFingerprint,
+    connectingCalloutFingerprint,
+    readinessCalloutFingerprint,
+} from '~/utils/or3/computerCalloutDismiss';
 import { formatReadinessDetail } from '~/utils/or3/readiness';
 
 const { activeHost, isConnected, isPaired } = useActiveHost();
+const hostId = computed(() => activeHost.value?.id ?? 'default');
+const calloutDismiss = useComputerCalloutDismiss(hostId);
 const {
     health,
     readiness,
@@ -347,7 +353,42 @@ const showBootstrapWarningCard = computed(
         Boolean(bootstrapWarning.value) &&
         !isDuplicateReadinessWarning(bootstrapWarning.value, readiness.value),
 );
-const readinessGuidance = computed(() => getReadinessGuidance(readiness.value));
+const readinessCalloutFingerprintValue = computed(() =>
+    readinessCalloutFingerprint(
+        readiness.value,
+        mergedConnectionWarningMessage.value,
+    ),
+);
+const bootstrapCalloutFingerprintValue = computed(() =>
+    bootstrapCalloutFingerprint(bootstrapWarning.value),
+);
+const connectingCalloutFingerprintValue = computed(() =>
+    connectingCalloutFingerprint(),
+);
+const showReadinessCallout = computed(
+    () =>
+        Boolean(readiness.value && !readiness.value.ready) &&
+        !calloutDismiss.isDismissed(
+            'readiness',
+            readinessCalloutFingerprintValue.value,
+        ),
+);
+const showBootstrapWarningCallout = computed(
+    () =>
+        showBootstrapWarningCard.value &&
+        !calloutDismiss.isDismissed(
+            'bootstrap',
+            bootstrapCalloutFingerprintValue.value,
+        ),
+);
+const showConnectingHelpCallout = computed(
+    () =>
+        showConnectingHelp.value &&
+        !calloutDismiss.isDismissed(
+            'connecting',
+            connectingCalloutFingerprintValue.value,
+        ),
+);
 const bootstrapGuidance = computed(() =>
     getBootstrapWarningGuidance(bootstrapWarning.value, readiness.value),
 );
@@ -410,12 +451,6 @@ const actions = [
         description: 'Manage recurring or future work.',
         icon: 'i-pixelarticons-clock',
         to: '/scheduled',
-    },
-    {
-        label: 'Adjust Preferences',
-        description: 'Tune how or3-intern behaves.',
-        icon: 'i-pixelarticons-settings-cog',
-        to: '/settings',
     },
 ];
 
@@ -529,6 +564,18 @@ function formatTime(input?: string): string {
         d.getDate() === yest.getDate();
     if (isYest) return `Yesterday, ${time}`;
     return d.toLocaleDateString();
+}
+
+function dismissReadinessCallout() {
+    calloutDismiss.dismiss('readiness', readinessCalloutFingerprintValue.value);
+}
+
+function dismissBootstrapCallout() {
+    calloutDismiss.dismiss('bootstrap', bootstrapCalloutFingerprintValue.value);
+}
+
+function dismissConnectingCallout() {
+    calloutDismiss.dismiss('connecting', connectingCalloutFingerprintValue.value);
 }
 
 async function copyAddress() {

@@ -1,0 +1,18 @@
+{
+  "extends": "./.nuxt/tsconfig.app.json",
+  "compilerOptions": {
+    "types": ["node", "vitest/globals"],
+    "strict": false,
+    "noUncheckedIndexedAccess": false,
+    "noImplicitOverride": false,
+    "noEmit": true
+  },
+  "include": [
+    "electron/**/*.d.ts",
+    "electron/**/*.js",
+    "tests/unit/electron-host-service.test.ts",
+    "tests/unit/electron-security.test.ts",
+    "tests/unit/settings-review-overlay.test.ts",
+    "vitest.config.ts"
+  ]
+}
