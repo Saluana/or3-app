@@ -147,6 +147,8 @@ export interface ChatMessage {
     error?: string;
     errorCode?: Or3AppErrorCode;
     approvalRequestId?: number | string;
+    approvalType?: string;
+    approvalPreview?: string;
     approvalState?:
         | 'pending'
         | 'retrying'

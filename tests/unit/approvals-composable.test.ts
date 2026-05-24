@@ -36,8 +36,8 @@ describe('useApprovals', () => {
                     },
                 );
             }
-            if (path.includes('/internal/v1/approvals/allowlists')) {
-                return new Response(JSON.stringify({ items: [] }), {
+            if (path.endsWith('/internal/v1/approvals/count?status=pending')) {
+                return new Response(JSON.stringify({ count: 0 }), {
                     status: 200,
                     headers: { 'Content-Type': 'application/json' },
                 });
@@ -54,7 +54,9 @@ describe('useApprovals', () => {
 
         const { approve } = useApprovals();
         const first = approve(42);
-        await expect(approve(42)).rejects.toThrow('already in progress');
+        await expect(approve(42)).rejects.toThrow(
+            'Another approval action is already in progress.',
+        );
         releaseApprove?.();
         await expect(first).resolves.toMatchObject({ request_id: 42 });
         expect(approveRequests).toBe(1);
@@ -106,6 +108,12 @@ describe('useApprovals', () => {
                     headers: { 'Content-Type': 'application/json' },
                 });
             }
+            if (path.endsWith('/internal/v1/approvals/count?status=pending')) {
+                return new Response(JSON.stringify({ count: 0 }), {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/json' },
+                });
+            }
             if (path.includes('/internal/v1/approvals')) {
                 return new Response(JSON.stringify({ items: [] }), {
                     status: 200,
@@ -148,8 +156,8 @@ describe('useApprovals', () => {
                     },
                 );
             }
-            if (path.includes('/internal/v1/approvals/allowlists')) {
-                return new Response(JSON.stringify({ items: [] }), {
+            if (path.endsWith('/internal/v1/approvals/count?status=pending')) {
+                return new Response(JSON.stringify({ count: 0 }), {
                     status: 200,
                     headers: { 'Content-Type': 'application/json' },
                 });
@@ -173,7 +181,7 @@ describe('useApprovals', () => {
         expect(consumeIssuedApprovalToken(42)).toBe('tok-42');
     });
 
-    it('reloads the active approval filter after approve succeeds', async () => {
+    it('refreshes approvals in the background after approve succeeds', async () => {
         useLocalCache().updateHost({
             id: 'test',
             name: 'Test Mac',
@@ -222,11 +230,13 @@ describe('useApprovals', () => {
             token: 'tok-42',
         });
 
-        expect(approvalListPaths).toContain(
-            'http://127.0.0.1:9100/internal/v1/approvals?status=pending',
-        );
+        await vi.waitFor(() => {
+            expect(approvalListPaths).toContain(
+                'http://127.0.0.1:9100/internal/v1/approvals?status=pending',
+            );
+        });
         expect(approvalListPaths).not.toContain(
-            'http://127.0.0.1:9100/internal/v1/approvals',
+            'http://127.0.0.1:9100/internal/v1/approvals/allowlists',
         );
     });
 

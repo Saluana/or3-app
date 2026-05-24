@@ -1,4 +1,5 @@
 import type { Or3AppError } from '~/types/app-state';
+import { coerceErrorText, serializeErrorForLog } from '~/utils/assistant-stream/errors';
 import type { AuthChallengeCode, AuthChallengeError } from '~/types/auth';
 import type { Or3SseEvent } from '~/types/or3-api';
 import { createLogger } from '~/utils/logger';
@@ -12,7 +13,7 @@ import {
 } from '~/utils/or3/secure-connections';
 import { ELECTRON_HOST_PROFILE_ID, useActiveHost } from './useActiveHost';
 import { useElectronHostSetup } from './useElectronHostSetup';
-import { needsUnlock } from './usePinLock';
+import { ensurePinSessionActive, needsUnlock } from './usePinLock';
 import {
     hostHasUsableCredentials,
     normalizedHostOrigin,
@@ -248,34 +249,39 @@ function mapError(
     cause?: unknown,
 ): Or3AppError {
     const message =
-        typeof payload === 'string'
-            ? payload
-            : payload?.message || payload?.error;
+        coerceErrorText(
+            typeof payload === 'string'
+                ? payload
+                : payload?.message ?? payload?.error,
+        ) || undefined;
     const payloadCode = typeof payload === 'object' ? payload.code : undefined;
     const challengeCode = normalizeChallengeCode(
         typeof payloadCode === 'string' ? payloadCode : undefined,
     );
     const normalizedPayloadCode =
         typeof payloadCode === 'string' ? payloadCode.trim() : '';
-    const code =
-        normalizedPayloadCode &&
-        passthroughErrorCodes.has(normalizedPayloadCode)
-            ? (normalizedPayloadCode as Or3AppError['code'])
-            : challengeCode
-              ? challengeCode
-              : status === 401
-                ? 'auth_required'
-                : status === 403
-                  ? 'forbidden'
-                  : status === 404
-                    ? 'file_not_found'
-                    : status === 429
-                      ? 'rate_limited'
-                      : status === 400
-                        ? 'validation_failed'
-                        : status === 503
-                          ? 'capability_unavailable'
-                          : 'unknown';
+    const capabilityCeiling =
+        message?.toLowerCase().includes('service capability ceiling') ?? false;
+    const code = capabilityCeiling
+        ? 'capability_unavailable'
+        : normalizedPayloadCode &&
+            passthroughErrorCodes.has(normalizedPayloadCode)
+          ? (normalizedPayloadCode as Or3AppError['code'])
+          : challengeCode
+            ? challengeCode
+            : status === 401
+              ? 'auth_required'
+              : status === 403
+                ? 'forbidden'
+                : status === 404
+                  ? 'file_not_found'
+                  : status === 429
+                    ? 'rate_limited'
+                    : status === 400
+                      ? 'validation_failed'
+                      : status === 503
+                        ? 'capability_unavailable'
+                        : 'unknown';
 
     return {
         ...(typeof payload === 'object' ? payload : {}),
@@ -533,6 +539,7 @@ export function useOr3Api() {
             options.baseUrl,
         );
         const trackHostStatus = shouldTrackHostStatus(options);
+        if (requiresAuth) ensurePinSessionActive();
         if (requiresAuth && needsUnlock()) {
             throw {
                 code: 'pin_locked',
@@ -609,7 +616,7 @@ export function useOr3Api() {
             const payload = {
                 path,
                 method,
-                error: error instanceof Error ? error.message : String(error),
+                ...serializeErrorForLog(error),
             };
             if (shouldLogNetworkError()) {
                 logger.error(
@@ -687,7 +694,11 @@ export function useOr3Api() {
                     _skipDedupe: true,
                 });
             }
-            if (trackHostStatus && shouldUpdateHostStatusFromRequest()) {
+            if (
+                trackHostStatus &&
+                shouldUpdateHostStatusFromRequest() &&
+                !needsUnlock()
+            ) {
                 if (shouldMarkHostUnauthorized(error)) {
                     updateActiveHostStatus('unauthorized', options.baseUrl);
                 } else if (response.status !== 401 && response.status !== 403) {
@@ -721,6 +732,7 @@ export function useOr3Api() {
             options.baseUrl,
         );
         const method = options.method || 'POST';
+        if (requiresAuth) ensurePinSessionActive();
         if (requiresAuth && needsUnlock()) {
             throw {
                 code: 'pin_locked',
@@ -797,8 +809,7 @@ export function useOr3Api() {
                 {
                     path,
                     method,
-                    error:
-                        error instanceof Error ? error.message : String(error),
+                    ...serializeErrorForLog(error),
                 },
             );
             throw {
@@ -827,6 +838,9 @@ export function useOr3Api() {
                 {
                     path,
                     status: response.status,
+                    ...serializeErrorForLog(
+                        typeof payload === 'object' ? payload : { message: payload },
+                    ),
                     requestId:
                         response.headers.get('X-Request-Id') ||
                         (typeof payload === 'object'
@@ -868,7 +882,7 @@ export function useOr3Api() {
             }
             logger.error('stream:error', 'SSE stream failed while reading', {
                 path,
-                error: error instanceof Error ? error.message : String(error),
+                ...serializeErrorForLog(error),
             });
             throw error;
         } finally {

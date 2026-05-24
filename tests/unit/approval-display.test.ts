@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  approvalKindDescription,
+  approvalKindLabel,
   approvalStatusLabel,
   approvalStatusTone,
+  formatApprovalInlineCopy,
   formatApprovalSubjectPreview,
 } from '../../app/utils/or3/approval-display'
 
@@ -60,6 +63,29 @@ describe('approval display helpers', () => {
         target_path: '/Users/brendon/project',
       },
     })).toBe('opencode write /Users/brendon/project')
+  })
+
+  it('formats inline approval copy for tool quota', () => {
+    expect(formatApprovalInlineCopy({
+      type: 'tool_quota',
+      subject: {
+        scope: 'message',
+        limit_name: 'max_tool_calls',
+        current: 17,
+        limit: 16,
+      },
+    })).toEqual({
+      type: 'tool_quota',
+      title: 'Tool call limit reached',
+      description: 'This turn used more tool calls than the current limit allows. Approve to let or3-intern continue with more tool calls.',
+      icon: 'i-pixelarticons-alert',
+      preview: 'message max_tool_calls (17/16)',
+    })
+  })
+
+  it('labels approval kinds for chat cards', () => {
+    expect(approvalKindLabel('tool_quota')).toBe('Tool call limit reached')
+    expect(approvalKindDescription('exec')).toContain('shell command')
   })
 
   it('labels terminal approval states explicitly', () => {

@@ -1,6 +1,11 @@
 import { ref, watch, type Ref } from 'vue';
 import type { Or3HostProfile } from '~/types/app-state';
 import { pendingApprovalPlaceholderContent } from '~/utils/assistant-stream/approval';
+import {
+    describeRequestError,
+    serializeErrorForLog,
+} from '~/utils/assistant-stream/errors';
+import { formatApprovalSubjectPreview } from '~/utils/or3/approval-display';
 import { normalizeApprovalRequest } from '~/utils/or3/approvals';
 import type { useChatRuntimeLog } from '../useChatRuntimeLog';
 import type { useChatSessions } from '../useChatSessions';
@@ -87,6 +92,8 @@ export function useApprovalHydration(options: UseApprovalHydrationOptions) {
                     approvalRequestId: approval.id,
                     sessionKey,
                     content: pendingApprovalPlaceholderContent(approval),
+                    approvalType: approval.type || approval.domain,
+                    approvalPreview: formatApprovalSubjectPreview(approval),
                     createdAt: approval.created_at,
                     status: 'attention',
                     approvalState: 'pending',
@@ -103,13 +110,13 @@ export function useApprovalHydration(options: UseApprovalHydrationOptions) {
             }
         } catch (error) {
             approvalHydrationError.value =
-                error && typeof error === 'object' && 'message' in error
-                    ? String((error as { message?: unknown }).message)
-                    : 'Could not refresh approval requests';
+                describeRequestError(error) ||
+                'Could not refresh approval requests';
             options.runtimeLog.add(
                 'approval',
                 'hydrate_pending:error',
-                String(error),
+                describeRequestError(error),
+                serializeErrorForLog(error),
             );
         } finally {
             approvalHydrationInFlight.delete(hydrationKey);

@@ -2,7 +2,15 @@ import { ref, watch } from 'vue';
 import type { ToolPolicy } from '~/types/or3-api';
 import type { AssistantSendPayload } from '~/types/app-state';
 import { describeApprovalRequest } from '~/utils/assistant-stream/approval';
-import { downgradeToolPolicyForServiceCapability } from '~/utils/assistant-stream/errors';
+import {
+    isServiceCapabilityCeilingError,
+    serializeErrorForLog,
+} from '~/utils/assistant-stream/errors';
+import {
+    effectiveToolPolicyForHost,
+    loadPersistedServiceCapabilityCeilingHosts,
+    persistServiceCapabilityCeilingHost,
+} from '~/utils/assistant-stream/tool-policy-host';
 import {
     EMPTY_FINAL_USER_MESSAGE,
     EMPTY_STREAM_USER_MESSAGE,
@@ -32,7 +40,8 @@ import { useOr3Api } from './useOr3Api';
 const isStreaming = ref(false);
 const activeJobId = ref<string | null>(null);
 const chatMode = ref<'ask' | 'work' | 'admin'>('work');
-const serviceCapabilityCeilingHosts = new Set<string>();
+const serviceCapabilityCeilingHosts =
+    loadPersistedServiceCapabilityCeilingHosts();
 let controller: AbortController | null = null;
 let chatStreamInitialized = false;
 
@@ -44,12 +53,7 @@ function rememberServiceCapabilityCeilingHost(hostId?: string | null) {
     const normalized = hostId?.trim();
     if (!normalized) return;
     serviceCapabilityCeilingHosts.add(normalized);
-}
-
-function shouldPreemptivelyDowngradeToolPolicy(hostId?: string | null) {
-    const normalized = hostId?.trim();
-    if (!normalized) return false;
-    return serviceCapabilityCeilingHosts.has(normalized);
+    persistServiceCapabilityCeilingHost(normalized);
 }
 
 export function modeToolPolicy(
@@ -196,11 +200,15 @@ export function useAssistantStream() {
         const activeHostId = activeHost.value?.id?.trim() || '';
         const requestedToolPolicy =
             payload.toolPolicy ?? modeToolPolicy(payload.mode);
-        const effectiveRequestedToolPolicy =
-            !payload.toolPolicy &&
-            shouldPreemptivelyDowngradeToolPolicy(activeHostId)
-                ? downgradeToolPolicyForServiceCapability(requestedToolPolicy)
-                : requestedToolPolicy;
+        const effectiveRequestedToolPolicy = payload.toolPolicy
+            ? requestedToolPolicy
+            : effectiveToolPolicyForHost({
+                  hostId: activeHostId,
+                  host: activeHost.value,
+                  sessionKey: session.sessionKey,
+                  rememberedHosts: serviceCapabilityCeilingHosts,
+                  policy: requestedToolPolicy,
+              });
         const buildTurnRequest = (toolPolicy = requestedToolPolicy) => ({
             session_key: session.sessionKey,
             message: text,
@@ -321,10 +329,7 @@ export function useAssistantStream() {
                     'Runner chat execution failed',
                     {
                         sessionKey: session.sessionKey,
-                        error:
-                            streamError instanceof Error
-                                ? streamError.message
-                                : String(streamError),
+                        ...serializeErrorForLog(streamError),
                     },
                 );
                 const executionContext = buildExecutionContext();
@@ -338,13 +343,24 @@ export function useAssistantStream() {
             }
 
             const executionContext = buildExecutionContext();
-            logger.error('send:error', 'Direct assistant execution failed', {
+            const capabilityCeiling = isServiceCapabilityCeilingError(streamError);
+            const logPayload = {
                 sessionKey: session.sessionKey,
-                error:
-                    streamError instanceof Error
-                        ? streamError.message
-                        : String(streamError),
-            });
+                ...serializeErrorForLog(streamError),
+            };
+            if (capabilityCeiling) {
+                logger.info(
+                    'send:policy_retry',
+                    'Work mode exceeded this host service limit; retrying in Ask mode',
+                    logPayload,
+                );
+            } else {
+                logger.error(
+                    'send:error',
+                    'Direct assistant execution failed',
+                    logPayload,
+                );
+            }
             await recoverDirectExecutionError({
                 ...executionContext,
                 toast,

@@ -222,6 +222,7 @@ import { useRoute, useRouter } from '#app';
 import { useComputerFiles } from '~/composables/useComputerFiles';
 import { useTerminalPrefs } from '~/composables/useTerminalPrefs';
 import { useTerminalSession } from '~/composables/useTerminalSession';
+import { serializeErrorForLog } from '~/utils/assistant-stream/errors';
 import { createLogger } from '~/utils/logger';
 import TerminalSurface from '~/components/computer/terminal/TerminalSurface.vue';
 
@@ -369,7 +370,7 @@ const menuItems = computed(() => {
 function logTerminalActionError(action: string, error: unknown) {
     logger.error('action:failed', `${action} failed`, {
         action,
-        error: error instanceof Error ? error.message : String(error),
+        ...serializeErrorForLog(error),
     });
 }
 

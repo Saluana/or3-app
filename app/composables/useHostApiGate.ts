@@ -22,6 +22,10 @@ export function beginHostApiSettlement(): void {
 
 export function completeHostApiSettlement(): void {
     settling.value = false;
+    if (needsUnlock()) {
+        settled.value = false;
+        return;
+    }
     settled.value = true;
     void import('./useHostWorkspaceBootstrap').then(({ bootstrapHostWorkspace }) =>
         bootstrapHostWorkspace({ force: true }),

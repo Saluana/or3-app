@@ -135,52 +135,58 @@
                         <div class="or3-chat-desktop__header-main" />
                         <div class="or3-chat-desktop__header-actions">
                             <UTooltip text="Approvals">
-                                <UButton
-                                    icon="i-pixelarticons-shield"
-                                    color="primary"
-                                    variant="subtle"
-                                    class="backdrop-blur flex items-center justify-center w-12 h-12 rounded-full relative"
-                                    @click="approvalsOpen = true"
+                            <UButton
+                                icon="i-pixelarticons-shield"
+                                color="primary"
+                                variant="subtle"
+                                class="backdrop-blur relative flex size-12 items-center justify-center rounded-full"
+                                :aria-label="
+                                    pendingCount
+                                        ? `${pendingCount} approval requests waiting`
+                                        : 'Open approval requests'
+                                "
+                                @click="approvalsOpen = true"
+                            >
+                                <span
+                                    v-if="pendingCount"
+                                    class="absolute -right-1 -top-1 min-w-4.5 rounded-full bg-(--or3-amber) px-1.5 py-0.5 text-center text-[10px] font-semibold leading-none text-white shadow-sm"
                                 >
-                                    <span
-                                        v-if="pendingCount"
-                                        class="or3-desktop-badge or3-desktop-badge--amber ml-2"
-                                    >
-                                        {{
-                                            pendingCount > 99
-                                                ? '99+'
-                                                : pendingCount
-                                        }}
-                                    </span>
-                                </UButton>
+                                    {{
+                                        pendingCount > 99
+                                            ? '99+'
+                                            : pendingCount
+                                    }}
+                                </span>
+                            </UButton>
                             </UTooltip>
                         </div>
                     </div>
                 </template>
             </ChatThread>
         </template>
-
-        <SessionHistoryPanel
-            v-model:open="historyOpen"
-            :sessions="historySessions"
-            :loading="historyLoading"
-            :error="historyError"
-            @refresh="refreshHistory"
-            @open-session="openHistorySession"
-            @rename-session="renameHistorySession"
-            @archive-session="archiveHistorySession"
-        />
-
-        <ApprovalsSlideover v-model:open="approvalsOpen" />
-        <PairingSheet v-model:open="pairingOpen" />
-        <RunnerSwitchModal
-            v-model:open="runnerSwitchOpen"
-            :current-runner-label="runnerSwitchCurrentLabel"
-            :next-runner-label="runnerSwitchNextLabel"
-            @confirm="confirmRunnerSwitch"
-            @cancel="cancelRunnerSwitch"
-        />
     </AppShell>
+
+    <!-- Slideovers/modals must live outside AppShell on desktop: only the #desktop slot renders there. -->
+    <SessionHistoryPanel
+        v-model:open="historyOpen"
+        :sessions="historySessions"
+        :loading="historyLoading"
+        :error="historyError"
+        @refresh="refreshHistory"
+        @open-session="openHistorySession"
+        @rename-session="renameHistorySession"
+        @archive-session="archiveHistorySession"
+    />
+
+    <ApprovalsSlideover v-model:open="approvalsOpen" />
+    <PairingSheet v-model:open="pairingOpen" />
+    <RunnerSwitchModal
+        v-model:open="runnerSwitchOpen"
+        :current-runner-label="runnerSwitchCurrentLabel"
+        :next-runner-label="runnerSwitchNextLabel"
+        @confirm="confirmRunnerSwitch"
+        @cancel="cancelRunnerSwitch"
+    />
 </template>
 
 <script setup lang="ts">

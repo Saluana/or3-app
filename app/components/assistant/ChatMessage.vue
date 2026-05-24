@@ -17,13 +17,6 @@
                 ]"
             >
                 <template v-if="message.role !== 'user'">
-                    <div
-                        v-if="approvalNotice"
-                        class="or3-msg__notice or3-msg__notice--attention"
-                    >
-                        <Icon :name="approvalNotice.icon" class="size-4" />
-                        <span>{{ approvalNotice.text }}</span>
-                    </div>
                     <AssistantReasoningPanel
                         :content="message.reasoningText"
                         :pending="
@@ -70,8 +63,9 @@
                         <span class="or3-msg__dot" />
                     </p>
                     <AssistantActivityLog
-                        v-if="message.activityLog?.length"
-                        :items="message.activityLog"
+                        v-if="activityItems.length"
+                        :items="activityItems"
+                        :streaming="message.status === 'streaming'"
                         consumer-mode
                     />
                 </template>
@@ -250,7 +244,7 @@
                         <span>{{ forkBusy ? 'Forking…' : 'Fork' }}</span>
                     </button>
                     <button
-                        v-if="showApprovalActions"
+                        v-if="showInlineApprovalActions"
                         type="button"
                         class="or3-msg__action or3-msg__action--deny"
                         :disabled="approvalBusy"
@@ -262,7 +256,7 @@
                         <span>Deny</span>
                     </button>
                     <button
-                        v-if="showApprovalActions"
+                        v-if="showInlineApprovalActions"
                         type="button"
                         class="or3-msg__action or3-msg__action--approve"
                         :disabled="approvalBusy"
@@ -274,7 +268,7 @@
                         <span>Approve once</span>
                     </button>
                     <button
-                        v-if="showApprovalActions"
+                        v-if="showInlineApprovalActions"
                         type="button"
                         class="or3-msg__action or3-msg__action--remember"
                         :disabled="approvalBusy"
@@ -303,13 +297,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, inject, ref, watch } from 'vue';
 import { useToast } from '@nuxt/ui/composables';
 import { useApprovals } from '../../composables/useApprovals';
 import { useAssistantStream } from '../../composables/useAssistantStream';
 import { useChatSessions } from '../../composables/useChatSessions';
 import { useSessionHistory } from '../../composables/useSessionHistory';
 import type { ChatAttachment, ChatMessage } from '../../types/app-state';
+import { mergeActivityWithToolParts } from '../../utils/assistant-stream/activity-merge';
+import { COMPOSER_APPROVAL_MESSAGE_ID_KEY } from '../../utils/chat/pending-approval-message';
+import {
+    buildApprovedResumePayload,
+    prepareAssistantResumeContinuation,
+} from '../../utils/chat/prepare-assistant-resume';
 import {
     approvalActionErrorMessage,
     approvalStatusFromError,
@@ -337,6 +337,10 @@ const copied = ref(false);
 const approvalBusy = ref(false);
 const forkBusy = ref(false);
 let copiedTimer: ReturnType<typeof setTimeout> | null = null;
+const composerApprovalMessageId = inject(
+    COMPOSER_APPROVAL_MESSAGE_ID_KEY,
+    computed(() => ''),
+);
 
 const shouldRepairIncompleteMarkdown = computed(() =>
     shouldRepairIncompleteMarkdownForStatus(props.message.status),
@@ -386,6 +390,12 @@ const orderedParts = computed(() =>
     }),
 );
 const hasOrderedParts = computed(() => orderedParts.value.length > 0);
+const activityItems = computed(() =>
+    mergeActivityWithToolParts(
+        props.message.activityLog,
+        props.message.parts,
+    ),
+);
 const canRetry = computed(
     () =>
         props.message.role === 'assistant' &&
@@ -398,53 +408,32 @@ const canFork = computed(
         typeof props.message.backendMessageId === 'number' &&
         !props.message.approvalRequestId,
 );
-const showApprovalActions = computed(
+const approvalRequestKey = computed(() =>
+    String(props.message.approvalRequestId ?? '').trim(),
+);
+const approvalIsPending = computed(() => {
+    if (!approvalRequestKey.value) return false;
+    const state = String(props.message.approvalState ?? '').trim();
+    if (state === 'pending' || state === 'retrying') return true;
+    if (state && !['pending', 'retrying'].includes(state)) return false;
+    return props.message.status === 'attention';
+});
+const composerHandlesApproval = computed(
     () =>
-        props.message.role === 'assistant' &&
-        props.message.approvalState === 'pending' &&
-        !!props.message.approvalRequestId,
+        !!composerApprovalMessageId.value &&
+        composerApprovalMessageId.value === props.message.id,
+);
+const showApprovalActions = computed(
+    () => props.message.role === 'assistant' && approvalIsPending.value,
+);
+const showInlineApprovalActions = computed(
+    () => showApprovalActions.value && !composerHandlesApproval.value,
 );
 const approvalNeedsAttention = computed(() =>
     ['pending', 'retrying', 'failed'].includes(
         String(props.message.approvalState ?? ''),
     ),
 );
-const approvalNotice = computed(() => {
-    switch (props.message.approvalState) {
-        case 'pending':
-            return {
-                icon: 'i-pixelarticons-shield',
-                text: 'Waiting for approval. Review the requested action below, then approve or deny it.',
-            };
-        case 'retrying':
-            return {
-                icon: 'i-pixelarticons-clock',
-                text: 'Approved. Retrying the exact tool call now.',
-            };
-        case 'failed':
-            return {
-                icon: 'i-pixelarticons-warning-box',
-                text: 'Approval was handled, but the retry did not finish. The error below has the details.',
-            };
-        case 'denied':
-            return {
-                icon: 'i-pixelarticons-close-box',
-                text: 'Approval denied. The tool call was not run.',
-            };
-        case 'canceled':
-            return {
-                icon: 'i-pixelarticons-close-box',
-                text: 'Approval canceled. The tool call was not run.',
-            };
-        case 'expired':
-            return {
-                icon: 'i-pixelarticons-warning-box',
-                text: 'Approval expired before it was used. Start the request again if it is still needed.',
-            };
-        default:
-            return null;
-    }
-});
 const approvalMetaLabel = computed(() => {
     switch (props.message.approvalState) {
         case 'pending':
@@ -630,6 +619,7 @@ async function followApprovedResumeJob(
 ) {
     const message = currentMessage();
     const requestId = message.approvalRequestId;
+    prepareAssistantResumeContinuation(updateMessage, message.id, jobId);
     if (
         !canContinueApprovedRequest({
             isStreaming: isStreaming.value,
@@ -637,19 +627,11 @@ async function followApprovedResumeJob(
             allowWhileApprovalBusy: options.allowWhileApprovalBusy,
         })
     ) {
-        return false;
+        return true;
     }
-    const retryPayload = {
-        ...(message.retryPayload ?? { text: '', transportText: '' }),
-        followJobId: jobId,
-        continueMessageId: message.id,
-        suppressUserEcho: true,
-    };
+    const retryPayload = buildApprovedResumePayload(message, jobId);
     updateMessage(message.id, {
-        approvalState: 'retrying',
-        status: 'attention',
-        retryPayload: message.retryPayload,
-        error: undefined,
+        retryPayload: message.retryPayload ?? retryPayload,
     });
 
     await send(retryPayload);
@@ -1064,6 +1046,71 @@ function attachmentTooltip(attachment: ChatAttachment): string {
 .or3-msg__notice--attention {
     background: color-mix(in srgb, #fef3c7 75%, white 25%);
     color: #92400e;
+}
+
+.or3-msg__approval {
+    margin-bottom: 0.85rem;
+    padding: 0.75rem 0.85rem;
+    border-radius: 0.95rem;
+    border: 1px solid color-mix(in srgb, #f59e0b 28%, var(--or3-border) 72%);
+    background: color-mix(in srgb, #fffbeb 70%, var(--or3-surface) 30%);
+}
+
+.or3-msg__approval-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.65rem;
+}
+
+.or3-msg__approval-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 0.65rem;
+    background: color-mix(in srgb, #1f1f1d 92%, transparent);
+    color: #f1eddf;
+    flex-shrink: 0;
+}
+
+.or3-msg__approval-title {
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 650;
+    line-height: 1.35;
+    color: var(--or3-text);
+}
+
+.or3-msg__approval-description {
+    margin: 0.2rem 0 0;
+    font-size: 0.78rem;
+    line-height: 1.45;
+    color: var(--or3-text-muted);
+}
+
+.or3-msg__approval-preview {
+    margin: 0.65rem 0 0;
+    padding: 0.55rem 0.65rem;
+    border-radius: 0.7rem;
+    border: 1px solid color-mix(in srgb, var(--or3-border) 85%, white 15%);
+    background: color-mix(in srgb, var(--or3-surface) 88%, white 12%);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.72rem;
+    line-height: 1.45;
+    color: var(--or3-green-dark);
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.or3-msg__approval-preview--muted {
+    font-family: inherit;
+    color: var(--or3-text-muted);
+    background: transparent;
+    border-color: transparent;
+    padding-left: 0;
+    padding-right: 0;
 }
 
 .or3-msg__actions--with-meta {

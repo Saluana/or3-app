@@ -8,6 +8,7 @@ import {
     buildServiceRestartCommand,
     selectServiceRestartRoot,
 } from '~/utils/or3/service-restart';
+import { useApprovals } from './useApprovals';
 import { useAuthSession } from './useAuthSession';
 import { useComputerFiles } from './useComputerFiles';
 import {
@@ -64,6 +65,7 @@ function shouldFallbackToTerminalRestart(error: any) {
 export function useServiceRestart() {
     const api = useOr3Api();
     const authSession = useAuthSession();
+    const { consumeIssuedApprovalToken } = useApprovals();
     const { loadRoots } = useComputerFiles();
 
     async function createTerminalSession(root: FileRoot) {
@@ -102,7 +104,13 @@ export function useServiceRestart() {
         );
     }
 
-    async function requestRestartAction() {
+    async function requestRestartAction(approvalToken?: string) {
+        const headers: Record<string, string> = {};
+        const token = approvalToken?.trim();
+        if (token) {
+            headers['X-Approval-Token'] = token;
+            headers['X-Or3-Approval-Token'] = token;
+        }
         return await authSession.retryWithAuth(
             (onAuthChallenge) =>
                 api.request<AppActionResponse>(
@@ -110,6 +118,7 @@ export function useServiceRestart() {
                     {
                         method: 'POST',
                         body: {},
+                        headers,
                         onAuthChallenge,
                     },
                 ),
@@ -117,14 +126,19 @@ export function useServiceRestart() {
         );
     }
 
-    async function restartService() {
+    async function restartService(approvalId?: number | string | null) {
         restartingService.value = true;
         restartError.value = null;
         restartPendingApprovalId.value = null;
 
+        const token =
+            approvalId != null
+                ? consumeIssuedApprovalToken(approvalId)
+                : undefined;
+
         try {
             try {
-                const response = await requestRestartAction();
+                const response = await requestRestartAction(token);
                 const result: {
                     mode: 'action';
                     actionId: string;
@@ -168,10 +182,15 @@ export function useServiceRestart() {
         }
     }
 
+    async function resumePendingRestart(approvalId: number | string) {
+        return restartService(approvalId);
+    }
+
     return {
         restartingService,
         restartError,
         restartPendingApprovalId,
         restartService,
+        resumePendingRestart,
     };
 }

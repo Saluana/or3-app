@@ -43,6 +43,16 @@ describe('userErrorCopy', () => {
         expect(copy.suggestion).toMatch(/Ask mode/i);
     });
 
+    it('does not surface [object Object] for structured API errors', () => {
+        const copy = userFacingErrorCopy({
+            code: 'validation_failed',
+            status: 400,
+            message: { field: 'message', reason: 'required' },
+        });
+        expect(copy.message).not.toBe('[object Object]');
+        expect(copy.message.length).toBeGreaterThan(0);
+    });
+
     it('formats inline errors as plain language without request ids', () => {
         const inline = formatUserFacingErrorInline(
             {

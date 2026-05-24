@@ -189,7 +189,14 @@ import { useOr3Api } from "~/composables/useOr3Api";
 import { approvalActionErrorMessage } from "~/utils/assistantApproval";
 import { formatApprovalSubjectPreview } from "~/utils/or3/approval-display";
 import { resolveApprovalResumeTarget } from "~/utils/or3/approval-resume-target";
+import { resumeApprovalOperation } from "~/utils/or3/approval-operation-resume";
+import {
+    buildApprovedResumePayload,
+    prepareAssistantResumeContinuation,
+} from "~/utils/chat/prepare-assistant-resume";
 import { useDoctorAdminChat } from "~/composables/useDoctorAdminChat";
+import { useServiceRestart } from "~/composables/useServiceRestart";
+import { useTerminalSession } from "~/composables/useTerminalSession";
 
 const filters = [
     { label: "Waiting", value: "pending", icon: "" },
@@ -215,6 +222,7 @@ const {
     activeSession,
     activateSessionByKey,
     ensureApprovalMessage,
+    findAssistantMessageForApproval,
     markApprovalResolved,
     messages,
     updateMessage,
@@ -252,8 +260,11 @@ const {
     approve,
     deny,
     cancel,
+    consumeIssuedApprovalToken,
     removeAllowlist,
 } = useApprovals();
+const { resumePendingApproval } = useTerminalSession();
+const { resumePendingRestart } = useServiceRestart();
 
 async function retryApprovalHydration() {
     approvalHydrationError.value = null;
@@ -337,9 +348,24 @@ async function followApprovalResumeJob(
         request_id?: number | string;
         resume_job_id?: string;
         session_key?: string;
+        token?: string;
     },
     approval?: ApprovalRequest | null,
 ) {
+    const resumedOperation = await resumeApprovalOperation({
+        response,
+        approval,
+        consumeToken: consumeIssuedApprovalToken,
+        resumeTerminal: async (approvalId, token) => {
+            await resumePendingApproval(approvalId);
+            if (!token) return;
+        },
+        resumeRestart: async (approvalId) => {
+            await resumePendingRestart(approvalId);
+        },
+    });
+    if (resumedOperation) return;
+
     const jobId = response?.resume_job_id?.trim();
     if (!jobId) return;
     const targetSessionKey =
@@ -369,37 +395,32 @@ async function followApprovalResumeJob(
     if (targetSessionKey) {
         activateSessionByKey(targetSessionKey, "Approval follow-up");
     }
-    const targetMessage = ensureApprovalMessage({
-        approvalRequestId:
-            response?.request_id ??
-            approval?.id ??
-            response?.resume_job_id ??
-            "",
-        sessionKey: targetSessionKey || undefined,
-        content: approvalPlaceholderContent(approval),
-        createdAt: approval?.created_at,
-        status: "attention",
-        approvalState: "retrying",
-    });
-    if (targetMessage) {
-        updateMessage(targetMessage.id, {
-            approvalState: "retrying",
+    const targetMessage =
+        findAssistantMessageForApproval(
+            response?.request_id ?? approval?.id,
+            targetSessionKey || undefined,
+        ) ??
+        ensureApprovalMessage({
+            approvalRequestId:
+                response?.request_id ??
+                approval?.id ??
+                response?.resume_job_id ??
+                "",
+            sessionKey: targetSessionKey || undefined,
+            content: approvalPlaceholderContent(approval),
+            createdAt: approval?.created_at,
             status: "attention",
-            error: undefined,
+            approvalState: "retrying",
         });
-    }
     const chatPath = target?.path ?? "/";
     if (router.currentRoute.value.path !== chatPath) {
         await router.push(chatPath);
         await nextTick();
     }
-    await send({
-        text: "",
-        transportText: "",
-        followJobId: jobId,
-        continueMessageId: targetMessage?.id,
-        suppressUserEcho: true,
-    });
+    if (targetMessage) {
+        prepareAssistantResumeContinuation(updateMessage, targetMessage.id, jobId);
+        await send(buildApprovedResumePayload(targetMessage, jobId));
+    }
     const latest = targetMessage
         ? messages.value.find((message) => message.id === targetMessage.id)
         : null;
@@ -539,10 +560,7 @@ watch(
     () => props.open,
     (isOpen) => {
         if (!isOpen && isOpen !== undefined) return;
-        void Promise.all([
-            loadApprovals(selectedFilter.value),
-            loadAllowlists(),
-        ]);
+        void loadApprovals(selectedFilter.value);
     },
     { immediate: true },
 );

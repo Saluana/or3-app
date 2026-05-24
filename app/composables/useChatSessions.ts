@@ -7,6 +7,12 @@ import type {
     ChatToolCall,
 } from "~/types/app-state";
 import type { ChatHistoryMessage, ChatSessionMeta } from "~/types/or3-api";
+import { isSyntheticApprovalContinuationUserMessage } from "~/utils/chat/approval-continuation";
+import {
+    compactAssistantRunMessages,
+    mergeAssistantMessages,
+    shouldMergeAssistantRunMessages,
+} from "~/utils/chat/merge-assistant-run";
 import { useActiveHost } from "./useActiveHost";
 import { useLocalCache } from "./useLocalCache";
 
@@ -528,10 +534,18 @@ export function useChatSessions() {
             ) {
                 continue;
             }
+            const preserveLiveStatus =
+                message.status === "streaming" ||
+                message.approvalState === "retrying";
             updateMessage(message.id, {
                 approvalRequestId: undefined,
                 approvalState: state === "approved" ? undefined : state,
-                status: state === "failed" ? "failed" : "complete",
+                status:
+                    state === "failed"
+                        ? "failed"
+                        : preserveLiveStatus
+                          ? message.status
+                          : "complete",
                 error,
                 errorCode: undefined,
             });
@@ -545,6 +559,8 @@ export function useChatSessions() {
         createdAt?: string;
         status?: ChatMessage["status"];
         approvalState?: ChatMessage["approvalState"];
+        approvalType?: string;
+        approvalPreview?: string;
     }) {
         const approvalKey = String(options.approvalRequestId ?? "").trim();
         if (!approvalKey) return null;
@@ -565,6 +581,10 @@ export function useChatSessions() {
                     "pending",
                 content:
                     existing.content || options.content || existing.content,
+                approvalType:
+                    options.approvalType ?? existing.approvalType,
+                approvalPreview:
+                    options.approvalPreview ?? existing.approvalPreview,
                 error: undefined,
             });
             return (
@@ -584,6 +604,10 @@ export function useChatSessions() {
                     attachTarget.content ||
                     options.content ||
                     attachTarget.content,
+                approvalType:
+                    options.approvalType ?? attachTarget.approvalType,
+                approvalPreview:
+                    options.approvalPreview ?? attachTarget.approvalPreview,
                 error: undefined,
                 errorCode: "approval_required",
             });
@@ -607,6 +631,8 @@ export function useChatSessions() {
                 "Approval is needed before or3-intern can continue.",
             status: options.status ?? "attention",
             approvalRequestId: options.approvalRequestId,
+            approvalType: options.approvalType,
+            approvalPreview: options.approvalPreview,
             approvalState: options.approvalState ?? "pending",
             createdAt: options.createdAt,
             reasoningText: "",
@@ -725,10 +751,24 @@ export function useChatSessions() {
         );
     }
 
+    function compactSessionMessages(sessionId: string) {
+        const sessionMessages = cache.state.value.messages.filter(
+            (message) => message.sessionId === sessionId,
+        );
+        const otherMessages = cache.state.value.messages.filter(
+            (message) => message.sessionId !== sessionId,
+        );
+        const compacted = compactAssistantRunMessages(sessionMessages);
+        if (compacted.length === sessionMessages.length) return;
+        cache.state.value.messages = [...otherMessages, ...compacted];
+        cache.persist();
+    }
+
     function hydrateBackendMessages(
         session: ChatSession,
         backendMessages: ChatHistoryMessage[],
     ) {
+        let mergeNextAssistantIntoPrevious = false;
         const sessionMessages = () =>
             cache.state.value.messages.filter(
                 (message) => message.sessionId === session.id,
@@ -801,6 +841,16 @@ export function useChatSessions() {
                 backend.payload && typeof backend.payload === "object"
                     ? (backend.payload as Record<string, unknown>)
                     : {};
+            if (
+                role === "user" &&
+                isSyntheticApprovalContinuationUserMessage(
+                    backend.content,
+                    payload,
+                )
+            ) {
+                mergeNextAssistantIntoPrevious = true;
+                continue;
+            }
             const runnerPermissionPayload =
                 payload.runner_permission &&
                 typeof payload.runner_permission === "object"
@@ -931,7 +981,30 @@ export function useChatSessions() {
             const existing = existingByBackendID().get(backendID);
             if (existing) {
                 updateMessage(existing.id, patch);
+                mergeNextAssistantIntoPrevious = false;
                 continue;
+            }
+            if (role === "assistant" && mergeNextAssistantIntoPrevious) {
+                const previousAssistant = [...sessionMessages()]
+                    .reverse()
+                    .find((message) => message.role === "assistant");
+                if (previousAssistant) {
+                    const merged = mergeAssistantMessages(previousAssistant, {
+                        ...previousAssistant,
+                        ...patch,
+                        id: previousAssistant.id,
+                        sessionId: session.id,
+                        role: "assistant",
+                        content:
+                            previousAssistant.content || backend.content,
+                        createdAt:
+                            previousAssistant.createdAt ||
+                            msToIso(backend.created_at),
+                    });
+                    updateMessage(previousAssistant.id, merged);
+                    mergeNextAssistantIntoPrevious = false;
+                    continue;
+                }
             }
             const localMatch = sessionMessages().find(
                 (message) =>
@@ -952,17 +1025,38 @@ export function useChatSessions() {
                 });
                 continue;
             }
-            addMessage({
+            const nextMessage = {
                 id: `backend_${backendID}`,
                 sessionId: session.id,
                 role,
                 content: backend.content,
-                status: "complete",
+                status: "complete" as const,
                 createdAt: msToIso(backend.created_at),
                 ...patch,
-            });
+            };
+            const previousAssistant = [...sessionMessages()]
+                .reverse()
+                .find((message) => message.role === "assistant");
+            if (
+                role === "assistant" &&
+                shouldMergeAssistantRunMessages(
+                    previousAssistant,
+                    nextMessage as ChatMessage,
+                    mergeNextAssistantIntoPrevious,
+                ) &&
+                previousAssistant
+            ) {
+                updateMessage(
+                    previousAssistant.id,
+                    mergeAssistantMessages(previousAssistant, nextMessage as ChatMessage),
+                );
+            } else {
+                addMessage(nextMessage);
+            }
+            mergeNextAssistantIntoPrevious = false;
         }
         touchSession(session.id);
+        compactSessionMessages(session.id);
         cache.persist();
     }
 
@@ -994,5 +1088,6 @@ export function useChatSessions() {
         syncBackendSessionMeta,
         applyBackendSessionMeta,
         hydrateBackendMessages,
+        compactSessionMessages,
     };
 }

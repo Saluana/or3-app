@@ -1,5 +1,6 @@
 import { ref } from 'vue';
 import type { Or3AppState, Or3HostProfile } from '~/types/app-state';
+import { compactAssistantRunMessages } from '~/utils/chat/merge-assistant-run';
 import { needsUnlock } from './usePinLock';
 import {
     useSecureHostTokens,
@@ -90,7 +91,7 @@ function normalizePersistedSessions(
 function normalizePersistedMessages(
     messages: Or3AppState['messages'] = [],
 ): Or3AppState['messages'] {
-    return messages.map((message) => ({
+    const normalized = messages.map((message) => ({
         ...message,
         attachments: message.attachments ?? [],
         backendMessageIds: message.backendMessageIds ?? [],
@@ -98,6 +99,17 @@ function normalizePersistedMessages(
         parts: message.parts ?? [],
         activityLog: message.activityLog ?? [],
     }));
+    const bySession = new Map<string, typeof normalized>();
+    for (const message of normalized) {
+        const bucket = bySession.get(message.sessionId) ?? [];
+        bucket.push(message);
+        bySession.set(message.sessionId, bucket);
+    }
+    const compacted: typeof normalized = [];
+    for (const bucket of bySession.values()) {
+        compacted.push(...compactAssistantRunMessages(bucket));
+    }
+    return compacted;
 }
 
 function readPersistedState() {

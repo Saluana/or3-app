@@ -50,6 +50,7 @@ let _lockedUntilTs: number | null = null;
 let _initialized = false;
 let _lifecycleHandlersAttached = false;
 let _activityHandlersAttached = false;
+let _inactivityWatchTimer: ReturnType<typeof setInterval> | null = null;
 let _lastActivityTouchMs = 0;
 const PIN_ACTIVITY_TOUCH_THROTTLE_MS = 60_000;
 
@@ -195,6 +196,68 @@ function enforceInactivityLock() {
     }
 }
 
+function inactivityCheckIntervalMs() {
+    const duration = unlockDurationMsForConfig();
+    if (duration <= PIN_UNLOCK_IMMEDIATE_MS) return 0;
+    return Math.min(60_000, Math.max(5_000, Math.floor(duration / 12)));
+}
+
+function startInactivityWatch() {
+    stopInactivityWatch();
+    const intervalMs = inactivityCheckIntervalMs();
+    if (intervalMs <= 0 || typeof window === 'undefined') return;
+    _inactivityWatchTimer = setInterval(() => {
+        enforceInactivityLock();
+        syncReactiveState();
+    }, intervalMs);
+}
+
+function stopInactivityWatch() {
+    if (_inactivityWatchTimer === null) return;
+    clearInterval(_inactivityWatchTimer);
+    _inactivityWatchTimer = null;
+}
+
+function stripHostCredentialsOnLock() {
+    if (!import.meta.client || !_config?.enabled) return;
+    void (async () => {
+        const [{ useLocalCache }, { withResolvedHostTokens }] = await Promise.all([
+            import('./useLocalCache'),
+            import('./useSecureHostTokens'),
+        ]);
+        const cache = useLocalCache();
+        let changed = false;
+        const hosts = cache.state.value.hosts.map((host) => {
+            const clearStatus = host.status === 'unauthorized';
+            const hasTokens = Boolean(
+                host.pairedToken?.trim() ||
+                    host.sessionToken?.trim() ||
+                    host.token?.trim(),
+            );
+            if (!hasTokens && !clearStatus) return host;
+            changed = true;
+            return withResolvedHostTokens({
+                ...host,
+                pairedToken: undefined,
+                sessionToken: undefined,
+                token: undefined,
+                status: clearStatus ? undefined : host.status,
+            });
+        });
+        if (!changed) return;
+        cache.state.value = { ...cache.state.value, hosts };
+        cache.persist();
+    })();
+}
+
+/** Re-check the inactivity window before authenticated host API calls. */
+export function ensurePinSessionActive() {
+    ensureInit();
+    if (!_config?.enabled) return;
+    enforceInactivityLock();
+    syncReactiveState();
+}
+
 function readUnlockedSession(options?: {
     allowExpired?: boolean;
 }): PinUnlockedSession | null {
@@ -319,11 +382,13 @@ function attachActivityHandlers() {
     window.addEventListener('pointerdown', onPinUserActivity, options);
     window.addEventListener('keydown', onPinUserActivity, options);
     window.addEventListener('wheel', onPinUserActivity, options);
+    startInactivityWatch();
 }
 
 function detachActivityHandlers() {
     if (!_activityHandlersAttached || typeof window === 'undefined') return;
     _activityHandlersAttached = false;
+    stopInactivityWatch();
     window.removeEventListener('pointerdown', onPinUserActivity, true);
     window.removeEventListener('keydown', onPinUserActivity, true);
     window.removeEventListener('wheel', onPinUserActivity, true);
@@ -666,6 +731,7 @@ export function lock() {
     detachActivityHandlers();
     clearUnlockedSessionCache();
     syncReactiveState();
+    stripHostCredentialsOnLock();
 }
 
 function readAndDecryptBlob(

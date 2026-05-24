@@ -19,7 +19,13 @@ import {
     sanitizeAssistantText,
     truncateLogDetail,
 } from './activity';
-import { describeApprovalRequest, isApprovalRequiredPayload } from './approval';
+import {
+    buildInlineApprovalContent,
+    describeApprovalRequest,
+    extractApprovalMetadata,
+    inferApprovalMetadataFromToolPayload,
+    isApprovalRequiredPayload,
+} from './approval';
 import {
     extractApprovalRequestId,
     extractErrorCode,
@@ -478,10 +484,20 @@ export function createAssistantEventApplier(
                 const baseRetryPayload =
                     current?.retryPayload ??
                     options.readAssistant()?.retryPayload;
-                const approvalMessage = describeApprovalRequest(
+                const inferredApproval = inferApprovalMetadataFromToolPayload(
                     toolName,
-                    replayToolCall?.arguments,
+                    payload,
                 );
+                const approvalMetadata = {
+                    ...extractApprovalMetadata(payload),
+                    ...inferredApproval,
+                };
+                const approvalMessage = buildInlineApprovalContent({
+                    approvalType: approvalMetadata.approvalType,
+                    approvalPreview: approvalMetadata.approvalPreview,
+                    toolName,
+                    argsJson: replayToolCall?.arguments,
+                });
                 const content =
                     current?.content?.trim() &&
                     !current.content.includes('**Tool:**')
@@ -504,6 +520,8 @@ export function createAssistantEventApplier(
                     approvalRequestId,
                     approvalState: 'pending',
                     errorCode: 'approval_required',
+                    approvalType: approvalMetadata.approvalType,
+                    approvalPreview: approvalMetadata.approvalPreview,
                     retryPayload: baseRetryPayload
                         ? {
                               ...baseRetryPayload,
@@ -578,15 +596,28 @@ export function createAssistantEventApplier(
             const runnerPermission = normalizeRunnerPermissionPayload(
                 payload?.runner_permission,
             );
+            const inferredApproval = inferApprovalMetadataFromToolPayload('', payload);
+            const approvalMetadata = {
+                ...extractApprovalMetadata(payload),
+                ...inferredApproval,
+            };
+            const approvalMessage =
+                approvalMetadata.approvalType === 'tool_quota'
+                    ? buildInlineApprovalContent({
+                          approvalType: approvalMetadata.approvalType,
+                          approvalPreview: approvalMetadata.approvalPreview,
+                      })
+                    : options.readAssistant()?.content ||
+                      'Approval is needed before or3-intern can continue.';
             options.updateAssistant({
-                content:
-                    options.readAssistant()?.content ||
-                    'Approval is needed before or3-intern can continue.',
+                content: approvalMessage,
                 status: 'attention',
                 error: undefined,
                 errorCode: 'approval_required',
                 approvalRequestId,
                 approvalState: approvalRequestId ? 'pending' : undefined,
+                approvalType: approvalMetadata.approvalType,
+                approvalPreview: approvalMetadata.approvalPreview,
                 retryPayload: baseRetryPayload
                     ? {
                           ...baseRetryPayload,

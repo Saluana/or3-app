@@ -1,5 +1,5 @@
 import type { Or3AppErrorCode } from '~/types/app-state';
-import { extractErrorCode } from './errors';
+import { coerceErrorText, extractErrorCode } from './errors';
 
 export const EMPTY_FINAL_USER_MESSAGE =
     "I finished the steps but didn't have a final answer to show. Try asking again, or open Approvals if something is waiting.";
@@ -78,6 +78,11 @@ const COPY_BY_CODE: Partial<Record<Or3AppErrorCode, UserFacingErrorCopy>> = {
         title: 'Slow down a little',
         message: 'Too many requests were sent at once.',
         suggestion: 'Wait a moment, then try again.',
+    },
+    validation_failed: {
+        title: 'Request could not start',
+        message: 'The server rejected this chat request.',
+        suggestion: 'Try again. If it keeps failing, start a new chat or reconnect from Settings.',
     },
     capability_unavailable: {
         title: 'Not available on this computer',
@@ -171,16 +176,18 @@ export function userFacingErrorCopy(
     errorCode?: Or3AppErrorCode,
 ): UserFacingErrorCopy {
     const code = errorCode ?? extractErrorCode(error);
+    const raw = coerceErrorText(error);
+    if (code === 'validation_failed' && raw) {
+        return {
+            title: 'Request could not start',
+            message: raw,
+            suggestion:
+                'Try again. If it keeps failing, start a new chat or reconnect from Settings.',
+        };
+    }
     if (code && COPY_BY_CODE[code]) {
         return COPY_BY_CODE[code]!;
     }
-
-    const raw =
-        error && typeof error === 'object' && 'message' in error
-            ? String((error as { message?: unknown }).message ?? '').trim()
-            : error instanceof Error
-              ? error.message.trim()
-              : '';
     const fromPattern = raw ? copyFromMessagePattern(raw) : null;
     if (fromPattern) return fromPattern;
 

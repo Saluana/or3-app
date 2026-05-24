@@ -26,6 +26,8 @@ import { useLocalCache } from './composables/useLocalCache'
 import { useActiveHost } from './composables/useActiveHost'
 import { bootstrapHostWorkspace } from './composables/useHostWorkspaceBootstrap'
 import { useSessionHistory } from './composables/useSessionHistory'
+import { useApprovals } from './composables/useApprovals'
+import { useWhenHostApiReady } from './composables/useWhenHostApiReady'
 
 const toaster = {
   position: 'top-right',
@@ -42,6 +44,7 @@ const electronHost = useElectronHostSetup()
 
 const pinLock = usePinLockState()
 const { activeHost } = useActiveHost()
+const { startPolling, stopPolling } = useApprovals()
 const pinStateReady = ref(false)
 const showUnlockOverlay = computed(() => pinStateReady.value && pinLock.needsUnlock.value)
 
@@ -76,6 +79,11 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('focus', onWindowFocus)
   document.removeEventListener('visibilitychange', onVisibilityChange)
+  stopPolling()
+})
+
+useWhenHostApiReady(() => {
+  startPolling()
 })
 
 function onUnlocked() {

@@ -35,6 +35,15 @@ function isSelectableRunner(runner: ChatRunnerInfo) {
     return caps?.chatSelectable !== false && caps?.chatReplay !== false;
 }
 
+function isPinLockedError(err: unknown) {
+    return (
+        err &&
+        typeof err === 'object' &&
+        'code' in err &&
+        (err as { code?: unknown }).code === 'pin_locked'
+    );
+}
+
 function normalizeChatRunners(runners: ChatRunnerInfo[]): ChatRunnerInfo[] {
     return runners.map((runner) => {
         const models = runner.models?.length
@@ -94,6 +103,7 @@ export function useChatRunners() {
         let chatRunners: ChatRunnerInfo[] | null = null;
         let agentRunners: AgentRunnerInfo[] | null = null;
         let errors: string[] = [];
+        let pinLocked = false;
 
         try {
             const response = await api.request<ChatRunnersResponse>(
@@ -101,6 +111,9 @@ export function useChatRunners() {
             );
             chatRunners = response.runners ?? [];
         } catch (err) {
+            if (isPinLockedError(err)) {
+                pinLocked = true;
+            } else {
             const msg =
                 err && typeof err === 'object' && 'message' in err
                     ? String((err as { message?: unknown }).message)
@@ -110,14 +123,18 @@ export function useChatRunners() {
                 hostId: currentHost,
                 error: msg,
             });
+            }
         }
 
-        try {
+        if (!pinLocked) try {
             const response = await api.request<AgentRunnersResponse>(
                 '/internal/v1/agent-runners',
             );
             agentRunners = response.runners ?? [];
         } catch (err) {
+            if (isPinLockedError(err)) {
+                pinLocked = true;
+            } else {
             const msg =
                 err && typeof err === 'object' && 'message' in err
                     ? String((err as { message?: unknown }).message)
@@ -128,6 +145,14 @@ export function useChatRunners() {
                 'Agent runner discovery failed',
                 { hostId: currentHost, error: msg },
             );
+            }
+        }
+
+        if (pinLocked) {
+            if (generation === refreshGeneration) {
+                loadingByHost.value[currentHost] = false;
+            }
+            return;
         }
 
         const merged = mergeRunnerResults(chatRunners, agentRunners);

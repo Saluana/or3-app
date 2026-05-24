@@ -332,7 +332,7 @@
                 @change="handleFiles"
             />
 
-            <div class="or3-composer__editor-wrap" @click="focusEditor">
+            <div class="or3-composer__editor-wrap" @click.self="focusEditorAtEnd">
                 <EditorContent
                     v-if="editor"
                     :editor="editor"
@@ -706,18 +706,26 @@ const canSend = computed(
     () => !props.streaming && !submitLocked.value && hasSendableContent.value,
 );
 
+function editorPlainText() {
+    return editor.value?.getText({ blockSeparator: '\n\n' }) ?? '';
+}
+
 watch(
     () => props.modelValue,
     (value) => {
-        if (formState.text === value) return;
-        formState.text = value;
-        if (
-            editor.value &&
-            editor.value.getText({ blockSeparator: '\n\n' }) !== value
-        ) {
-            editor.value.commands.setContent(value || '', {
-                emitUpdate: false,
-            });
+        const normalized = value ?? '';
+        if (formState.text === normalized) return;
+        formState.text = normalized;
+        const instance = editor.value;
+        if (!instance || editorPlainText() === normalized) return;
+
+        const selection = instance.state.selection;
+        instance.commands.setContent(normalized, { emitUpdate: false });
+        if (instance.isFocused) {
+            const end = instance.state.doc.content.size;
+            const from = Math.min(selection.from, end);
+            const to = Math.min(selection.to, end);
+            instance.commands.setTextSelection({ from, to });
         }
     },
 );
@@ -747,7 +755,7 @@ function updateEditorText(value: string) {
     editor.value?.commands.setContent(value || '', { emitUpdate: false });
 }
 
-function focusEditor() {
+function focusEditorAtEnd() {
     editor.value?.commands.focus('end');
 }
 
@@ -1670,7 +1678,7 @@ onMounted(() => {
     registerPaneInput(props.paneId, {
         setText: (value) => {
             updateEditorText(value);
-            nextTick(() => focusEditor());
+            nextTick(() => focusEditorAtEnd());
         },
         triggerSend: submit,
     });

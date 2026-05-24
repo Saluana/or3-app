@@ -35,15 +35,28 @@ function sessionsForHost(state: Or3AppState, hostId: string) {
     );
 }
 
+function isRecoverableAssistantMessage(message: ChatMessage) {
+    if (message.role !== 'assistant') return false;
+    if (!message.jobId && !message.runnerChatTurnId) return false;
+    if (message.status === 'failed') return false;
+    if (message.approvalState === 'pending' && message.approvalRequestId) {
+        return false;
+    }
+    if (message.status === 'complete' && !message.jobId) return false;
+    return (
+        message.status === 'streaming' ||
+        message.status === 'attention' ||
+        message.approvalState === 'retrying'
+    );
+}
+
 function pendingStreamingMessages(
     messages: ChatMessage[],
     sessionIds: Set<string>,
 ) {
     return messages.filter(
         (message) =>
-            message.role === 'assistant' &&
-            message.status === 'streaming' &&
-            (Boolean(message.jobId) || Boolean(message.runnerChatTurnId)) &&
+            isRecoverableAssistantMessage(message) &&
             sessionIds.has(message.sessionId),
     );
 }

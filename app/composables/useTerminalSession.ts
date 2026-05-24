@@ -4,6 +4,7 @@ import type {
     TerminalSessionSnapshot,
 } from '~/types/or3-api';
 import { createLogger } from '~/utils/logger';
+import { useApprovals } from './useApprovals';
 import { useOr3Api } from './useOr3Api';
 
 const logger = createLogger('terminal');
@@ -183,6 +184,7 @@ function terminalSocketReady(sessionId = session.value?.session_id) {
 
 export function useTerminalSession() {
     const api = useOr3Api();
+    const { consumeIssuedApprovalToken } = useApprovals();
 
     const transcript = computed(() => terminalLines.value.join(''));
     const status = computed(() => session.value?.status ?? 'idle');
@@ -286,12 +288,23 @@ export function useTerminalSession() {
         };
     }
 
-    async function start(payload: CreateTerminalSessionRequest) {
+    async function start(
+        payload: CreateTerminalSessionRequest,
+        approvalId?: number | string | null,
+    ) {
         terminalBusy.value = true;
         terminalError.value = null;
         terminalUnavailable.value = false;
+        const launchPayload = { ...payload };
+        const tokenSourceId = approvalId ?? pendingApprovalId.value;
+        const approvalToken = tokenSourceId
+            ? consumeIssuedApprovalToken(tokenSourceId)
+            : undefined;
+        if (approvalToken) {
+            launchPayload.approval_token = approvalToken;
+        }
         pendingApprovalId.value = null;
-        rememberLaunchPayload({ ...payload });
+        rememberLaunchPayload(launchPayload);
         streamAbortController?.abort();
 
         try {
@@ -299,7 +312,7 @@ export function useTerminalSession() {
                 '/internal/v1/terminal/sessions',
                 {
                     method: 'POST',
-                    body: payload,
+                    body: launchPayload,
                 },
             );
             chunkSeq = 0;
@@ -353,7 +366,7 @@ export function useTerminalSession() {
         }
     }
 
-    async function reconnect() {
+    async function reconnect(approvalId?: number | string | null) {
         const payload = buildReconnectPayload();
         if (!payload?.root_id) {
             terminalError.value =
@@ -362,7 +375,18 @@ export function useTerminalSession() {
         }
         resetTerminalState();
         terminalError.value = null;
-        await start(payload);
+        await start(payload, approvalId ?? pendingApprovalId.value);
+    }
+
+    async function resumePendingApproval(approvalId?: number | string | null) {
+        const id = approvalId ?? pendingApprovalId.value;
+        if (!id) return false;
+        const payload = buildReconnectPayload();
+        if (!payload?.root_id) return false;
+        resetTerminalState();
+        terminalError.value = null;
+        await start(payload, id);
+        return true;
     }
 
     async function attach(sessionId = session.value?.session_id) {
@@ -707,6 +731,7 @@ export function useTerminalSession() {
         attach,
         restoreSession,
         reconnect,
+        resumePendingApproval,
         sendInput,
         sendKeys,
         resize,

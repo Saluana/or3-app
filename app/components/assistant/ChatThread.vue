@@ -103,6 +103,10 @@
                 <div :class="statusClass">
                     <AssistantStatusIndicator :active="isStreaming" />
                 </div>
+                <AssistantComposerApprovalBar
+                    v-if="pendingApprovalMessage"
+                    :message="pendingApprovalMessage"
+                />
                 <AssistantComposer
                     v-model="draft"
                     v-model:mode="chatMode"
@@ -120,8 +124,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, provide, ref } from 'vue';
 import type { ChatMessage } from '~/types/app-state';
+import {
+    COMPOSER_APPROVAL_MESSAGE_ID_KEY,
+    findPendingApprovalMessage,
+} from '~/utils/chat/pending-approval-message';
 import type { ChatRunnerInfo } from '~/types/or3-api';
 import type { AssistantSendPayload } from '~/types/app-state';
 
@@ -174,6 +182,15 @@ const emit = defineEmits<{
 }>();
 
 const messageListRef = ref<{ scrollToBottom?: () => void } | null>(null);
+
+const pendingApprovalMessage = computed(() =>
+    findPendingApprovalMessage(props.messages),
+);
+
+provide(
+    COMPOSER_APPROVAL_MESSAGE_ID_KEY,
+    computed(() => pendingApprovalMessage.value?.id ?? ''),
+);
 
 const rootClass = computed(() =>
     props.variant === 'mobile' ? 'or3-chat-shell or3-chat-shell--mobile' : 'or3-chat-desktop',

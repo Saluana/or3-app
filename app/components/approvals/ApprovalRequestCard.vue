@@ -107,6 +107,10 @@
 import { computed } from 'vue';
 import type { ApprovalRequest } from '~/types/or3-api';
 import {
+    approvalKindDescription,
+    approvalKindIcon,
+    approvalKindLabel,
+    approvalKindType,
     approvalStatusLabel,
     approvalStatusTone,
     formatApprovalSubjectPreview,
@@ -123,35 +127,13 @@ defineEmits<{
     details: [];
 }>();
 
-const kind = computed(
-    () => props.approval.type || props.approval.domain || 'approval',
-);
+const kind = computed(() => approvalKindType(props.approval) || 'approval');
 
-const kindLabel = computed(() => {
-    const t = kind.value;
-    if (t === 'exec') return 'Run command';
-    if (t === 'file_write') return 'Write file';
-    if (t === 'network') return 'Reach the internet';
-    return t.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-});
+const kindLabel = computed(() => approvalKindLabel(kind.value));
 
-const kindIcon = computed(() => {
-    const t = kind.value;
-    if (t === 'exec') return 'i-pixelarticons-terminal';
-    if (t === 'file_write') return 'i-pixelarticons-file-text';
-    if (t === 'network') return 'i-pixelarticons-globe';
-    return 'i-pixelarticons-shield';
-});
+const kindIcon = computed(() => approvalKindIcon(kind.value));
 
-const description = computed(() => {
-    const t = kind.value;
-    if (t === 'exec') return 'or3-intern wants to run a shell command.';
-    if (t === 'file_write')
-        return 'or3-intern wants to create or update a file.';
-    if (t === 'network')
-        return 'or3-intern wants to reach an external service.';
-    return 'or3-intern is asking for permission to continue.';
-});
+const description = computed(() => approvalKindDescription(kind.value));
 
 const subjectPreview = computed(() => {
     return formatApprovalSubjectPreview(props.approval);

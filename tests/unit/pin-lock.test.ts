@@ -14,6 +14,7 @@ import {
     resetPinLock,
     touchPinActivity,
     unlock,
+    ensurePinSessionActive,
 } from '../../app/composables/usePinLock';
 
 function makeStorage(): Storage {
@@ -161,6 +162,22 @@ describe('usePinLock', () => {
 
         expect(freshPinLock.isUnlocked()).toBe(false);
         expect(freshPinLock.needsUnlock()).toBe(true);
+    });
+
+    it('locks in place when the inactivity window expires without a reload', async () => {
+        vi.useFakeTimers();
+        const unlockDurationMs = 5 * 60 * 1000;
+
+        await expect(enable('1234', unlockDurationMs)).resolves.toMatchObject({
+            success: true,
+        });
+
+        expect(needsUnlock()).toBe(false);
+        vi.advanceTimersByTime(unlockDurationMs + 1);
+        ensurePinSessionActive();
+
+        expect(isUnlocked()).toBe(false);
+        expect(needsUnlock()).toBe(true);
     });
 
     it('extends the inactivity window when the user is active', async () => {
