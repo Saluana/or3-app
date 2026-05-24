@@ -4,14 +4,17 @@ import {
     activeStatusLabel,
     buildRunnerFilterOptions,
     dateGroupLabel,
+    extractUserPromptFromJobText,
     filterJobsByRunner,
     filterJobsByStatus,
     formatElapsed,
     groupJobsByDate,
     isAttentionStatus,
     isStaleJob,
+    jobDisplayTitle,
     jobMatchesSearch,
     jobToCommandDraft,
+    resultPreviewForList,
     sortJobsByUpdated,
 } from '../../app/utils/or3/agent-jobs';
 
@@ -77,6 +80,30 @@ describe('agent-jobs filters', () => {
         expect(jobMatchesSearch(jobs[1], 'boom')).toBe(true);
         expect(jobMatchesSearch(jobs[1], 'codex')).toBe(true);
         expect(jobMatchesSearch(jobs[0], 'missing')).toBe(false);
+    });
+
+    it('matches all search tokens (multi-word)', () => {
+        expect(jobMatchesSearch(jobs[0], 'alpha research')).toBe(true);
+        expect(jobMatchesSearch(jobs[1], 'beta boom')).toBe(true);
+        expect(jobMatchesSearch(jobs[1], 'boom alpha')).toBe(false);
+    });
+
+    it('prefers task over system replay titles for display and search', () => {
+        const replayBlob =
+            'System: This conversation is being replayed for context. Previous turns are provided below in chronological order. User: wat model r u';
+        const replay = job({
+            job_id: 'replay',
+            title: replayBlob,
+            task: replayBlob,
+            status: 'failed',
+            error: 'approval mode overridden',
+            final_text: "I'm GPT-5, running as Codex in this workspace.",
+        });
+        expect(extractUserPromptFromJobText(replayBlob)).toBe('wat model r u');
+        expect(jobDisplayTitle(replay)).toBe('wat model r u');
+        expect(resultPreviewForList(replay)).toContain('approval mode');
+        expect(jobMatchesSearch(replay, 'wat model')).toBe(true);
+        expect(jobMatchesSearch(replay, 'approval')).toBe(true);
     });
 
     it('builds runner filter options with or3-intern first', () => {

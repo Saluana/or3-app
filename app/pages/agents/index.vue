@@ -317,9 +317,10 @@ const activityFilteredJobs = computed(() => {
 
 const showResultsSection = computed(
     () =>
-        activityStatus.value === 'all' ||
-        activityStatus.value === 'completed' ||
-        activityStatus.value === 'failed',
+        !activityQuery.value.trim() &&
+        (activityStatus.value === 'all' ||
+            activityStatus.value === 'completed' ||
+            activityStatus.value === 'failed'),
 );
 
 const resultHighlightJobs = computed(() => {
@@ -818,3 +819,53 @@ onBeforeUnmount(() => {
     stopActiveJobTracking();
 });
 </script>
+
+<style scoped>
+.or3-sched-tabs {
+    display: flex;
+    align-items: stretch;
+    gap: 0.25rem;
+    border-bottom: 1px solid var(--or3-border);
+    padding: 0 0.25rem;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.or3-sched-tabs::-webkit-scrollbar {
+    display: none;
+}
+
+.or3-sched-tab {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    flex-shrink: 0;
+    padding: 0.85rem 0.95rem;
+    margin-bottom: -1px;
+    border-bottom: 2px solid transparent;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--or3-text-muted);
+    background: transparent;
+    transition:
+        color 140ms ease,
+        border-color 140ms ease;
+    white-space: nowrap;
+}
+
+.or3-sched-tab:hover {
+    color: var(--or3-text);
+}
+
+.or3-sched-tab[aria-pressed='true'] {
+    color: var(--or3-green-dark);
+    border-bottom-color: var(--or3-green);
+    font-weight: 600;
+}
+
+.or3-sched-tab__icon {
+    width: 1rem;
+    height: 1rem;
+}
+</style>

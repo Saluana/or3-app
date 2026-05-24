@@ -36,10 +36,97 @@ export interface AgentCommandDraft {
 
 const STALE_MS = 5 * 60 * 1000;
 
+const SYSTEM_TITLE_RE =
+    /^(system:|this conversation is being replayed)/i;
+const REPLAY_BLOB_RE = /conversation is being replayed/i;
+const USER_PROMPT_RE = /\bUser:\s*/i;
+
+function truncateLabel(text: string, maxLen = 96): string {
+    const trimmed = text.trim();
+    if (trimmed.length <= maxLen) return trimmed;
+    return `${trimmed.slice(0, maxLen - 1).trimEnd()}…`;
+}
+
+function isReplayOrSystemBlob(text?: string): boolean {
+    if (!text?.trim()) return false;
+    const value = text.trim();
+    return SYSTEM_TITLE_RE.test(value) || REPLAY_BLOB_RE.test(value);
+}
+
+/** Pull the user's prompt out of CLI replay / system context strings. */
+export function extractUserPromptFromJobText(text?: string): string | null {
+    if (!text?.trim()) return null;
+    const raw = text.trim();
+    if (!isReplayOrSystemBlob(raw)) {
+        return raw.length <= 140 ? raw : truncateLabel(raw, 96);
+    }
+    const match = raw.match(/\bUser:\s*([\s\S]*?)(?:\n(?:Assistant|System):|$)/i);
+    const snippet = match?.[1]?.trim().split('\n')[0]?.trim();
+    if (snippet) return truncateLabel(snippet, 96);
+    return null;
+}
+
+function looksLikeSystemTitle(title: string, task?: string): boolean {
+    if (isReplayOrSystemBlob(title)) return true;
+    if (!task?.trim()) return false;
+    return title.length > 96 && task.trim().length <= title.length;
+}
+
 export function jobDisplayTitle(job: JobSnapshot): string {
-    if (job.title?.trim()) return job.title.trim();
-    if (job.task?.trim()) return job.task.trim();
+    const fromTask = extractUserPromptFromJobText(job.task);
+    const fromTitle = extractUserPromptFromJobText(job.title);
+    if (fromTask) return fromTask;
+    if (fromTitle) return fromTitle;
+
+    const task = job.task?.trim();
+    const title = job.title?.trim();
+    if (task && title && looksLikeSystemTitle(title, task)) {
+        return truncateLabel(task.length <= title.length ? task : title, 96);
+    }
+    if (title && !isReplayOrSystemBlob(title)) return truncateLabel(title, 96);
+    if (task && !isReplayOrSystemBlob(task)) return truncateLabel(task, 96);
+    if (title) return truncateLabel(title, 96);
+    if (task) return truncateLabel(task, 96);
     return formatAgentCliKind(job.kind);
+}
+
+function isNoisePreview(text: string, displayTitle: string): boolean {
+    const trimmed = text.trim();
+    if (!trimmed) return true;
+    if (trimmed === displayTitle) return true;
+    if (isReplayOrSystemBlob(trimmed)) return true;
+    if (trimmed.startsWith('{') && trimmed.includes('"type"')) return true;
+    if (/^```[\s\S]*```$/m.test(trimmed) && trimmed.length < 40) return true;
+    return false;
+}
+
+export function jobSearchHaystack(job: JobSnapshot): string {
+    return [
+        jobDisplayTitle(job),
+        job.task,
+        job.title,
+        job.final_text,
+        job.error,
+        job.stdout_preview,
+        job.stderr_preview,
+        job.error_preview,
+        job.output_preview,
+        job.runner_id,
+        job.runner_label,
+        runnerLabel(job.runner_id),
+        job.status,
+        normalizeStatus(job.status),
+        activityStatusLabel(job.status),
+        jobRunnerDisplay(job),
+        job.category,
+        job.kind,
+        formatAgentCliKind(job.kind),
+        job.job_id,
+        job.cwd,
+    ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
 }
 
 export function jobRunnerDisplay(job: JobSnapshot): string {
@@ -55,25 +142,14 @@ export function sortJobsByUpdated(jobs: JobSnapshot[]): JobSnapshot[] {
 }
 
 export function jobMatchesSearch(job: JobSnapshot, query: string): boolean {
-    const q = query.trim().toLowerCase();
-    if (!q) return true;
-    const haystack = [
-        job.title,
-        job.task,
-        job.final_text,
-        job.error,
-        job.stdout_preview,
-        job.stderr_preview,
-        job.error_preview,
-        job.runner_id,
-        job.runner_label,
-        job.status,
-        job.category,
-    ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-    return haystack.includes(q);
+    const tokens = query
+        .trim()
+        .toLowerCase()
+        .split(/\s+/)
+        .filter(Boolean);
+    if (!tokens.length) return true;
+    const haystack = jobSearchHaystack(job);
+    return tokens.every((token) => haystack.includes(token));
 }
 
 export function filterJobsByStatus(
@@ -324,17 +400,30 @@ export function activityStatusLabel(status: string | undefined): string {
 }
 
 export function resultPreviewForList(job: JobSnapshot, maxLen = 100): string {
+    const displayTitle = jobDisplayTitle(job);
+
     if (normalizeStatus(job.status) === 'failed') {
         const err =
             job.error?.trim() ||
             job.error_preview?.trim() ||
             job.stderr_preview?.trim();
-        if (err) return err.slice(0, maxLen);
+        if (err && !isNoisePreview(err, displayTitle)) {
+            return truncateLabel(err, maxLen);
+        }
     }
-    const text =
-        job.final_text?.trim() ||
-        job.stdout_preview?.trim() ||
-        job.output_preview?.trim();
-    if (text) return text.slice(0, maxLen);
+
+    const candidates = [
+        job.final_text,
+        job.stdout_preview,
+        job.output_preview,
+    ]
+        .map((value) => value?.trim())
+        .filter(Boolean) as string[];
+
+    for (const text of candidates) {
+        if (isNoisePreview(text, displayTitle)) continue;
+        const oneLine = text.replace(/\s+/g, ' ').trim();
+        return truncateLabel(oneLine, maxLen);
+    }
     return '';
 }
