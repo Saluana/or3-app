@@ -316,4 +316,41 @@ describe('createAssistantEventApplier', () => {
             },
         ]);
     });
+
+    it('marks tool_result failed lifecycle events as errors', () => {
+        const { assistant, applyEvent } = createApplier();
+
+        applyEvent(
+            {
+                event: 'tool_call',
+                json: {
+                    name: 'write_file',
+                    tool_call_id: 'call_write',
+                    arguments: '{"path":"test.md"}',
+                },
+            },
+            'stream',
+        );
+        applyEvent(
+            {
+                event: 'tool_result',
+                json: {
+                    name: 'write_file',
+                    tool_call_id: 'call_write',
+                    status: 'failed',
+                    result: JSON.stringify({
+                        ok: false,
+                        summary: 'write_file failed: tool not available in this turn',
+                    }),
+                },
+            },
+            'stream',
+        );
+
+        const toolPart = assistant.value.parts?.find(
+            (part) => part.type === 'tool',
+        );
+        expect(toolPart?.status).toBe('error');
+        expect(assistant.value.toolCalls[0]?.status).toBe('error');
+    });
 });

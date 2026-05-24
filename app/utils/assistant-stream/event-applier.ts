@@ -439,8 +439,7 @@ export function createAssistantEventApplier(
             const toolName = String(payload?.name || 'tool');
             const toolCallId = toolCallIdentity(payload, toolName);
             const approvalRequired = isApprovalRequiredPayload(payload);
-            const toolError =
-                typeof payload?.error === 'string' ? payload.error : undefined;
+            const toolError = toolResultError(payload);
             options.resolveToolCall(
                 toolName,
                 typeof payload?.result === 'string'
@@ -745,3 +744,41 @@ export function createAssistantEventApplier(
 
     return { applyEvent };
 }
+
+function toolResultError(payload: Record<string, unknown> | undefined): string | undefined {
+    const explicit =
+        typeof payload?.error === 'string' ? payload.error.trim() : '';
+    if (explicit) return explicit;
+
+    const result =
+        typeof payload?.result === 'string' ? payload.result.trim() : '';
+    if (result) {
+        try {
+            const parsed = JSON.parse(result) as {
+                ok?: boolean;
+                summary?: string;
+            };
+            if (parsed?.ok === false) {
+                return parsed.summary?.trim() || 'Tool failed';
+            }
+        } catch {
+            // Non-JSON tool output; fall through to status handling.
+        }
+    }
+
+    const status = String(payload?.status ?? '')
+        .trim()
+        .toLowerCase();
+    if (status === 'failed' || status === 'error') {
+        if (result) return result.slice(0, 500);
+        const publicCode =
+            typeof payload?.public_code === 'string'
+                ? payload.public_code.trim()
+                : '';
+        return publicCode || 'Tool failed';
+    }
+
+    return undefined;
+}
+
+export { toolResultError };
