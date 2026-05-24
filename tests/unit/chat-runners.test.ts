@@ -1,6 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { nextTick, ref } from 'vue';
 
+vi.mock('../../app/composables/usePinLock', () => ({
+    needsUnlock: () => false,
+    usePinLockState: () => ({ needsUnlock: ref(false) }),
+}));
+vi.mock('../../app/composables/useSecureHostTokens', () => ({
+    canUseHostApi: () => true,
+}));
+
 type ActiveHostRef = ReturnType<typeof ref<{ id: string } | null>>;
 
 function makeRunner(id: string, status = 'available', authStatus = 'ready') {
@@ -34,7 +42,11 @@ function makeRunner(id: string, status = 'available', authStatus = 'ready') {
 
 async function loadComposable(requestImpl: (path: string) => Promise<any>, initialHost = 'host-a') {
     vi.resetModules();
-    const activeHost: ActiveHostRef = ref({ id: initialHost });
+    const activeHost: ActiveHostRef = ref({
+        id: initialHost,
+        baseUrl: 'http://127.0.0.1:9100',
+        pairedToken: 'paired-token',
+    });
     const request = vi.fn(requestImpl);
 
     vi.doMock('../../app/composables/useActiveHost', () => ({
@@ -43,7 +55,6 @@ async function loadComposable(requestImpl: (path: string) => Promise<any>, initi
     vi.doMock('../../app/composables/useOr3Api', () => ({
         useOr3Api: () => ({ request }),
     }));
-
     const mod = await import('../../app/composables/useChatRunners');
     const chatRunners = mod.useChatRunners();
     return { chatRunners, activeHost, request };
@@ -82,7 +93,7 @@ describe('useChatRunners', () => {
         expect(request).toHaveBeenCalledTimes(6);
     });
 
-    it('falls back to OR3 when both endpoints fail and exposes errors', async () => {
+    it('falls back to OR3 when both endpoints fail without surfacing an error', async () => {
         const { chatRunners, request } = await loadComposable(async () => {
             throw new Error('runner discovery offline');
         });
@@ -90,7 +101,7 @@ describe('useChatRunners', () => {
         await chatRunners.refresh();
 
         expect(request).toHaveBeenCalledTimes(2);
-        expect(chatRunners.error.value).toContain('runner discovery offline');
+        expect(chatRunners.error.value).toBeNull();
         expect(chatRunners.runners.value).toHaveLength(1);
         expect(chatRunners.runners.value[0]?.id).toBe('or3-intern');
         expect(chatRunners.defaultRunner.value?.id).toBe('or3-intern');

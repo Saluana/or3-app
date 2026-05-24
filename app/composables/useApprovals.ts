@@ -10,6 +10,8 @@ import {
 } from '~/utils/or3/approvals';
 import { createLogger } from '~/utils/logger';
 import { useActiveHost } from './useActiveHost';
+import { needsUnlock } from './usePinLock';
+import { canUseHostApi } from './useSecureHostTokens';
 import { useOr3Api } from './useOr3Api';
 
 const approvals = ref<ApprovalRequest[]>([]);
@@ -20,6 +22,7 @@ const approvalsError = ref<string | null>(null);
 const pendingCount = ref(0);
 const activeApprovalStatus = ref('');
 let approvalsPollTimer: ReturnType<typeof setInterval> | null = null;
+let pendingCountInFlight: Promise<void> | null = null;
 const approvalActionsInFlight = new Set<string>();
 const issuedApprovalTokens = ref<Record<string, string>>({});
 
@@ -83,14 +86,20 @@ export function useApprovals() {
             pendingCount.value = 0;
             return;
         }
-        try {
-            const response = await api.request<{ items: unknown[] }>(
-                '/internal/v1/approvals?status=pending',
-            );
-            pendingCount.value = response.items?.length ?? 0;
-        } catch {
-            pendingCount.value = 0;
-        }
+        if (pendingCountInFlight) return pendingCountInFlight;
+        pendingCountInFlight = (async () => {
+            try {
+                const response = await api.request<{ items: unknown[] }>(
+                    '/internal/v1/approvals?status=pending',
+                );
+                pendingCount.value = response.items?.length ?? 0;
+            } catch {
+                pendingCount.value = 0;
+            } finally {
+                pendingCountInFlight = null;
+            }
+        })();
+        return pendingCountInFlight;
     }
 
     async function loadApprovals(status = '') {
@@ -270,6 +279,8 @@ export function useApprovals() {
 
     function hostKnownUnavailable() {
         return (
+            needsUnlock() ||
+            !canUseHostApi(activeHost.value) ||
             !isPaired.value ||
             activeHost.value?.status === 'offline' ||
             activeHost.value?.status === 'unauthorized'

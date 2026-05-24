@@ -38,11 +38,30 @@ async function loadComposable(options?: {
             })),
     );
 
+    const activeHost = ref({
+        id: 'test-host',
+        baseUrl: 'http://127.0.0.1:9100',
+        pairedToken: 'paired-token',
+        status: 'online',
+    });
+
     vi.doMock('../../app/composables/useChatSessions', () => ({
         useChatSessions: () => chat,
     }));
     vi.doMock('../../app/composables/useOr3Api', () => ({
         useOr3Api: () => ({ request }),
+    }));
+    vi.doMock('../../app/composables/useActiveHost', () => ({
+        useActiveHost: () => ({ activeHost }),
+    }));
+    vi.doMock('../../app/composables/useSecureHostTokens', () => ({
+        canUseHostApi: () => true,
+    }));
+    vi.doMock('../../app/composables/useCredentialsSync', () => ({
+        syncCredentialsAfterUnlock: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../../app/composables/usePinLock', () => ({
+        usePinLockState: () => ({ needsUnlock: ref(false) }),
     }));
 
     const mod = await import('../../app/composables/useSessionHistory');

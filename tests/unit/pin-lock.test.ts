@@ -12,6 +12,7 @@ import {
     lock,
     needsUnlock,
     resetPinLock,
+    touchPinActivity,
     unlock,
 } from '../../app/composables/usePinLock';
 
@@ -144,7 +145,7 @@ describe('usePinLock', () => {
         expect(freshPinLock.needsUnlock()).toBe(false);
     });
 
-    it('requires the pin again after the unlock grace window expires', async () => {
+    it('requires the pin again after the inactivity window expires', async () => {
         vi.useFakeTimers();
         const unlockDurationMs = 5 * 60 * 1000;
 
@@ -160,5 +161,25 @@ describe('usePinLock', () => {
 
         expect(freshPinLock.isUnlocked()).toBe(false);
         expect(freshPinLock.needsUnlock()).toBe(true);
+    });
+
+    it('extends the inactivity window when the user is active', async () => {
+        vi.useFakeTimers();
+        const unlockDurationMs = 5 * 60 * 1000;
+
+        await expect(enable('1234', unlockDurationMs)).resolves.toMatchObject({
+            success: true,
+        });
+
+        vi.advanceTimersByTime(unlockDurationMs - 60_000);
+        touchPinActivity();
+        vi.advanceTimersByTime(unlockDurationMs - 30_000);
+
+        const freshPinLock = await import(
+            `../../app/composables/usePinLock?reload=grace-active-touch`
+        );
+
+        expect(freshPinLock.isUnlocked()).toBe(true);
+        expect(freshPinLock.needsUnlock()).toBe(false);
     });
 });

@@ -1,8 +1,10 @@
 import { computed, ref } from 'vue'
 import type { AppActionDescriptor, AppBootstrapResponse, CapabilitiesResponse, HealthResponse, ReadinessResponse } from '~/types/or3-api'
 import { coerceReadinessPayload } from '~/utils/or3/readiness'
+import { useActiveHost } from './useActiveHost'
 import { useLocalCache } from './useLocalCache'
 import { useOr3Api } from './useOr3Api'
+import { canUseHostApi } from './useSecureHostTokens'
 
 const health = ref<HealthResponse | null>(null)
 const readiness = ref<ReadinessResponse | null>(null)
@@ -10,9 +12,30 @@ const capabilities = ref<CapabilitiesResponse | null>(null)
 const bootstrap = ref<AppBootstrapResponse | null>(null)
 const loadingStatus = ref(false)
 
+type CachedHostStatus = {
+  health?: HealthResponse | null
+  readiness?: ReadinessResponse | null
+  capabilities?: CapabilitiesResponse | null
+}
+
+function hydrateFromCache(cache: ReturnType<typeof useLocalCache>) {
+  if (capabilities.value) return
+  const hostId = cache.state.value.activeHostId
+  if (!hostId) return
+  const entry = cache.state.value.lastKnownStatus[hostId]
+  const payload = entry?.value as CachedHostStatus | undefined
+  if (!payload) return
+  if (payload.health) health.value = payload.health
+  if (payload.readiness) readiness.value = payload.readiness
+  if (payload.capabilities) capabilities.value = payload.capabilities
+}
+
 export function useComputerStatus() {
   const api = useOr3Api()
   const cache = useLocalCache()
+  const { activeHost } = useActiveHost()
+
+  hydrateFromCache(cache)
 
   const isOnline = computed(() => health.value?.status === 'ok' || health.value?.status === 'healthy')
   const restartAction = computed<AppActionDescriptor | null>(() => bootstrap.value?.actions?.find((action) => action.id === 'restart-service') ?? null)
@@ -48,6 +71,7 @@ export function useComputerStatus() {
   }
 
   async function refreshStatus() {
+    if (!canUseHostApi(activeHost.value)) return
     loadingStatus.value = true
     try {
       try {

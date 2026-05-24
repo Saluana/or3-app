@@ -258,6 +258,18 @@ html.or3-keyboard-open .or3-mobile-screen {
   min-width: 44px;
 }
 
+/* Keep PIN setup actions above the mobile bottom tab bar */
+@media (max-width: 1023px) {
+  .or3-pin-lock-settings {
+    margin-bottom: calc(var(--or3-bottom-nav-height) + var(--or3-bottom-nav-offset) + 0.5rem);
+  }
+
+  .or3-pin-lock-settings .flex.items-center.justify-end.gap-2 {
+    position: relative;
+    z-index: 1;
+  }
+}
+
 .or3-icon-frame {
   display: inline-flex;
   flex-shrink: 0;
@@ -1479,6 +1491,7 @@ html.or3-keyboard-open .or3-chat-shell__composer {
  * Desktop chat layout (lives inside DesktopAppShell main surface)
  * ============================================================ */
 .or3-chat-desktop {
+  position: relative;
   display: grid;
   grid-template-rows: auto 1fr min-content;
   height: 100%;
@@ -1499,6 +1512,7 @@ html.or3-keyboard-open .or3-chat-shell__composer {
   padding: 1.5rem 2rem 1.25rem;
   min-width: 0;
   width: 100%;
+  pointer-events: none;
 }
 
 .or3-chat-desktop__header-main {
@@ -1539,6 +1553,7 @@ html.or3-keyboard-open .or3-chat-shell__composer {
   align-items: center;
   gap: 0.6rem;
   flex-shrink: 0;
+  pointer-events: auto;
 }
 
 .or3-chat-desktop__body {

@@ -31,8 +31,6 @@
             :keyboard-open="isKeyboardOpen"
             :show-scroll-to-bottom="showScrollToBottom"
             :scroll-to-bottom-opacity="scrollToBottomOpacity"
-            :live-channel-paused="liveChannelPaused"
-            :runners-error="runnersError"
             @scroll-state="updateScrollState"
             @prompt-select="onPromptSelect"
             @open-prompt-gallery="openPromptGallery"
@@ -42,8 +40,6 @@
             @learn-more="router.push('/settings/permissions')"
             @send="sendWithMode"
             @stop="stop"
-            @refresh-live-channel="refreshLiveChannel"
-            @refresh-runners="refreshRunners"
         >
             <template #header>
                 <div class="or3-chat-shell__header bg-transparent!">
@@ -124,8 +120,6 @@
                 :can-host-locally="isElectron"
                 :show-scroll-to-bottom="showScrollToBottom"
                 :scroll-to-bottom-opacity="scrollToBottomOpacity"
-                :live-channel-paused="liveChannelPaused"
-                :runners-error="runnersError"
                 @scroll-state="updateScrollState"
                 @prompt-select="onPromptSelect"
                 @open-prompt-gallery="openPromptGallery"
@@ -135,8 +129,6 @@
                 @learn-more="router.push('/settings/permissions')"
                 @send="sendWithMode"
                 @stop="stop"
-                @refresh-live-channel="refreshLiveChannel"
-                @refresh-runners="refreshRunners"
             >
                 <template #header>
                     <div class="or3-chat-desktop__header">
@@ -217,12 +209,12 @@ const router = useRouter();
 const toast = useToast();
 const { pendingCount } = useApprovals();
 const { isKeyboardOpen } = useKeyboardOpen();
-const { isConnected } = useActiveHost();
+const { activeHost, isConnected, isPaired } = useActiveHost();
 const electronHost = useElectronHostSetup();
 const { isElectron } = electronHost;
 
 const showWelcome = computed(
-    () => !isConnected.value && messages.value.length === 0,
+    () => !isPaired.value && messages.value.length === 0,
 );
 
 const selectedRunnerId = ref('or3-intern');
@@ -351,6 +343,7 @@ function refreshLiveChannel() {
 function startLiveChannelStream(sessionKey?: string | null) {
     stopLiveChannelStream();
     liveChannelPaused.value = false;
+    if (!canUseHostApi(activeHost.value)) return;
     if (!isExternalChannelSession(sessionKey)) return;
     const controller = new AbortController();
     liveChannelController.value = controller;
@@ -366,6 +359,7 @@ function startLiveChannelStream(sessionKey?: string | null) {
         })
         .catch((error) => {
             if (controller.signal.aborted) return;
+            if (!canUseHostApi(activeHost.value)) return;
             liveChannelPaused.value = true;
             console.warn('live channel stream stopped', error);
         });
@@ -418,8 +412,11 @@ watch(
 );
 
 watch(
-    () => activeSession.value?.sessionKey,
-    (sessionKey) => startLiveChannelStream(sessionKey),
+    () =>
+        canUseHostApi(activeHost.value)
+            ? activeSession.value?.sessionKey ?? ''
+            : '',
+    (sessionKey) => startLiveChannelStream(sessionKey || null),
     { immediate: true },
 );
 
@@ -524,9 +521,107 @@ function sendWithMode(payload: Parameters<typeof send>[0]) {
     });
 }
 
-onMounted(() => {
-    void refreshRunners();
-    void sessionHistory.refresh();
+watch(
+    () =>
+        canUseHostApi(activeHost.value) ? activeHost.value?.id ?? '' : '',
+    (hostId) => {
+        if (hostId) void sessionHistory.refresh();
+    },
+    { immediate: true },
+);
+
+const runnersToastId = ref<string | number | undefined>();
+const liveChannelToastId = ref<string | number | undefined>();
+const historyToastId = ref<string | number | undefined>();
+
+watch(
+    () => canUseHostApi(activeHost.value),
+    (ready) => {
+        if (ready) return;
+        stopLiveChannelStream();
+        liveChannelPaused.value = false;
+        if (liveChannelToastId.value !== undefined) {
+            toast.remove(liveChannelToastId.value);
+            liveChannelToastId.value = undefined;
+        }
+    },
+);
+
+watch(liveChannelPaused, (paused) => {
+    if (liveChannelToastId.value !== undefined) {
+        toast.remove(liveChannelToastId.value);
+        liveChannelToastId.value = undefined;
+    }
+    if (!paused || !canUseHostApi(activeHost.value)) return;
+    liveChannelToastId.value = toast.add({
+        title: 'Live updates paused',
+        description:
+            'Refresh to load the latest messages for this channel.',
+        color: 'warning',
+        icon: 'i-pixelarticons-refresh',
+        actions: [
+            {
+                label: 'Refresh',
+                onClick: () => {
+                    refreshLiveChannel();
+                },
+            },
+        ],
+    });
+});
+
+watch(historyError, (message) => {
+    if (historyToastId.value !== undefined) {
+        toast.remove(historyToastId.value);
+        historyToastId.value = undefined;
+    }
+    if (!message || !canUseHostApi(activeHost.value)) return;
+    if (historySessions.value.length > 0 || historyLoading.value) return;
+    const lower = message.toLowerCase();
+    if (
+        lower.includes('unauthorized') ||
+        lower.includes('unlock') ||
+        lower.includes('pin')
+    ) {
+        return;
+    }
+    historyToastId.value = toast.add({
+        title: "Couldn't load conversations",
+        description: message,
+        color: 'warning',
+        icon: 'i-pixelarticons-alert',
+        actions: [
+            {
+                label: 'Retry',
+                onClick: () => {
+                    void sessionHistory.refresh();
+                },
+            },
+        ],
+    });
+});
+
+watch(runnersError, (message) => {
+    if (runnersToastId.value !== undefined) {
+        toast.remove(runnersToastId.value);
+        runnersToastId.value = undefined;
+    }
+    if (!message || !canUseHostApi(activeHost.value)) return;
+    if (defaultRunner.value) return;
+    runnersToastId.value = toast.add({
+        title: "Couldn't load agents",
+        description: 'Using OR3 Intern for now.',
+        color: 'warning',
+        icon: 'i-pixelarticons-alert',
+        actions: [
+            {
+                label: 'Retry',
+                onClick: () => {
+                    void refreshRunners();
+                },
+            },
+        ],
+    });
 });
 
 onBeforeUnmount(() => {

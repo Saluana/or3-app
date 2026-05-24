@@ -431,9 +431,11 @@ const connectionDescription = computed(() => {
     if (isConnected.value) return 'Your or3-intern app is connected and ready.';
     return 'This app still has a saved pairing, but it cannot reach that computer right now.';
 });
-const connectionPillLabel = computed(() =>
-    isConnected.value ? 'Connected' : 'Unavailable',
-);
+const connectionPillLabel = computed(() => {
+    if (isConnected.value) return 'Connected';
+    if (isPaired.value) return 'Connecting…';
+    return 'Unavailable';
+});
 const connectionPillTone = computed<'green' | 'amber'>(() =>
     isConnected.value ? 'green' : 'amber',
 );

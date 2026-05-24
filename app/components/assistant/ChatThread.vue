@@ -2,40 +2,6 @@
     <div :class="rootClass">
         <slot name="header" />
 
-        <div
-            v-if="liveChannelPaused"
-            class="mx-3 mb-3 flex items-center justify-between gap-3 rounded-2xl border border-(--or3-border) bg-(--or3-surface-soft) px-3 py-2.5 text-sm"
-        >
-            <p class="text-(--or3-text-muted)">
-                Live updates paused for this channel.
-            </p>
-            <UButton
-                size="xs"
-                color="primary"
-                variant="soft"
-                @click="emit('refresh-live-channel')"
-            >
-                Refresh
-            </UButton>
-        </div>
-
-        <div
-            v-if="runnersError"
-            class="mx-3 mb-3 flex items-center justify-between gap-3 rounded-2xl border border-(--or3-amber)/30 bg-(--or3-amber)/10 px-3 py-2.5 text-sm"
-        >
-            <p class="text-(--or3-text)">
-                Couldn't load agents. Using OR3 Intern for now.
-            </p>
-            <UButton
-                size="xs"
-                color="primary"
-                variant="soft"
-                @click="emit('refresh-runners')"
-            >
-                Retry
-            </UButton>
-        </div>
-
         <div :class="bodyClass">
             <div v-if="showWelcome" :class="contentClass">
                 <WelcomeCard
@@ -186,14 +152,10 @@ const props = withDefaults(
         keyboardOpen?: boolean;
         showScrollToBottom: boolean;
         scrollToBottomOpacity: number;
-        liveChannelPaused?: boolean;
-        runnersError?: string | null;
     }>(),
     {
         messageListKey: 'active-thread',
         keyboardOpen: false,
-        liveChannelPaused: false,
-        runnersError: null,
     },
 );
 
@@ -209,8 +171,6 @@ const emit = defineEmits<{
     'setup-host': [];
     'pair-device': [];
     'learn-more': [];
-    'refresh-live-channel': [];
-    'refresh-runners': [];
 }>();
 
 const messageListRef = ref<{ scrollToBottom?: () => void } | null>(null);

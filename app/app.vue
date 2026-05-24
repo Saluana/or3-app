@@ -19,8 +19,13 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useKeyboardOpen } from './composables/useKeyboardOpen'
 import { useElectronHostSetup } from './composables/useElectronHostSetup'
-import { resetPinLock, usePinLockState } from './composables/usePinLock'
+import { bootstrapHostApiGate } from './composables/useHostApiGate'
+import { bootstrapPinLock, resetPinLock, touchPinActivity, usePinLockState } from './composables/usePinLock'
+import { canUseHostApi } from './composables/useSecureHostTokens'
 import { useLocalCache } from './composables/useLocalCache'
+import { useActiveHost } from './composables/useActiveHost'
+import { bootstrapHostWorkspace } from './composables/useHostWorkspaceBootstrap'
+import { useSessionHistory } from './composables/useSessionHistory'
 
 const toaster = {
   position: 'top-right',
@@ -29,10 +34,14 @@ const toaster = {
   expand: true,
 } as const
 
+bootstrapPinLock()
+bootstrapHostApiGate()
+
 useKeyboardOpen()
 const electronHost = useElectronHostSetup()
 
 const pinLock = usePinLockState()
+const { activeHost } = useActiveHost()
 const pinStateReady = ref(false)
 const showUnlockOverlay = computed(() => pinStateReady.value && pinLock.needsUnlock.value)
 
@@ -56,6 +65,9 @@ onMounted(() => {
   document.documentElement.classList.toggle('or3-standalone', Boolean(standalone))
   pinLock.refresh()
   refreshElectronHost()
+  if (canUseHostApi(activeHost.value)) {
+    void bootstrapHostWorkspace()
+  }
   window.addEventListener('focus', onWindowFocus)
   document.addEventListener('visibilitychange', onVisibilityChange)
   pinStateReady.value = true
@@ -67,7 +79,10 @@ onBeforeUnmount(() => {
 })
 
 function onUnlocked() {
-  useLocalCache().forceReload()
+  touchPinActivity()
+  const sessionHistory = useSessionHistory()
+  sessionHistory.error.value = null
+  void sessionHistory.refresh()
 }
 
 function onResetPinLock() {

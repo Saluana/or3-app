@@ -31,7 +31,8 @@ export function useApprovalHydration(options: UseApprovalHydrationOptions) {
 
         const hostId = options.activeHost.value?.id?.trim();
         const hasAuth = Boolean(
-            options.activeHost.value?.token?.trim() ||
+            options.activeHost.value?.pairedToken?.trim() ||
+                options.activeHost.value?.token?.trim() ||
                 options.activeHost.value?.authMode === 'secure-session',
         );
         const sessionKey = options.chat.activeSession.value?.sessionKey?.trim();
@@ -123,6 +124,7 @@ export function useApprovalHydration(options: UseApprovalHydrationOptions) {
             () => ({
                 hostId: options.activeHost.value?.id ?? '',
                 token:
+                    options.activeHost.value?.pairedToken ||
                     options.activeHost.value?.token ||
                     options.activeHost.value?.authMode === 'secure-session'
                         ? 'ready'

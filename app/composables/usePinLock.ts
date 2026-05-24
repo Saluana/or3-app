@@ -4,6 +4,11 @@ import { sha256 } from '@noble/hashes/sha2.js';
 import { computed, readonly, ref } from 'vue';
 import { createLogger } from '~/utils/logger';
 import type { HostTokenRecord } from './useSecureHostTokens';
+import {
+    beginHostApiSettlement,
+    completeHostApiSettlement,
+    resetHostApiSettlement,
+} from './useHostApiGate';
 
 const logger = createLogger('pin_lock');
 
@@ -32,7 +37,9 @@ interface PinLockoutState {
 interface PinUnlockedSession {
     salt: string;
     keyHex: string;
-    expiresAtTs: number;
+    lastActivityAtTs: number;
+    /** @deprecated Legacy fixed-expiry sessions. */
+    expiresAtTs?: number;
 }
 
 let _config: PinLockConfig | null = null;
@@ -42,7 +49,9 @@ let _failedAttempts = 0;
 let _lockedUntilTs: number | null = null;
 let _initialized = false;
 let _lifecycleHandlersAttached = false;
-let _wasBackgrounded = false;
+let _activityHandlersAttached = false;
+let _lastActivityTouchMs = 0;
+const PIN_ACTIVITY_TOUCH_THROTTLE_MS = 60_000;
 
 const pinEnabledState = ref(false);
 const decryptedTokensState = ref<Record<string, HostTokenRecord> | null>(null);
@@ -122,13 +131,25 @@ function clearUnlockedSessionCache() {
     }
 }
 
-function persistUnlockedSession() {
+function unlockDurationMsForConfig() {
+    return sanitizeUnlockDurationMs(_config?.unlockDurationMs);
+}
+
+function isUnlockSessionFresh(
+    session: PinUnlockedSession,
+    unlockDurationMs = unlockDurationMsForConfig(),
+) {
+    if (unlockDurationMs <= PIN_UNLOCK_IMMEDIATE_MS) return false;
+    return Date.now() - session.lastActivityAtTs < unlockDurationMs;
+}
+
+function persistUnlockedSession(activityAtTs = Date.now()) {
     if (!_config?.enabled || !_cachedKey) {
         clearUnlockedSessionCache();
         return;
     }
 
-    const unlockDurationMs = sanitizeUnlockDurationMs(_config.unlockDurationMs);
+    const unlockDurationMs = unlockDurationMsForConfig();
     if (unlockDurationMs <= PIN_UNLOCK_IMMEDIATE_MS) {
         clearUnlockedSessionCache();
         return;
@@ -137,7 +158,7 @@ function persistUnlockedSession() {
     const session: PinUnlockedSession = {
         salt: _config.salt,
         keyHex: bytesToHex(_cachedKey),
-        expiresAtTs: Date.now() + unlockDurationMs,
+        lastActivityAtTs: activityAtTs,
     };
 
     if (typeof sessionStorage !== 'undefined') {
@@ -145,7 +166,38 @@ function persistUnlockedSession() {
     }
 }
 
-function readUnlockedSession(): PinUnlockedSession | null {
+export function touchPinActivity() {
+    if (!_config?.enabled || _decryptedTokens === null) return;
+    const unlockDurationMs = unlockDurationMsForConfig();
+    if (unlockDurationMs <= PIN_UNLOCK_IMMEDIATE_MS) return;
+
+    const now = Date.now();
+    if (now - _lastActivityTouchMs < PIN_ACTIVITY_TOUCH_THROTTLE_MS) return;
+    _lastActivityTouchMs = now;
+    persistUnlockedSession(now);
+}
+
+function enforceInactivityLock() {
+    if (!_config?.enabled || _decryptedTokens === null) return;
+    const unlockDurationMs = unlockDurationMsForConfig();
+    if (unlockDurationMs <= PIN_UNLOCK_IMMEDIATE_MS) {
+        lock();
+        return;
+    }
+
+    const session = readUnlockedSession({ allowExpired: true });
+    if (!session || session.salt !== _config.salt) {
+        lock();
+        return;
+    }
+    if (!isUnlockSessionFresh(session, unlockDurationMs)) {
+        lock();
+    }
+}
+
+function readUnlockedSession(options?: {
+    allowExpired?: boolean;
+}): PinUnlockedSession | null {
     if (typeof sessionStorage === 'undefined') return null;
 
     const raw = sessionStorage.getItem(PIN_UNLOCK_SESSION_KEY);
@@ -160,24 +212,44 @@ function readUnlockedSession(): PinUnlockedSession | null {
 
         if (
             typeof parsed.salt !== 'string' ||
-            typeof parsed.keyHex !== 'string' ||
-            typeof parsed.expiresAtTs !== 'number' ||
-            !Number.isFinite(parsed.expiresAtTs)
+            typeof parsed.keyHex !== 'string'
         ) {
             clearUnlockedSessionCache();
             return null;
         }
 
-        if (parsed.expiresAtTs <= Date.now()) {
+        const unlockDurationMs = unlockDurationMsForConfig();
+        let lastActivityAtTs =
+            typeof parsed.lastActivityAtTs === 'number'
+                ? parsed.lastActivityAtTs
+                : Number.NaN;
+        if (
+            !Number.isFinite(lastActivityAtTs) &&
+            typeof parsed.expiresAtTs === 'number' &&
+            Number.isFinite(parsed.expiresAtTs)
+        ) {
+            lastActivityAtTs = parsed.expiresAtTs - unlockDurationMs;
+        }
+        if (!Number.isFinite(lastActivityAtTs)) {
             clearUnlockedSessionCache();
             return null;
         }
 
-        return {
+        const session: PinUnlockedSession = {
             salt: parsed.salt,
             keyHex: parsed.keyHex,
-            expiresAtTs: parsed.expiresAtTs,
+            lastActivityAtTs,
         };
+
+        if (
+            !options?.allowExpired &&
+            !isUnlockSessionFresh(session, unlockDurationMs)
+        ) {
+            clearUnlockedSessionCache();
+            return null;
+        }
+
+        return session;
     } catch {
         clearUnlockedSessionCache();
         return null;
@@ -204,6 +276,8 @@ function restoreUnlockedSession() {
 
         _cachedKey = key;
         _decryptedTokens = tokens;
+        _lastActivityTouchMs = Date.now();
+        attachActivityHandlers();
         return true;
     } catch {
         clearUnlockedSessionCache();
@@ -212,46 +286,55 @@ function restoreUnlockedSession() {
 }
 
 function handleBackgrounding() {
-    if (!_config?.enabled || _decryptedTokens === null) return;
-    _wasBackgrounded = true;
-
-    const unlockDurationMs = sanitizeUnlockDurationMs(_config.unlockDurationMs);
-    if (unlockDurationMs <= PIN_UNLOCK_IMMEDIATE_MS) {
-        lock();
-        return;
-    }
-
-    if (_cachedKey === null) return;
-    persistUnlockedSession();
+    touchPinActivity();
 }
 
 function handleForegrounding() {
     clearExpiredLockout();
 
-    if (_config?.enabled && _wasBackgrounded) {
-        _wasBackgrounded = false;
-
-        if (
-            sanitizeUnlockDurationMs(_config.unlockDurationMs) >
-                PIN_UNLOCK_IMMEDIATE_MS &&
-            readUnlockedSession() === null
-        ) {
-            lock();
-            return;
-        }
-    }
-
     if (_decryptedTokens === null) {
         restoreUnlockedSession();
-        syncReactiveState();
+    } else {
+        enforceInactivityLock();
     }
+
+    syncReactiveState();
+}
+
+function onPinUserActivity() {
+    touchPinActivity();
+}
+
+function attachActivityHandlers() {
+    if (
+        _activityHandlersAttached ||
+        typeof window === 'undefined' ||
+        typeof window.addEventListener !== 'function' ||
+        _decryptedTokens === null
+    ) {
+        return;
+    }
+    _activityHandlersAttached = true;
+    const options: AddEventListenerOptions = { passive: true, capture: true };
+    window.addEventListener('pointerdown', onPinUserActivity, options);
+    window.addEventListener('keydown', onPinUserActivity, options);
+    window.addEventListener('wheel', onPinUserActivity, options);
+}
+
+function detachActivityHandlers() {
+    if (!_activityHandlersAttached || typeof window === 'undefined') return;
+    _activityHandlersAttached = false;
+    window.removeEventListener('pointerdown', onPinUserActivity, true);
+    window.removeEventListener('keydown', onPinUserActivity, true);
+    window.removeEventListener('wheel', onPinUserActivity, true);
 }
 
 function ensureLifecycleHandlers() {
     if (
         _lifecycleHandlersAttached ||
         typeof document === 'undefined' ||
-        typeof window === 'undefined'
+        typeof window === 'undefined' ||
+        typeof window.addEventListener !== 'function'
     )
         return;
     _lifecycleHandlersAttached = true;
@@ -500,9 +583,17 @@ function refreshPinStateFromStorage() {
 
     if (nextConfig?.enabled && _decryptedTokens === null) {
         restoreUnlockedSession();
+    } else if (nextConfig?.enabled && _decryptedTokens !== null) {
+        enforceInactivityLock();
+        if (_decryptedTokens !== null) attachActivityHandlers();
     }
 
     syncReactiveState();
+}
+
+/** Restore PIN state before the UI mounts (e.g. soft reload). */
+export function bootstrapPinLock() {
+    ensureInit();
 }
 
 function ensureInit() {
@@ -531,6 +622,11 @@ export function isPinEnabled(): boolean {
 export function needsUnlock(): boolean {
     ensureInit();
     return unlockRequiredState.value;
+}
+
+export function hasPinProtectedTokenStore(): boolean {
+    ensureInit();
+    return Boolean(_config?.enabled && readEncryptedBlob());
 }
 
 export function isUnlocked(): boolean {
@@ -563,8 +659,11 @@ export function getDecryptedTokens(): Record<string, HostTokenRecord> | null {
 }
 
 export function lock() {
+    resetHostApiSettlement();
     _decryptedTokens = null;
     _cachedKey = null;
+    _lastActivityTouchMs = 0;
+    detachActivityHandlers();
     clearUnlockedSessionCache();
     syncReactiveState();
 }
@@ -613,11 +712,21 @@ export async function unlock(
                         : 'Incorrect PIN. Locked out.',
             };
         }
+        beginHostApiSettlement();
         _decryptedTokens = tokens;
         _cachedKey = key;
         persistUnlockedSession();
+        attachActivityHandlers();
         resetLockout();
         syncReactiveState();
+        try {
+            const { syncCredentialsAfterUnlock } = await import(
+                './useCredentialsSync'
+            );
+            await syncCredentialsAfterUnlock();
+        } finally {
+            completeHostApiSettlement();
+        }
         return { success: true };
     } catch (err) {
         recordFailedAttempt();
@@ -685,6 +794,7 @@ export async function enable(
         _decryptedTokens = tokensToStore;
         _cachedKey = key;
         persistUnlockedSession();
+        attachActivityHandlers();
         resetLockout();
         syncReactiveState();
         return { success: true };
@@ -814,6 +924,7 @@ export async function changePin(
         _cachedKey = newKey;
         _decryptedTokens = tokens;
         persistUnlockedSession();
+        attachActivityHandlers();
         resetLockout();
         syncReactiveState();
         return { success: true };

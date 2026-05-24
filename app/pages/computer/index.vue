@@ -15,6 +15,7 @@
                 :health="health"
                 :readiness="readiness"
                 :capabilities="capabilities"
+                :paired="isPaired"
                 :connected="connected"
                 active-tab="/computer"
             />

@@ -1,5 +1,6 @@
 import type { Or3HostProfile } from '~/types/app-state'
 import { deleteHostTokensFromNativeStorage, getNativeSecureStorageMode, readHostTokensFromNativeStorage, writeHostTokensToNativeStorage } from '~/utils/auth/nativeSecureStorage'
+import { isHostApiReady } from './useHostApiGate'
 import { isPinEnabled, needsUnlock, getDecryptedTokens, encryptAndStore } from './usePinLock'
 
 const HOST_TOKEN_STORAGE_KEY = 'or3-app:v1:secure-host-tokens'
@@ -54,7 +55,9 @@ function readHostTokenMap() {
   if (getNativeSecureStorageMode() === 'native-secure') return {} as Record<string, HostTokenRecord>
 
   if (isPinEnabled()) {
-    if (needsUnlock()) return {} as Record<string, HostTokenRecord>
+    if (needsUnlock()) {
+      return {} as Record<string, HostTokenRecord>
+    }
     return getDecryptedTokens() ?? ({} as Record<string, HostTokenRecord>)
   }
 
@@ -62,7 +65,9 @@ function readHostTokenMap() {
   if (!raw && Object.keys(inMemoryHostTokenMap).length) {
     return Object.fromEntries(Object.entries(inMemoryHostTokenMap).map(([hostId, value]) => [hostId, normalizeHostTokens(value)])) as Record<string, HostTokenRecord>
   }
-  if (!raw) return {} as Record<string, HostTokenRecord>
+  if (!raw) {
+    return {} as Record<string, HostTokenRecord>
+  }
   try {
     const parsed = JSON.parse(raw) as Record<string, HostTokenRecord>
     const normalized = Object.fromEntries(Object.entries(parsed).map(([hostId, value]) => [hostId, normalizeHostTokens(value)])) as Record<string, HostTokenRecord>
@@ -116,11 +121,27 @@ function writeHostTokenMap(tokens: Record<string, HostTokenRecord>) {
 export function resolveHostAuthTokens(host?: Partial<Or3HostProfile> | null) {
   if (!hostTokenOriginMatches(host)) return { authToken: undefined, sessionToken: undefined }
   const sessionToken = host?.sessionToken?.trim() || undefined
-  const pairedToken = host?.pairedToken?.trim() || host?.token?.trim() || undefined
+  const pairedToken = host?.pairedToken?.trim() || undefined
   return {
-    authToken: sessionToken || pairedToken,
+    authToken: pairedToken || sessionToken,
     sessionToken,
   }
+}
+
+export function hostHasUsableCredentials(host?: Partial<Or3HostProfile> | null) {
+  if (!host?.baseUrl) return false
+  if (host.authMode === 'secure-session') return true
+  if (resolveHostAuthTokens(host).authToken) return true
+  if (needsUnlock() || !host.id) return false
+  const stored = normalizeHostTokens(readHostTokenMap()[host.id])
+  return Boolean(stored.pairedToken || stored.sessionToken)
+}
+
+/** True when the host is paired, PIN-unlocked, credentials settled, and auth tokens are available. */
+export function canUseHostApi(host?: Partial<Or3HostProfile> | null) {
+  if (needsUnlock()) return false
+  if (!isHostApiReady()) return false
+  return hostHasUsableCredentials(host)
 }
 
 export function resolvePreferredHostToken(host?: Partial<Or3HostProfile> | null) {

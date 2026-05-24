@@ -120,7 +120,6 @@ function readPersistedState() {
     const activeHostId = hosts.some((host) => host.id === parsed.activeHostId)
         ? parsed.activeHostId
         : (hosts.find((host) => host.token)?.id ?? hosts[0]?.id ?? null);
-
     return {
         ...parsed,
         activeHostId,

@@ -182,7 +182,7 @@ import { useActiveHost } from '~/composables/useActiveHost';
 import { useSimpleSettings } from '~/composables/settings/useSimpleSettings';
 
 const simple = useSimpleSettings();
-const { isConnected } = useActiveHost();
+const { isConnected, activeHost } = useActiveHost();
 const loading = ref(false);
 
 // Default visible sections capped at 5 per grandma UX design
@@ -209,7 +209,7 @@ const summaries = computed(() => {
 });
 
 async function loadIfConnected() {
-    if (!isConnected.value) return;
+    if (!isConnected.value || !canUseHostApi(activeHost.value)) return;
     loading.value = true;
     try {
         await simple.ensureLoaded();
@@ -222,7 +222,10 @@ onMounted(() => {
     void loadIfConnected();
 });
 
-watch(isConnected, (connected) => {
-    if (connected && !sections.value.length) void loadIfConnected();
-});
+watch(
+    () => isConnected.value && canUseHostApi(activeHost.value),
+    (ready) => {
+        if (ready && !sections.value.length) void loadIfConnected();
+    },
+);
 </script>

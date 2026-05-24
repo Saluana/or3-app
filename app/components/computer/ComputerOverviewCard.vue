@@ -103,6 +103,7 @@ const props = withDefaults(
         health?: HealthResponse | null;
         readiness?: ReadinessResponse | null;
         capabilities?: CapabilitiesResponse | null;
+        paired?: boolean;
         connected?: boolean;
         activeTab?: string;
     }>(),
@@ -112,6 +113,7 @@ const props = withDefaults(
         health: null,
         readiness: null,
         capabilities: null,
+        paired: false,
         connected: false,
         activeTab: '/computer/files',
     },
@@ -136,7 +138,11 @@ const needsAttention = computed(
 );
 
 const statusLabel = computed(() => {
-    if (!props.connected) return 'not paired';
+    if (!props.paired) return 'not paired';
+    if (!props.connected) {
+        if (props.health) return 'check connection';
+        return 'connecting…';
+    }
     if (needsAttention.value) return 'needs attention';
     if (online.value) return 'Online';
     if (props.health) return 'check connection';
@@ -144,15 +150,18 @@ const statusLabel = computed(() => {
 });
 
 const statusTone = computed<'green' | 'amber' | 'neutral'>(() => {
-    if (!props.connected) return 'neutral';
+    if (!props.paired) return 'neutral';
+    if (!props.connected) return 'amber';
     if (needsAttention.value) return 'amber';
     if (online.value) return 'green';
     return 'amber';
 });
 
 const statusMessage = computed(() => {
-    if (!props.connected)
+    if (!props.paired)
         return 'Pair a computer in Settings to connect or3-intern to your machine.';
+    if (!props.connected)
+        return 'Checking connection to your computer…';
     if (needsAttention.value)
         return 'or3-intern is reachable, but its readiness checks found something that needs attention.';
     if (online.value)

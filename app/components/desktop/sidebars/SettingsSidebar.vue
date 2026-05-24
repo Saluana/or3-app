@@ -41,13 +41,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { useSimpleSettings } from '~/composables/settings/useSimpleSettings';
+import { useActiveHost } from '~/composables/useActiveHost';
 import { useElectronHostSetup } from '~/composables/useElectronHostSetup';
+import { canUseHostApi } from '~/composables/useSecureHostTokens';
+import { useWhenHostApiReady } from '~/composables/useWhenHostApiReady';
 
 const route = useRoute();
 const simple = useSimpleSettings();
+const { activeHost } = useActiveHost();
 const { isElectronHostMode, ensureLoaded } = useElectronHostSetup();
 const query = ref('');
 
@@ -152,7 +156,7 @@ function isActive(to: string) {
     return false;
 }
 
-onMounted(() => {
+useWhenHostApiReady(() => {
     void simple.ensureLoaded();
 });
 

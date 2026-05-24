@@ -49,15 +49,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, ref } from 'vue';
 import { useApprovals } from '~/composables/useApprovals';
+import { useWhenHostApiReady } from '~/composables/useWhenHostApiReady';
 
 withDefaults(defineProps<{ subtitle?: string }>(), {
   subtitle: 'YOUR AI ASSISTANT',
 });
 
 const approvalsOpen = ref(false);
-const { pendingCount, loadPendingCount, startPolling, stopPolling } = useApprovals();
+const { pendingCount, startPolling, stopPolling } = useApprovals();
 const route = useRoute();
 const router = useRouter();
 
@@ -85,8 +86,7 @@ function goBack() {
   void router.push('/');
 }
 
-onMounted(async () => {
-  await loadPendingCount();
+useWhenHostApiReady(() => {
   startPolling();
 });
 

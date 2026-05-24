@@ -189,7 +189,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref } from 'vue';
 import type { JobSnapshot } from '~/types/or3-api';
 import type {
     AgentCommandDisabledReason,
@@ -212,6 +212,7 @@ import {
     type ActivityStatusFilter,
 } from '~/utils/or3/agent-jobs';
 import { useReviewedJobs } from '~/composables/useReviewedJobs';
+import { useWhenHostApiReady } from '~/composables/useWhenHostApiReady';
 
 const router = useRouter();
 const route = useRoute();
@@ -398,10 +399,16 @@ const commandReady = computed(() => disabledReason.value === null);
 
 const listErrorMessage = computed(() => {
     if (!lastListError.value) return null;
-    return (
-        lastListError.value.message ||
-        describeError(lastListError.value, 'Couldn\u2019t refresh jobs.')
-    );
+    const err = lastListError.value;
+    if (
+        err.code === 'auth_rate_limited' ||
+        err.code === 'pin_locked' ||
+        err.code === 'auth_required' ||
+        err.status === 429
+    ) {
+        return null;
+    }
+    return err.message || describeError(err, 'Couldn\u2019t refresh jobs.');
 });
 
 const emptyActiveDescription = computed(() => {
@@ -420,11 +427,13 @@ function describeError(error: unknown, fallback: string): string {
         case 'auth_required':
         case 'session_required':
         case 'session_expired':
+        case 'pin_locked':
             return 'Your connection expired. Reconnect from settings to continue.';
         case 'forbidden':
             return 'Your computer rejected this request. Check pairing role.';
         case 'rate_limited':
-            return 'Too many requests at once. Try again in a few seconds.';
+        case 'auth_rate_limited':
+            return 'Too many requests at once. Wait a moment, then try again.';
         case 'capability_unavailable':
             return 'Subagents aren\u2019t available on this computer right now.';
         case 'validation_failed':
@@ -790,29 +799,38 @@ function applyPrefillFromRoute() {
     }
 }
 
-onMounted(async () => {
-    startActiveJobTracking();
-    void refreshStatus().catch(() => {});
-    void loadAgentRunners().catch(() => {});
+let activeJobTrackingStarted = false;
+
+useWhenHostApiReady(async () => {
+    if (!activeJobTrackingStarted) {
+        activeJobTrackingStarted = true;
+        startActiveJobTracking();
+    }
     try {
         await loadJobs();
         applyPrefillFromRoute();
     } catch (error) {
         const err = error as Or3AppError;
-        if (
-            err?.code !== 'auth_required' &&
-            err?.code !== 'capability_unavailable'
-        ) {
-            toast.add({
-                title: 'Couldn\u2019t load history',
-                description: describeError(
-                    error,
-                    'We\u2019ll keep showing local cached tasks.',
-                ),
-                icon: 'i-pixelarticons-alert',
-                color: 'warning',
-            });
-        }
+        const transientAuth =
+            err?.code === 'auth_required' ||
+            err?.code === 'pin_locked' ||
+            err?.code === 'unauthorized' ||
+            err?.code === 'invalid_token' ||
+            err?.code === 'auth_rate_limited' ||
+            err?.status === 401 ||
+            err?.status === 403 ||
+            err?.status === 429;
+        if (transientAuth || err?.code === 'capability_unavailable') return;
+        if (jobs.value.length > 0) return;
+        toast.add({
+            title: 'Couldn\u2019t load history',
+            description: describeError(
+                error,
+                'We\u2019ll keep showing local cached tasks.',
+            ),
+            icon: 'i-pixelarticons-alert',
+            color: 'warning',
+        });
     }
 });
 
