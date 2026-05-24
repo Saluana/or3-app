@@ -911,6 +911,204 @@ export interface ConfigureChange {
     value?: unknown;
 }
 
+export type DoctorRiskLevel = 'safe' | 'notice' | 'warning' | 'danger' | string;
+
+export interface DoctorAdminBrainProvider {
+    kind?: string;
+    available: boolean;
+    display_name?: string;
+    runner_id?: string;
+    reason?: string;
+    actions?: string[];
+}
+
+export interface DoctorFindingCard {
+    id: string;
+    what_i_found: string;
+    what_this_means?: string;
+    recommended_fix?: string;
+    risk_level?: DoctorRiskLevel;
+    approval_needed?: boolean;
+    restart_needed?: boolean;
+    advanced_details?: unknown;
+}
+
+export interface DoctorStatusResponse {
+    basic_doctor_available: boolean;
+    admin_brain?: DoctorAdminBrainProvider;
+    health?: unknown;
+    readiness?: unknown;
+    app_bootstrap?: unknown;
+    report?: any;
+    finding_cards?: DoctorFindingCard[];
+    skills?: { count?: number; items?: SkillItem[] };
+    recent_logs?: unknown[];
+    pending_recovery?: unknown;
+}
+
+export interface DoctorConfigFieldMetadata {
+    section: string;
+    key: string;
+    path: string;
+    label: string;
+    description?: string;
+    default_value?: unknown;
+    allowed_values?: string[];
+    current_value?: unknown;
+    secret?: boolean;
+    risk_level?: DoctorRiskLevel;
+    restart_required?: boolean;
+    requires_approval?: boolean;
+    requires_step_up_auth?: boolean;
+    user_intents?: string[];
+    advanced_only?: boolean;
+    docs?: string;
+    rollback_behavior?: {
+        safe?: boolean;
+        manual_only?: boolean;
+        restart_required?: boolean;
+        instructions?: string;
+    };
+}
+
+export interface DoctorConfigMetadataResponse {
+    fields: DoctorConfigFieldMetadata[];
+}
+
+export interface DoctorRedactedValue {
+    value?: unknown;
+    redacted?: boolean;
+    present?: boolean;
+    summary?: string;
+}
+
+export interface DoctorSettingsPlanChange {
+    config_path?: string;
+    section: string;
+    channel?: string;
+    field: string;
+    operation?: string;
+    old_value?: DoctorRedactedValue;
+    new_value?: DoctorRedactedValue;
+    impact?: string;
+    risk_reason?: string;
+    validation_status?: string;
+    metadata_risk?: DoctorRiskLevel;
+}
+
+export interface DoctorConfigDiffLine {
+    path: string;
+    old_value?: string;
+    new_value?: string;
+    added?: boolean;
+    removed?: boolean;
+}
+
+export interface DoctorSettingsChangePlan {
+    id?: string;
+    title: string;
+    summary?: string;
+    created_by?: string;
+    created_at?: number;
+    risk_level?: DoctorRiskLevel;
+    restart_required?: boolean;
+    requires_approval?: boolean;
+    requires_step_up_auth?: boolean;
+    affected_areas?: string[];
+    changes: DoctorSettingsPlanChange[];
+    validation_results?: Array<{
+        check: string;
+        status: string;
+        message?: string;
+    }>;
+    estimated_impact?: string;
+    rollback_plan?: {
+        available?: boolean;
+        safe?: boolean;
+        manual_only?: boolean;
+        instructions?: string;
+        restart_required?: boolean;
+    };
+    post_apply_checks?: Array<{
+        id: string;
+        description: string;
+        timeout_seconds?: number;
+    }>;
+    user_facing_explanation?: string;
+    exact_config_diff?: DoctorConfigDiffLine[];
+    advanced?: Record<string, unknown>;
+}
+
+export interface DoctorPlanResponse {
+    plan: DoctorSettingsChangePlan;
+    status?: string;
+    approval?: unknown;
+    live_reloaded?: unknown;
+    rollback_id?: string;
+    post_check_pending?: boolean;
+    error?: string;
+    checkpoint?: unknown;
+    doctor_report?: unknown;
+}
+
+export interface DoctorPlanApplyResponse {
+    ok?: boolean;
+    plan_id?: string;
+    rollback_id?: string;
+    restart_required?: boolean;
+    restart_requested?: boolean;
+    restart_status?: string;
+    restart_error?: string;
+    approval_state?: string;
+    post_check_pending?: boolean;
+    post_check_ids?: string[];
+    manual_recovery?: string;
+    post_restart_recovery?: unknown;
+}
+
+export interface DoctorPostCheckResponse {
+    checkpoint_id?: string;
+    status: string;
+    results?: unknown[];
+    doctor_report?: unknown;
+}
+
+export interface DoctorChatSessionResponse {
+    session?: unknown;
+    messages?: Array<{
+        id?: number;
+        ID?: number;
+        role?: string;
+        Role?: string;
+        content?: string;
+        Content?: string;
+        created_at?: number;
+        CreatedAt?: number;
+        meta?: unknown;
+        Meta?: unknown;
+        payload_json?: unknown;
+        PayloadJSON?: unknown;
+    }>;
+    events?: Array<{
+        id?: number;
+        ID?: number;
+        role?: string;
+        Role?: string;
+        content?: string;
+        Content?: string;
+        created_at?: number;
+        CreatedAt?: number;
+        meta?: unknown;
+        Meta?: unknown;
+        payload_json?: unknown;
+        PayloadJSON?: unknown;
+    }>;
+    next_cursor?: number;
+    admin_brain?: DoctorAdminBrainProvider;
+    job_id?: string;
+    runner_chat?: { session_id?: string; turn_id?: string; job_id?: string };
+}
+
 export interface SkillItem {
     name: string;
     key: string;

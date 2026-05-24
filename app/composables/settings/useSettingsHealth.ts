@@ -7,7 +7,12 @@
  */
 
 import { computed, ref } from 'vue';
-import type { CapabilitiesResponse, ReadinessResponse } from '~/types/or3-api';
+import type {
+    CapabilitiesResponse,
+    DoctorFindingCard,
+    DoctorStatusResponse,
+    ReadinessResponse,
+} from '~/types/or3-api';
 import { useOr3Api } from '~/composables/useOr3Api';
 import { useActiveHost } from '~/composables/useActiveHost';
 import {
@@ -28,6 +33,36 @@ export interface HealthFinding {
     detail: string;
     fixHref?: string;
     fixLabel?: string;
+    doctorCard?: DoctorFindingCard;
+}
+
+function healthStatusFromRisk(risk?: string): HealthStatus {
+    switch (risk) {
+        case 'danger':
+        case 'warning':
+            return 'error';
+        case 'notice':
+            return 'warning';
+        case 'safe':
+            return 'ok';
+        default:
+            return 'unknown';
+    }
+}
+
+function mapDoctorCard(card: DoctorFindingCard): HealthFinding {
+    return {
+        id: card.id,
+        label: card.what_i_found || card.id,
+        status: healthStatusFromRisk(card.risk_level),
+        detail:
+            card.what_this_means ||
+            card.recommended_fix ||
+            'Doctor reported this finding.',
+        fixHref: '/settings/health',
+        fixLabel: card.recommended_fix ? 'Review fix' : 'Details',
+        doctorCard: card,
+    };
 }
 
 export function useSettingsHealth() {
@@ -36,6 +71,8 @@ export function useSettingsHealth() {
     const simple = useSimpleSettings();
 
     const findings = ref<HealthFinding[]>([]);
+    const doctorStatus = ref<DoctorStatusResponse | null>(null);
+    const doctorUnavailable = ref(false);
     const loading = ref(false);
     const lastRun = ref<string | null>(null);
 
@@ -65,8 +102,61 @@ export function useSettingsHealth() {
         }
     }
 
-    async function run() {
-        loading.value = true;
+    function clientDiagnosticsFromFindings(items: HealthFinding[]) {
+        const serviceDown = items.some(
+            (finding) =>
+                finding.id === 'readiness' && finding.status === 'unknown',
+        );
+        return {
+            captured_at: new Date().toISOString(),
+            source: 'or3-app',
+            service_down: serviceDown,
+            findings: items.map((finding) => ({
+                id: finding.id,
+                severity:
+                    finding.status === 'error'
+                        ? 'error'
+                        : finding.status === 'warning'
+                          ? 'warn'
+                          : 'info',
+                summary: finding.label,
+                detail: finding.detail,
+            })),
+        };
+    }
+
+    async function runDoctor(clientFindings: HealthFinding[] = []) {
+        const body =
+            clientFindings.length > 0
+                ? {
+                      client_diagnostics:
+                          clientDiagnosticsFromFindings(clientFindings),
+                  }
+                : {};
+        const response = await api.request<DoctorStatusResponse>(
+            '/internal/v1/doctor/run',
+            {
+                method: 'POST',
+                body,
+            },
+        );
+        doctorStatus.value = response;
+        doctorUnavailable.value = false;
+        const cards = response.finding_cards ?? [];
+        findings.value = cards.length
+            ? cards.map(mapDoctorCard)
+            : [
+                  {
+                      id: 'doctor-ok',
+                      label: 'Basic Doctor is available',
+                      status: 'ok',
+                      detail: 'The backend Doctor did not report any findings that need attention.',
+                  },
+              ];
+        lastRun.value = new Date().toISOString();
+    }
+
+    async function runClientChecks() {
         try {
             logger.info('run:start', 'Settings health check started', {
                 hasActiveHost: isPaired.value,
@@ -93,10 +183,16 @@ export function useSettingsHealth() {
                 });
             }
 
-            // 2. Readiness summary from intern.
-            const readiness = await safeRequest<ReadinessResponse>(
+            const readinessPromise = safeRequest<ReadinessResponse>(
                 '/internal/v1/readiness',
             );
+            const capsPromise = safeRequest<CapabilitiesResponse>(
+                '/internal/v1/capabilities',
+            );
+            const settingsPromise = simple.ensureLoaded();
+
+            // 2. Readiness summary from intern.
+            const readiness = await readinessPromise;
             if (readiness) {
                 const status = String(readiness.status ?? '').toLowerCase();
                 const hasWarnings = status.includes('warning');
@@ -129,12 +225,10 @@ export function useSettingsHealth() {
             }
 
             // 3. Capabilities snapshot.
-            const caps = await safeRequest<CapabilitiesResponse>(
-                '/internal/v1/capabilities',
-            );
+            const caps = await capsPromise;
 
             // Make sure the schema's fields exist (loads provider/workspace/etc).
-            await simple.ensureLoaded();
+            await settingsPromise;
             const v = simple.valueIndex.value;
 
             // 4. AI providers and routing configured.
@@ -272,6 +366,7 @@ export function useSettingsHealth() {
                     (finding) => finding.status === 'warning',
                 ).length,
             });
+            return next;
         } catch (error) {
             logger.error('run:error', 'Settings health check failed', {
                 error:
@@ -280,6 +375,67 @@ export function useSettingsHealth() {
                         : String(error ?? 'unknown_error'),
             });
             throw error;
+        }
+    }
+
+    async function run() {
+        loading.value = true;
+        try {
+            if (isPaired.value && activeHost.value) {
+                try {
+                    await runDoctor();
+                    return;
+                } catch (error) {
+                    logger.warn(
+                        'doctor:primary_failed',
+                        'Basic Doctor primary check failed; trying local checks',
+                        {
+                            error:
+                                error instanceof Error
+                                    ? error.message
+                                    : String(error ?? 'unknown_error'),
+                        },
+                    );
+                }
+            }
+
+            let clientFindings: HealthFinding[] = [];
+            try {
+                clientFindings = await runClientChecks();
+            } catch {
+                clientFindings = findings.value;
+            }
+            try {
+                await runDoctor(clientFindings);
+            } catch (error) {
+                doctorUnavailable.value = true;
+                doctorStatus.value = null;
+                logger.warn(
+                    'doctor:fallback',
+                    'Basic Doctor unavailable; using client health checks',
+                    {
+                        error:
+                            error instanceof Error
+                                ? error.message
+                                : String(error ?? 'unknown_error'),
+                    },
+                );
+                if (!clientFindings.length) {
+                    clientFindings = await runClientChecks();
+                }
+                findings.value = [
+                    {
+                        id: 'doctor-unavailable',
+                        label: 'Basic Doctor is unavailable',
+                        status: 'warning',
+                        detail: 'The app could not reach the backend Doctor, so these are local client-side checks.',
+                        fixHref: '/computer/attention',
+                        fixLabel: 'Connection help',
+                    },
+                    ...clientFindings,
+                ];
+                lastRun.value = new Date().toISOString();
+            }
         } finally {
             loading.value = false;
         }
@@ -294,5 +450,13 @@ export function useSettingsHealth() {
         return 'unknown';
     });
 
-    return { findings, loading, lastRun, run, overall };
+    return {
+        findings,
+        doctorStatus,
+        doctorUnavailable,
+        loading,
+        lastRun,
+        run,
+        overall,
+    };
 }

@@ -10,10 +10,7 @@ import {
     validateSecureSessionClaims,
     type SecureSessionClaims,
 } from '~/utils/or3/secure-connections';
-import {
-    ELECTRON_HOST_PROFILE_ID,
-    useActiveHost,
-} from './useActiveHost';
+import { ELECTRON_HOST_PROFILE_ID, useActiveHost } from './useActiveHost';
 import { useElectronHostSetup } from './useElectronHostSetup';
 import {
     normalizedHostOrigin,
@@ -83,13 +80,22 @@ function shouldLogNetworkError() {
     return Date.now() > suppressNetworkErrorLogsUntil;
 }
 
+function isAbortError(value: unknown) {
+    return (
+        (value instanceof DOMException && value.name === 'AbortError') ||
+        (value instanceof Error && value.name === 'AbortError')
+    );
+}
+
 function hostAuthCooldownError(): Or3AppError | null {
     const remaining = hostAuthCooldownUntil - Date.now();
     if (remaining <= 0) return null;
     return {
         code: 'auth_rate_limited',
         status: 429,
-        message: hostAuthCooldownMessage || 'The local OR3 service is catching up. Try again in a moment.',
+        message:
+            hostAuthCooldownMessage ||
+            'The local OR3 service is catching up. Try again in a moment.',
         retryAfterMs: remaining,
         retryAfterSeconds: Math.max(1, Math.ceil(remaining / 1000)),
     };
@@ -97,8 +103,14 @@ function hostAuthCooldownError(): Or3AppError | null {
 
 function noteHostAuthCooldown(error: Or3AppError) {
     if (error.status !== 429 && error.code !== 'auth_rate_limited') return;
-    const retryAfterMs = Math.min(Math.max(error.retryAfterMs || 0, 5_000), 30_000);
-    hostAuthCooldownUntil = Math.max(hostAuthCooldownUntil, Date.now() + retryAfterMs);
+    const retryAfterMs = Math.min(
+        Math.max(error.retryAfterMs || 0, 5_000),
+        30_000,
+    );
+    hostAuthCooldownUntil = Math.max(
+        hostAuthCooldownUntil,
+        Date.now() + retryAfterMs,
+    );
     hostAuthCooldownMessage = error.message;
 }
 
@@ -321,7 +333,9 @@ export function useOr3Api() {
         if (!electronHost.isElectronHostMode.value) return undefined;
         if (activeHost.value?.id !== ELECTRON_HOST_PROFILE_ID) return undefined;
         if (typeof window === 'undefined') return undefined;
-        const token = await window.or3Desktop?.intern.issueServiceToken({ method, path }).catch(() => null);
+        const token = await window.or3Desktop?.intern
+            .issueServiceToken({ method, path })
+            .catch(() => null);
         return token?.token?.trim() || undefined;
     }
 
@@ -342,7 +356,8 @@ export function useOr3Api() {
     async function resolveSecureSessionToken(explicitBaseUrl?: string) {
         const host = activeHost.value;
         if (!host || host.authMode !== 'secure-session') return undefined;
-        if (!destinationMatchesTokenOrigin(host.baseUrl, explicitBaseUrl)) return undefined;
+        if (!destinationMatchesTokenOrigin(host.baseUrl, explicitBaseUrl))
+            return undefined;
         const hostId = host.secureHostId || host.id;
         const cached = secureSessionCache[hostId];
         const now = Date.now();
@@ -359,11 +374,18 @@ export function useOr3Api() {
                 throw {
                     code: 'auth_required',
                     status: 401,
-                    message: 'This secure device enrollment is missing. Pair this device again.',
+                    message:
+                        'This secure device enrollment is missing. Pair this device again.',
                 } satisfies Or3AppError;
             }
-            const routeId = host.secureSessionRouteId || `direct:${normalizeBaseUrl(host.baseUrl)}`;
-            const body = await buildSecureSessionStartPayload(identity, enrollment, routeId);
+            const routeId =
+                host.secureSessionRouteId ||
+                `direct:${normalizeBaseUrl(host.baseUrl)}`;
+            const body = await buildSecureSessionStartPayload(
+                identity,
+                enrollment,
+                routeId,
+            );
             const response = await fetch(
                 `${normalizeBaseUrl(explicitBaseUrl || host.baseUrl)}/internal/v1/secure-connections/sessions`,
                 {
@@ -413,21 +435,29 @@ export function useOr3Api() {
     ): Promise<T> {
         await ensureElectronHostLoaded();
         const requiresAuth = options.requireAuth !== false;
-        const method = options.method || (options.body === undefined ? 'GET' : 'POST');
+        const method =
+            options.method || (options.body === undefined ? 'GET' : 'POST');
         const destinationAllowsHostAuth = destinationMatchesTokenOrigin(
             activeHost.value?.baseUrl,
             options.baseUrl,
         );
-        const cooldown = activeHost.value?.id === ELECTRON_HOST_PROFILE_ID ? hostAuthCooldownError() : null;
+        const cooldown =
+            activeHost.value?.id === ELECTRON_HOST_PROFILE_ID
+                ? hostAuthCooldownError()
+                : null;
         if (cooldown) throw cooldown;
-        const electronAuthToken = requiresAuth && destinationAllowsHostAuth
-            ? await resolveElectronHostToken(method, path)
-            : undefined;
-        const secureSessionToken = requiresAuth && destinationAllowsHostAuth
-            ? await resolveSecureSessionToken(options.baseUrl)
-            : undefined;
+        const electronAuthToken =
+            requiresAuth && destinationAllowsHostAuth
+                ? await resolveElectronHostToken(method, path)
+                : undefined;
+        const secureSessionToken =
+            requiresAuth && destinationAllowsHostAuth
+                ? await resolveSecureSessionToken(options.baseUrl)
+                : undefined;
         const authToken = destinationAllowsHostAuth
-            ? electronAuthToken || secureSessionToken || resolveRequestAuthToken(options.preferPairedToken)
+            ? electronAuthToken ||
+              secureSessionToken ||
+              resolveRequestAuthToken(options.preferPairedToken)
             : undefined;
         const sessionToken = destinationAllowsHostAuth
             ? resolveRequestSessionToken()
@@ -471,6 +501,14 @@ export function useOr3Api() {
                 signal: options.signal,
             });
         } catch (error) {
+            if (isAbortError(error)) {
+                throw {
+                    code: 'aborted',
+                    status: 0,
+                    message: 'Request was stopped.',
+                    cause: error,
+                } satisfies Or3AppError;
+            }
             updateActiveHostStatus('offline', options.baseUrl);
             const payload = {
                 path,
@@ -534,7 +572,8 @@ export function useOr3Api() {
                 },
             );
             const error = mapError(response.status, payload);
-            if (activeHost.value?.id === ELECTRON_HOST_PROFILE_ID) noteHostAuthCooldown(error);
+            if (activeHost.value?.id === ELECTRON_HOST_PROFILE_ID)
+                noteHostAuthCooldown(error);
             throw error;
         }
         if (activeHost.value?.id === ELECTRON_HOST_PROFILE_ID) {
@@ -557,16 +596,23 @@ export function useOr3Api() {
             activeHost.value?.baseUrl,
             options.baseUrl,
         );
-        const cooldown = activeHost.value?.id === ELECTRON_HOST_PROFILE_ID ? hostAuthCooldownError() : null;
+        const cooldown =
+            activeHost.value?.id === ELECTRON_HOST_PROFILE_ID
+                ? hostAuthCooldownError()
+                : null;
         if (cooldown) throw cooldown;
-        const electronAuthToken = requiresAuth && destinationAllowsHostAuth
-            ? await resolveElectronHostToken(method, path)
-            : undefined;
-        const secureSessionToken = requiresAuth && destinationAllowsHostAuth
-            ? await resolveSecureSessionToken(options.baseUrl)
-            : undefined;
+        const electronAuthToken =
+            requiresAuth && destinationAllowsHostAuth
+                ? await resolveElectronHostToken(method, path)
+                : undefined;
+        const secureSessionToken =
+            requiresAuth && destinationAllowsHostAuth
+                ? await resolveSecureSessionToken(options.baseUrl)
+                : undefined;
         const authToken = destinationAllowsHostAuth
-            ? electronAuthToken || secureSessionToken || resolveRequestAuthToken(options.preferPairedToken)
+            ? electronAuthToken ||
+              secureSessionToken ||
+              resolveRequestAuthToken(options.preferPairedToken)
             : undefined;
         const sessionToken = destinationAllowsHostAuth
             ? resolveRequestSessionToken()
@@ -610,6 +656,14 @@ export function useOr3Api() {
                 signal: options.signal,
             });
         } catch (error) {
+            if (isAbortError(error)) {
+                throw {
+                    code: 'aborted',
+                    status: 0,
+                    message: 'Request was stopped.',
+                    cause: error,
+                } satisfies Or3AppError;
+            }
             logger.error(
                 'stream:network_error',
                 'Could not reach host stream',
@@ -677,6 +731,14 @@ export function useOr3Api() {
         try {
             yield* readSseStream(response.body);
         } catch (error) {
+            if (isAbortError(error)) {
+                throw {
+                    code: 'aborted',
+                    status: 0,
+                    message: 'Request was stopped.',
+                    cause: error,
+                } satisfies Or3AppError;
+            }
             logger.error('stream:error', 'SSE stream failed while reading', {
                 path,
                 error: error instanceof Error ? error.message : String(error),

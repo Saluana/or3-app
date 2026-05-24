@@ -5,9 +5,11 @@ import { encodePairingInviteV2, type PairingInviteV2 } from '../../app/utils/or3
 
 const pairingMocks = vi.hoisted(() => {
     const upgradeInputs: unknown[] = [];
+    const toastAdds: unknown[] = [];
     const activeHost = { value: null as null | { baseUrl?: string } };
     return {
         activeHost,
+        toastAdds,
         upgradeInputs,
         securePairingStatus: { value: 'idle' },
         exchangeSecurePairingPayload: vi.fn(),
@@ -28,7 +30,7 @@ vi.mock('../../app/composables/useActiveHost', () => ({
 }));
 
 vi.mock('@nuxt/ui/composables', () => ({
-    useToast: () => ({ add: vi.fn() }),
+    useToast: () => ({ add: vi.fn((input: unknown) => pairingMocks.toastAdds.push(input)) }),
 }));
 
 const stubs = {
@@ -97,12 +99,13 @@ describe('SecurePairingCard', () => {
     afterEach(() => {
         vi.clearAllMocks();
         vi.unstubAllGlobals();
+        pairingMocks.toastAdds.length = 0;
         pairingMocks.upgradeInputs.length = 0;
         pairingMocks.activeHost.value = null;
         history.replaceState(null, '', '/');
     });
 
-    it('uses the current-origin app proxy for pasted v2 invites opened from localhost', async () => {
+    it('uses the same-host service route for pasted v2 invites opened from localhost', async () => {
         history.replaceState(null, '', '/settings/pair');
         Object.defineProperty(globalThis, 'isSecureContext', { value: true, configurable: true });
         Object.defineProperty(globalThis, 'crypto', {
@@ -118,13 +121,13 @@ describe('SecurePairingCard', () => {
         await vi.waitFor(() => expect(pairingMocks.upgradeSecurePairingPayload).toHaveBeenCalled());
 
         expect(pairingMocks.upgradeInputs.at(0)).toMatchObject({
-            baseUrl: 'http://localhost:3000/api/or3',
+            baseUrl: 'http://localhost:9100',
         });
         expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toBe('');
         expect(wrapper.text()).toContain('Connected securely. This device now has an enrollment certificate.');
     });
 
-    it('uses the current app proxy when the invite only has a direct LAN route', async () => {
+    it('uses the same-host service route when the invite only has a direct LAN route', async () => {
         history.replaceState(null, '', '/settings/pair');
         pairingMocks.activeHost.value = { baseUrl: ':9100' };
         Object.defineProperty(globalThis, 'isSecureContext', { value: true, configurable: true });
@@ -146,11 +149,11 @@ describe('SecurePairingCard', () => {
         await vi.waitFor(() => expect(pairingMocks.upgradeSecurePairingPayload).toHaveBeenCalled());
 
         expect(pairingMocks.upgradeInputs.at(0)).toMatchObject({
-            baseUrl: 'http://localhost:3000/api/or3',
+            baseUrl: 'http://localhost:9100',
         });
     });
 
-    it('falls back to the invite route when the current app proxy is unavailable', async () => {
+    it('falls back to the invite route when the same-host route is unavailable', async () => {
         history.replaceState(null, '', '/settings/pair');
         Object.defineProperty(globalThis, 'isSecureContext', { value: true, configurable: true });
         Object.defineProperty(globalThis, 'crypto', {
@@ -158,7 +161,7 @@ describe('SecurePairingCard', () => {
             configurable: true,
         });
         vi.stubGlobal('fetch', vi.fn(async (url: string | URL | Request) => {
-            if (String(url).startsWith('http://localhost:3000/api/or3/')) {
+            if (String(url).startsWith('http://localhost:9100/')) {
                 return new Response('<html>fallback</html>', {
                     status: 200,
                     headers: { 'Content-Type': 'text/html' },
@@ -173,7 +176,30 @@ describe('SecurePairingCard', () => {
         await vi.waitFor(() => expect(pairingMocks.upgradeSecurePairingPayload).toHaveBeenCalled());
 
         expect(pairingMocks.upgradeInputs.at(0)).toMatchObject({
-            baseUrl: 'http://192.168.1.78:3060/api/or3',
+            baseUrl: 'http://192.168.1.78:9100',
+        });
+    });
+
+    it('does not continue pairing when every candidate route is unhealthy', async () => {
+        history.replaceState(null, '', '/settings/pair');
+        Object.defineProperty(globalThis, 'isSecureContext', { value: true, configurable: true });
+        Object.defineProperty(globalThis, 'crypto', {
+            value: { subtle: { generateKey: vi.fn() } },
+            configurable: true,
+        });
+        vi.stubGlobal('fetch', vi.fn(async () => {
+            throw new Error('connection refused');
+        }));
+        const wrapper = mount(SecurePairingCard, { global: { stubs } });
+
+        await wrapper.find('textarea').setValue(`or3pair:v2:${encodePairingInviteV2(invite())}`);
+        await clickUseText(wrapper);
+
+        expect(pairingMocks.upgradeSecurePairingPayload).not.toHaveBeenCalled();
+        await vi.waitFor(() => {
+            expect(pairingMocks.toastAdds).toContainEqual(expect.objectContaining({
+                description: 'Could not determine the computer address for this QR code.',
+            }));
         });
     });
 });

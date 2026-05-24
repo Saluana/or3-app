@@ -96,7 +96,11 @@
 
                         <div class="or3-composer-menu__divider" />
                         <p class="or3-composer-menu__eyebrow">Runner</p>
-                        <div class="or3-composer-menu__modes" role="radiogroup" aria-label="Chat runner">
+                        <div
+                            class="or3-composer-menu__modes"
+                            role="radiogroup"
+                            aria-label="Chat runner"
+                        >
                             <button
                                 v-for="runner in runnerOptions"
                                 :key="runner.id"
@@ -149,8 +153,14 @@
                                         v-model="modelSearch"
                                         class="or3-composer-menu__input"
                                         type="text"
-                                        :placeholder="activeRunnerModels.length ? 'Search models…' : 'Custom model id…'"
-                                        @keydown.enter.prevent="selectRunnerModel(modelSearch)"
+                                        :placeholder="
+                                            activeRunnerModels.length
+                                                ? 'Search models…'
+                                                : 'Custom model id…'
+                                        "
+                                        @keydown.enter.prevent="
+                                            selectRunnerModel(modelSearch)
+                                        "
                                     />
                                     <div
                                         v-if="filteredRunnerModels.length"
@@ -161,15 +171,33 @@
                                             :key="runnerModelValue(model)"
                                             type="button"
                                             class="or3-composer-menu__model-option"
-                                            :class="{ 'is-active': selectedRunnerModel === runnerModelValue(model) }"
-                                            @click="selectRunnerModel(runnerModelValue(model))"
+                                            :class="{
+                                                'is-active':
+                                                    selectedRunnerModel ===
+                                                    runnerModelValue(model),
+                                            }"
+                                            @click="
+                                                selectRunnerModel(
+                                                    runnerModelValue(model),
+                                                )
+                                            "
                                         >
                                             <span>
-                                                <span>{{ model.display_name || model.id }}</span>
-                                                <small>{{ runnerModelProviderLabel(model) }}</small>
+                                                <span>{{
+                                                    model.display_name ||
+                                                    model.id
+                                                }}</span>
+                                                <small>{{
+                                                    runnerModelProviderLabel(
+                                                        model,
+                                                    )
+                                                }}</small>
                                             </span>
                                             <Icon
-                                                v-if="selectedRunnerModel === runnerModelValue(model)"
+                                                v-if="
+                                                    selectedRunnerModel ===
+                                                    runnerModelValue(model)
+                                                "
                                                 name="i-pixelarticons-check"
                                                 class="size-4"
                                             />
@@ -179,10 +207,18 @@
                                         v-if="customModelCandidate"
                                         type="button"
                                         class="or3-composer-menu__model-option"
-                                        @click="selectRunnerModel(customModelCandidate)"
+                                        @click="
+                                            selectRunnerModel(
+                                                customModelCandidate,
+                                            )
+                                        "
                                     >
                                         <span>
-                                            <span>Use “{{ customModelCandidate }}”</span>
+                                            <span
+                                                >Use “{{
+                                                    customModelCandidate
+                                                }}”</span
+                                            >
                                             <small>Custom model id</small>
                                         </span>
                                     </button>
@@ -194,13 +230,20 @@
                                     >
                                         <span>
                                             <span>Use runner default</span>
-                                            <small>{{ activeRunnerDefaultModel || 'No model override' }}</small>
+                                            <small>{{
+                                                activeRunnerDefaultModel ||
+                                                'No model override'
+                                            }}</small>
                                         </span>
                                     </button>
                                 </div>
                             </div>
                             <template v-if="activeModelReasoningOptions.length">
-                                <p class="or3-composer-menu__eyebrow or3-composer-menu__eyebrow--sub">Thinking</p>
+                                <p
+                                    class="or3-composer-menu__eyebrow or3-composer-menu__eyebrow--sub"
+                                >
+                                    Thinking
+                                </p>
                                 <div
                                     class="or3-composer-menu__chips"
                                     role="radiogroup"
@@ -209,7 +252,10 @@
                                     <button
                                         type="button"
                                         class="or3-composer-menu__chip"
-                                        :class="{ 'is-active': !selectedRunnerThinkingLevel }"
+                                        :class="{
+                                            'is-active':
+                                                !selectedRunnerThinkingLevel,
+                                        }"
                                         @click="selectRunnerThinkingLevel('')"
                                     >
                                         Auto
@@ -219,15 +265,25 @@
                                         :key="option"
                                         type="button"
                                         class="or3-composer-menu__chip"
-                                        :class="{ 'is-active': selectedRunnerThinkingLevel === option }"
-                                        @click="selectRunnerThinkingLevel(option)"
+                                        :class="{
+                                            'is-active':
+                                                selectedRunnerThinkingLevel ===
+                                                option,
+                                        }"
+                                        @click="
+                                            selectRunnerThinkingLevel(option)
+                                        "
                                     >
                                         {{ option }}
                                     </button>
                                 </div>
                             </template>
                             <small class="or3-composer-menu__hint">
-                                {{ activeRunnerModels.length ? 'Pick a discovered model or type a custom id.' : 'No model list yet; type a custom id if needed.' }}
+                                {{
+                                    activeRunnerModels.length
+                                        ? 'Pick a discovered model or type a custom id.'
+                                        : 'No model list yet; type a custom id if needed.'
+                                }}
                             </small>
                         </template>
 
@@ -428,6 +484,7 @@ const isFocused = ref(false);
 const actionMenuOpen = ref(false);
 const workspaceFilePickerOpen = ref(false);
 const dragDepth = ref(0);
+const submitLocked = ref(false);
 const enterCreatesNewLine = ref(false);
 const formState = reactive({
     text: props.modelValue,
@@ -468,7 +525,8 @@ const {
     reset: resetMentionSearch,
 } = useFileMentionSuggestions();
 const { filterCommands, findCommand, runCommand } = useChatCommands();
-const { fetchRoots, ensureDirectoryPath, uploadFilesToPath } = useComputerFiles();
+const { fetchRoots, ensureDirectoryPath, uploadFilesToPath } =
+    useComputerFiles();
 const toast = useToast();
 
 const displayedAttachments = computed(() => [
@@ -582,9 +640,11 @@ const activeRunnerDefaultModel = computed(
         '',
 );
 const activeRunnerSelectedModel = computed(() => {
-    const selected = selectedRunnerModel.value || activeRunnerDefaultModel.value;
+    const selected =
+        selectedRunnerModel.value || activeRunnerDefaultModel.value;
     return activeRunnerModels.value.find(
-        (model) => model.id === selected || runnerModelValue(model) === selected,
+        (model) =>
+            model.id === selected || runnerModelValue(model) === selected,
     );
 });
 const activeModelReasoningOptions = computed(() =>
@@ -633,8 +693,11 @@ const customModelCandidate = computed(() => {
     return value;
 });
 
-const canSend = computed(
+const hasSendableContent = computed(
     () => !!formState.text.trim() || displayedAttachments.value.length > 0,
+);
+const canSend = computed(
+    () => !props.streaming && !submitLocked.value && hasSendableContent.value,
 );
 
 watch(
@@ -646,7 +709,9 @@ watch(
             editor.value &&
             editor.value.getText({ blockSeparator: '\n\n' }) !== value
         ) {
-            editor.value.commands.setContent(value || '', { emitUpdate: false });
+            editor.value.commands.setContent(value || '', {
+                emitUpdate: false,
+            });
         }
     },
 );
@@ -716,7 +781,10 @@ function selectRunnerModel(model: string) {
     );
     const options = selected?.reasoning || [];
     if (!options.includes(selectedRunnerThinkingLevel.value)) {
-        emit('update:selectedRunnerThinkingLevel', selected?.reasoning_default || '');
+        emit(
+            'update:selectedRunnerThinkingLevel',
+            selected?.reasoning_default || '',
+        );
     }
 }
 
@@ -927,7 +995,9 @@ function payloadAttachments(extraWorkspaceFiles: DraftAttachment[] = []) {
     ];
 }
 
-function buildTransportTextForAttachments(extraWorkspaceFiles: DraftAttachment[] = []) {
+function buildTransportTextForAttachments(
+    extraWorkspaceFiles: DraftAttachment[] = [],
+) {
     const sections: string[] = [];
     const promptText = formState.text.trim();
     if (promptText) sections.push(promptText);
@@ -1035,7 +1105,8 @@ async function stageLocalFilesForExternalRunner() {
 
     return attachments.map((attachment, index) => {
         const uploaded = uploads[index];
-        const uploadedPath = uploaded?.path || `${batchPath}/${attachment.name}`;
+        const uploadedPath =
+            uploaded?.path || `${batchPath}/${attachment.name}`;
         return {
             id: `${workspaceRoot.id}:${uploadedPath}`,
             kind: 'file' as const,
@@ -1063,9 +1134,18 @@ async function maybeRunSlashCommandFromInput() {
 }
 
 async function submit() {
-    if (props.streaming) return;
-    if (await maybeRunSlashCommandFromInput()) return;
-    if (!canSend.value) return;
+    if (props.streaming || submitLocked.value) return;
+    submitLocked.value = true;
+    if (await maybeRunSlashCommandFromInput()) {
+        window.setTimeout(() => {
+            submitLocked.value = false;
+        }, 350);
+        return;
+    }
+    if (!hasSendableContent.value) {
+        submitLocked.value = false;
+        return;
+    }
 
     let stagedWorkspaceAttachments: DraftAttachment[] = [];
     try {
@@ -1079,6 +1159,7 @@ async function submit() {
             color: 'error',
             icon: 'i-pixelarticons-warning-box',
         });
+        submitLocked.value = false;
         return;
     }
 
@@ -1111,6 +1192,9 @@ async function submit() {
     clearManualAttachments();
     clearWorkspacePickedAttachments();
     updateEditorText('');
+    window.setTimeout(() => {
+        submitLocked.value = false;
+    }, 350);
 }
 
 function addFiles(files: File[]) {
@@ -1856,7 +1940,11 @@ onBeforeUnmount(() => {
 }
 
 .or3-composer-menu__chip.is-active {
-    border-color: color-mix(in srgb, var(--or3-green-dark) 52%, var(--or3-border));
+    border-color: color-mix(
+        in srgb,
+        var(--or3-green-dark) 52%,
+        var(--or3-border)
+    );
     background: color-mix(in srgb, var(--or3-green-soft) 42%, white 58%);
     color: var(--or3-green-dark);
 }

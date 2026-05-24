@@ -82,6 +82,35 @@
                 </div>
             </SurfaceCard>
 
+            <SurfaceCard class-name="space-y-3">
+                <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0">
+                        <p class="or3-section-label">DOCTOR FINDINGS</p>
+                        <p class="mt-2 text-sm leading-6 text-(--or3-text-muted)">
+                            The same Basic Doctor results are available from Settings Health.
+                        </p>
+                    </div>
+                    <UButton
+                        to="/settings/health"
+                        size="xs"
+                        color="neutral"
+                        variant="outline"
+                        icon="i-pixelarticons-arrow-right"
+                        label="Open Doctor"
+                    />
+                </div>
+                <ul v-if="doctorPreview.length" class="space-y-2">
+                    <li
+                        v-for="finding in doctorPreview"
+                        :key="finding.id"
+                        class="rounded-xl border border-(--or3-border) bg-white/70 px-3 py-2 text-sm"
+                    >
+                        <p class="font-mono font-semibold text-(--or3-text)">{{ finding.label }}</p>
+                        <p class="mt-0.5 text-xs leading-5 text-(--or3-text-muted)">{{ finding.detail }}</p>
+                    </li>
+                </ul>
+            </SurfaceCard>
+
             <SurfaceCard class-name="space-y-4">
                 <div>
                     <p class="or3-section-label">RECOMMENDED NEXT STEPS</p>
@@ -107,15 +136,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import {
     getBootstrapWarningGuidance,
     getReadinessGuidance,
     isDuplicateReadinessWarning,
 } from '~/utils/or3/computerAttention'
 import { formatReadinessDetail } from '~/utils/or3/readiness'
+import { useSettingsHealth } from '~/composables/settings/useSettingsHealth'
 
 const { bootstrap, readiness } = useComputerStatus()
+const health = useSettingsHealth()
 
 const bootstrapWarning = computed(() => bootstrap.value?.status?.warnings?.[0] ?? null)
 const readinessMessage = computed(() => formatReadinessDetail(readiness.value))
@@ -158,6 +189,11 @@ const nextSteps = computed(() => {
         (item, index, array) =>
             array.findIndex((candidate) => candidate.href === item.href) === index,
     )
+})
+const doctorPreview = computed(() => health.findings.value.slice(0, 3))
+
+onMounted(() => {
+    void health.run().catch(() => undefined)
 })
 </script>
 

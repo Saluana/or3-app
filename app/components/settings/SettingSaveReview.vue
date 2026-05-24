@@ -46,20 +46,13 @@
                 Read the list below carefully before saving.
             </div>
 
-            <ul class="space-y-2">
-                <li
-                    v-for="(line, index) in lines"
-                    :key="index"
-                    class="flex items-start gap-2 rounded-xl border px-3 py-2 text-sm"
-                    :class="toneFor(line.severity)"
-                >
-                    <Icon
-                        :name="iconFor(line.severity)"
-                        class="mt-0.5 size-4 shrink-0"
-                    />
-                    <span class="leading-5">{{ line.text }}</span>
-                </li>
-            </ul>
+            <SettingsChangePreviewCard
+                :title="'Settings change preview'"
+                :summary="`You are changing ${lines.length} setting${lines.length === 1 ? '' : 's'}.`"
+                :changes="previewChanges"
+                :risk-level="previewRisk"
+                :exact-diff="exactDiff"
+            />
 
             <div
                 v-if="error"
@@ -94,7 +87,6 @@ import { computed } from 'vue';
 import type { SimpleSettingChange } from '~/settings/simpleSettings';
 import {
     useSettingsDiff,
-    type DiffLine,
 } from '~/composables/settings/useSettingsDiff';
 
 const props = defineProps<{
@@ -111,30 +103,30 @@ defineEmits<{
 const diff = useSettingsDiff();
 const lines = computed(() => diff.describeAll(props.changes));
 const overall = computed(() => diff.highestSeverity(lines.value));
-
-function toneFor(s: DiffLine['severity']): string {
-    switch (s) {
-        case 'high':
-            return 'border-rose-200 bg-rose-50 text-rose-800';
-        case 'medium':
-            return 'border-amber-200 bg-amber-50 text-amber-800';
-        case 'low':
-            return 'border-amber-100 bg-amber-50/60 text-amber-800';
-        case 'info':
-        default:
-            return 'border-(--or3-border) bg-white/70 text-(--or3-text)';
-    }
-}
-
-function iconFor(s: DiffLine['severity']): string {
-    switch (s) {
-        case 'high':
-            return 'i-pixelarticons-warning-box';
-        case 'medium':
-        case 'low':
-            return 'i-pixelarticons-alert';
-        default:
-            return 'i-pixelarticons-arrow-right';
-    }
-}
+const previewRisk = computed(() => {
+    if (overall.value === 'high') return 'danger';
+    if (overall.value === 'medium') return 'warning';
+    if (overall.value === 'low') return 'notice';
+    return 'safe';
+});
+const previewChanges = computed(() =>
+    props.changes.map((change, index) => ({
+        section: change.section,
+        channel: change.channel,
+        field: change.field,
+        operation: 'set',
+        new_value: {
+            value: change.value,
+            summary: diff.formatValue(change.value),
+        },
+        impact: lines.value[index]?.text,
+        metadata_risk: previewRisk.value,
+    })),
+);
+const exactDiff = computed(() =>
+    props.changes.map((change) => ({
+        path: `${change.section}.${change.field}`,
+        new_value: diff.formatValue(change.value),
+    })),
+);
 </script>

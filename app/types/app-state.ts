@@ -212,6 +212,7 @@ export interface Or3AppState {
 
 export type Or3AppErrorCode =
     | 'host_unreachable'
+    | 'aborted'
     | 'auth_required'
     | 'missing_token'
     | 'invalid_token'
@@ -242,7 +243,6 @@ export type Or3AppErrorCode =
     | 'policy_error'
     | 'tool_execution_error'
     | 'tool_loop_limit'
-    | 'aborted'
     | 'file_not_found'
     | 'file_conflict'
     | 'file_read_only'

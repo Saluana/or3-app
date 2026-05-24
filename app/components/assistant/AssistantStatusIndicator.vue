@@ -34,12 +34,11 @@ const props = defineProps<{ active: boolean }>();
 
 const CELLS = 10;
 const VERBS = [
+    'working',
+    'checking',
+    'reviewing',
     'thinking',
-    'tinkering',
-    'computing',
-    'musing',
-    'rummaging',
-    'scheming',
+    'preparing',
 ] as const;
 
 const verbIndex = ref(0);
