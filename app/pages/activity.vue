@@ -221,11 +221,16 @@
         <AgentJobDetail
             :open="jobDetailOpen"
             :job="selectedJob"
+            :reviewed="
+                selectedJob ? isReviewed(selectedJob.job_id) : false
+            "
             :busy="jobActionBusy"
             @update:open="jobDetailOpen = $event"
             @cancel="cancelSelectedJob"
             @retry="retrySelectedJob"
             @continue="continueJobInAgents"
+            @prefill="prefillJobInAgents"
+            @mark-reviewed="markJobReviewedFromActivity"
         />
 
         <ApprovalDetailSheet
@@ -470,6 +475,7 @@ interface ActivityEntry {
 const toast = useToast();
 const { jobs, agentRunners, loadJobs, loadAgentRunners, abortJob, retryJob } =
     useJobs();
+const { isReviewed, markReviewed } = useReviewedJobs();
 const { approvals, loadApprovals, approve, deny, cancel } = useApprovals();
 const {
     cronJobs,
@@ -797,6 +803,20 @@ async function retrySelectedJob(job: JobSnapshot) {
 
 async function continueJobInAgents() {
     await navigateTo('/agents');
+}
+
+async function prefillJobInAgents(job: JobSnapshot) {
+    jobDetailOpen.value = false;
+    await navigateTo({ path: '/agents', query: { prefill: job.job_id } });
+}
+
+function markJobReviewedFromActivity(job: JobSnapshot) {
+    markReviewed(job.job_id);
+    toast.add({
+        title: 'Marked as reviewed',
+        icon: 'i-pixelarticons-check',
+        color: 'neutral',
+    });
 }
 
 async function approveSelectedApproval(remember: boolean) {

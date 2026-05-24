@@ -147,7 +147,6 @@ export function useConfigure() {
         body: {
           conversation_id: 'settings-ui',
           accepted_card_id: '',
-          approved_authority: 'danger',
           plan,
         },
       })
@@ -173,7 +172,6 @@ export function useConfigure() {
               approved_at: Date.now(),
               remember_for_minutes: rememberForMinutes,
             },
-            approved_authority: 'danger',
           },
           onAuthChallenge,
         }),
@@ -200,7 +198,6 @@ export function useConfigure() {
               approved: true,
               approved_at: Date.now(),
             },
-            approved_authority: 'danger',
           },
           onAuthChallenge,
         }),

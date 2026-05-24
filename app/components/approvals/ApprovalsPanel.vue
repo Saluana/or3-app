@@ -57,6 +57,22 @@
         </div>
 
         <div
+            v-if="approvalHydrationError"
+            class="rounded-2xl border border-(--or3-amber)/30 bg-(--or3-amber)/10 px-4 py-3 text-sm text-(--or3-text)"
+        >
+            <p>Couldn't refresh approval requests. Open this panel again or tap Retry.</p>
+            <UButton
+                class="mt-2"
+                size="xs"
+                color="primary"
+                variant="soft"
+                @click="retryApprovalHydration"
+            >
+                Retry
+            </UButton>
+        </div>
+
+        <div
             v-if="approvalsError"
             class="rounded-2xl border border-rose-200 bg-rose-50/90 px-4 py-3 text-sm text-rose-700"
         >
@@ -163,9 +179,13 @@ import { computed, nextTick, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useToast } from "@nuxt/ui/composables";
 import type { ApprovalRequest } from "~/types/or3-api";
+import { useActiveHost } from "~/composables/useActiveHost";
 import { useApprovals } from "~/composables/useApprovals";
 import { useAssistantStream } from "~/composables/useAssistantStream";
+import { useApprovalHydration } from "~/composables/assistant-stream/useApprovalHydration";
+import { useChatRuntimeLog } from "~/composables/useChatRuntimeLog";
 import { useChatSessions } from "~/composables/useChatSessions";
+import { useOr3Api } from "~/composables/useOr3Api";
 import { approvalActionErrorMessage } from "~/utils/assistantApproval";
 import { formatApprovalSubjectPreview } from "~/utils/or3/approval-display";
 
@@ -188,6 +208,7 @@ const props = withDefaults(
 
 const toast = useToast();
 const router = useRouter();
+const chat = useChatSessions();
 const {
     activeSession,
     activateSessionByKey,
@@ -195,8 +216,19 @@ const {
     markApprovalResolved,
     messages,
     updateMessage,
-} = useChatSessions();
-const { send } = useAssistantStream();
+} = chat;
+const { send, isStreaming } = useAssistantStream();
+const { activeHost } = useActiveHost();
+const api = useOr3Api();
+const runtimeLog = useChatRuntimeLog();
+const { approvalHydrationError, hydratePendingApprovalsForActiveSession } =
+    useApprovalHydration({
+        activeHost,
+        api,
+        chat,
+        runtimeLog,
+        isStreaming,
+    });
 const selectedFilter = ref("pending");
 const detailOpen = ref(false);
 const approvalActionBusy = ref(false);
@@ -219,6 +251,12 @@ const {
     cancel,
     removeAllowlist,
 } = useApprovals();
+
+async function retryApprovalHydration() {
+    approvalHydrationError.value = null;
+    await hydratePendingApprovalsForActiveSession();
+    await reloadApprovals();
+}
 
 const heroTitle = computed(() => {
     if (selectedFilter.value === "saved") return "Saved approval rules";

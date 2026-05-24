@@ -1,5 +1,9 @@
 <template>
-    <SurfaceCard class-name="or3-command-center space-y-5" padded>
+    <SurfaceCard
+        id="agent-command-center"
+        class-name="or3-command-center space-y-5"
+        padded
+    >
         <!-- Header: hero with mascot on a podium -->
         <header class="or3-cc-hero">
             <div class="or3-cc-hero__copy">
@@ -247,6 +251,43 @@
                     <Icon :name="cat.icon" class="size-4" />
                     <span>{{ cat.label }}</span>
                 </button>
+            </div>
+
+            <!-- Task templates -->
+            <div class="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+                <button
+                    v-for="tpl in taskTemplates"
+                    :key="tpl.id"
+                    type="button"
+                    class="or3-focus-ring or3-touch-target inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-(--or3-border) bg-(--or3-surface) px-2.5 py-1.5 text-xs font-medium text-(--or3-text) transition hover:border-(--or3-green)/30"
+                    :disabled="disabled || submitting"
+                    @click="applyTemplate(tpl)"
+                >
+                    <Icon :name="tpl.icon" class="size-3.5 text-(--or3-green-dark)" />
+                    {{ tpl.label }}
+                </button>
+            </div>
+
+            <!-- Runner context -->
+            <div
+                v-if="!disabledReason"
+                class="rounded-2xl border border-(--or3-border) bg-(--or3-surface)/60 px-3 py-2.5"
+            >
+                <p
+                    class="font-mono text-[10px] font-semibold tracking-[0.18em] text-(--or3-text-muted)"
+                >
+                    RUN CONTEXT
+                </p>
+                <p class="mt-1 text-xs leading-relaxed text-(--or3-text)">
+                    <span class="font-semibold">{{ runnerLabel(selectedRunner) }}</span>
+                    <span v-if="selectedRunner === 'or3-intern'">
+                        · {{ hostContextLabel }} · Runs in the current or3-intern
+                        context.</span
+                    >
+                    <span v-else-if="cwdText">
+                        · {{ cwdDisplayLabel }}</span
+                    >
+                </p>
             </div>
 
             <!-- Runner & mode selection for external CLI -->
@@ -633,7 +674,11 @@ import {
 import type { ChatAttachment } from '~/types/app-state';
 import type { AgentRunnerInfo } from '~/types/or3-api';
 import { runnerLabel } from '~/utils/or3/jobs';
+import type { AgentCommandDraft } from '~/utils/or3/agent-jobs';
+import { useActiveHost } from '~/composables/useActiveHost';
 import CwdPickerSheet from '~/components/agents/CwdPickerSheet.vue';
+
+export type { AgentCommandDraft };
 
 export interface AgentTaskPayload {
     task: string;
@@ -775,6 +820,67 @@ const canSubmit = computed(
         (formState.task.trim().length > 0 ||
             displayedAttachments.value.length > 0),
 );
+
+const { activeHost, isConnected } = useActiveHost();
+
+const hostContextLabel = computed(() => {
+    if (!activeHost.value) return 'No computer connected';
+    if (!isConnected.value) return `${activeHost.value.name} (not connected)`;
+    return activeHost.value.name;
+});
+
+const taskTemplates: Array<{
+    id: string;
+    label: string;
+    icon: string;
+    category: AgentCategory;
+    taskPrefix: string;
+    priority?: AgentPriority;
+}> = [
+    {
+        id: 'research-topic',
+        label: 'Research topic',
+        icon: 'i-pixelarticons-search',
+        category: 'research',
+        taskPrefix: 'Research the latest on ',
+    },
+    {
+        id: 'review-code',
+        label: 'Review code',
+        icon: 'i-pixelarticons-analytics',
+        category: 'review',
+        taskPrefix: 'Review this code and summarize findings: ',
+    },
+    {
+        id: 'summarize-files',
+        label: 'Summarize files',
+        icon: 'i-pixelarticons-folder',
+        category: 'organize',
+        taskPrefix: 'Summarize these files: ',
+    },
+    {
+        id: 'draft-document',
+        label: 'Draft document',
+        icon: 'i-pixelarticons-edit',
+        category: 'draft',
+        taskPrefix: 'Draft a document about ',
+    },
+    {
+        id: 'fix-tests',
+        label: 'Fix failing tests',
+        icon: 'i-pixelarticons-bug',
+        category: 'review',
+        taskPrefix: 'Fix the failing tests for ',
+        priority: 'high',
+    },
+    {
+        id: 'plan-next',
+        label: 'Plan next steps',
+        icon: 'i-pixelarticons-map',
+        category: 'general',
+        taskPrefix: 'Plan the next steps for ',
+    },
+];
 
 const categories: Array<{
     id: AgentCategory;
@@ -1018,6 +1124,45 @@ function selectCategory(id: AgentCategory) {
         const tpl = categories.find((c) => c.id === id)?.template ?? '';
         updateEditorText(tpl);
     }
+}
+
+function applyTemplate(tpl: (typeof taskTemplates)[number]) {
+    formState.category = tpl.category;
+    if (tpl.priority) formState.priority = tpl.priority;
+    updateEditorText(tpl.taskPrefix);
+    focusEditor();
+}
+
+function setDraft(draft: AgentCommandDraft) {
+    if (draft.category) {
+        formState.category = draft.category as AgentCategory;
+    }
+    if (draft.priority) {
+        formState.priority = draft.priority as AgentPriority;
+    }
+    if (draft.notify) {
+        formState.notify = draft.notify as AgentNotify;
+    }
+    if (draft.autoApprove !== undefined) {
+        formState.autoApprove = draft.autoApprove;
+    }
+    if (draft.runnerId) {
+        selectedRunner.value = draft.runnerId;
+    }
+    if (draft.mode) {
+        selectedMode.value = draft.mode as AgentCommandMode;
+    }
+    if (draft.model) {
+        selectedModel.value = draft.model;
+    }
+    if (draft.maxTurns !== undefined) {
+        selectedMaxTurns.value = draft.maxTurns;
+    }
+    if (draft.cwd) {
+        cwdText.value = draft.cwd;
+    }
+    updateEditorText(draft.task || '');
+    focusEditor();
 }
 
 function attachmentId() {
@@ -1639,7 +1784,7 @@ onBeforeUnmount(() => {
     editor.value?.destroy();
 });
 
-defineExpose({ resetForm });
+defineExpose({ resetForm, setDraft });
 </script>
 
 <style scoped>

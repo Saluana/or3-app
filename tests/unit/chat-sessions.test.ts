@@ -36,6 +36,55 @@ describe("useChatSessions", () => {
         ).toBeNull();
     });
 
+    it("keeps the active session stable via activeChatSessionIdByHost", () => {
+        useLocalCache().updateHost({
+            id: "test-host",
+            name: "Test Host",
+            baseUrl: "http://127.0.0.1:9100",
+            token: "secret",
+        });
+
+        const chat = useChatSessions();
+        const older = chat.ensureSession();
+        const newer = chat.newSession("Newer conversation");
+
+        expect(chat.activeSession.value?.id).toBe(newer.id);
+
+        chat.setActiveChatSessionId(older.id);
+
+        expect(chat.activeSession.value?.id).toBe(older.id);
+        expect(
+            useLocalCache().state.value.activeChatSessionIdByHost?.["test-host"],
+        ).toBe(older.id);
+    });
+
+    it("lists pending streaming messages across every host session", () => {
+        useLocalCache().updateHost({
+            id: "test-host",
+            name: "Test Host",
+            baseUrl: "http://127.0.0.1:9100",
+            token: "secret",
+        });
+
+        const chat = useChatSessions();
+        const first = chat.ensureSession();
+        const second = chat.newSession("Second");
+
+        chat.addMessage({
+            sessionId: first.id,
+            role: "assistant",
+            content: "still going",
+            status: "streaming",
+            jobId: "job_1",
+        });
+        chat.setActiveChatSessionId(second.id);
+
+        const pending = chat.pendingStreamingMessagesForHost();
+        expect(pending).toHaveLength(1);
+        expect(pending[0]?.sessionId).toBe(first.id);
+        expect(pending[0]?.jobId).toBe("job_1");
+    });
+
     it("promotes a session by key and reuses it for approval placeholders", () => {
         useLocalCache().updateHost({
             id: "test-host",

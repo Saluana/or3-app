@@ -535,7 +535,7 @@ const displayedAttachments = computed(() => [
     ...manualAttachments.value,
 ]);
 
-const modeOptions = [
+const allModeOptions = [
     {
         id: 'ask' as const,
         label: 'Ask',
@@ -554,7 +554,13 @@ const modeOptions = [
         icon: 'i-pixelarticons-shield',
         description: 'Expose powerful tools when allowed.',
     },
-];
+] as const;
+
+const { activeHost } = useActiveHost();
+const modeOptions = computed(() => {
+    if (activeHost.value?.role === 'admin') return [...allModeOptions];
+    return allModeOptions.filter((option) => option.id !== 'admin');
+});
 
 const selectedMode = computed(() => props.mode ?? 'work');
 const selectedRunnerId = computed(() => props.selectedRunnerId || 'or3-intern');

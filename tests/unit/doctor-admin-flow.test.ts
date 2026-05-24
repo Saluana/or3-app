@@ -5,10 +5,18 @@ import RecommendedFixCard from '../../app/components/doctor/RecommendedFixCard.v
 import RiskApprovalCard from '../../app/components/doctor/RiskApprovalCard.vue';
 import UndoFixCard from '../../app/components/doctor/UndoFixCard.vue';
 import {
+    buildDoctorChatDisplayMessages,
+    compareDoctorMessageOrder,
+    DOCTOR_EMPTY_FINAL_TEXT_WARNING,
     doctorCardsForMessage,
+    doctorSynthesizeFinalSummary,
     doctorToolResultText,
     doctorVisibleTextForMessage,
+    finalizeDoctorMessagesAfterReload,
+    mergeDoctorMessages,
+    mergeDoctorSessionWithLocal,
     parseDoctorToolResult,
+    sortDoctorMessages,
     useDoctorAdminChat,
 } from '../../app/composables/useDoctorAdminChat';
 import { useSettingsHealth } from '../../app/composables/settings/useSettingsHealth';
@@ -96,7 +104,7 @@ describe('Doctor admin flow app integration', () => {
             global: { stubs },
         });
         expect(undo.text()).toContain('Undo available');
-        expect(undo.text()).toContain('scr_1');
+        expect(undo.text()).not.toContain('scr_1');
 
         const recommendedFix = mount(RecommendedFixCard, {
             props: {
@@ -485,7 +493,7 @@ describe('Doctor admin flow app integration', () => {
         );
     });
 
-    it('coalesces duplicate Doctor sends while a turn is active', async () => {
+    it('rejects duplicate Doctor sends while a turn is active', async () => {
         pairedHost();
         let messageCalls = 0;
         let resolveMessage: ((response: Response) => void) | undefined;
@@ -528,9 +536,13 @@ describe('Doctor admin flow app integration', () => {
         const doctor = useDoctorAdminChat();
         await doctor.createSession();
         const first = doctor.sendMessage('Review my safety settings');
-        const second = doctor.sendMessage('Review my safety settings');
 
         await vi.waitFor(() => expect(messageCalls).toBe(1));
+        const second = expect(
+            doctor.sendMessage('Review my safety settings'),
+        ).rejects.toThrow(
+            'Wait for the current Doctor reply before sending another message.',
+        );
         expect(
             doctor.messages.value.filter((message) => message.role === 'user'),
         ).toHaveLength(1);
@@ -571,6 +583,7 @@ describe('Doctor admin flow app integration', () => {
         await second;
 
         expect(messageCalls).toBe(1);
+        expect(doctor.error.value).toContain('Wait for the current Doctor reply');
         expect(doctor.messages.value).toMatchObject([
             { id: 1, role: 'user', content: 'Review my safety settings' },
             {
@@ -910,6 +923,368 @@ describe('Doctor admin flow app integration', () => {
         );
     });
 
+    it('repairs assistant-before-user ordering in the transcript', () => {
+        const display = buildDoctorChatDisplayMessages([
+            {
+                id: 2,
+                role: 'assistant',
+                content: 'You are using deepseek/deepseek-v4-flash.',
+                created_at: 2,
+            },
+            {
+                id: 1,
+                role: 'user',
+                content: 'What models are we using?',
+                created_at: 3,
+            },
+        ]);
+        expect(display.map((message) => message.role)).toEqual([
+            'user',
+            'assistant',
+        ]);
+    });
+
+    it('keeps multi-turn user messages in order after repair', () => {
+        const display = buildDoctorChatDisplayMessages([
+            { id: 1, role: 'user', content: 'first' },
+            { id: 2, role: 'assistant', content: 'reply one' },
+            { id: 3, role: 'user', content: 'second' },
+            { id: 4, role: 'assistant', content: 'reply two' },
+        ]);
+        expect(display.map((message) => message.role)).toEqual([
+            'user',
+            'assistant',
+            'user',
+            'assistant',
+        ]);
+    });
+
+    it('hides interim preface text while a turn is streaming', () => {
+        const display = buildDoctorChatDisplayMessages([
+            { id: 1, role: 'user', content: 'What models?' },
+            {
+                id: -2,
+                role: 'assistant',
+                content: 'Let me also check the routing config.',
+                status: 'streaming',
+            },
+        ]);
+        expect(display).toHaveLength(2);
+        expect(display[1]?.text).toBe('');
+        expect(display[1]?.status).toBe('streaming');
+    });
+
+    it('strips interim preface after the turn completes', () => {
+        const display = buildDoctorChatDisplayMessages([
+            { id: 1, role: 'user', content: 'What models?' },
+            {
+                id: 2,
+                role: 'assistant',
+                content:
+                    'Let me check.\n\nYou are using deepseek/deepseek-v4-flash.',
+            },
+        ]);
+        expect(display[1]?.text).toBe(
+            'You are using deepseek/deepseek-v4-flash.',
+        );
+    });
+
+    it('keeps optimistic user boundaries when reloading mid-turn', () => {
+        const server = [
+            {
+                id: 1,
+                role: 'user' as const,
+                content: 'What models are we using?',
+                created_at: 1,
+            },
+            {
+                id: 2,
+                role: 'assistant' as const,
+                content: 'You are using deepseek/deepseek-v4-flash for chat.',
+                created_at: 2,
+            },
+            {
+                id: 4,
+                role: 'assistant' as const,
+                content:
+                    'Here is the full picture across OR3 with routing details.',
+                created_at: 4,
+                parts: [
+                    {
+                        id: 'tool:1',
+                        type: 'tool' as const,
+                        name: 'doctor_config_search',
+                        status: 'complete' as const,
+                        resultPreview: '{}',
+                    },
+                ],
+            },
+        ];
+        const placeholder = {
+            id: -2,
+            role: 'assistant' as const,
+            content: 'Working…',
+            status: 'streaming' as const,
+            created_at: 5,
+        };
+        const local = [
+            ...server,
+            {
+                id: -1,
+                role: 'user' as const,
+                content: 'what about for sub agents and context manager?',
+                created_at: 3,
+            },
+            placeholder,
+        ];
+        const merged = mergeDoctorSessionWithLocal(server, local, placeholder);
+        const display = buildDoctorChatDisplayMessages(merged);
+        expect(display.map((message) => message.role)).toEqual([
+            'user',
+            'assistant',
+            'user',
+            'assistant',
+        ]);
+        expect(display[1]?.text).toContain('deepseek/deepseek-v4-flash');
+        expect(display[3]?.text).toContain('full picture across OR3');
+    });
+
+    it('extracts plan cards from streaming tool parts', () => {
+        const toolResult = JSON.stringify({
+            kind: 'doctor_plan',
+            ok: true,
+            summary: 'Created validated Doctor settings plan scp_stream.',
+            plan_id: 'scp_stream',
+            stats: {
+                card_type: 'settings_change_preview',
+                status: 'validated',
+                plan: {
+                    id: 'scp_stream',
+                    title: 'Change default model',
+                    summary: 'Switch model.',
+                    changes: [{ section: 'provider', field: 'provider_model' }],
+                },
+            },
+        });
+
+        expect(
+            doctorCardsForMessage({
+                role: 'assistant',
+                content: '',
+                parts: [
+                    {
+                        id: 'tool:stream',
+                        type: 'tool',
+                        name: 'doctor_create_plan',
+                        status: 'complete',
+                        resultPreview: toolResult,
+                    },
+                ],
+            }),
+        ).toEqual([expect.objectContaining({ type: 'plan' })]);
+    });
+
+    it('does not synthesize a doctor_status finding wall', () => {
+        const toolResult = JSON.stringify({
+            kind: 'doctor_status',
+            ok: true,
+            summary:
+                'Basic Doctor found 0 blocking, 0 error, and 14 warning findings.',
+            stats: {
+                finding_cards: [
+                    {
+                        id: 'tools.exec.shell',
+                        what_i_found: 'exec shell command mode is enabled',
+                    },
+                    {
+                        id: 'tools.workspace',
+                        what_i_found: 'workspace restriction is disabled',
+                    },
+                ],
+            },
+        });
+
+        expect(
+            doctorSynthesizeFinalSummary({
+                role: 'assistant',
+                parts: [
+                    {
+                        id: 'tool:status',
+                        type: 'tool',
+                        name: 'doctor_status',
+                        status: 'complete',
+                        resultPreview: toolResult,
+                    },
+                ],
+            }),
+        ).toBe(
+            'Basic Doctor found 0 blocking, 0 error, and 14 warning findings.',
+        );
+    });
+
+    it('synthesizes connected apps from doctor_status when the user asked about apps', () => {
+        const toolResult = JSON.stringify({
+            kind: 'doctor_status',
+            ok: true,
+            summary:
+                'Basic Doctor found 0 blocking, 0 error, and 0 warning findings.',
+            stats: {
+                connected_apps: [
+                    {
+                        id: 'telegram',
+                        name: 'Telegram',
+                        enabled: true,
+                        detail: 'on and configured',
+                    },
+                    {
+                        id: 'slack',
+                        name: 'Slack',
+                        enabled: false,
+                        detail: 'off',
+                    },
+                ],
+            },
+        });
+
+        expect(
+            doctorSynthesizeFinalSummary(
+                {
+                    role: 'assistant',
+                    parts: [
+                        {
+                            id: 'tool:status',
+                            type: 'tool',
+                            name: 'doctor_status',
+                            status: 'complete',
+                            resultPreview: toolResult,
+                        },
+                    ],
+                },
+                { userMessage: 'do i have any connected apps?' },
+            ),
+        ).toContain('Telegram');
+        expect(
+            doctorSynthesizeFinalSummary(
+                {
+                    role: 'assistant',
+                    parts: [
+                        {
+                            id: 'tool:status',
+                            type: 'tool',
+                            name: 'doctor_status',
+                            status: 'complete',
+                            resultPreview: toolResult,
+                        },
+                    ],
+                },
+                { userMessage: 'do i have any connected apps?' },
+            ),
+        ).toContain('Not connected: Slack');
+    });
+
+    it('synthesizes a readable answer from doctor_config_search tool output', () => {
+        const toolResult = JSON.stringify({
+            kind: 'doctor_config_search',
+            ok: true,
+            summary: 'Found 1 Doctor-safe config fields.',
+            stats: {
+                count: 1,
+                fields: [
+                    {
+                        label: 'Default Model',
+                        key: 'model',
+                        path: 'provider.model',
+                        description: 'The default model to use for chat and agents',
+                        current_value: {
+                            value: 'nvidia/nemotron-3-super-120b-a12b:free',
+                            present: true,
+                        },
+                    },
+                ],
+            },
+        });
+
+        expect(
+            doctorSynthesizeFinalSummary({
+                role: 'assistant',
+                parts: [
+                    {
+                        id: 'tool:1',
+                        type: 'tool',
+                        name: 'doctor_config_search',
+                        status: 'complete',
+                        resultPreview: toolResult,
+                    },
+                ],
+            }),
+        ).toContain('Default Model');
+        expect(
+            doctorSynthesizeFinalSummary({
+                role: 'assistant',
+                parts: [
+                    {
+                        id: 'tool:1',
+                        type: 'tool',
+                        name: 'doctor_config_search',
+                        status: 'complete',
+                        resultPreview: toolResult,
+                    },
+                ],
+            }),
+        ).toContain('nvidia/nemotron-3-super-120b-a12b:free');
+    });
+
+    it('keeps the empty-final assistant summary when tool cards are present', () => {
+        const content = [
+            '```json',
+            JSON.stringify({
+                kind: 'doctor_plan',
+                ok: true,
+                stats: {
+                    card_type: 'settings_change_preview',
+                    plan: {
+                        id: 'scp_3',
+                        title: 'Fix provider key',
+                        changes: [],
+                    },
+                },
+            }),
+            '```',
+        ].join('\n');
+
+        expect(
+            doctorVisibleTextForMessage({
+                role: 'assistant',
+                content,
+                errorCode: 'empty_final_text',
+            }),
+        ).toBe(DOCTOR_EMPTY_FINAL_TEXT_WARNING);
+    });
+
+    it('renders plan apply state labels on the preview card', async () => {
+        const preview = mount(SettingsChangePreviewCard, {
+            props: {
+                plan: {
+                    id: 'scp_ready',
+                    title: 'Ready plan',
+                    changes: [],
+                },
+                applyState: 'ready',
+            },
+            global: { stubs },
+        });
+        expect(preview.text()).toContain('Ready to apply');
+
+        await preview.setProps({ applyState: 'applied' });
+        expect(preview.text()).toContain('Applied');
+
+        await preview.setProps({ applyState: 'rolled_back' });
+        expect(preview.text()).toContain('Reverted');
+
+        await preview.setProps({ applyState: 'failed' });
+        expect(preview.text()).toContain('Failed');
+    });
+
     it('retries Doctor session creation without optional runner fields for older services', async () => {
         pairedHost();
         const bodies: unknown[] = [];
@@ -1055,10 +1430,11 @@ describe('Doctor admin flow app integration', () => {
             { session_key: expect.any(String), title: 'Doctor Session' },
             {
                 content: 'test prompt',
+                stream: true,
                 model: 'openai/gpt-5',
                 thinking_level: 'high',
             },
-            { content: 'test prompt' },
+            { content: 'test prompt', stream: true },
         ]);
         expect(doctor.messages.value).toMatchObject([
             { role: 'user', content: 'test prompt' },
@@ -1855,5 +2231,152 @@ describe('Doctor admin flow app integration', () => {
                 { section: 'provider', field: 'model', value: 'new-model' },
             ]),
         ).rejects.toMatchObject({ status: 403 });
+    });
+});
+
+describe('Doctor admin chat message ordering', () => {
+    it('sorts persisted messages by ascending id', () => {
+        const ordered = sortDoctorMessages([
+            { id: 12, role: 'assistant', content: 'third' },
+            { id: 3, role: 'user', content: 'first' },
+            { id: 8, role: 'assistant', content: 'second' },
+        ]);
+        expect(ordered.map((message) => message.id)).toEqual([3, 8, 12]);
+    });
+
+    it('orders optimistic ids after persisted ids', () => {
+        expect(
+            compareDoctorMessageOrder(
+                { id: 4, role: 'assistant', content: 'saved' },
+                { id: -2, role: 'assistant', content: 'streaming' },
+            ),
+        ).toBeLessThan(0);
+        expect(
+            compareDoctorMessageOrder(
+                { id: -1, role: 'user', content: 'draft' },
+                { id: -2, role: 'assistant', content: 'draft reply' },
+            ),
+        ).toBeLessThan(0);
+    });
+
+    it('mergeDoctorMessages dedupes by id and sorts', () => {
+        const merged = mergeDoctorMessages(
+            [
+                { id: 2, role: 'assistant', content: 'short' },
+                { id: 1, role: 'user', content: 'hi' },
+            ],
+            [{ id: 2, role: 'assistant', content: 'longer persisted reply' }],
+        );
+        expect(merged.map((message) => message.id)).toEqual([1, 2]);
+        expect(merged[1]?.content).toBe('longer persisted reply');
+    });
+
+    it('finalizeDoctorMessagesAfterReload drops duplicate streaming assistant', () => {
+        const server = [
+            { id: 1, role: 'user', content: 'change model' },
+            {
+                id: 2,
+                role: 'assistant',
+                content: 'Done. Here is the plan.',
+            },
+        ];
+        const placeholder = {
+            id: -2,
+            role: 'assistant',
+            content: 'Done. Here is the plan.',
+            status: 'complete' as const,
+        };
+        const result = finalizeDoctorMessagesAfterReload(server, placeholder);
+        expect(result.map((message) => message.id)).toEqual([1, 2]);
+    });
+
+    it('finalizeDoctorMessagesAfterReload keeps unique streaming placeholder', () => {
+        const server = [{ id: 1, role: 'user', content: 'change model' }];
+        const placeholder = {
+            id: -2,
+            role: 'assistant',
+            content: 'Still drafting the plan…',
+            status: 'streaming' as const,
+        };
+        const result = finalizeDoctorMessagesAfterReload(server, placeholder);
+        expect(result.map((message) => message.id)).toEqual([1, -2]);
+    });
+
+    it('buildDoctorChatDisplayMessages preserves user/assistant turn order', () => {
+        const display = buildDoctorChatDisplayMessages([
+            { id: 1, role: 'user', content: 'first' },
+            { id: 2, role: 'assistant', content: 'reply one' },
+            { id: 3, role: 'user', content: 'second' },
+            { id: 4, role: 'assistant', content: 'reply two' },
+        ]);
+        expect(display.map((message) => message.role)).toEqual([
+            'user',
+            'assistant',
+            'user',
+            'assistant',
+        ]);
+        expect(display.map((message) => message.rawId)).toEqual([1, 2, 3, 4]);
+    });
+
+    it('merges consecutive assistant messages from the same turn', () => {
+        const display = buildDoctorChatDisplayMessages([
+            { id: 1, role: 'user', content: 'change model' },
+            { id: 2, role: 'assistant', content: 'Let me look.' },
+            { id: 3, role: 'assistant', content: 'Here is the plan.' },
+        ]);
+        expect(display).toHaveLength(2);
+        expect(display[0]?.role).toBe('user');
+        expect(display[1]?.text).toBe('Here is the plan.');
+    });
+
+    it('collapses assistant, tool, and follow-up assistant rows into one turn bubble', () => {
+        const intro = 'Let me dig into how access profiles work so I can give you a concrete answer.';
+        const display = buildDoctorChatDisplayMessages([
+            { id: 1, role: 'user', content: 'what do we do?' },
+            { id: 2, role: 'assistant', content: intro },
+            { id: 3, role: 'tool', content: '{"kind":"doctor_docs_search","ok":true}' },
+            {
+                id: 4,
+                role: 'assistant',
+                content: intro,
+                parts: [
+                    { id: 'text:1', type: 'text', content: intro },
+                    {
+                        id: 'tool:1',
+                        type: 'tool',
+                        name: 'doctor_docs_search',
+                        status: 'complete',
+                    },
+                ],
+            },
+        ]);
+        expect(display).toHaveLength(2);
+        expect(display[1]?.role).toBe('assistant');
+        expect(display[1]?.text).toBe(intro);
+        expect(
+            display[1]?.parts.filter((part) => part.type === 'text'),
+        ).toHaveLength(0);
+        expect(display[1]?.parts.some((part) => part.type === 'tool')).toBe(
+            true,
+        );
+    });
+
+    it('does not merge assistant messages separated by a user turn', () => {
+        const display = buildDoctorChatDisplayMessages([
+            { id: 1, role: 'user', content: 'first' },
+            { id: 2, role: 'assistant', content: 'reply one' },
+            { id: 3, role: 'user', content: 'second' },
+            { id: 4, role: 'assistant', content: 'reply two' },
+        ]);
+        expect(display).toHaveLength(4);
+    });
+
+    it('keeps out-of-order persisted ids in chronological display order', () => {
+        const display = buildDoctorChatDisplayMessages([
+            { id: 9, role: 'assistant', content: 'later reply' },
+            { id: 2, role: 'user', content: 'earlier' },
+            { id: 5, role: 'user', content: 'middle question' },
+        ]);
+        expect(display.map((message) => message.rawId)).toEqual([2, 5, 9]);
     });
 });

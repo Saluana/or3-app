@@ -13,6 +13,20 @@
         <AppHeader subtitle="AGENTS" />
 
         <div class="space-y-6">
+            <div class="or3-sched-tabs">
+                <button
+                    v-for="tab in pageTabs"
+                    :key="tab.value"
+                    type="button"
+                    class="or3-sched-tab"
+                    :aria-pressed="activePageTab === tab.value"
+                    @click="activePageTab = tab.value"
+                >
+                    <Icon :name="tab.icon" class="or3-sched-tab__icon" />
+                    <span class="or3-sched-tab__label">{{ tab.label }}</span>
+                </button>
+            </div>
+
             <AgentCommandCenter
                 ref="commandCenterRef"
                 :disabled="!commandReady"
@@ -26,74 +40,138 @@
                 @dismiss-error="submitError = null"
             />
 
-            <section>
-                <SectionHeader title="Active jobs">
-                    <template #action>
-                        <span
-                            v-if="loadingJobs"
-                            class="flex items-center gap-1 font-mono text-[11px] text-(--or3-text-muted)"
-                        >
-                            <Icon
-                                name="i-pixelarticons-loader"
-                                class="size-3 animate-spin"
-                            />
-                            Refreshing
-                        </span>
-                        <StatusPill
-                            v-else-if="!active.length"
-                            label="all clear"
-                            tone="green"
-                        />
-                    </template>
-                </SectionHeader>
-
-                <div v-if="active.length" class="space-y-2.5">
-                    <AgentActiveJobRow
-                        v-for="job in active"
-                        :key="job.job_id"
-                        :job="job"
-                        :cancelling="cancellingId === job.job_id"
-                        @open="openJobDetail"
-                        @cancel="cancelJob"
-                    />
+            <template v-if="activePageTab === 'overview'">
+                <div
+                    v-if="lastListError"
+                    class="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-(--or3-amber)/40 bg-(--or3-amber)/10 px-4 py-3"
+                >
+                    <p class="font-mono text-sm text-(--or3-text)">
+                        Couldn’t refresh jobs. Showing cached activity.
+                    </p>
+                    <button
+                        type="button"
+                        class="or3-focus-ring rounded-xl border border-(--or3-border) bg-(--or3-surface) px-3 py-1.5 font-mono text-sm font-semibold"
+                        @click="retryLoadJobs"
+                    >
+                        Retry
+                    </button>
                 </div>
-                <EmptyState
-                    v-else
-                    icon="i-pixelarticons-robot"
-                    title="Nothing running yet"
-                    :description="emptyActiveDescription"
-                />
-            </section>
 
-            <section>
-                <SectionHeader title="Queue & history">
-                    <template #action>
-                        <span
-                            v-if="!listSupported"
-                            class="font-mono text-[11px] text-(--or3-text-muted)"
-                        >
-                            Local view
-                        </span>
-                        <span
-                            v-else-if="lastListError"
-                            class="flex items-center gap-1 font-mono text-[11px] text-(--or3-amber)"
-                        >
-                            <Icon name="i-pixelarticons-alert" class="size-3" />
-                            Sync paused
-                        </span>
-                    </template>
-                </SectionHeader>
+                <section v-if="needsAttention.length">
+                    <SectionHeader title="Needs attention" />
+                    <div class="space-y-2.5">
+                        <AgentActiveJobRow
+                            v-for="job in needsAttention"
+                            :key="`attention-${job.job_id}`"
+                            :job="job"
+                            :cancelling="cancellingId === job.job_id"
+                            @open="openJobDetail"
+                            @cancel="cancelJob"
+                        />
+                    </div>
+                </section>
 
-                <AgentQueueHistory
-                    :pending="pending"
-                    :recent="recent"
+                <section>
+                    <SectionHeader title="Active jobs">
+                        <template #action>
+                            <span
+                                v-if="loadingJobs"
+                                class="flex items-center gap-1 font-mono text-[11px] text-(--or3-text-muted)"
+                            >
+                                <Icon
+                                    name="i-pixelarticons-loader"
+                                    class="size-3 animate-spin"
+                                />
+                                Refreshing
+                            </span>
+                            <StatusPill
+                                v-else-if="!runningJobs.length && !queuedJobs.length"
+                                label="all clear"
+                                tone="green"
+                            />
+                        </template>
+                    </SectionHeader>
+
+                    <div
+                        v-if="runningJobs.length || queuedJobs.length"
+                        class="space-y-2.5"
+                    >
+                        <AgentActiveJobRow
+                            v-for="job in runningJobs"
+                            :key="job.job_id"
+                            :job="job"
+                            :cancelling="cancellingId === job.job_id"
+                            @open="openJobDetail"
+                            @cancel="cancelJob"
+                        />
+                        <AgentActiveJobRow
+                            v-for="job in queuedJobs"
+                            :key="job.job_id"
+                            :job="job"
+                            :cancelling="cancellingId === job.job_id"
+                            @open="openJobDetail"
+                            @cancel="cancelJob"
+                        />
+                    </div>
+                    <EmptyState
+                        v-else
+                        icon="i-pixelarticons-robot"
+                        title="Nothing running yet"
+                        :description="emptyActiveDescription"
+                    />
+                </section>
+
+                <section>
+                    <SectionHeader title="Queue & history">
+                        <template #action>
+                            <button
+                                type="button"
+                                class="or3-focus-ring font-mono text-[11px] font-semibold text-(--or3-green-dark)"
+                                @click="activePageTab = 'activity'"
+                            >
+                                View all activity
+                            </button>
+                        </template>
+                    </SectionHeader>
+
+                    <AgentQueueHistory
+                        :pending="pendingPreview"
+                        :recent="recentPreview"
+                        @open="openJobDetail"
+                    />
+                </section>
+            </template>
+
+            <section v-else>
+                <SectionHeader title="Activity" />
+                <AgentActivityList
+                    :groups="groupedActivityJobs"
+                    :result-jobs="resultHighlightJobs"
+                    :show-results-section="showResultsSection"
+                    :loading="loadingJobs"
+                    :error="listErrorMessage"
+                    :selected-status="activityStatus"
+                    :selected-runner="activityRunner"
+                    :runner-options="runnerFilterOptions"
+                    :query="activityQuery"
+                    :hide-reviewed="hideReviewed"
+                    :is-reviewed="isReviewed"
+                    :has-any-jobs="jobs.length > 0"
                     @open="openJobDetail"
+                    @change-status="activityStatus = $event"
+                    @change-runner="activityRunner = $event"
+                    @search="activityQuery = $event"
+                    @change-hide-reviewed="hideReviewed = $event"
+                    @retry="retryLoadJobs"
                 />
             </section>
 
             <AgentJobDetail
                 :open="detailOpen"
                 :job="selectedJob"
+                :reviewed="
+                    selectedJob ? isReviewed(selectedJob.job_id) : false
+                "
                 :busy="
                     cancellingId === selectedJob?.job_id ||
                     retryingId === selectedJob?.job_id
@@ -102,6 +180,8 @@
                 @cancel="cancelJob"
                 @retry="retryJobAndClose"
                 @continue="continueInChat"
+                @prefill="prefillFromJob"
+                @mark-reviewed="markJobReviewed"
             />
         </div>
     </AppShell>
@@ -117,8 +197,23 @@ import type {
 import type { Or3AppError } from '~/types/app-state';
 import { programmaticSend } from '~/composables/useChatInputBridge';
 import { normalizeResultDisplayText } from '~/utils/or3/result-display';
+import { isActiveStatus, normalizeStatus } from '~/utils/or3/jobs';
+import {
+    buildRunnerFilterOptions,
+    filterJobsByRunner,
+    filterJobsByStatus,
+    filterUnreviewedJobs,
+    groupJobsByDate,
+    isAttentionStatus,
+    jobMatchesSearch,
+    jobToCommandDraft,
+    sortJobsByUpdated,
+    type ActivityStatusFilter,
+} from '~/utils/or3/agent-jobs';
+import { useReviewedJobs } from '~/composables/useReviewedJobs';
 
 const router = useRouter();
+const route = useRoute();
 const toast = useToast();
 const { activeHost, isConnected } = useActiveHost();
 const { activeSession, ensureSession } = useChatSessions();
@@ -141,8 +236,12 @@ const {
     runnerListSupported,
 } = useJobs();
 const { health, refreshStatus } = useComputerStatus();
+const { isReviewed, markReviewed, reviewedIds } = useReviewedJobs();
 
-const commandCenterRef = ref<{ resetForm: () => void } | null>(null);
+const commandCenterRef = ref<{
+    resetForm: () => void;
+    setDraft: (draft: ReturnType<typeof jobToCommandDraft>) => void;
+} | null>(null);
 const submitting = ref(false);
 const submitError = ref<string | null>(null);
 const cancellingId = ref<string | null>(null);
@@ -150,18 +249,101 @@ const retryingId = ref<string | null>(null);
 const detailOpen = ref(false);
 const selectedJobId = ref<string | null>(null);
 
-const active = computed(() =>
-    jobs.value.filter((j) => j.status === 'running' || j.status === 'queued'),
-);
-const pending = computed(() => jobs.value.filter((j) => j.status === 'queued'));
-const recent = computed(() =>
-    jobs.value.filter(
-        (j) =>
-            j.status === 'completed' ||
-            j.status === 'failed' ||
-            j.status === 'aborted',
+const activePageTab = ref<'overview' | 'activity'>('overview');
+const activityStatus = ref<ActivityStatusFilter>('all');
+const activityRunner = ref('all');
+const activityQuery = ref('');
+const hideReviewed = ref(false);
+
+const pageTabs = [
+    { value: 'overview' as const, label: 'Overview', icon: 'i-pixelarticons-home' },
+    {
+        value: 'activity' as const,
+        label: 'Activity',
+        icon: 'i-pixelarticons-list',
+    },
+];
+
+const allJobsSorted = computed(() => sortJobsByUpdated(jobs.value));
+
+const needsAttention = computed(() =>
+    allJobsSorted.value.filter(
+        (job) => isActiveStatus(job.status) && isAttentionStatus(job),
     ),
 );
+
+const attentionIds = computed(
+    () => new Set(needsAttention.value.map((j) => j.job_id)),
+);
+
+const runningJobs = computed(() =>
+    allJobsSorted.value.filter(
+        (j) => j.status === 'running' && !attentionIds.value.has(j.job_id),
+    ),
+);
+
+const queuedJobs = computed(() =>
+    allJobsSorted.value.filter(
+        (j) => j.status === 'queued' && !attentionIds.value.has(j.job_id),
+    ),
+);
+
+const pendingPreview = computed(() =>
+    allJobsSorted.value.filter((j) => j.status === 'queued').slice(0, 4),
+);
+
+const recentPreview = computed(() =>
+    allJobsSorted.value
+        .filter((j) =>
+            ['completed', 'failed', 'aborted'].includes(
+                normalizeStatus(j.status),
+            ),
+        )
+        .slice(0, 4),
+);
+
+const runnerFilterOptions = computed(() =>
+    buildRunnerFilterOptions(jobs.value),
+);
+
+const activityFilteredJobs = computed(() => {
+    let list = allJobsSorted.value;
+    list = filterJobsByStatus(list, activityStatus.value);
+    list = filterJobsByRunner(list, activityRunner.value);
+    list = filterUnreviewedJobs(list, reviewedIds.value, hideReviewed.value);
+    list = list.filter((job) => jobMatchesSearch(job, activityQuery.value));
+    return list;
+});
+
+const showResultsSection = computed(
+    () =>
+        activityStatus.value === 'all' ||
+        activityStatus.value === 'completed' ||
+        activityStatus.value === 'failed',
+);
+
+const resultHighlightJobs = computed(() => {
+    if (!showResultsSection.value) return [];
+    return activityFilteredJobs.value
+        .filter((job) => {
+            const status = normalizeStatus(job.status);
+            return status === 'completed' || status === 'failed';
+        })
+        .slice(0, 8);
+});
+
+const groupedActivityJobs = computed(() => {
+    const highlightIds = new Set(
+        resultHighlightJobs.value.map((j) => j.job_id),
+    );
+    const list =
+        showResultsSection.value && highlightIds.size
+            ? activityFilteredJobs.value.filter(
+                  (j) => !highlightIds.has(j.job_id),
+              )
+            : activityFilteredJobs.value;
+    return groupJobsByDate(list);
+});
 
 const selectedJob = computed<JobSnapshot | null>(() => {
     const id = selectedJobId.value;
@@ -193,11 +375,9 @@ const disabledReason = computed<AgentCommandDisabledReason | null>(() => {
             actionLabel: 'Resume pairing',
         };
     }
-    // While runner discovery is loading, don't block the UI
     if (loadingRunners.value) {
         return null;
     }
-    // Allow external runners even if subagents are off
     const hasExternalRunners =
         agentRunners.value?.some((r) => r.id !== 'or3-intern') ?? false;
     if (!subagentsAvailable.value && !hasExternalRunners) {
@@ -213,6 +393,14 @@ const disabledReason = computed<AgentCommandDisabledReason | null>(() => {
 });
 
 const commandReady = computed(() => disabledReason.value === null);
+
+const listErrorMessage = computed(() => {
+    if (!lastListError.value) return null;
+    return (
+        lastListError.value.message ||
+        describeError(lastListError.value, 'Couldn\u2019t refresh jobs.')
+    );
+});
 
 const emptyActiveDescription = computed(() => {
     if (!commandReady.value) {
@@ -242,6 +430,50 @@ function describeError(error: unknown, fallback: string): string {
         default:
             return err.message || fallback;
     }
+}
+
+async function retryLoadJobs() {
+    try {
+        await loadJobs();
+    } catch (error) {
+        toast.add({
+            title: 'Couldn\u2019t refresh jobs',
+            description: describeError(error, 'Try again in a moment.'),
+            icon: 'i-pixelarticons-alert',
+            color: 'warning',
+        });
+    }
+}
+
+function scrollToCommandCenter() {
+    if (!import.meta.client) return;
+    const el = document.getElementById('agent-command-center');
+    el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function prefillFromJob(job: JobSnapshot) {
+    const draft = jobToCommandDraft(job);
+    commandCenterRef.value?.setDraft(draft);
+    activePageTab.value = 'overview';
+    detailOpen.value = false;
+    nextTick(() => {
+        scrollToCommandCenter();
+    });
+    toast.add({
+        title: 'Task loaded in command center',
+        description: 'Edit the task, then hand it off when ready.',
+        icon: 'i-pixelarticons-edit',
+        color: 'neutral',
+    });
+}
+
+function markJobReviewed(job: JobSnapshot) {
+    markReviewed(job.job_id);
+    toast.add({
+        title: 'Marked as reviewed',
+        icon: 'i-pixelarticons-check',
+        color: 'neutral',
+    });
 }
 
 async function createJob(payload: AgentTaskPayload) {
@@ -545,12 +777,24 @@ async function continueInChat(job: JobSnapshot) {
     }
 }
 
+function applyPrefillFromRoute() {
+    const raw = route.query.prefill;
+    const jobId = typeof raw === 'string' ? raw : null;
+    if (!jobId) return;
+    const job = jobs.value.find((j) => j.job_id === jobId);
+    if (job) {
+        prefillFromJob(job);
+        void router.replace({ query: { ...route.query, prefill: undefined } });
+    }
+}
+
 onMounted(async () => {
     startActiveJobTracking();
     void refreshStatus().catch(() => {});
     void loadAgentRunners().catch(() => {});
     try {
         await loadJobs();
+        applyPrefillFromRoute();
     } catch (error) {
         const err = error as Or3AppError;
         if (

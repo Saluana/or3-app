@@ -4,8 +4,11 @@
             <Icon :name="iconName" class="mt-0.5 size-4 shrink-0" />
             <div class="min-w-0 flex-1">
                 <p class="font-mono font-semibold">{{ card.what_i_found }}</p>
-                <p class="mt-0.5 text-xs leading-5">
-                    {{ card.what_this_means || 'Doctor reported this finding.' }}
+                <p
+                    v-if="detailText"
+                    class="mt-0.5 text-xs leading-5"
+                >
+                    {{ detailText }}
                 </p>
                 <details v-if="card.advanced_details" class="mt-2">
                     <summary class="cursor-pointer font-mono text-[11px] uppercase tracking-wide">
@@ -23,6 +26,21 @@ import { computed } from 'vue';
 import type { DoctorFindingCard } from '~/types/or3-api';
 
 const props = defineProps<{ card: DoctorFindingCard }>();
+
+function normalizeFindingText(value?: string) {
+    return String(value ?? '')
+        .trim()
+        .replace(/\s+/g, ' ');
+}
+
+const detailText = computed(() => {
+    const summary = normalizeFindingText(props.card.what_i_found);
+    const detail = normalizeFindingText(
+        props.card.what_this_means || 'Doctor reported this finding.',
+    );
+    if (!summary || detail === summary) return '';
+    return props.card.what_this_means || 'Doctor reported this finding.';
+});
 
 const risk = computed(() => props.card.risk_level ?? 'notice');
 const toneClass = computed(() => {

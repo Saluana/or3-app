@@ -1,4 +1,4 @@
-import { watch, type Ref } from 'vue';
+import { ref, watch, type Ref } from 'vue';
 import type { Or3HostProfile } from '~/types/app-state';
 import { pendingApprovalPlaceholderContent } from '~/utils/assistant-stream/approval';
 import { normalizeApprovalRequest } from '~/utils/or3/approvals';
@@ -21,6 +21,7 @@ interface UseApprovalHydrationOptions {
 
 let approvalHydrationWatcherInstalled = false;
 const approvalHydrationInFlight = new Set<string>();
+export const approvalHydrationError = ref<string | null>(null);
 
 export function useApprovalHydration(options: UseApprovalHydrationOptions) {
     const isClient = options.isClient ?? import.meta.client;
@@ -40,6 +41,7 @@ export function useApprovalHydration(options: UseApprovalHydrationOptions) {
         if (approvalHydrationInFlight.has(hydrationKey)) return;
 
         approvalHydrationInFlight.add(hydrationKey);
+        approvalHydrationError.value = null;
         try {
             options.runtimeLog.add(
                 'approval',
@@ -99,6 +101,10 @@ export function useApprovalHydration(options: UseApprovalHydrationOptions) {
                 );
             }
         } catch (error) {
+            approvalHydrationError.value =
+                error && typeof error === 'object' && 'message' in error
+                    ? String((error as { message?: unknown }).message)
+                    : 'Could not refresh approval requests';
             options.runtimeLog.add(
                 'approval',
                 'hydrate_pending:error',
@@ -132,6 +138,7 @@ export function useApprovalHydration(options: UseApprovalHydrationOptions) {
     };
 
     return {
+        approvalHydrationError,
         hydratePendingApprovalsForActiveSession,
         installApprovalHydrationWatcher,
     };

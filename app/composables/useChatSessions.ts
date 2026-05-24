@@ -211,7 +211,47 @@ export function useChatSessions() {
             (session) => session.hostId === activeHost.value?.id,
         ),
     );
-    const activeSession = computed(() => sessions.value[0] ?? null);
+
+    function setActiveChatSessionId(sessionId: string) {
+        const hostId = activeHost.value?.id?.trim();
+        if (!hostId) return;
+        if (!cache.state.value.activeChatSessionIdByHost) {
+            cache.state.value.activeChatSessionIdByHost = {};
+        }
+        cache.state.value.activeChatSessionIdByHost[hostId] = sessionId;
+        cache.persist();
+    }
+
+    const activeSession = computed(() => {
+        const hostSessions = sessions.value;
+        const hostId = activeHost.value?.id?.trim();
+        if (!hostSessions.length) return null;
+        if (!hostId) return hostSessions[0] ?? null;
+        const activeId =
+            cache.state.value.activeChatSessionIdByHost?.[hostId]?.trim();
+        if (activeId) {
+            const match = hostSessions.find((session) => session.id === activeId);
+            if (match) return match;
+        }
+        return hostSessions[0] ?? null;
+    });
+
+    function pendingStreamingMessagesForHost(hostId = activeHost.value?.id) {
+        const normalizedHostId = hostId?.trim();
+        if (!normalizedHostId) return [];
+        const sessionIds = new Set(
+            cache.state.value.sessions
+                .filter((session) => session.hostId === normalizedHostId)
+                .map((session) => session.id),
+        );
+        return cache.state.value.messages.filter(
+            (message) =>
+                message.role === "assistant" &&
+                message.status === "streaming" &&
+                sessionIds.has(message.sessionId) &&
+                (Boolean(message.jobId) || Boolean(message.runnerChatTurnId)),
+        );
+    }
     const messages = computed(() =>
         cache.state.value.messages.filter(
             (message) => message.sessionId === activeSession.value?.id,
@@ -237,13 +277,15 @@ export function useChatSessions() {
         if (index < 0) return null;
         if (index === 0) {
             touchSession(sessionId);
+            setActiveChatSessionId(sessionId);
             cache.persist();
-            return cache.state.value.sessions[0] ?? null;
+            return cache.state.value.sessions.find((item) => item.id === sessionId) ?? null;
         }
         const [session] = cache.state.value.sessions.splice(index, 1);
         if (!session) return null;
         cache.state.value.sessions.unshift(session);
         touchSession(session.id);
+        setActiveChatSessionId(session.id);
         cache.persist();
         return session;
     }
@@ -263,6 +305,7 @@ export function useChatSessions() {
             ...defaultRunnerFields(),
         };
         cache.state.value.sessions.unshift(session);
+        setActiveChatSessionId(id);
         cache.persist();
         return session;
     }
@@ -306,6 +349,7 @@ export function useChatSessions() {
             ...defaultRunnerFields(),
         };
         cache.state.value.sessions.unshift(session);
+        setActiveChatSessionId(session.id);
         cache.persist();
         return session;
     }
@@ -586,6 +630,7 @@ export function useChatSessions() {
             ...defaultRunnerFields(),
         };
         cache.state.value.sessions.unshift(session);
+        setActiveChatSessionId(id);
         cache.persist();
         return session;
     }
@@ -926,6 +971,9 @@ export function useChatSessions() {
         activeSession,
         messages,
         draft,
+        setActiveChatSessionId,
+        promoteSession,
+        pendingStreamingMessagesForHost,
         ensureSession,
         findSessionByKey,
         activateSessionByKey,

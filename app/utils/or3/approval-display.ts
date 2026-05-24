@@ -1,7 +1,10 @@
 import type { ApprovalRequest } from '~/types/or3-api';
 
 function stringValue(value: unknown) {
-    return typeof value === 'string' ? value.trim() : '';
+    if (typeof value === 'string') return value.trim();
+    if (typeof value === 'number' && Number.isFinite(value))
+        return String(value);
+    return '';
 }
 
 function stringArray(value: unknown) {
@@ -87,7 +90,11 @@ export function formatApprovalSubjectPreview(
         if (cwd) return `cwd: ${cwd}`;
     }
 
-    if (type === 'skill_exec' || type === 'run_skill_script') {
+    if (
+        type === 'skill_exec' ||
+        type === 'skill_execution' ||
+        type === 'run_skill_script'
+    ) {
         const skill =
             stringValue(obj.skill_id) ||
             stringValue(obj.skillName) ||
@@ -109,6 +116,19 @@ export function formatApprovalSubjectPreview(
         if (runner && access && target) return `${runner} ${access} ${target}`;
         if (runner && target) return `${runner}: ${target}`;
         if (target) return target;
+    }
+
+    if (type === 'tool_quota') {
+        const scope = stringValue(obj.scope);
+        const limitName = stringValue(obj.limit_name);
+        const tool = stringValue(obj.tool_name);
+        const current = stringValue(obj.current);
+        const limit = stringValue(obj.limit);
+        const target = [scope, limitName || tool].filter(Boolean).join(' ');
+        const usage = current && limit ? `${current}/${limit}` : '';
+        if (target && usage) return `${target} (${usage})`;
+        if (target) return target;
+        if (usage) return usage;
     }
 
     return (

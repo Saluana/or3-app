@@ -65,6 +65,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import type { JobSnapshot } from '~/types/or3-api';
+import { isActiveStatus, normalizeStatus } from '~/utils/or3/jobs';
+import { jobMatchesSearch } from '~/utils/or3/agent-jobs';
 
 const props = defineProps<{
     jobs: JobSnapshot[];
@@ -76,12 +78,16 @@ const emit = defineEmits<{
 }>();
 
 const query = ref('');
-const activeFilter = ref<'all' | 'active' | 'completed'>('all');
+const activeFilter = ref<
+    'all' | 'active' | 'completed' | 'failed' | 'cancelled'
+>('all');
 
 const filters = [
     { label: 'All', value: 'all' as const },
     { label: 'Active', value: 'active' as const },
     { label: 'Completed', value: 'completed' as const },
+    { label: 'Failed', value: 'failed' as const },
+    { label: 'Cancelled', value: 'cancelled' as const },
 ];
 
 const sortedJobs = computed(() =>
@@ -95,36 +101,27 @@ const sortedJobs = computed(() =>
 const filteredJobs = computed(() => {
     const q = query.value.trim().toLowerCase();
     return sortedJobs.value.filter((job) => {
+        const status = normalizeStatus(job.status);
         if (activeFilter.value === 'active') {
             if (!isActiveStatus(job.status)) return false;
         } else if (activeFilter.value === 'completed') {
-            if (isActiveStatus(job.status)) return false;
+            if (status !== 'completed') return false;
+        } else if (activeFilter.value === 'failed') {
+            if (status !== 'failed') return false;
+        } else if (activeFilter.value === 'cancelled') {
+            if (status !== 'aborted') return false;
         }
-        if (!q) return true;
-        return [job.title, job.task, job.runner_id, job.status]
-            .filter(Boolean)
-            .join(' ')
-            .toLowerCase()
-            .includes(q);
+        return jobMatchesSearch(job, q);
     });
 });
 
-function isActiveStatus(status?: string | null) {
-    if (!status) return false;
-    const s = status.toLowerCase();
-    return (
-        s === 'queued' ||
-        s === 'pending' ||
-        s === 'running' ||
-        s === 'in_progress'
-    );
-}
-
 function statusDotClass(status?: string | null) {
-    if (isActiveStatus(status)) return 'bg-(--or3-amber)';
-    const s = (status || '').toLowerCase();
-    if (s === 'failed' || s === 'error' || s === 'cancelled')
-        return 'bg-(--or3-danger)';
+    const normalized = normalizeStatus(status ?? undefined);
+    if (normalized === 'queued' || normalized === 'running') {
+        return 'bg-(--or3-amber)';
+    }
+    if (normalized === 'failed') return 'bg-(--or3-danger)';
+    if (normalized === 'aborted') return 'bg-stone-400';
     return 'bg-(--or3-green)';
 }
 
@@ -134,11 +131,20 @@ function jobTitle(job: JobSnapshot) {
 }
 
 function formatStatus(status?: string | null) {
-    if (!status) return '';
-    return status
-        .split('_')
-        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(' ');
+    switch (normalizeStatus(status ?? undefined)) {
+        case 'queued':
+            return 'Queued';
+        case 'running':
+            return 'Working';
+        case 'completed':
+            return 'Completed';
+        case 'failed':
+            return 'Failed';
+        case 'aborted':
+            return 'Cancelled';
+        default:
+            return status || '';
+    }
 }
 
 function formatTime(job: JobSnapshot) {

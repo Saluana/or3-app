@@ -35,10 +35,11 @@
 
         <div
             v-if="
-                part.argumentsPreview ||
-                part.resultPreview ||
-                part.errorPreview ||
-                part.publicCode
+                !compactTelemetry &&
+                (part.argumentsPreview ||
+                    part.resultPreview ||
+                    part.errorPreview ||
+                    part.publicCode)
             "
             class="space-y-2 border-t border-(--or3-border) px-3 py-2.5 text-xs leading-5 text-(--or3-text-muted)"
         >
@@ -99,7 +100,10 @@
 import { computed } from 'vue';
 import type { ChatMessagePart } from '~/types/app-state';
 
-const props = defineProps<{ part: ChatMessagePart }>();
+const props = withDefaults(
+    defineProps<{ part: ChatMessagePart; compactTelemetry?: boolean }>(),
+    { compactTelemetry: false },
+);
 
 const icon = computed(() => {
     if (props.part.status === 'running') return 'i-pixelarticons-loader';
@@ -123,7 +127,24 @@ const displayName = computed(() =>
     ),
 );
 
+const doctorTelemetrySummary = computed(() => {
+    if (!props.compactTelemetry || props.part.status === 'running') return '';
+    const parsed = parsePreview(props.part.resultPreview);
+    if (parsed) {
+        const summary =
+            typeof parsed.summary === 'string' ? parsed.summary.trim() : '';
+        if (summary) return summary;
+    }
+    const preview = String(props.part.resultPreview ?? '').trim();
+    const match = preview.match(/"summary"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/);
+    if (match?.[1]) {
+        return match[1].replace(/\\"/g, '"').replace(/\\n/g, ' ').trim();
+    }
+    return '';
+});
+
 const subtitle = computed(() => {
+    if (doctorTelemetrySummary.value) return doctorTelemetrySummary.value;
     const specific = describeToolAction(
         props.part.name,
         props.part.status,
@@ -136,7 +157,9 @@ const subtitle = computed(() => {
         return 'This tool call is waiting for your approval.';
     if (props.part.status === 'error')
         return 'This tool call ended with an error.';
-    return 'This tool call finished successfully.';
+    return props.compactTelemetry
+        ? 'Checked OR3 in the background.'
+        : 'This tool call finished successfully.';
 });
 
 const statusClasses = computed(() => {

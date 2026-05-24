@@ -1,5 +1,9 @@
 import type { Or3AppErrorCode } from '~/types/app-state';
 import type { ToolPolicy } from '~/types/or3-api';
+import {
+    userFacingErrorCopy,
+    userFacingErrorToastDescription,
+} from './userErrorCopy';
 
 const knownErrorCodes = new Set<Or3AppErrorCode>([
     'host_unreachable',
@@ -21,6 +25,7 @@ const knownErrorCodes = new Set<Or3AppErrorCode>([
     'stream_failed',
     'provider_error',
     'stream_error',
+    'stream_idle_timeout',
     'empty_final_text',
     'validation_error',
     'policy_error',
@@ -59,6 +64,7 @@ export function describeRequestError(error: unknown) {
     return 'Request failed';
 }
 
+/** Internal diagnostics only — do not show in chat bubbles or toasts. */
 export function describeRequestErrorDetails(error: unknown) {
     if (!error || typeof error !== 'object') return '';
     const record = error as Record<string, unknown>;
@@ -155,13 +161,23 @@ export function showFailureToast(
     title: string,
     error: unknown,
 ) {
-    const message = describeRequestError(error);
-    const details = describeRequestErrorDetails(error);
+    const code = extractErrorCode(error);
+    const copy = userFacingErrorCopy(error, code);
 
     toast.add({
-        title,
-        description: details ? `${message}\n${details}` : message,
+        title: copy.title || title,
+        description: userFacingErrorToastDescription(error, code),
         color: 'error',
         icon: 'i-pixelarticons-warning-box',
     });
 }
+
+export {
+    formatUserFacingErrorInline,
+    formatUserFacingErrorMessage,
+    userFacingErrorCopy,
+} from './userErrorCopy';
+export {
+    EMPTY_FINAL_USER_MESSAGE,
+    EMPTY_STREAM_USER_MESSAGE,
+} from './userErrorCopy';

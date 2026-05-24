@@ -61,9 +61,23 @@ const { pendingCount, loadPendingCount, startPolling, stopPolling } = useApprova
 const route = useRoute();
 const router = useRouter();
 
-const showBackButton = computed(() => route.path.startsWith('/settings'));
+const computerHome = '/computer';
+
+function isComputerSectionDeepLink(path: string) {
+  if (path.startsWith('/computer/')) return true;
+  return path === '/scheduled' || path === '/approvals' || path === '/activity';
+}
+
+const showBackButton = computed(() => {
+  if (isComputerSectionDeepLink(route.path)) return true;
+  return route.path.startsWith('/settings') && route.path !== '/settings';
+});
 
 function goBack() {
+  if (isComputerSectionDeepLink(route.path)) {
+    void router.push(computerHome);
+    return;
+  }
   if (window.history.length > 1) {
     router.back();
     return;

@@ -20,7 +20,15 @@ import {
     truncateLogDetail,
 } from './activity';
 import { describeApprovalRequest, isApprovalRequiredPayload } from './approval';
-import { extractApprovalRequestId, extractErrorCode } from './errors';
+import {
+    extractApprovalRequestId,
+    extractErrorCode,
+    formatUserFacingErrorInline,
+} from './errors';
+import {
+    EMPTY_FINAL_USER_MESSAGE,
+    userFacingErrorCopy,
+} from './userErrorCopy';
 import { eventJobId, eventName, eventPayload, eventSequence } from './events';
 import { normalizeRunnerPermissionPayload } from './payload';
 
@@ -65,8 +73,7 @@ export function createAssistantEventApplier(
     const appliedEventSequenceKeys = new Set<string>();
     const streamedEventPayloadKeys = new Set<string>();
     const completionActivityId = 'activity:completion:final-response';
-    const emptyFinalTextWarning =
-        'Tool work completed, but or3-intern did not return a final assistant message. The last tool result is shown above; retry the turn if it still matters.';
+    const emptyFinalTextWarning = EMPTY_FINAL_USER_MESSAGE;
 
     const markVisibleOutput = (value: string) => {
         if (sanitizeAssistantText(value)) {
@@ -539,16 +546,20 @@ export function createAssistantEventApplier(
                 streamStatus === 'failed' ||
                 streamStatus === 'aborted')
         ) {
-            const failureText =
-                streamError ||
-                sanitizeAssistantText(options.rawAssistantContent()) ||
-                options.readAssistant()?.content ||
-                'or3-intern could not finish this request.';
+            const errorCode = extractErrorCode(payload);
+            const failureCopy = userFacingErrorCopy(
+                streamError ? { message: streamError, code: errorCode } : payload,
+                errorCode,
+            );
+            const failureText = formatUserFacingErrorInline(
+                streamError ? { message: streamError, code: errorCode } : payload,
+                errorCode,
+            );
             options.updateAssistant({
                 content: failureText,
                 status: 'failed',
-                error: streamError || `Turn ${streamStatus || 'failed'}`,
-                errorCode: extractErrorCode(payload),
+                error: failureCopy.message,
+                errorCode,
                 approvalRequestId: extractApprovalRequestId(payload),
                 approvalState: extractApprovalRequestId(payload)
                     ? 'pending'
@@ -666,7 +677,7 @@ export function createAssistantEventApplier(
                 options.setSawVisibleOutput(true);
                 options.updateAssistant({
                     status: 'attention',
-                    error: 'or3-intern completed without a final assistant message.',
+                    error: EMPTY_FINAL_USER_MESSAGE,
                     errorCode: 'empty_final_text',
                     jobId,
                 });

@@ -117,6 +117,61 @@ describe('Electron host service manager', () => {
         await stopService();
     });
 
+    it('rejects a missing workspace before spawning the local service', async () => {
+        const binary = await makeFakeIntern(dir);
+        const missingWorkspace = join(dir, 'missing-workspace');
+        const configured = await configureService({
+            machineName: 'Desk',
+            workspaceDir: missingWorkspace,
+            listenHost: '127.0.0.1',
+            listenPort: 65530,
+            securityPreset: 'private',
+            autostartEnabled: false,
+            serviceBehavior: 'stop-with-app',
+            internBinaryPath: binary,
+        });
+
+        expect(configured).toMatchObject({
+            ok: false,
+            recoverable: true,
+        });
+    });
+
+    it('surfaces a moved saved workspace as a recoverable start error', async () => {
+        const binary = await makeFakeIntern(dir);
+        const missingWorkspace = join(dir, 'moved-workspace');
+        await writeFile(
+            join(dir, 'or3-electron-host.json'),
+            JSON.stringify({
+                version: 1,
+                mode: 'host',
+                hostService: {
+                    machineName: 'Desk',
+                    workspaceDir: missingWorkspace,
+                    listenHost: '127.0.0.1',
+                    listenPort: 65530,
+                    securityPreset: 'private',
+                    autostartEnabled: false,
+                    serviceBehavior: 'stop-with-app',
+                    internBinaryPath: binary,
+                },
+                serviceAuth: {
+                    version: 1,
+                    secret: 'a'.repeat(64),
+                    createdAt: new Date().toISOString(),
+                },
+            }),
+        );
+
+        const status: any = await startService();
+
+        expect(status).toMatchObject({
+            state: 'error',
+            recoverable: true,
+        });
+        expect(status.message).toContain('workspace folder');
+    });
+
     it('binds desktop service tokens to the decoded Go request path', async () => {
         const workspace = await mkdtemp(join(tmpdir(), 'or3-workspace-'));
         await configureService({

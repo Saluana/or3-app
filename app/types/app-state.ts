@@ -201,6 +201,8 @@ export interface RecentJobSummary {
 
 export interface Or3AppState {
     activeHostId: string | null;
+    /** Most recently opened chat session per paired host. */
+    activeChatSessionIdByHost?: Record<string, string>;
     hosts: Or3HostProfile[];
     sessions: ChatSession[];
     messages: ChatMessage[];
@@ -238,6 +240,7 @@ export type Or3AppErrorCode =
     | 'stream_failed'
     | 'provider_error'
     | 'stream_error'
+    | 'stream_idle_timeout'
     | 'empty_final_text'
     | 'validation_error'
     | 'policy_error'

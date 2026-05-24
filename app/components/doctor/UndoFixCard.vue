@@ -4,7 +4,7 @@
             <div class="min-w-0">
                 <p class="font-mono font-semibold">Undo available</p>
                 <p class="mt-0.5 text-xs leading-5">
-                    OR3 saved a rollback record{{ rollbackId ? ` (${rollbackId})` : '' }} for this applied fix.
+                    OR3 saved a rollback record for this applied fix.
                 </p>
             </div>
             <UButton

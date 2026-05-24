@@ -72,6 +72,7 @@
                     <AssistantActivityLog
                         v-if="message.activityLog?.length"
                         :items="message.activityLog"
+                        consumer-mode
                     />
                 </template>
                 <template v-else>
@@ -171,10 +172,10 @@
                     </div>
                 </template>
                 <p
-                    v-if="message.error"
+                    v-if="showErrorStrip"
                     class="mt-2 text-xs text-(--or3-danger)"
                 >
-                    {{ message.error || 'Message failed' }}
+                    {{ errorStripText }}
                 </p>
 
                 <div
@@ -317,6 +318,7 @@ import {
     resolvedApprovalState,
 } from '../../utils/assistantApproval';
 import { shouldRepairIncompleteMarkdownForStatus } from '../../utils/streamingMarkdown';
+import { userFacingErrorCopy } from '../../utils/assistant-stream/userErrorCopy';
 
 const props = defineProps<{ message: ChatMessage }>();
 const toast = useToast();
@@ -338,6 +340,34 @@ let copiedTimer: ReturnType<typeof setTimeout> | null = null;
 
 const shouldRepairIncompleteMarkdown = computed(() =>
     shouldRepairIncompleteMarkdownForStatus(props.message.status),
+);
+
+const friendlyError = computed(() =>
+    userFacingErrorCopy(
+        { message: props.message.error, code: props.message.errorCode },
+        props.message.errorCode,
+    ),
+);
+
+const showErrorStrip = computed(() => {
+    if (!props.message.error) return false;
+    if (
+        props.message.status !== 'failed' &&
+        props.message.status !== 'attention'
+    ) {
+        return false;
+    }
+    const content = props.message.content?.trim();
+    const error = props.message.error.trim();
+    if (!content) return true;
+    if (content === error) return false;
+    if (content.includes(error)) return false;
+    if (content.includes(friendlyError.value.message)) return false;
+    return true;
+});
+
+const errorStripText = computed(
+    () => friendlyError.value.suggestion || friendlyError.value.message,
 );
 
 function currentMessage(): ChatMessage {

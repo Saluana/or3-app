@@ -21,17 +21,17 @@ interface UseStreamRecoveryOptions {
 let recoveryWatcherInstalled = false;
 const recoveryAttempted = new Set<string>();
 
+/** Test-only reset for watcher / in-flight recovery keys. */
+export function resetStreamRecoveryForTests() {
+    recoveryWatcherInstalled = false;
+    recoveryAttempted.clear();
+}
+
 function sessionsForHost(state: Or3AppState, hostId: string) {
     return new Set(
         state.sessions
             .filter((session) => session.hostId === hostId)
             .map((session) => session.id),
-    );
-}
-
-function activeSessionIdForHost(state: Or3AppState, hostId: string) {
-    return (
-        state.sessions.find((session) => session.hostId === hostId)?.id ?? ''
     );
 }
 
@@ -52,9 +52,8 @@ function oldestPendingStreamingMessage(
     state: Or3AppState,
     hostId: string,
 ): ChatMessage | undefined {
-    const activeSessionId = activeSessionIdForHost(state, hostId);
-    if (!activeSessionId) return undefined;
-    const sessionIds = new Set([activeSessionId]);
+    const sessionIds = sessionsForHost(state, hostId);
+    if (!sessionIds.size) return undefined;
 
     return pendingStreamingMessages(state.messages, sessionIds).sort(
         (left, right) =>
@@ -64,14 +63,11 @@ function oldestPendingStreamingMessage(
 }
 
 function recoveryWatchSignature(state: Or3AppState, hostId: string) {
-    const activeSessionId = activeSessionIdForHost(state, hostId);
-    const sessionIds = activeSessionId
-        ? new Set([activeSessionId])
-        : sessionsForHost(state, hostId);
+    const sessionIds = sessionsForHost(state, hostId);
     const pending = pendingStreamingMessages(state.messages, sessionIds)
         .map(
             (message) =>
-                `${message.id}:${message.jobId || message.runnerChatTurnId}:${message.status}`,
+                `${message.id}:${message.sessionId}:${message.jobId || message.runnerChatTurnId}:${message.status}`,
         )
         .join('|');
     return `${hostId}:${pending}`;

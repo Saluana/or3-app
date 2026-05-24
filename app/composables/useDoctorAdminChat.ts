@@ -1,4 +1,6 @@
-import { computed, ref } from 'vue';
+import { computed, watch } from 'vue';
+import { useActiveHost } from './useActiveHost';
+import { useDoctorChatStore } from './doctor/doctorChatStore';
 import type {
     AssistantReplayToolCall,
     ChatActivityEntry,
@@ -21,6 +23,7 @@ import type {
 import { createAssistantEventApplier } from '~/utils/assistant-stream/event-applier';
 import { suppressOr3ApiNetworkErrorLogsFor, useOr3Api } from './useOr3Api';
 import { useAuthSession } from './useAuthSession';
+import { useApprovals } from './useApprovals';
 
 type RawDoctorChatMessage = NonNullable<
     DoctorChatSessionResponse['messages']
@@ -43,32 +46,51 @@ type DoctorStreamingMessageState = Partial<
 >;
 type DoctorMessageState = RawDoctorChatMessage & DoctorStreamingMessageState;
 
-const sessionKey = ref<string | null>(null);
-const messages = ref<DoctorMessageState[]>([]);
-const adminBrain = ref<DoctorAdminBrainProvider | null>(null);
-const status = ref<DoctorStatusResponse | null>(null);
-const activePlan = ref<DoctorPlanResponse | null>(null);
-const applyResult = ref<DoctorPlanApplyResponse | null>(null);
-const postCheckResult = ref<DoctorPostCheckResponse | null>(null);
-const loading = ref(false);
-const applying = ref(false);
-const error = ref<string | null>(null);
-const activeRequestController = ref<AbortController | null>(null);
-const activeStreamController = ref<AbortController | null>(null);
-const activeRunnerTurn = ref<{ sessionID: string; turnID: string } | null>(
-    null,
-);
-const activeJobID = ref<string | null>(null);
-const activeOptimisticTurn = ref<{
-    userID: number;
-    placeholderID: number;
-} | null>(null);
-let activeSendPromise: Promise<DoctorChatSessionResponse> | null = null;
-let optimisticMessageID = -1;
-let messageGeneration = 0;
+function store() {
+    return useDoctorChatStore();
+}
 
-const DOCTOR_EMPTY_FINAL_TEXT_WARNING =
-    'Tool work completed, but or3-intern did not return a final assistant message. The last tool result is shown above; retry the turn if it still matters.';
+function doctorSessionStorageKey() {
+    const { activeHost } = useActiveHost();
+    const hostId = String(activeHost.value?.id ?? 'default').trim() || 'default';
+    return `or3-doctor-session:${hostId}`;
+}
+
+function persistSessionKey(key: string | null) {
+    if (!import.meta.client) return;
+    try {
+        const storageKey = doctorSessionStorageKey();
+        if (key) localStorage.setItem(storageKey, key);
+        else localStorage.removeItem(storageKey);
+    } catch {
+        /* ignore */
+    }
+}
+
+function readPersistedSessionKey() {
+    if (!import.meta.client) return null;
+    try {
+        return localStorage.getItem(doctorSessionStorageKey());
+    } catch {
+        return null;
+    }
+}
+
+export * from '~/utils/doctor';
+import {
+    DOCTOR_EMPTY_FINAL_TEXT_WARNING,
+    doctorLastUserMessageBefore,
+    doctorSynthesizeFinalSummary,
+    doctorVisibleTextForMessage,
+    isDoctorEmptyFinalTextWarning,
+    isGenericEmptyFinalRecovery,
+    mergeDoctorSessionWithLocal,
+    normalizeDoctorMessage,
+    parseRecordJSON,
+    resolveDoctorMessageRef,
+    sortDoctorMessages,
+    type DoctorChatMessage,
+} from '~/utils/doctor';
 
 function isAbortLikeError(value: unknown) {
     const record = value as { code?: unknown; cause?: unknown; name?: unknown };
@@ -97,11 +119,10 @@ function errorMessage(value: unknown) {
 }
 
 function newSessionKey() {
-    return `doctor-app-${Date.now().toString(36)}`;
-}
-
-function chatAdminBrainKind(provider: DoctorAdminBrainProvider | null) {
-    return String(provider?.kind ?? '').trim();
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return `doctor-app-${crypto.randomUUID()}`;
+    }
+    return `doctor-app-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function doctorAdminBrainUsesExternalRunner(
@@ -109,345 +130,9 @@ function doctorAdminBrainUsesExternalRunner(
 ) {
     const runnerID = String(provider?.runner_id ?? '').trim();
     return (
-        chatAdminBrainKind(provider) === 'runner' ||
+        String(provider?.kind ?? '').trim() === 'runner' ||
         Boolean(provider?.available && runnerID && runnerID !== 'or3-intern')
     );
-}
-
-export type DoctorChatMessage = DoctorMessageState;
-
-export type DoctorChatCard =
-    | { type: 'finding'; card: DoctorFindingCard }
-    | { type: 'recommended_fix'; card: DoctorFindingCard }
-    | {
-          type: 'plan';
-          plan: DoctorSettingsChangePlan;
-          status?: string;
-          rollbackId?: string;
-          postCheckPending?: boolean;
-      }
-    | { type: 'risk'; plan: DoctorSettingsChangePlan }
-    | { type: 'restart'; plan: DoctorSettingsChangePlan }
-    | { type: 'post_check'; planId?: string; result?: DoctorPostCheckResponse }
-    | { type: 'undo'; planId?: string; rollbackId?: string }
-    | { type: 'manual_fallback'; message: string };
-
-export interface DoctorToolResult {
-    kind?: string;
-    ok?: boolean;
-    status?: string;
-    summary?: string;
-    preview?: string;
-    plan_id?: string;
-    stats?: Record<string, unknown>;
-}
-
-const jsonBlockPattern = /```(?:json)?\s*([\s\S]*?)```/gi;
-const telemetryOnlyToolKinds = new Set([
-    'doctor_status',
-    'doctor_logs',
-    'doctor_docs_search',
-    'doctor_config_search',
-    'doctor_config_metadata',
-]);
-
-function isTelemetryOnlyResult(result: DoctorToolResult) {
-    return telemetryOnlyToolKinds.has(String(result.kind ?? ''));
-}
-
-function stringField(record: Record<string, unknown>, ...keys: string[]) {
-    for (const key of keys) {
-        const value = record[key];
-        if (typeof value === 'string') return value;
-    }
-    return '';
-}
-
-function numberField(record: Record<string, unknown>, ...keys: string[]) {
-    for (const key of keys) {
-        const value = record[key];
-        if (typeof value === 'number') return value;
-        if (typeof value === 'string') {
-            const parsed = Number(value);
-            if (Number.isFinite(parsed)) return parsed;
-        }
-    }
-    return undefined;
-}
-
-function normalizeDoctorMessage(raw: unknown): DoctorChatMessage | null {
-    if (!raw || typeof raw !== 'object') return null;
-    const record = raw as Record<string, unknown>;
-    return {
-        id: numberField(record, 'id', 'ID'),
-        role: stringField(record, 'role', 'Role') || 'assistant',
-        content: stringField(record, 'content', 'Content'),
-        created_at: numberField(record, 'created_at', 'CreatedAt'),
-        meta: parseMaybeJSON(
-            record.meta ??
-                record.Meta ??
-                record.payload_json ??
-                record.PayloadJSON,
-        ),
-    };
-}
-
-function parseMaybeJSON(value: unknown) {
-    if (typeof value !== 'string') return value;
-    const trimmed = value.trim();
-    if (!trimmed) return undefined;
-    try {
-        return JSON.parse(trimmed) as unknown;
-    } catch {
-        return value;
-    }
-}
-
-function parseRecordJSON(value: unknown) {
-    const parsed = parseMaybeJSON(value);
-    return parsed && typeof parsed === 'object'
-        ? (parsed as Record<string, unknown>)
-        : undefined;
-}
-
-function candidateDoctorRecords(content: unknown) {
-    const records: Record<string, unknown>[] = [];
-    const direct = parseRecordJSON(content);
-    if (direct) records.push(direct);
-    if (typeof content === 'string') {
-        for (const match of content.matchAll(jsonBlockPattern)) {
-            const record = parseRecordJSON(match[1]);
-            if (record) records.push(record);
-        }
-    }
-    return records;
-}
-
-function looksLikeStatsRecord(record: Record<string, unknown>) {
-    return (
-        typeof record.card_type === 'string' ||
-        Boolean(record.plan) ||
-        Boolean(record.plans) ||
-        Boolean(record.finding_cards) ||
-        typeof record.rollback_id === 'string' ||
-        typeof record.post_check_pending === 'boolean'
-    );
-}
-
-function doctorToolResultFromRecord(
-    record: Record<string, unknown>,
-): DoctorToolResult | null {
-    const kind = typeof record.kind === 'string' ? record.kind : '';
-    let stats =
-        record.stats && typeof record.stats === 'object'
-            ? (record.stats as Record<string, unknown>)
-            : undefined;
-    if (!stats && looksLikeStatsRecord(record)) {
-        stats = record;
-    }
-    if (!stats && asPlan(record)) {
-        stats = { card_type: 'settings_change_preview', plan: record };
-    }
-    if (!kind && !stats) return null;
-    return {
-        kind: kind || (stats?.plan ? 'doctor_plan' : 'doctor_result'),
-        ok: typeof record.ok === 'boolean' ? record.ok : undefined,
-        status: typeof record.status === 'string' ? record.status : undefined,
-        summary:
-            typeof record.summary === 'string' ? record.summary : undefined,
-        preview:
-            typeof record.preview === 'string' ? record.preview : undefined,
-        plan_id:
-            typeof record.plan_id === 'string' ? record.plan_id : undefined,
-        stats,
-    };
-}
-
-export function parseDoctorToolResults(content: unknown): DoctorToolResult[] {
-    const results: DoctorToolResult[] = [];
-    const seen = new Set<string>();
-    for (const record of candidateDoctorRecords(content)) {
-        const result = doctorToolResultFromRecord(record);
-        if (!result) continue;
-        const key = JSON.stringify(result);
-        if (seen.has(key)) continue;
-        seen.add(key);
-        results.push(result);
-    }
-    return results;
-}
-
-export function parseDoctorToolResult(
-    content: unknown,
-): DoctorToolResult | null {
-    return parseDoctorToolResults(content)[0] ?? null;
-}
-
-function asFindingCard(value: unknown): DoctorFindingCard | null {
-    if (!value || typeof value !== 'object') return null;
-    const record = value as Record<string, unknown>;
-    const id = String(record.id ?? '').trim();
-    const what = String(record.what_i_found ?? '').trim();
-    if (!id || !what) return null;
-    return record as unknown as DoctorFindingCard;
-}
-
-function asPlan(value: unknown): DoctorSettingsChangePlan | null {
-    if (!value || typeof value !== 'object') return null;
-    const record = value as Record<string, unknown>;
-    const title = String(record.title ?? '').trim();
-    const changes = Array.isArray(record.changes) ? record.changes : undefined;
-    if (!title || !changes) return null;
-    return record as unknown as DoctorSettingsChangePlan;
-}
-
-function asPostCheckResult(
-    result: DoctorToolResult,
-): DoctorPostCheckResponse | undefined {
-    const stats = result.stats;
-    if (!stats) return undefined;
-    const status =
-        typeof stats.status === 'string' ? stats.status : result.status;
-    if (!status) return undefined;
-    return {
-        checkpoint_id:
-            typeof stats.checkpoint_id === 'string'
-                ? stats.checkpoint_id
-                : undefined,
-        status,
-        results: Array.isArray(stats.results) ? stats.results : undefined,
-        doctor_report: stats.doctor_report,
-    };
-}
-
-export function doctorToolResultText(result: DoctorToolResult | null) {
-    if (!result) return '';
-    return result.summary || result.preview || result.status || '';
-}
-
-function doctorCardsForResult(
-    result: DoctorToolResult,
-    options: { messageRole?: string } = {},
-): DoctorChatCard[] {
-    if (!result?.stats) return [];
-    const stats = result.stats;
-    const cards: DoctorChatCard[] = [];
-    const fromToolMessage = options.messageRole === 'tool';
-
-    if (isTelemetryOnlyResult(result)) return [];
-
-    const findingCards = Array.isArray(stats.finding_cards)
-        ? stats.finding_cards
-              .map((item) => asFindingCard(item))
-              .filter((card): card is DoctorFindingCard => Boolean(card))
-        : [];
-    if (!fromToolMessage || result.kind !== 'doctor_status') {
-        for (const card of findingCards) {
-            cards.push({ type: 'finding', card });
-            if (card.recommended_fix)
-                cards.push({ type: 'recommended_fix', card });
-        }
-    }
-
-    const plan = asPlan(stats.plan);
-    if (plan) {
-        const rollbackId =
-            typeof stats.rollback_id === 'string'
-                ? stats.rollback_id
-                : undefined;
-        const status =
-            typeof stats.status === 'string' ? stats.status : result.status;
-        const postCheckPending = Boolean(stats.post_check_pending);
-        cards.push({
-            type: 'plan',
-            plan,
-            status,
-            rollbackId,
-            postCheckPending,
-        });
-        if (plan.requires_approval || plan.requires_step_up_auth) {
-            cards.push({ type: 'risk', plan });
-        }
-        if (plan.restart_required) cards.push({ type: 'restart', plan });
-        if (plan.id && (postCheckPending || plan.post_apply_checks?.length)) {
-            cards.push({ type: 'post_check', planId: plan.id });
-        }
-        if (plan.id && rollbackId) {
-            cards.push({ type: 'undo', planId: plan.id, rollbackId });
-        }
-    }
-
-    const plans = Array.isArray(stats.plans)
-        ? stats.plans
-              .map((item) => asPlan(item))
-              .filter((item): item is DoctorSettingsChangePlan => Boolean(item))
-        : [];
-    for (const suggested of plans) {
-        if (plan && suggested.id === plan.id) continue;
-        cards.push({ type: 'plan', plan: suggested });
-        if (suggested.requires_approval || suggested.requires_step_up_auth) {
-            cards.push({ type: 'risk', plan: suggested });
-        }
-        if (suggested.restart_required)
-            cards.push({ type: 'restart', plan: suggested });
-    }
-
-    if (result.kind === 'doctor_post_check') {
-        cards.push({
-            type: 'post_check',
-            planId:
-                result.plan_id ||
-                (typeof stats.plan_id === 'string' ? stats.plan_id : undefined),
-            result: asPostCheckResult(result),
-        });
-    }
-
-    if (result.ok === false && result.summary && !fromToolMessage) {
-        cards.push({ type: 'manual_fallback', message: result.summary });
-    }
-
-    return cards;
-}
-
-export function doctorCardsForMessage(
-    message: DoctorChatMessage,
-): DoctorChatCard[] {
-    return parseDoctorToolResults(message.content).flatMap((result) =>
-        doctorCardsForResult(result, { messageRole: message.role }),
-    );
-}
-
-function stripDoctorJSONBlocks(content: string) {
-    return content.replace(jsonBlockPattern, (match, body) =>
-        parseDoctorToolResult(body) ? '' : match,
-    );
-}
-
-export function doctorVisibleTextForMessage(message: DoctorChatMessage) {
-    const content = String(message.content ?? '');
-    const results = parseDoctorToolResults(content);
-    if (message.role === 'tool') {
-        return '';
-    }
-    if (!results.length) return content.trim();
-    const stripped = stripDoctorJSONBlocks(content).trim();
-    if (stripped && !parseDoctorToolResult(stripped)) return stripped;
-    if (results.every(isTelemetryOnlyResult)) return '';
-    if (
-        results.some(
-            (result) =>
-                doctorCardsForResult(result, { messageRole: message.role })
-                    .length > 0,
-        )
-    )
-        return '';
-    return results
-        .map((result) =>
-            result.ok === false ? doctorToolResultText(result) : '',
-        )
-        .filter(Boolean)
-        .join('\n')
-        .trim();
 }
 
 function normalizeDoctorMessages(raw: unknown) {
@@ -455,7 +140,7 @@ function normalizeDoctorMessages(raw: unknown) {
     const normalized = raw
         .map((message) => normalizeDoctorMessage(message))
         .filter((message): message is DoctorChatMessage => Boolean(message));
-    return normalized.filter((message, index) => {
+    const deduped = normalized.filter((message, index) => {
         const previous = normalized[index - 1];
         const content = String(message.content ?? '').trim();
         const previousContent = String(previous?.content ?? '').trim();
@@ -466,9 +151,10 @@ function normalizeDoctorMessages(raw: unknown) {
             content === previousContent
         );
     });
+    return sortDoctorMessages(deduped);
 }
 
-function maxMessageID(items = messages.value) {
+function maxMessageID(items = store().messages.value) {
     return items.reduce((max, message) => {
         const id = typeof message.id === 'number' ? message.id : 0;
         return id > max ? id : max;
@@ -489,32 +175,42 @@ function appendOrUpdateStreamingAssistant(
     content: string,
     status: ChatMessage['status'],
 ) {
-    const existing = messages.value.findIndex((message) => message.id === id);
-    const current = existing >= 0 ? messages.value[existing] : null;
+    const existing = store().messages.value.findIndex((message) => message.id === id);
+    const current = existing >= 0 ? store().messages.value[existing] : null;
+    const latestCreatedAt = store().messages.value.reduce((max, item) => {
+        const created = item.created_at ?? 0;
+        return created > max ? created : max;
+    }, 0);
+    const createdAt =
+        current?.created_at ??
+        (latestCreatedAt > 0
+            ? latestCreatedAt + 1
+            : Math.floor(Date.now() / 1000));
     const message: DoctorChatMessage = {
         ...(current ?? {}),
         id,
         role: 'assistant',
         content,
-        created_at: Math.floor(Date.now() / 1000),
+        created_at: createdAt,
         meta: { ...(parseRecordJSON(current?.meta) ?? {}), status },
         status,
     };
     if (existing >= 0) {
-        messages.value = messages.value.map((item, index) =>
+        store().messages.value = store().messages.value.map((item, index) =>
             index === existing ? message : item,
         );
         return;
     }
-    messages.value = [...messages.value, message];
+    store().messages.value = sortDoctorMessages([...store().messages.value, message]);
 }
 
 function patchStreamingAssistant(
-    id: number,
+    id: number | string,
     patch: Partial<DoctorMessageState>,
 ) {
-    messages.value = messages.value.map((message) => {
-        if (message.id !== id) return message;
+    const key = String(id);
+    store().messages.value = store().messages.value.map((message) => {
+        if (String(message.id ?? '') !== key) return message;
         return {
             ...message,
             ...patch,
@@ -530,13 +226,13 @@ function mutateStreamingAssistant(
     id: number,
     mutate: (message: DoctorMessageState) => DoctorMessageState,
 ) {
-    messages.value = messages.value.map((message) =>
+    store().messages.value = store().messages.value.map((message) =>
         message.id === id ? mutate(message) : message,
     );
 }
 
 function readStreamingAssistant(id: number) {
-    return messages.value.find((message) => message.id === id);
+    return store().messages.value.find((message) => message.id === id);
 }
 
 function doctorMessageToChatMessage(
@@ -546,7 +242,7 @@ function doctorMessageToChatMessage(
     const role = message.role === 'user' ? 'user' : 'assistant';
     return {
         id: String(message.id ?? ''),
-        sessionId: sessionKey.value ?? 'doctor',
+        sessionId: store().sessionKey.value ?? 'doctor',
         role,
         content: String(message.content ?? ''),
         status: message.status ?? 'streaming',
@@ -752,29 +448,120 @@ function createDoctorStreamApplier(placeholderID: number) {
 }
 
 function appendOptimisticUser(id: number, content: string) {
-    messages.value = [
-        ...messages.value,
+    const latestCreatedAt = store().messages.value.reduce((max, message) => {
+        const created = message.created_at ?? 0;
+        return created > max ? created : max;
+    }, 0);
+    const createdAt =
+        latestCreatedAt > 0 ? latestCreatedAt + 1 : Math.floor(Date.now() / 1000);
+    store().messages.value = [
+        ...store().messages.value,
         {
             id,
             role: 'user',
             content,
-            created_at: Math.floor(Date.now() / 1000),
+            created_at: createdAt,
             meta: { status: 'pending' },
         },
     ];
 }
 
-function nextOptimisticMessageID() {
-    optimisticMessageID -= 1;
-    return optimisticMessageID;
-}
-
 function removeMessage(id: number) {
-    messages.value = messages.value.filter((message) => message.id !== id);
+    store().messages.value = store().messages.value.filter((message) => message.id !== id);
 }
 
 function removeStreamingAssistant(id: number) {
-    messages.value = messages.value.filter((message) => message.id !== id);
+    store().messages.value = store().messages.value.filter((message) => message.id !== id);
+}
+
+function applyDoctorRecoveredFinalText(
+    placeholderID: number,
+    displayText: string,
+) {
+    const normalized = displayText.trim();
+    if (!normalized) return false;
+
+    const message = readStreamingAssistant(placeholderID);
+    const recoveringEmptyFinal =
+        message?.errorCode === 'empty_final_text' ||
+        isDoctorEmptyFinalTextWarning(message?.content) ||
+        Boolean(
+            message?.parts?.some(
+                (part) =>
+                    part.type === 'text' &&
+                    isDoctorEmptyFinalTextWarning(part.content),
+            ),
+        );
+
+    if (message?.parts?.length) {
+        const nextParts = message.parts.filter(
+            (part) =>
+                !(
+                    part.type === 'text' &&
+                    isDoctorEmptyFinalTextWarning(part.content)
+                ),
+        );
+        if (nextParts.length !== message.parts.length) {
+            patchStreamingAssistant(placeholderID, { parts: nextParts });
+        }
+    }
+
+    const existing = String(message?.content ?? '').trim();
+    if (
+        !recoveringEmptyFinal &&
+        existing &&
+        existing !== 'Working…' &&
+        !isGenericEmptyFinalRecovery(existing)
+    ) {
+        return false;
+    }
+
+    patchStreamingAssistant(placeholderID, {
+        content: normalized,
+        error: undefined,
+        errorCode: undefined,
+        status:
+            message?.status === 'attention' || message?.status === 'streaming'
+                ? 'complete'
+                : message?.status,
+    });
+
+    const latest = readStreamingAssistant(placeholderID);
+    const hasTextPart = Boolean(
+        latest?.parts?.some(
+            (part) => part.type === 'text' && part.content?.trim(),
+        ),
+    );
+    if (!hasTextPart) {
+        mutateStreamingAssistant(placeholderID, (current) => ({
+            ...current,
+            parts: [
+                ...(current.parts ?? []),
+                {
+                    id: `text:recovered:${Date.now()}`,
+                    type: 'text',
+                    content: normalized,
+                },
+            ],
+        }));
+    }
+    return true;
+}
+
+function doctorResolveFinalSummary(
+    placeholderID: number,
+    snapshotText: string,
+) {
+    const message = readStreamingAssistant(placeholderID);
+    const userMessage = doctorLastUserMessageBefore(
+        store().messages.value,
+        placeholderID,
+    );
+    const synthesized = doctorSynthesizeFinalSummary(message, { userMessage });
+    const snapshot = snapshotText.trim();
+    if (synthesized) return synthesized;
+    if (snapshot && !isGenericEmptyFinalRecovery(snapshot)) return snapshot;
+    return snapshot || synthesized;
 }
 
 function hasMeaningfulDoctorStreamingState(
@@ -825,6 +612,21 @@ function isDoctorLiveJobStatus(status: string | undefined) {
     );
 }
 
+function isDoctorTerminalJobStatus(status: string | undefined) {
+    const normalized = String(status || '')
+        .trim()
+        .toLowerCase();
+    return [
+        'completed',
+        'complete',
+        'succeeded',
+        'success',
+        'failed',
+        'aborted',
+        'approval_required',
+    ].includes(normalized);
+}
+
 async function reconcileDoctorJobSnapshot(
     jobID: string,
     placeholderID: number,
@@ -844,19 +646,35 @@ async function reconcileDoctorJobSnapshot(
         applier.applyEvent(event, 'snapshot');
     }
 
-    const latest = readStreamingAssistant(placeholderID);
     const snapshotText = String(
         snapshot.final_text || snapshot.error || '',
     ).trim();
+    const resolvedSummary = doctorResolveFinalSummary(
+        placeholderID,
+        snapshotText,
+    );
+    if (resolvedSummary) {
+        applyDoctorRecoveredFinalText(placeholderID, resolvedSummary);
+    }
+
+    const latest = readStreamingAssistant(placeholderID);
+    const effectiveText =
+        doctorVisibleTextForMessage(latest ?? { role: 'assistant' }) ||
+        resolvedSummary;
+    const hasMeaningfulSummary = Boolean(
+        effectiveText.trim() &&
+            !isDoctorEmptyFinalTextWarning(effectiveText) &&
+            !isGenericEmptyFinalRecovery(effectiveText),
+    );
     const hasToolWork = doctorHasToolWork(latest);
     const emptyFinalAfterSnapshot =
-        !snapshotText &&
+        !hasMeaningfulSummary &&
         !snapshot.error &&
         snapshot.status !== 'approval_required' &&
         !isDoctorLiveJobStatus(snapshot.status) &&
         hasToolWork;
 
-    if (snapshotText && latest?.errorCode === 'empty_final_text') {
+    if (hasMeaningfulSummary && latest?.errorCode === 'empty_final_text') {
         patchStreamingAssistant(placeholderID, {
             error: undefined,
             errorCode: undefined,
@@ -943,26 +761,27 @@ async function reloadSessionPreservingStreamingAssistant(
     reloadSession: () => Promise<unknown>,
 ) {
     const placeholder = readStreamingAssistant(placeholderID);
+    const localSnapshot = store().messages.value;
     try {
-        const response = await reloadSession();
-        if (
-            hasMeaningfulDoctorStreamingState(placeholder) &&
-            !doctorMessagesContainEquivalentAssistant(messages.value, placeholder)
-        ) {
-            messages.value = [...messages.value, placeholder];
-        }
+        const response = (await reloadSession()) as
+            | DoctorChatSessionResponse
+            | null
+            | undefined;
+        const serverMessages = normalizeDoctorMessages(
+            response?.messages ?? localSnapshot,
+        );
+        store().messages.value = mergeDoctorSessionWithLocal(
+            serverMessages,
+            localSnapshot,
+            placeholder,
+        );
         return response;
     } catch (err) {
-        if (
-            hasMeaningfulDoctorStreamingState(placeholder) &&
-            !doctorMessagesContainEquivalentAssistant(messages.value, placeholder)
-        ) {
-            messages.value = messages.value.some(
-                (message) => message.id === placeholder.id,
-            )
-                ? messages.value
-                : [...messages.value, placeholder];
-        }
+        store().messages.value = mergeDoctorSessionWithLocal(
+            localSnapshot,
+            localSnapshot,
+            placeholder,
+        );
         throw err;
     }
 }
@@ -992,8 +811,8 @@ function eventName(event: unknown) {
 }
 
 function stopStreaming() {
-    activeStreamController.value?.abort();
-    activeStreamController.value = null;
+    store().activeStreamController.value?.abort();
+    store().activeStreamController.value = null;
 }
 
 async function streamDoctorEvents(
@@ -1035,8 +854,8 @@ async function followRunnerStream(
 ) {
     stopStreaming();
     const controller = new AbortController();
-    activeStreamController.value = controller;
-    activeRunnerTurn.value = {
+    store().activeStreamController.value = controller;
+    store().activeRunnerTurn.value = {
         sessionID: input.sessionID,
         turnID: input.turnID,
     };
@@ -1054,14 +873,14 @@ async function followRunnerStream(
         if (controller.signal.aborted || isAbortLikeError(err)) return;
         throw err;
     } finally {
-        if (activeStreamController.value === controller) {
-            activeStreamController.value = null;
+        if (store().activeStreamController.value === controller) {
+            store().activeStreamController.value = null;
         }
         if (
-            activeRunnerTurn.value?.sessionID === input.sessionID &&
-            activeRunnerTurn.value?.turnID === input.turnID
+            store().activeRunnerTurn.value?.sessionID === input.sessionID &&
+            store().activeRunnerTurn.value?.turnID === input.turnID
         ) {
-            activeRunnerTurn.value = null;
+            store().activeRunnerTurn.value = null;
         }
     }
     await reloadSessionPreservingStreamingAssistant(
@@ -1080,7 +899,7 @@ async function followRunnerStream(
 async function followJobStream(
     input: {
         jobID: string;
-        placeholderID: number;
+        placeholderID: number | string;
     },
     streamEvents: (path: string, options: any) => AsyncIterable<unknown>,
     requestJobSnapshot: (jobID: string) => Promise<JobSnapshot>,
@@ -1088,8 +907,10 @@ async function followJobStream(
 ) {
     stopStreaming();
     const controller = new AbortController();
-    activeStreamController.value = controller;
-    activeJobID.value = input.jobID;
+    let completedBySnapshot = false;
+    let snapshotPollTimer: ReturnType<typeof setInterval> | null = null;
+    store().activeStreamController.value = controller;
+    store().activeJobID.value = input.jobID;
     appendOrUpdateStreamingAssistant(input.placeholderID, '', 'streaming');
     patchStreamingAssistant(input.placeholderID, { jobId: input.jobID });
     try {
@@ -1102,14 +923,28 @@ async function followJobStream(
             streamEvents,
         );
     } catch (err) {
-        if (controller.signal.aborted || isAbortLikeError(err)) return;
-        throw err;
-    } finally {
-        if (activeStreamController.value === controller) {
-            activeStreamController.value = null;
+        if (
+            !completedBySnapshot &&
+            (controller.signal.aborted || isAbortLikeError(err))
+        ) {
+            return;
         }
-        if (activeJobID.value === input.jobID) {
-            activeJobID.value = null;
+        if (
+            completedBySnapshot &&
+            (controller.signal.aborted || isAbortLikeError(err))
+        ) {
+            // The job reached a terminal state, but the SSE response did not
+            // close promptly. Continue through snapshot reconciliation so UI
+            // state and approval buttons resolve.
+        } else {
+            throw err;
+        }
+    } finally {
+        if (store().activeStreamController.value === controller) {
+            store().activeStreamController.value = null;
+        }
+        if (store().activeJobID.value === input.jobID) {
+            store().activeJobID.value = null;
         }
     }
     await reconcileDoctorJobSnapshot(
@@ -1134,7 +969,6 @@ function approvalFor(plan: DoctorSettingsChangePlan, rememberForMinutes = 0) {
     return {
         plan_id: plan.id ?? '',
         approved: true,
-        approved_at: Date.now(),
         remember_for_minutes: rememberForMinutes,
     };
 }
@@ -1142,29 +976,66 @@ function approvalFor(plan: DoctorSettingsChangePlan, rememberForMinutes = 0) {
 export function useDoctorAdminChat() {
     const api = useOr3Api();
     const authSession = useAuthSession();
+    const approvals = useApprovals();
+    const { activeHost } = useActiveHost();
+
+    watch(
+        () => activeHost.value?.id ?? 'default',
+        (hostId, previousHostId) => {
+            if (!previousHostId || hostId === previousHostId) return;
+            store().bumpMessageGeneration();
+            store().activeSendPromise = null;
+            stopStreaming();
+            store().sessionKey.value = null;
+            store().messages.value = [];
+            store().activePlan.value = null;
+            store().applyResult.value = null;
+            store().postCheckResult.value = null;
+            store().planApplyResults.value = {};
+            store().planApplyFailures.value = {};
+            store().planPostCheckResults.value = {};
+            void hydratePersistedSession().catch(() => undefined);
+        },
+    );
+
+    async function hydratePersistedSession() {
+        const persisted = readPersistedSessionKey();
+        if (!persisted) return null;
+        if (store().sessionKey.value && store().sessionKey.value !== persisted) {
+            store().sessionKey.value = null;
+            store().messages.value = [];
+        }
+        try {
+            return await loadSession(persisted);
+        } catch {
+            persistSessionKey(null);
+            return null;
+        }
+    }
 
     async function loadStatus() {
-        loading.value = true;
-        error.value = null;
+        store().loading.value = true;
+        store().error.value = null;
         try {
-            status.value = await api.request<DoctorStatusResponse>(
+            store().status.value = await api.request<DoctorStatusResponse>(
                 '/internal/v1/doctor/status',
             );
-            adminBrain.value = status.value.admin_brain ?? null;
-            return status.value;
+            store().adminBrain.value =
+                store().status.value?.admin_brain ?? null;
+            return store().status.value;
         } catch (err) {
-            error.value = errorMessage(err);
+            store().error.value = errorMessage(err);
             throw err;
         } finally {
-            loading.value = false;
+            store().loading.value = false;
         }
     }
 
     async function loadAdminBrain() {
-        adminBrain.value = await api.request<DoctorAdminBrainProvider>(
+        store().adminBrain.value = await api.request<DoctorAdminBrainProvider>(
             '/internal/v1/doctor/admin-brain',
         );
-        return adminBrain.value;
+        return store().adminBrain.value;
     }
 
     async function createSession(
@@ -1175,10 +1046,10 @@ export function useDoctorAdminChat() {
             signal?: AbortSignal;
         } = {},
     ) {
-        loading.value = true;
-        error.value = null;
+        store().loading.value = true;
+        store().error.value = null;
         try {
-            const key = sessionKey.value ?? newSessionKey();
+            const key = store().sessionKey.value ?? newSessionKey();
             const baseBody = { session_key: key, title };
             const extendedBody = {
                 ...baseBody,
@@ -1217,61 +1088,38 @@ export function useDoctorAdminChat() {
                     throw err;
                 }
             }
-            sessionKey.value = key;
+            store().sessionKey.value = key;
+            persistSessionKey(key);
             const nextMessages = normalizeDoctorMessages(response.messages);
-            messages.value = nextMessages;
-            adminBrain.value = response.admin_brain ?? adminBrain.value;
+            store().messages.value = nextMessages;
+            store().adminBrain.value = response.admin_brain ?? store().adminBrain.value;
             return response;
         } catch (err) {
-            error.value = errorMessage(err);
+            store().error.value = errorMessage(err);
             throw err;
         } finally {
-            loading.value = false;
+            store().loading.value = false;
         }
     }
 
-    async function loadSession(key = sessionKey.value) {
+    async function loadSession(key = store().sessionKey.value) {
         if (!key) return null;
         const response = await api.request<DoctorChatSessionResponse>(
             `/internal/v1/doctor/sessions/${encodeURIComponent(key)}`,
         );
-        sessionKey.value = key;
-        messages.value = normalizeDoctorMessages(response.messages);
-        adminBrain.value = response.admin_brain ?? adminBrain.value;
-        return response;
-    }
-
-    async function loadEvents(afterID = 0) {
-        if (!sessionKey.value) return null;
-        const params = new URLSearchParams();
-        if (afterID > 0) params.set('after_id', String(afterID));
-        const suffix = params.toString() ? `?${params.toString()}` : '';
-        const response = await api.request<DoctorChatSessionResponse>(
-            `/internal/v1/doctor/sessions/${encodeURIComponent(sessionKey.value)}/events${suffix}`,
+        store().sessionKey.value = key;
+        persistSessionKey(key);
+        const placeholderID = store().activeOptimisticTurn.value?.placeholderID ?? 0;
+        const placeholder =
+            placeholderID !== 0
+                ? readStreamingAssistant(placeholderID)
+                : null;
+        store().messages.value = mergeDoctorSessionWithLocal(
+            normalizeDoctorMessages(response.messages),
+            store().messages.value,
+            placeholder,
         );
-        const events = normalizeDoctorMessages(response.events);
-        if (events.length) {
-            const realUserContents = new Set(
-                events
-                    .filter(
-                        (message) =>
-                            (message.id ?? 0) > 0 && message.role === 'user',
-                    )
-                    .map((message) => message.content),
-            );
-            const seen = new Set(messages.value.map((message) => message.id));
-            messages.value = [
-                ...messages.value.filter(
-                    (message) =>
-                        !(
-                            (message.id ?? 0) < 0 &&
-                            message.role === 'user' &&
-                            realUserContents.has(message.content)
-                        ),
-                ),
-                ...events.filter((message) => !seen.has(message.id)),
-            ];
-        }
+        store().adminBrain.value = response.admin_brain ?? store().adminBrain.value;
         return response;
     }
 
@@ -1283,58 +1131,54 @@ export function useDoctorAdminChat() {
             runnerThinkingLevel?: string;
         } = {},
     ) {
-        const generation = messageGeneration;
+        const generation = store().messageGeneration;
         const controller = new AbortController();
-        activeRequestController.value = controller;
+        store().activeRequestController.value = controller;
         let previousMaxID = 0;
         let placeholderID = 0;
         let optimisticUserID = 0;
         try {
-            if (!sessionKey.value)
+            if (!store().sessionKey.value)
                 await createSession('Doctor Session', {
                     runnerId: options.runnerId,
                     runnerModel: options.runnerModel,
                     signal: controller.signal,
                 });
-            if (!sessionKey.value)
+            if (!store().sessionKey.value)
                 throw new Error('Doctor session was not created.');
-            loading.value = true;
-            error.value = null;
+            const activeSessionKey = store().sessionKey.value as string;
+            store().loading.value = true;
+            store().error.value = null;
             previousMaxID = maxMessageID();
-            placeholderID = nextOptimisticMessageID();
-            optimisticUserID = nextOptimisticMessageID();
+            optimisticUserID = store().nextOptimisticMessageID();
+            placeholderID = store().nextOptimisticMessageID();
             appendOptimisticUser(optimisticUserID, content);
             appendOrUpdateStreamingAssistant(
                 placeholderID,
                 'Working…',
                 'streaming',
             );
-            activeOptimisticTurn.value = {
+            store().activeOptimisticTurn.value = {
                 userID: optimisticUserID,
                 placeholderID,
             };
-            const requestJobStream =
-                options.runnerId === 'or3-intern' ||
-                Boolean(
-                    adminBrain.value?.available &&
-                    !doctorAdminBrainUsesExternalRunner(adminBrain.value),
-                );
-            const baseBody = requestJobStream
-                ? { content, stream: true }
-                : { content };
+            const baseBody = { content, stream: true };
             const extendedBody = {
                 ...baseBody,
+                runner_id: options.runnerId,
                 model: options.runnerModel,
                 thinking_level: options.runnerThinkingLevel,
             };
             let response: DoctorChatSessionResponse;
             try {
                 response = await api.request<DoctorChatSessionResponse>(
-                    `/internal/v1/doctor/sessions/${encodeURIComponent(sessionKey.value)}/messages`,
+                    `/internal/v1/doctor/sessions/${encodeURIComponent(activeSessionKey)}/messages`,
                     {
                         method: 'POST',
                         body:
-                            options.runnerModel || options.runnerThinkingLevel
+                            options.runnerId ||
+                            options.runnerModel ||
+                            options.runnerThinkingLevel
                                 ? extendedBody
                                 : baseBody,
                         signal: controller.signal,
@@ -1348,7 +1192,7 @@ export function useDoctorAdminChat() {
                         record?.code === 'validation_failed')
                 ) {
                     response = await api.request<DoctorChatSessionResponse>(
-                        `/internal/v1/doctor/sessions/${encodeURIComponent(sessionKey.value)}/messages`,
+                        `/internal/v1/doctor/sessions/${encodeURIComponent(activeSessionKey)}/messages`,
                         {
                             method: 'POST',
                             body: baseBody,
@@ -1359,9 +1203,9 @@ export function useDoctorAdminChat() {
                     throw err;
                 }
             }
-            if (generation !== messageGeneration) return response;
+            if (generation !== store().messageGeneration) return response;
             const nextMessages = normalizeDoctorMessages(response.messages);
-            adminBrain.value = response.admin_brain ?? adminBrain.value;
+            store().adminBrain.value = response.admin_brain ?? store().adminBrain.value;
             const runnerChat = response.runner_chat;
             if (response.job_id) {
                 await followJobStream(
@@ -1374,7 +1218,7 @@ export function useDoctorAdminChat() {
                         api.request<JobSnapshot>(
                             `/internal/v1/jobs/${encodeURIComponent(jobID)}`,
                         ),
-                    () => loadSession(sessionKey.value),
+                    () => loadSession(store().sessionKey.value),
                 );
             } else if (runnerChat?.session_id && runnerChat.turn_id) {
                 await followRunnerStream(
@@ -1384,11 +1228,11 @@ export function useDoctorAdminChat() {
                         placeholderID,
                     },
                     (path, requestOptions) => api.stream(path, requestOptions),
-                    () => loadSession(sessionKey.value),
+                    () => loadSession(store().sessionKey.value),
                 );
             } else {
-                if (nextMessages.length) messages.value = nextMessages;
-                if (!hasAssistantAfter(messages.value, previousMaxID)) {
+                if (nextMessages.length) store().messages.value = nextMessages;
+                if (!hasAssistantAfter(store().messages.value, previousMaxID)) {
                     appendOrUpdateStreamingAssistant(
                         placeholderID,
                         'Doctor accepted the message, but no response was returned.',
@@ -1401,13 +1245,13 @@ export function useDoctorAdminChat() {
             if (isAbortLikeError(err)) {
                 if (placeholderID !== 0)
                     removeStreamingAssistant(placeholderID);
-                error.value = null;
+                store().error.value = null;
                 return {
-                    messages: messages.value,
-                    admin_brain: adminBrain.value ?? undefined,
+                    messages: store().messages.value,
+                    admin_brain: store().adminBrain.value ?? undefined,
                 } as DoctorChatSessionResponse;
             }
-            if (generation !== messageGeneration) throw err;
+            if (generation !== store().messageGeneration) throw err;
             if (
                 placeholderID !== 0 &&
                 !hasMeaningfulDoctorStreamingState(
@@ -1418,7 +1262,7 @@ export function useDoctorAdminChat() {
             }
             if (
                 optimisticUserID !== 0 &&
-                !messages.value.some(
+                !store().messages.value.some(
                     (message) =>
                         message.role === 'user' &&
                         String(message.content ?? '').trim() === content,
@@ -1426,16 +1270,16 @@ export function useDoctorAdminChat() {
             ) {
                 removeMessage(optimisticUserID);
             }
-            error.value = errorMessage(err);
+            store().error.value = errorMessage(err);
             throw err;
         } finally {
-            if (activeRequestController.value === controller) {
-                activeRequestController.value = null;
+            if (store().activeRequestController.value === controller) {
+                store().activeRequestController.value = null;
             }
-            if (activeOptimisticTurn.value?.placeholderID === placeholderID) {
-                activeOptimisticTurn.value = null;
+            if (store().activeOptimisticTurn.value?.placeholderID === placeholderID) {
+                store().activeOptimisticTurn.value = null;
             }
-            if (generation === messageGeneration) loading.value = false;
+            if (generation === store().messageGeneration) store().loading.value = false;
         }
     }
 
@@ -1453,12 +1297,17 @@ export function useDoctorAdminChat() {
                 new Error('Doctor message content is required.'),
             );
         }
-        if (activeSendPromise) return activeSendPromise;
+        if (store().activeSendPromise) {
+            const busyMessage =
+                'Wait for the current Doctor reply before sending another message.';
+            store().error.value = busyMessage;
+            return Promise.reject(new Error(busyMessage));
+        }
         const promise = performSendMessage(normalizedContent, options);
-        activeSendPromise = promise;
+        store().activeSendPromise = promise;
         void promise
             .finally(() => {
-                if (activeSendPromise === promise) activeSendPromise = null;
+                if (store().activeSendPromise === promise) store().activeSendPromise = null;
             })
             .catch(() => undefined);
         return promise;
@@ -1478,38 +1327,37 @@ export function useDoctorAdminChat() {
                 method: 'POST',
                 body: {
                     conversation_id:
-                        options.conversationID ?? sessionKey.value ?? '',
+                        options.conversationID ?? store().sessionKey.value ?? '',
                     accepted_card_id: options.acceptedCardID ?? '',
-                    approved_authority: options.approvedAuthority ?? 'danger',
                     plan,
                 },
             },
         );
-        activePlan.value = response;
+        store().activePlan.value = response;
         return response;
     }
 
-    async function validatePlan(planID = activePlan.value?.plan?.id) {
+    async function validatePlan(planID = store().activePlan.value?.plan?.id) {
         if (!planID) throw new Error('No Doctor plan selected.');
-        activePlan.value = await api.request<DoctorPlanResponse>(
+        store().activePlan.value = await api.request<DoctorPlanResponse>(
             `/internal/v1/doctor/plans/${encodeURIComponent(planID)}/validate`,
             { method: 'POST', body: {} },
         );
-        return activePlan.value;
+        return store().activePlan.value;
     }
 
     async function applyPlan(
-        plan = activePlan.value?.plan,
+        plan = store().activePlan.value?.plan,
         options: {
             rememberForMinutes?: number;
             approvedAuthority?: string;
         } = {},
     ) {
         if (!plan?.id) throw new Error('No Doctor plan selected.');
-        applying.value = true;
-        error.value = null;
+        store().applying.value = true;
+        store().error.value = null;
         try {
-            applyResult.value = await authSession.retryWithAuth(
+            store().applyResult.value = await authSession.retryWithAuth(
                 (onAuthChallenge) =>
                     api.request<DoctorPlanApplyResponse>(
                         `/internal/v1/doctor/plans/${encodeURIComponent(plan.id!)}/apply`,
@@ -1520,30 +1368,28 @@ export function useDoctorAdminChat() {
                                     plan,
                                     options.rememberForMinutes ?? 0,
                                 ),
-                                approved_authority:
-                                    options.approvedAuthority ?? 'danger',
                             },
                             onAuthChallenge,
                         },
                     ),
                 'doctor-plan-apply',
             );
-            if (applyResult.value.restart_required) {
+            if (store().applyResult.value?.restart_required) {
                 suppressOr3ApiNetworkErrorLogsFor(65000);
             }
-            return applyResult.value;
+            return store().applyResult.value;
         } catch (err) {
-            error.value = errorMessage(err);
+            store().error.value = errorMessage(err);
             throw err;
         } finally {
-            applying.value = false;
+            store().applying.value = false;
         }
     }
 
-    async function rollbackPlan(planID = activePlan.value?.plan?.id) {
+    async function rollbackPlan(planID = store().activePlan.value?.plan?.id) {
         if (!planID) throw new Error('No Doctor plan selected.');
-        applying.value = true;
-        error.value = null;
+        store().applying.value = true;
+        store().error.value = null;
         try {
             const result = await authSession.retryWithAuth(
                 (onAuthChallenge) =>
@@ -1557,7 +1403,6 @@ export function useDoctorAdminChat() {
                                     approved: true,
                                     approved_at: Date.now(),
                                 },
-                                approved_authority: 'danger',
                             },
                             onAuthChallenge,
                         },
@@ -1568,39 +1413,115 @@ export function useDoctorAdminChat() {
                 suppressOr3ApiNetworkErrorLogsFor(65000);
             return result;
         } catch (err) {
-            error.value = errorMessage(err);
+            store().error.value = errorMessage(err);
             throw err;
         } finally {
-            applying.value = false;
+            store().applying.value = false;
         }
     }
 
-    async function runPostChecks(planID = activePlan.value?.plan?.id) {
+    async function runPostChecks(planID = store().activePlan.value?.plan?.id) {
         if (!planID) throw new Error('No Doctor plan selected.');
-        postCheckResult.value = await api.request<DoctorPostCheckResponse>(
+        store().postCheckResult.value = await api.request<DoctorPostCheckResponse>(
             `/internal/v1/doctor/plans/${encodeURIComponent(planID)}/post-checks`,
             { method: 'POST', body: {} },
         );
-        return postCheckResult.value;
+        return store().postCheckResult.value;
+    }
+
+    async function approvePendingApproval(
+        messageID: number | string,
+        remember = false,
+    ) {
+        const message = resolveDoctorMessageRef(
+            store().messages.value,
+            messageID,
+        );
+        const approvalRequestId = message?.approvalRequestId;
+        if (!message || !approvalRequestId) return false;
+        const id = typeof message.id === 'number' ? message.id : messageID;
+        patchStreamingAssistant(id, {
+            approvalState: 'retrying',
+            status: 'attention',
+            error: undefined,
+        });
+        try {
+            const response = await approvals.approve(
+                approvalRequestId,
+                remember,
+                remember
+                    ? 'approved and remembered from doctor chat'
+                    : 'approved from doctor chat',
+            );
+            if (response.resume_job_id) {
+                await followJobStream(
+                    {
+                        jobID: response.resume_job_id,
+                        placeholderID: id,
+                    },
+                    (path, requestOptions) => api.stream(path, requestOptions),
+                    (jobID) =>
+                        api.request<JobSnapshot>(
+                            `/internal/v1/jobs/${encodeURIComponent(jobID)}`,
+                        ),
+                    () => loadSession(store().sessionKey.value),
+                );
+                return true;
+            }
+            patchStreamingAssistant(id, {
+                approvalState: 'approved',
+                status: 'complete',
+                error: undefined,
+                approvalRequestId: undefined,
+            });
+            await loadSession().catch(() => undefined);
+            return true;
+        } catch (err) {
+            patchStreamingAssistant(id, {
+                approvalState: 'failed',
+                status: 'failed',
+                error: errorMessage(err),
+            });
+            throw err;
+        }
+    }
+
+    async function denyPendingApproval(messageID: number | string) {
+        const message = resolveDoctorMessageRef(
+            store().messages.value,
+            messageID,
+        );
+        const approvalRequestId = message?.approvalRequestId;
+        if (!message || !approvalRequestId) return false;
+        const id = typeof message.id === 'number' ? message.id : messageID;
+        await approvals.deny(approvalRequestId, 'denied from doctor chat');
+        patchStreamingAssistant(id, {
+            approvalState: 'denied',
+            status: 'complete',
+            error: undefined,
+            approvalRequestId: undefined,
+        });
+        await loadSession().catch(() => undefined);
+        return true;
     }
 
     function stopActiveTurn() {
-        messageGeneration += 1;
-        const runnerTurn = activeRunnerTurn.value;
-        const jobID = activeJobID.value;
-        activeRunnerTurn.value = null;
-        activeJobID.value = null;
-        const optimisticTurn = activeOptimisticTurn.value;
-        activeOptimisticTurn.value = null;
-        activeRequestController.value?.abort();
-        activeRequestController.value = null;
+        store().bumpMessageGeneration();
+        const runnerTurn = store().activeRunnerTurn.value;
+        const jobID = store().activeJobID.value;
+        store().activeRunnerTurn.value = null;
+        store().activeJobID.value = null;
+        const optimisticTurn = store().activeOptimisticTurn.value;
+        store().activeOptimisticTurn.value = null;
+        store().activeRequestController.value?.abort();
+        store().activeRequestController.value = null;
         stopStreaming();
         if (optimisticTurn) {
             removeStreamingAssistant(optimisticTurn.placeholderID);
         }
-        activeSendPromise = null;
-        loading.value = false;
-        error.value = null;
+        store().activeSendPromise = null;
+        store().loading.value = false;
+        store().error.value = null;
         if (runnerTurn) {
             void api
                 .request(
@@ -1620,51 +1541,60 @@ export function useDoctorAdminChat() {
     }
 
     function clearMessages() {
-        messageGeneration += 1;
-        activeSendPromise = null;
-        activeRequestController.value?.abort();
-        activeRequestController.value = null;
+        store().bumpMessageGeneration();
+        store().activeSendPromise = null;
+        store().activeRequestController.value?.abort();
+        store().activeRequestController.value = null;
         stopStreaming();
-        activeRunnerTurn.value = null;
-        activeJobID.value = null;
-        activeOptimisticTurn.value = null;
-        messages.value = [];
-        sessionKey.value = null;
-        activePlan.value = null;
-        applyResult.value = null;
-        postCheckResult.value = null;
-        loading.value = false;
-        error.value = null;
+        store().activeRunnerTurn.value = null;
+        store().activeJobID.value = null;
+        store().activeOptimisticTurn.value = null;
+        store().messages.value = [];
+        store().sessionKey.value = null;
+        persistSessionKey(null);
+        store().activePlan.value = null;
+        store().applyResult.value = null;
+        store().postCheckResult.value = null;
+        store().planApplyResults.value = {};
+        store().planApplyFailures.value = {};
+        store().planPostCheckResults.value = {};
+        store().loading.value = false;
+        store().error.value = null;
     }
 
     function clearError() {
-        error.value = null;
+        store().error.value = null;
     }
 
     return {
-        sessionKey: computed(() => sessionKey.value),
-        messages: computed(() => messages.value),
-        adminBrain: computed(() => adminBrain.value),
-        status: computed(() => status.value),
-        activePlan: computed(() => activePlan.value),
-        applyResult: computed(() => applyResult.value),
-        postCheckResult: computed(() => postCheckResult.value),
-        loading: computed(() => loading.value),
-        applying: computed(() => applying.value),
-        error: computed(() => error.value),
+        sessionKey: computed(() => store().sessionKey.value),
+        messages: computed(() => store().messages.value),
+        adminBrain: computed(() => store().adminBrain.value),
+        status: computed(() => store().status.value),
+        activePlan: computed(() => store().activePlan.value),
+        applyResult: computed(() => store().applyResult.value),
+        postCheckResult: computed(() => store().postCheckResult.value),
+        planApplyResults: store().planApplyResults,
+        planApplyFailures: store().planApplyFailures,
+        planPostCheckResults: store().planPostCheckResults,
+        loading: computed(() => store().loading.value),
+        applying: computed(() => store().applying.value),
+        error: computed(() => store().error.value),
         loadStatus,
         loadAdminBrain,
         createSession,
         loadSession,
-        loadEvents,
         sendMessage,
         createPlan,
         validatePlan,
         applyPlan,
         rollbackPlan,
         runPostChecks,
+        approvePendingApproval,
+        denyPendingApproval,
         clearMessages,
         clearError,
         stopStreaming: stopActiveTurn,
+        hydratePersistedSession,
     };
 }

@@ -1,8 +1,12 @@
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import type { ToolPolicy } from '~/types/or3-api';
 import type { AssistantSendPayload } from '~/types/app-state';
 import { describeApprovalRequest } from '~/utils/assistant-stream/approval';
 import { downgradeToolPolicyForServiceCapability } from '~/utils/assistant-stream/errors';
+import {
+    EMPTY_FINAL_USER_MESSAGE,
+    EMPTY_STREAM_USER_MESSAGE,
+} from '~/utils/assistant-stream/userErrorCopy';
 import {
     fetchAndApplyJobSnapshot,
     handleRunnerExecutionError,
@@ -30,6 +34,7 @@ const activeJobId = ref<string | null>(null);
 const chatMode = ref<'ask' | 'work' | 'admin'>('work');
 const serviceCapabilityCeilingHosts = new Set<string>();
 let controller: AbortController | null = null;
+let chatStreamInitialized = false;
 
 function createTraceId() {
     return `turn_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
@@ -74,13 +79,40 @@ export function useAssistantStream() {
         const followJobId = payload.followJobId?.trim() || '';
         const followRunnerTurnId = payload.runnerChatTurnId?.trim() || '';
         const text = payload.transportText || payload.text;
-        if ((!text && !followJobId && !followRunnerTurnId) || isStreaming.value)
+        if (!text && !followJobId && !followRunnerTurnId) return;
+
+        if (isStreaming.value) {
+            toast.add({
+                title: 'Please wait',
+                description:
+                    'OR3 is still working on your last message. Wait for it to finish or tap Stop.',
+                color: 'warning',
+                icon: 'i-pixelarticons-clock',
+            });
             return;
+        }
+
         setActiveTraceId(traceId);
 
         const storedRetryPayload = retryPayloadForStorage(payload);
 
-        const session = chat.ensureSession();
+        if (payload.continueMessageId) {
+            const continueTarget = cache.state.value.messages.find(
+                (item) =>
+                    item.id === payload.continueMessageId &&
+                    item.role === 'assistant',
+            );
+            if (continueTarget) {
+                const sessionForMessage = cache.state.value.sessions.find(
+                    (item) => item.id === continueTarget.sessionId,
+                );
+                if (sessionForMessage) {
+                    chat.promoteSession(sessionForMessage.id);
+                }
+            }
+        }
+
+        const session = chat.activeSession.value ?? chat.ensureSession();
         runtimeLog.add('turn', 'send:start', undefined, {
             traceId,
             sessionKey: session.sessionKey,
@@ -109,7 +141,7 @@ export function useAssistantStream() {
             });
         }
         const existingAssistant = payload.continueMessageId
-            ? chat.messages.value.find(
+            ? cache.state.value.messages.find(
                   (item) =>
                       item.id === payload.continueMessageId &&
                       item.role === 'assistant',
@@ -246,8 +278,8 @@ export function useAssistantStream() {
                 messageAfterSnapshot?.status !== 'failed'
             ) {
                 const emptyMessage = sawStreamEvent
-                    ? 'or3-intern finished thinking, but did not return any visible text.'
-                    : 'No streaming content was returned.';
+                    ? EMPTY_FINAL_USER_MESSAGE
+                    : EMPTY_STREAM_USER_MESSAGE;
                 updateAssistant({
                     content: emptyMessage,
                     status: 'attention',
@@ -332,28 +364,24 @@ export function useAssistantStream() {
         }
     }
 
-    const { installRecoveryWatcher } = useStreamRecovery({
-        activeHost,
-        cacheState: cache.state,
-        isStreaming,
-        send,
-    });
-    const { installApprovalHydrationWatcher } = useApprovalHydration({
-        activeHost,
-        api,
-        chat,
-        runtimeLog,
-        isStreaming,
-    });
-    installRecoveryWatcher();
-    installApprovalHydrationWatcher();
-
     async function stop() {
         const jobId = activeJobId.value;
-        const assistant = chat.messages.value.find(
-            (message) =>
-                message.role === 'assistant' && message.status === 'streaming',
-        );
+        const hostId = activeHost.value?.id?.trim();
+        const sessionIds = hostId
+            ? new Set(
+                  cache.state.value.sessions
+                      .filter((session) => session.hostId === hostId)
+                      .map((session) => session.id),
+              )
+            : null;
+        const assistant =
+            cache.state.value.messages.find(
+                (message) =>
+                    message.role === 'assistant' &&
+                    message.status === 'streaming' &&
+                    (!sessionIds || sessionIds.has(message.sessionId)),
+            ) ?? null;
+        let remoteAbortFailed = false;
         if (assistant?.runnerChatTurnId) {
             try {
                 await api.request(
@@ -361,7 +389,7 @@ export function useAssistantStream() {
                     { method: 'POST' },
                 );
             } catch {
-                // Local abort below is still the authoritative UI fallback.
+                remoteAbortFailed = true;
             }
         }
         if (jobId) {
@@ -371,12 +399,57 @@ export function useAssistantStream() {
                     { method: 'POST' },
                 );
             } catch {
-                // Local abort below is still the authoritative UI fallback.
+                remoteAbortFailed = true;
             }
         }
         controller?.abort();
         isStreaming.value = false;
+        if (remoteAbortFailed) {
+            toast.add({
+                title: 'Stopped on this device',
+                description:
+                    'The task may still be running on your computer. Check Activity if it keeps going.',
+                color: 'warning',
+                icon: 'i-pixelarticons-warning-box',
+            });
+        }
     }
 
     return { isStreaming, activeJobId, chatMode, send, stop };
+}
+
+export function installChatStreamSideEffects(
+    send: (message: string | AssistantSendPayload) => Promise<void>,
+) {
+    if (!import.meta.client || chatStreamInitialized) return;
+    chatStreamInitialized = true;
+
+    const api = useOr3Api();
+    const chat = useChatSessions();
+    const cache = useLocalCache();
+    const runtimeLog = useChatRuntimeLog();
+    const { activeHost } = useActiveHost();
+
+    useStreamRecovery({
+        activeHost,
+        cacheState: cache.state,
+        isStreaming,
+        send,
+    }).installRecoveryWatcher();
+
+    useApprovalHydration({
+        activeHost,
+        api,
+        chat,
+        runtimeLog,
+        isStreaming,
+    }).installApprovalHydrationWatcher();
+
+    watch(
+        () => activeHost.value?.id,
+        (hostId, previousHostId) => {
+            if (!hostId || hostId === previousHostId) return;
+            chatMode.value = 'work';
+        },
+    );
 }

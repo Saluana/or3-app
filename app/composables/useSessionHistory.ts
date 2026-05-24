@@ -180,9 +180,16 @@ export function useSessionHistory() {
         }
     }
 
-    async function hydrate(sessionKey: string, limit = 100) {
+    async function hydrate(
+        sessionKey: string,
+        limit = 100,
+        options: { replaceLocal?: boolean } = {},
+    ) {
         const local = chat.activateSessionByKey(sessionKey);
         if (!local) return null;
+        if (options.replaceLocal !== false) {
+            chat.clearSessionMessages(local.id);
+        }
         const params = new URLSearchParams({ limit: String(limit) });
         const response = await api.request<ChatMessagePageResponse>(
             `/internal/v1/chat-sessions/${encodeURIComponent(sessionKey)}/messages?${params.toString()}`,
@@ -211,9 +218,12 @@ export function useSessionHistory() {
         }
     }
 
-    async function openSession(meta: ChatSessionMeta) {
+    async function openSession(
+        meta: ChatSessionMeta,
+        options: { replaceLocal?: boolean } = {},
+    ) {
         const session = chat.applyBackendSessionMeta(meta);
-        await hydrate(meta.session_key);
+        await hydrate(meta.session_key, 100, { replaceLocal: options.replaceLocal });
         historyOpen.value = false;
         return session;
     }

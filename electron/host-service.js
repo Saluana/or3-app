@@ -464,6 +464,16 @@ async function isExecutable(path) {
     }
 }
 
+async function isAccessibleDirectory(path) {
+    if (!path) return false;
+    try {
+        await access(path, constants.R_OK | constants.X_OK);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 async function versionForBinary(path) {
     const commands = [['--version'], ['version']];
     for (const args of commands) {
@@ -711,11 +721,19 @@ export async function locateInternBinary({ appPath = '', resourcesPath = '', man
 
 export async function configureService(input) {
     if (!input || typeof input !== 'object') return { ok: false, message: 'Invalid service configuration.' };
-    if (!String(input.workspaceDir || '').trim()) return { ok: false, message: 'Choose a workspace folder first.' };
+    const workspaceDir = String(input.workspaceDir || '').trim();
+    if (!workspaceDir) return { ok: false, message: 'Choose a workspace folder first.' };
+    if (!(await isAccessibleDirectory(workspaceDir))) {
+        return {
+            ok: false,
+            message: 'The selected workspace folder does not exist or cannot be opened.',
+            recoverable: true,
+        };
+    }
     const config = await readConfig();
     const hostService = {
         machineName: String(input.machineName || 'This computer'),
-        workspaceDir: String(input.workspaceDir),
+        workspaceDir,
         dataDir: input.dataDir ? String(input.dataDir) : undefined,
         listenHost: String(input.listenHost || '127.0.0.1'),
         listenPort: Number(input.listenPort || 9100),
@@ -816,6 +834,14 @@ export async function startService({ appPath = '', resourcesPath = '' } = {}) {
         if (!stopped) return adopted;
     }
     if (serviceProcess && !serviceProcess.killed) return processStatus(config);
+    if (!(await isAccessibleDirectory(config.hostService.workspaceDir))) {
+        return {
+            state: 'error',
+            recoverable: true,
+            baseUrl: baseUrlFromServiceConfig(config.hostService),
+            message: 'The saved OR3 workspace folder does not exist or cannot be opened. Choose the moved workspace folder in setup.',
+        };
+    }
 
     const located = await locateInternBinary({
         appPath,
@@ -853,6 +879,10 @@ export async function startService({ appPath = '', resourcesPath = '' } = {}) {
         lastLogs.push(String(chunk).slice(-2000));
         lastLogs = lastLogs.slice(-20);
     };
+    serviceProcess.once('error', (error) => {
+        collect(error instanceof Error ? error.message : String(error));
+        serviceProcess = null;
+    });
     serviceProcess.stdout?.on('data', collect);
     serviceProcess.stderr?.on('data', collect);
     serviceProcess.once('exit', () => {

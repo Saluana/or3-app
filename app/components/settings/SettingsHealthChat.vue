@@ -64,7 +64,7 @@
         </div>
 
         <!-- Body: empty state OR virtualized chat list -->
-        <div class="flex-1 overflow-hidden">
+        <div class="or3-chat-shell__body or3-doctor-body">
             <div
                 v-if="!hasChatMessages"
                 class="or3-chat-shell__content or3-doctor-empty"
@@ -108,7 +108,7 @@
                     v-if="health.findings.value.length"
                     class="mt-4 space-y-3"
                 >
-                    <div class="flex items-center justify-between">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
                         <p
                             class="font-mono text-xs uppercase tracking-wide text-(--or3-text-muted)"
                         >
@@ -132,18 +132,30 @@
                         </li>
                     </ul>
 
-                    <!-- Warnings -->
-                    <ul v-if="warningFindings.length" class="space-y-2">
-                        <li
-                            v-for="finding in warningFindings"
-                            :key="finding.id"
+                    <!-- Warnings (collapsed by default — expand to review) -->
+                    <details
+                        v-if="warningFindings.length"
+                        class="rounded-xl border border-amber-200/80 bg-amber-50/40 px-3 py-2 text-sm"
+                    >
+                        <summary
+                            class="cursor-pointer font-mono text-xs uppercase tracking-wide text-amber-900/80"
                         >
-                            <FindingCard
-                                :finding="finding"
-                                @ask="askAboutFinding(finding)"
-                            />
-                        </li>
-                    </ul>
+                            {{ warningFindings.length }} warning{{
+                                warningFindings.length === 1 ? '' : 's'
+                            }}
+                        </summary>
+                        <ul class="mt-2 space-y-2">
+                            <li
+                                v-for="finding in warningFindings"
+                                :key="finding.id"
+                            >
+                                <FindingCard
+                                    :finding="finding"
+                                    @ask="askAboutFinding(finding)"
+                                />
+                            </li>
+                        </ul>
+                    </details>
 
                     <!-- OK collapsed details -->
                     <details
@@ -188,8 +200,48 @@
 
             <div
                 v-else
-                class="w-full or3-chat-shell__content--virtualized"
+                class="or3-doctor-chat-pane w-full or3-chat-shell__content--virtualized"
             >
+                <div
+                    v-if="planOutcomeStrip"
+                    class="or3-doctor-outcome-strip"
+                    role="status"
+                    aria-live="polite"
+                >
+                    <div class="or3-doctor-outcome-strip__main">
+                        <Icon
+                            name="i-pixelarticons-check"
+                            class="or3-doctor-outcome-strip__icon"
+                            aria-hidden="true"
+                        />
+                        <p class="or3-doctor-outcome-strip__message">
+                            {{ planOutcomeStrip.message }}
+                        </p>
+                    </div>
+                    <div class="or3-doctor-outcome-strip__actions">
+                        <button
+                            v-if="planOutcomeStrip.rollbackId"
+                            type="button"
+                            class="or3-doctor-outcome-strip__undo or3-focus-ring"
+                            :disabled="planOutcomeUndoing"
+                            @click="undoPlanOutcomeStrip"
+                        >
+                            {{ planOutcomeUndoing ? 'Undoing…' : 'Undo' }}
+                        </button>
+                        <button
+                            type="button"
+                            class="or3-doctor-outcome-strip__dismiss or3-focus-ring"
+                            aria-label="Dismiss update notice"
+                            @click="dismissPlanOutcomeStrip"
+                        >
+                            <Icon
+                                name="i-pixelarticons-close"
+                                class="size-4"
+                                aria-hidden="true"
+                            />
+                        </button>
+                    </div>
+                </div>
                 <div ref="messageListRef" class="or3-doctor-message-list">
                     <article
                         v-for="message in doctorChatMessages"
@@ -199,11 +251,9 @@
                             message.role === 'user'
                                 ? 'or3-doctor-message--user'
                                 : 'or3-doctor-message--assistant',
-                            !message.text &&
-                            !message.parts.length &&
-                            !message.activityLog.length &&
-                            message.cards.length
-                                ? 'or3-doctor-message--cards-only'
+                            message.role === 'assistant' &&
+                            message.status === 'attention'
+                                ? 'or3-doctor-message--attention'
                                 : '',
                         ]"
                     >
@@ -233,25 +283,121 @@
                                         <AssistantInlineToolCall
                                             v-else-if="part.type === 'tool'"
                                             :part="part"
+                                            :compact-telemetry="
+                                                isDoctorTelemetryToolName(
+                                                    part.name,
+                                                )
+                                            "
+                                            class="or3-doctor-message__tool"
                                         />
                                     </template>
                                 </div>
                                 <StreamingMarkdown
-                                    v-else-if="message.text"
+                                    v-if="
+                                        message.text &&
+                                        !doctorSummaryInParts(
+                                            message.text,
+                                            message.parts,
+                                        )
+                                    "
+                                    :class="[
+                                        'or3-doctor-message__summary',
+                                        message.parts.length
+                                            ? 'or3-doctor-message__summary--after-tools'
+                                            : '',
+                                        message.isEmptyFinalSummary
+                                            ? 'or3-doctor-message__summary--attention'
+                                            : '',
+                                    ]"
                                     :content="message.text"
                                 />
                                 <p
-                                    v-else-if="message.status === 'streaming'"
+                                    v-else-if="
+                                        !message.parts.length &&
+                                        message.status === 'streaming'
+                                    "
                                     class="or3-doctor-message__thinking"
                                 >
                                     <span class="or3-doctor-message__dot" />
                                     <span class="or3-doctor-message__dot" />
                                     <span class="or3-doctor-message__dot" />
                                 </p>
+                                <p
+                                    v-if="
+                                        message.error &&
+                                        message.errorCode === 'empty_final_text'
+                                    "
+                                    class="or3-doctor-message__notice"
+                                >
+                                    {{ message.error }}
+                                </p>
                                 <AssistantActivityLog
-                                    v-if="message.activityLog.length"
+                                    v-if="doctorShowActivityLog(message)"
                                     :items="message.activityLog"
                                 />
+                                <div
+                                    v-if="doctorApprovalIsPending(message)"
+                                    class="or3-doctor-approval"
+                                >
+                                    <div class="or3-doctor-approval__copy">
+                                        <p class="or3-doctor-approval__title">
+                                            Approval needed
+                                        </p>
+                                        <p class="or3-doctor-approval__detail">
+                                            {{
+                                                approvalSummaryFor(
+                                                    message.approvalRequestId,
+                                                )
+                                            }}
+                                        </p>
+                                        <p
+                                            v-if="
+                                                approvalSubjectFor(
+                                                    message.approvalRequestId,
+                                                )
+                                            "
+                                            class="or3-doctor-approval__subject"
+                                        >
+                                            {{
+                                                approvalSubjectFor(
+                                                    message.approvalRequestId,
+                                                )
+                                            }}
+                                        </p>
+                                    </div>
+                                    <div class="or3-doctor-approval__actions">
+                                        <UButton
+                                            size="xs"
+                                            color="neutral"
+                                            variant="ghost"
+                                            icon="i-pixelarticons-close"
+                                            :disabled="approvalBusy"
+                                            label="Deny"
+                                            @click="
+                                                denyDoctorApproval(message.rawId)
+                                            "
+                                        />
+                                        <UButton
+                                            size="xs"
+                                            color="neutral"
+                                            variant="outline"
+                                            icon="i-pixelarticons-check"
+                                            :loading="approvalBusy"
+                                            label="Approve"
+                                            @click="
+                                                approveDoctorApproval(
+                                                    message.rawId,
+                                                )
+                                            "
+                                        />
+                                    </div>
+                                </div>
+                                <p
+                                    v-else-if="message.approvalState === 'denied'"
+                                    class="or3-doctor-message__notice"
+                                >
+                                    Approval denied. The tool call was not run.
+                                </p>
                             </template>
                             <div
                                 v-if="message.cards.length"
@@ -285,36 +431,65 @@
                                     >
                                         <SettingsChangePreviewCard
                                             :plan="card.plan"
-                                        />
-                                        <div class="or3-doctor-card-actions">
-                                            <StatusPill
-                                                v-if="card.status"
-                                                :label="card.status"
-                                                tone="neutral"
-                                            />
-                                            <UButton
-                                                size="xs"
-                                                color="neutral"
-                                                variant="ghost"
-                                                icon="i-pixelarticons-close"
-                                                label="Deny"
-                                                @click="
-                                                    dismissDoctorPlan(card.plan)
-                                                "
-                                            />
-                                            <UButton
-                                                v-if="card.plan.id"
-                                                size="xs"
-                                                color="neutral"
-                                                variant="outline"
-                                                icon="i-pixelarticons-check-double"
-                                                :loading="chat.applying.value"
-                                                label="Apply plan"
-                                                @click="
-                                                    applyDoctorPlan(card.plan)
-                                                "
-                                            />
-                                        </div>
+                                            :status="card.status"
+                                            :error="card.error"
+                                            :apply-state="
+                                                doctorPlanApplyState(card)
+                                            "
+                                        >
+                                            <template #actions>
+                                                <UButton
+                                                    size="xs"
+                                                    color="neutral"
+                                                    variant="ghost"
+                                                    icon="i-pixelarticons-close"
+                                                    label="Deny"
+                                                    @click="
+                                                        dismissDoctorPlan(
+                                                            card.plan,
+                                                        )
+                                                    "
+                                                />
+                                                <UButton
+                                                    v-if="card.plan.id"
+                                                    size="xs"
+                                                    :color="
+                                                        doctorPlanApplyButtonColor(
+                                                            card,
+                                                        )
+                                                    "
+                                                    :variant="
+                                                        doctorPlanApplyButtonVariant(
+                                                            card,
+                                                        )
+                                                    "
+                                                    :icon="
+                                                        doctorPlanApplyButtonIcon(
+                                                            card,
+                                                        )
+                                                    "
+                                                    :disabled="
+                                                        doctorPlanApplyDisabled(
+                                                            card,
+                                                        )
+                                                    "
+                                                    :loading="
+                                                        planApplyingId ===
+                                                        card.plan.id
+                                                    "
+                                                    :label="
+                                                        doctorPlanApplyLabel(
+                                                            card,
+                                                        )
+                                                    "
+                                                    @click="
+                                                        applyDoctorPlan(
+                                                            card.plan,
+                                                        )
+                                                    "
+                                                />
+                                            </template>
+                                        </SettingsChangePreviewCard>
                                     </div>
                                     <RiskApprovalCard
                                         v-else-if="card.type === 'risk'"
@@ -330,7 +505,7 @@
                                                 doctorPlanKey(card.plan)
                                             ]
                                         "
-                                        auth-available
+                                        :auth-available="doctorAuthAvailable"
                                         @update:remember="
                                             setRememberApproval(
                                                 card.plan,
@@ -405,42 +580,71 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import {
     useSettingsHealth,
     type HealthFinding,
     type HealthStatus,
 } from '~/composables/settings/useSettingsHealth';
+import { useApprovals } from '~/composables/useApprovals';
+import { useAuthSession } from '~/composables/useAuthSession';
 import {
-    doctorCardsForMessage,
-    doctorVisibleTextForMessage,
+    isDoctorEmptyFinalTextWarning,
+    isDoctorTelemetryToolName,
     useDoctorAdminChat,
+    buildDoctorChatDisplayMessages,
+    doctorSummaryInParts,
+    resolveDoctorMessageRef,
     type DoctorChatCard,
+    type DoctorDisplayMessage,
 } from '~/composables/useDoctorAdminChat';
+import { useToast } from '@nuxt/ui/composables';
 import type { AssistantSendPayload } from '~/types/app-state';
 import type {
+    ApprovalRequest,
     DoctorPlanApplyResponse,
     DoctorPostCheckResponse,
     DoctorSettingsChangePlan,
 } from '~/types/or3-api';
 import FindingCard from '~/components/settings/health/FindingCard.vue';
+import { formatApprovalSubjectPreview } from '~/utils/or3/approval-display';
+import {
+    DOCTOR_PLAN_OUTCOME_STRIP_MS,
+    formatDoctorPlanOutcomeMessage,
+} from '~/utils/or3/doctor-plan-outcome';
 import { resolveDoctorRunnerID } from '~/utils/doctorRunnerSelection';
+import { scrubDoctorUserMessageContent } from '~/utils/doctor/doctorContent';
 
 const router = useRouter();
 defineProps<{ desktop?: boolean }>();
+const toast = useToast();
 const health = useSettingsHealth();
 const chat = useDoctorAdminChat();
+const approvals = useApprovals();
+const authSession = useAuthSession();
 const draft = ref('');
-const chatMode = ref<'ask' | 'work' | 'admin'>('ask');
+const chatMode = ref<'ask' | 'work' | 'admin'>('admin');
 const selectedRunnerId = ref('');
 const selectedRunnerModel = ref('');
 const selectedRunnerThinkingLevel = ref('');
 const messageListRef = ref<HTMLElement | null>(null);
-const planApplyResults = ref<Record<string, DoctorPlanApplyResponse>>({});
-const planPostCheckResults = ref<Record<string, DoctorPostCheckResponse>>({});
+const planApplyResults = chat.planApplyResults;
+const planApplyFailures = chat.planApplyFailures;
+const planApplyingId = ref<string | null>(null);
+const planOutcomeStrip = ref<{
+    planId: string;
+    message: string;
+    rollbackId?: string;
+} | null>(null);
+const planOutcomeUndoing = ref(false);
+let planOutcomeDismissTimer: ReturnType<typeof setTimeout> | null = null;
+const planPostCheckResults = chat.planPostCheckResults;
 const rememberApproval = ref<Record<string, boolean>>({});
 const dismissedPlanKeys = ref<Record<string, boolean>>({});
+const approvalBusy = ref(false);
+const approvalDetails = ref<Record<string, ApprovalRequest>>({});
+const approvalDetailLoading = new Set<string>();
 const {
     selectableRunners,
     defaultRunner,
@@ -455,6 +659,7 @@ const quickPrompts = [
 ];
 
 const hasChatMessages = computed(() => doctorChatMessages.value.length > 0);
+const doctorSessionLocked = computed(() => Boolean(chat.sessionKey.value));
 
 const errorFindings = computed(() =>
     health.findings.value.filter((finding) => finding.status === 'error'),
@@ -503,6 +708,13 @@ const adminBrainTone = computed<'green' | 'amber'>(() =>
     chat.adminBrain.value?.available ? 'green' : 'amber',
 );
 
+const doctorAuthAvailable = computed(() => {
+    const capabilities = authSession.capabilities.value;
+    if (!capabilities?.passkeysEnabled) return false;
+    if (capabilities.webauthnAvailable === false) return false;
+    return authSession.isAuthenticated.value;
+});
+
 const formattedLastRun = computed(() => {
     if (!health.lastRun.value) return '';
     try {
@@ -543,38 +755,21 @@ const selectableRunnerIDs = computed(() =>
     runners.value.map((runner) => runner.id),
 );
 
+type DoctorPlanApplyState =
+    | 'ready'
+    | 'needs_fix'
+    | 'applied'
+    | 'rolled_back'
+    | 'failed';
+
 const doctorChatMessages = computed(() =>
-    chat.messages.value
-        .map((message, index) => {
-            const role = message.role === 'user' ? 'user' : 'assistant';
-            const cards = doctorCardsForMessage(message).filter(
-                (card) => !isDoctorCardDismissed(card),
-            );
-            const text =
-                message.role === 'user'
-                    ? stripLeakedDoctorPrompt(String(message.content ?? ''))
-                    : doctorVisibleTextForMessage(message);
-            return {
-                id: String(message.id ?? `doctor-${index}`),
-                role,
-                text: text.trim(),
-                status: message.status ?? 'complete',
-                parts: (message.parts ?? []).filter((part) => {
-                    if (part.type === 'text')
-                        return Boolean(part.content?.trim());
-                    return Boolean(part.name || part.toolCallId);
-                }),
-                activityLog: message.activityLog ?? [],
-                cards,
-            };
-        })
-        .filter(
-            (message) =>
-                message.text.length > 0 ||
-                message.parts.length > 0 ||
-                message.activityLog.length > 0 ||
-                message.cards.length > 0,
-        ),
+    buildDoctorChatDisplayMessages(chat.messages.value, {
+        isCardDismissed: isDoctorCardDismissed,
+        stripUserPrompt: scrubDoctorUserMessageContent,
+    }).map((message) => ({
+        ...message,
+        activityLog: doctorShowActivityLog(message) ? message.activityLog : [],
+    })),
 );
 
 function goBackToSettings() {
@@ -588,12 +783,136 @@ function runHealthChecks() {
     void refreshRunners().catch(() => undefined);
 }
 
+function clearPlanOutcomeDismissTimer() {
+    if (planOutcomeDismissTimer) {
+        clearTimeout(planOutcomeDismissTimer);
+        planOutcomeDismissTimer = null;
+    }
+}
+
+function dismissPlanOutcomeStrip() {
+    clearPlanOutcomeDismissTimer();
+    planOutcomeStrip.value = null;
+}
+
+function showPlanOutcomeStrip(
+    plan: DoctorSettingsChangePlan,
+    result?: DoctorPlanApplyResponse | null,
+) {
+    if (!plan.id) return;
+    clearPlanOutcomeDismissTimer();
+    const rollbackId = String(result?.rollback_id ?? '').trim();
+    planOutcomeStrip.value = {
+        planId: plan.id,
+        message: formatDoctorPlanOutcomeMessage(plan),
+        rollbackId: rollbackId || undefined,
+    };
+    planOutcomeDismissTimer = setTimeout(() => {
+        planOutcomeStrip.value = null;
+        planOutcomeDismissTimer = null;
+    }, DOCTOR_PLAN_OUTCOME_STRIP_MS);
+}
+
 function clearConversation() {
     chat.clearMessages();
+    dismissPlanOutcomeStrip();
     planApplyResults.value = {};
+    planApplyFailures.value = {};
     planPostCheckResults.value = {};
     rememberApproval.value = {};
     dismissedPlanKeys.value = {};
+}
+
+function doctorMessageHasToolParts(message: Pick<DoctorDisplayMessage, 'parts'>) {
+    return message.parts.some((part) => part.type === 'tool');
+}
+
+function doctorShowActivityLog(message: Pick<DoctorDisplayMessage, 'parts' | 'activityLog'>) {
+    if (!message.activityLog.length) return false;
+    return !doctorMessageHasToolParts(message);
+}
+
+function doctorPlanApplyState(card: DoctorChatCard): DoctorPlanApplyState {
+    if (card.type !== 'plan' || !card.plan.id) return 'needs_fix';
+    const planID = card.plan.id;
+    const failure = planApplyFailures.value[planID];
+    if (failure) return 'failed';
+    const applied = planApplyResults.value[planID];
+    if (applied) {
+        if (applied.rolled_back) return 'rolled_back';
+        return applied.ok === false ? 'failed' : 'applied';
+    }
+    if (!isDoctorPlanApplyable(card)) return 'needs_fix';
+    return 'ready';
+}
+
+function doctorPlanApplyLabel(card: DoctorChatCard) {
+    switch (doctorPlanApplyState(card)) {
+        case 'ready':
+            return 'Ready to apply';
+        case 'needs_fix':
+            return 'Needs fix';
+        case 'applied':
+            return 'Applied';
+        case 'rolled_back':
+            return 'Reverted';
+        case 'failed':
+            return 'Failed';
+    }
+}
+
+function doctorApprovalIsPending(
+    message: Pick<DoctorDisplayMessage, 'approvalRequestId' | 'approvalState'>,
+) {
+    if (!message.approvalRequestId) return false;
+    const state = String(message.approvalState ?? 'pending');
+    return state === 'pending' || state === 'retrying';
+}
+
+function doctorPlanApplyDisabled(card: DoctorChatCard) {
+    const state = doctorPlanApplyState(card);
+    return state === 'needs_fix' || state === 'applied';
+}
+
+function doctorPlanApplyButtonColor(card: DoctorChatCard) {
+    switch (doctorPlanApplyState(card)) {
+        case 'ready':
+            return 'primary';
+        case 'applied':
+            return 'success';
+        case 'rolled_back':
+            return 'neutral';
+        case 'failed':
+            return 'error';
+        default:
+            return 'neutral';
+    }
+}
+
+function doctorPlanApplyButtonVariant(card: DoctorChatCard) {
+    switch (doctorPlanApplyState(card)) {
+        case 'ready':
+            return 'solid';
+        case 'applied':
+            return 'soft';
+        case 'failed':
+            return 'outline';
+        default:
+            return 'outline';
+    }
+}
+
+function doctorPlanApplyButtonIcon(card: DoctorChatCard) {
+    switch (doctorPlanApplyState(card)) {
+        case 'ready':
+            return 'i-pixelarticons-check-double';
+        case 'applied':
+            return 'i-pixelarticons-check';
+        case 'failed':
+            return 'i-pixelarticons-alert';
+        default:
+            return 'i-pixelarticons-edit';
+    }
 }
 
 function doctorPlanKey(plan: DoctorSettingsChangePlan) {
@@ -624,6 +943,14 @@ function doctorPlanDismissKey(plan: DoctorSettingsChangePlan) {
     return plan.id || doctorPlanKey(plan);
 }
 
+function isDoctorPlanApplyable(card: DoctorChatCard) {
+    if (card.type !== 'plan') return false;
+    if (!card.plan.id || card.ok === false || card.error) return false;
+    return !(card.plan.validation_results ?? []).some(
+        (result) => result.status === 'fail' || result.status === 'error',
+    );
+}
+
 function isDoctorCardDismissed(card: DoctorChatCard) {
     if (
         card.type === 'plan' ||
@@ -642,16 +969,6 @@ function dismissDoctorPlan(plan: DoctorSettingsChangePlan) {
         ...dismissedPlanKeys.value,
         [doctorPlanDismissKey(plan)]: true,
     };
-}
-
-function stripLeakedDoctorPrompt(content: string) {
-    if (
-        !content.includes('Current doctor summary:') ||
-        !content.includes('User message:')
-    ) {
-        return content.trim();
-    }
-    return content.split('User message:').pop()?.trim() || content.trim();
 }
 
 function setRememberApproval(plan: DoctorSettingsChangePlan, value: boolean) {
@@ -683,13 +1000,56 @@ function scrollDoctorMessagesToBottom() {
 
 async function applyDoctorPlan(plan: DoctorSettingsChangePlan) {
     if (!plan.id) return;
-    const result = await chat.applyPlan(plan, {
-        rememberForMinutes: rememberApproval.value[doctorPlanKey(plan)] ? 5 : 0,
-    });
-    planApplyResults.value = { ...planApplyResults.value, [plan.id]: result };
+    planApplyingId.value = plan.id;
+    try {
+        const result = await chat.applyPlan(plan, {
+            rememberForMinutes: rememberApproval.value[doctorPlanKey(plan)]
+                ? 5
+                : 0,
+        });
+        if (!result) return;
+        const nextFailures = { ...planApplyFailures.value };
+        delete nextFailures[plan.id];
+        planApplyFailures.value = nextFailures;
+        planApplyResults.value = {
+            ...planApplyResults.value,
+            [plan.id]: result,
+        };
+        if (result.ok === false) {
+            planApplyFailures.value = {
+                ...planApplyFailures.value,
+                [plan.id]:
+                    chat.error.value ||
+                    'Doctor could not apply this settings plan.',
+            };
+            toast.add({
+                title: 'Plan not applied',
+                description:
+                    planApplyFailures.value[plan.id] ||
+                    'Doctor could not apply this settings plan.',
+                color: 'error',
+                icon: 'i-pixelarticons-alert',
+            });
+        } else {
+            showPlanOutcomeStrip(plan, result);
+        }
+    } catch {
+        planApplyFailures.value = {
+            ...planApplyFailures.value,
+            [plan.id]:
+                chat.error.value ||
+                'Doctor could not apply this settings plan.',
+        };
+        toast.add({
+            title: 'Plan not applied',
+            description: planApplyFailures.value[plan.id],
+            color: 'error',
+            icon: 'i-pixelarticons-alert',
+        });
+    } finally {
+        planApplyingId.value = null;
+    }
     await chat.loadSession().catch(() => undefined);
-    await nextTick();
-    scrollDoctorMessagesToBottom();
 }
 
 async function runDoctorPostChecks(planId?: string) {
@@ -705,8 +1065,61 @@ async function runDoctorPostChecks(planId?: string) {
 async function undoDoctorPlan(planId?: string) {
     if (!planId) return;
     const result = await chat.rollbackPlan(planId);
-    planApplyResults.value = { ...planApplyResults.value, [planId]: result };
+    planApplyResults.value = {
+        ...planApplyResults.value,
+        [planId]: { ...result, rolled_back: true },
+    };
+    if (planOutcomeStrip.value?.planId === planId) {
+        dismissPlanOutcomeStrip();
+    }
     await chat.loadSession().catch(() => undefined);
+}
+
+async function undoPlanOutcomeStrip() {
+    if (!planOutcomeStrip.value || planOutcomeUndoing.value) return;
+    const planId = planOutcomeStrip.value.planId;
+    planOutcomeUndoing.value = true;
+    try {
+        await undoDoctorPlan(planId);
+        toast.add({
+            title: 'Changes reverted',
+            description: 'The last settings update was rolled back.',
+            color: 'success',
+            icon: 'i-pixelarticons-check',
+        });
+    } catch {
+        toast.add({
+            title: 'Could not undo',
+            description:
+                chat.error.value || 'Doctor could not roll back this plan.',
+            color: 'error',
+            icon: 'i-pixelarticons-alert',
+        });
+    } finally {
+        planOutcomeUndoing.value = false;
+    }
+}
+
+async function approveDoctorApproval(messageID: number | string) {
+    if (approvalBusy.value) return;
+    approvalBusy.value = true;
+    try {
+        await chat.approvePendingApproval(messageID);
+    } finally {
+        approvalBusy.value = false;
+        await nextTick();
+        scrollDoctorMessagesToBottom();
+    }
+}
+
+async function denyDoctorApproval(messageID: number | string) {
+    if (approvalBusy.value) return;
+    approvalBusy.value = true;
+    try {
+        await chat.denyPendingApproval(messageID);
+    } finally {
+        approvalBusy.value = false;
+    }
 }
 
 async function sendDoctorMessage(payload?: AssistantSendPayload) {
@@ -765,6 +1178,60 @@ function stopDoctorMessage() {
     chat.stopStreaming();
 }
 
+function approvalKey(id: number | string | undefined) {
+    return String(id ?? '').trim();
+}
+
+function approvalDetailFor(id: number | string | undefined) {
+    const key = approvalKey(id);
+    return key ? approvalDetails.value[key] : undefined;
+}
+
+function approvalSubjectFor(id: number | string | undefined) {
+    const approval = approvalDetailFor(id);
+    if (!approval) return '';
+    return formatApprovalSubjectPreview({
+        type: approval.type,
+        domain: approval.domain,
+        subject: approval.subject,
+    });
+}
+
+function approvalSummaryFor(id: number | string | undefined) {
+    const key = approvalKey(id);
+    const approval = approvalDetailFor(id);
+    const type = String(approval?.type || approval?.domain || '').trim();
+    const label =
+        type === 'exec'
+            ? 'Run a local command'
+            : type === 'skill_exec' || type === 'skill_execution'
+              ? 'Run a skill script'
+              : type === 'tool_quota'
+                ? 'Continue after a tool-call limit'
+                : type
+                  ? `Approve ${type}`
+                  : 'Continue this doctor turn';
+    return key ? `${label} (request #${key}).` : `${label}.`;
+}
+
+async function loadApprovalDetail(id: number | string | undefined) {
+    const key = approvalKey(id);
+    if (!key || approvalDetails.value[key] || approvalDetailLoading.has(key))
+        return;
+    approvalDetailLoading.add(key);
+    try {
+        const approval = await approvals.fetchApproval(key);
+        approvalDetails.value = {
+            ...approvalDetails.value,
+            [key]: approval,
+        };
+    } catch {
+        /* The card can still approve/deny by id; details are best-effort. */
+    } finally {
+        approvalDetailLoading.delete(key);
+    }
+}
+
 // Type guard helper for HealthStatus consumer (silences unused warning).
 function _typeKeep(_value: HealthStatus) {
     return _value;
@@ -776,7 +1243,21 @@ onMounted(() => {
     void health.run();
     void chat.loadAdminBrain().catch(() => undefined);
     void refreshRunners().catch(() => undefined);
+    void chat.hydratePersistedSession().catch(() => undefined);
 });
+
+onUnmounted(() => {
+    clearPlanOutcomeDismissTimer();
+    chat.stopStreaming();
+});
+
+watch(
+    [doctorChatMessages, () => chat.loading.value],
+    async () => {
+        await nextTick();
+        scrollDoctorMessagesToBottom();
+    },
+);
 
 watch(
     [
@@ -793,6 +1274,18 @@ watch(
             defaultRunnerID,
             selectableRunnerIDs: runnerIDs,
         });
+    },
+    { immediate: true },
+);
+
+watch(
+    doctorChatMessages,
+    (items) => {
+        for (const message of items) {
+            if (message.approvalRequestId) {
+                void loadApprovalDetail(message.approvalRequestId);
+            }
+        }
     },
     { immediate: true },
 );
@@ -838,7 +1331,9 @@ watch(
     display: flex;
     flex-direction: column;
     gap: 1rem;
+    box-sizing: border-box;
     padding-top: 0.5rem;
+    padding-bottom: calc(6.5rem + env(safe-area-inset-bottom, 0px));
 }
 
 .or3-doctor-empty__hero {
@@ -891,7 +1386,113 @@ watch(
 }
 
 .or3-doctor-empty__prompts {
+    position: relative;
+    z-index: 2;
     padding-top: 0.5rem;
+    padding-bottom: 0.25rem;
+}
+
+.or3-doctor-chat-pane {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-height: 100%;
+    max-height: 100%;
+}
+
+.or3-doctor-outcome-strip {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    width: min(48rem, 100%);
+    max-width: calc(100% - 2rem);
+    margin: 0 auto 0.75rem;
+    padding: 0.7rem 0.85rem;
+    border-radius: 0.9rem;
+    border: 1px solid color-mix(in srgb, var(--or3-green) 38%, var(--or3-border));
+    background: color-mix(in srgb, var(--or3-green-soft) 88%, white);
+    box-shadow: 0 6px 18px rgba(16, 24, 16, 0.08);
+    animation: or3-doctor-outcome-enter 0.22s ease-out;
+}
+
+.or3-doctor-outcome-strip__main {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.55rem;
+    min-width: 0;
+}
+
+.or3-doctor-outcome-strip__icon {
+    width: 1rem;
+    height: 1rem;
+    margin-top: 0.1rem;
+    flex-shrink: 0;
+    color: var(--or3-green-dark);
+}
+
+.or3-doctor-outcome-strip__message {
+    margin: 0;
+    font-size: 0.8125rem;
+    line-height: 1.45;
+    color: var(--or3-text);
+}
+
+.or3-doctor-outcome-strip__actions {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-shrink: 0;
+}
+
+.or3-doctor-outcome-strip__undo {
+    border: 0;
+    background: transparent;
+    padding: 0.2rem 0.35rem;
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+        'Liberation Mono', 'Courier New', monospace;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--or3-green-dark);
+    cursor: pointer;
+}
+
+.or3-doctor-outcome-strip__undo:disabled {
+    opacity: 0.55;
+    cursor: default;
+}
+
+.or3-doctor-outcome-strip__dismiss {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border: 0;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.55);
+    color: var(--or3-text-muted);
+    cursor: pointer;
+}
+
+.or3-doctor-outcome-strip__dismiss:hover {
+    color: var(--or3-text);
+    background: rgba(255, 255, 255, 0.85);
+}
+
+@keyframes or3-doctor-outcome-enter {
+    from {
+        opacity: 0;
+        transform: translateY(-0.35rem);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .or3-doctor-message-list {
@@ -900,7 +1501,8 @@ watch(
     align-items: center;
     gap: 0.75rem;
     width: 100%;
-    min-height: 100%;
+    flex: 1;
+    min-height: 0;
     max-height: 100%;
     overflow-y: auto;
     padding: 0.5rem 0 15rem;
@@ -914,6 +1516,26 @@ watch(
     width: min(48rem, 100%);
     max-width: calc(100% - 2rem);
     box-sizing: border-box;
+}
+
+@media (max-width: 767px) {
+    .or3-doctor-body {
+        padding-right: max(calc(var(--or3-safe-right) + 1rem), 1rem);
+        padding-left: max(calc(var(--or3-safe-left) + 1rem), 1rem);
+    }
+
+    .or3-doctor-empty {
+        max-width: none;
+        padding-top: 0.75rem;
+    }
+
+    .or3-doctor-empty__hero {
+        padding-top: 0.5rem;
+    }
+
+    .or3-doctor-message {
+        max-width: 100%;
+    }
 }
 
 .or3-doctor-message--user {
@@ -934,14 +1556,9 @@ watch(
     box-sizing: border-box;
 }
 
-.or3-doctor-message--cards-only .or3-doctor-message__bubble {
-    width: 100%;
-    max-width: 42rem;
-    border: 0;
-    background: transparent;
-    border-radius: 0;
-    padding: 0;
-    box-shadow: none;
+.or3-doctor-message--attention .or3-doctor-message__bubble {
+    border-color: color-mix(in srgb, var(--or3-amber) 38%, var(--or3-border));
+    background: color-mix(in srgb, var(--or3-amber-soft) 24%, white 76%);
 }
 
 .or3-doctor-message--user .or3-doctor-message__bubble {
@@ -962,6 +1579,36 @@ watch(
     display: flex;
     flex-direction: column;
     gap: 0.65rem;
+}
+
+.or3-doctor-message__tool {
+    width: 100%;
+}
+
+.or3-doctor-message__summary {
+    font-size: 0.9375rem;
+    line-height: 1.55;
+    color: var(--or3-text);
+}
+
+.or3-doctor-message__summary--after-tools {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid color-mix(in srgb, var(--or3-border) 82%, transparent);
+}
+
+.or3-doctor-message__summary--attention {
+    padding: 0.65rem 0.75rem;
+    border-radius: 0.8rem;
+    border: 1px solid color-mix(in srgb, var(--or3-amber) 35%, var(--or3-border));
+    background: color-mix(in srgb, var(--or3-amber-soft) 55%, white);
+}
+
+.or3-doctor-message__notice {
+    margin-top: 0.55rem;
+    font-size: 0.78rem;
+    line-height: 1.4;
+    color: var(--or3-text-muted);
 }
 
 .or3-doctor-message__thinking {
@@ -1017,6 +1664,52 @@ watch(
     align-items: center;
     justify-content: flex-end;
     gap: 0.5rem;
+}
+
+.or3-doctor-approval {
+    margin-top: 0.65rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    border: 1px solid color-mix(in srgb, var(--or3-amber) 35%, var(--or3-border));
+    border-radius: 0.8rem;
+    background: color-mix(in srgb, var(--or3-amber-soft) 70%, white);
+    padding: 0.7rem 0.8rem;
+}
+
+.or3-doctor-approval__copy {
+    min-width: 0;
+}
+
+.or3-doctor-approval__title {
+    font-family: var(--or3-font-mono);
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--or3-text);
+}
+
+.or3-doctor-approval__detail {
+    margin-top: 0.15rem;
+    font-size: 0.78rem;
+    line-height: 1.35;
+    color: var(--or3-text-muted);
+}
+
+.or3-doctor-approval__subject {
+    margin-top: 0.35rem;
+    overflow-wrap: anywhere;
+    font-family: var(--or3-font-mono);
+    font-size: 0.78rem;
+    line-height: 1.35;
+    color: var(--or3-text);
+}
+
+.or3-doctor-approval__actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 0.4rem;
 }
 
 .or3-doctor-composer {

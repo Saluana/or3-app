@@ -1053,6 +1053,7 @@ export interface DoctorPlanResponse {
 
 export interface DoctorPlanApplyResponse {
     ok?: boolean;
+    rolled_back?: boolean;
     plan_id?: string;
     rollback_id?: string;
     restart_required?: boolean;
@@ -1105,8 +1106,12 @@ export interface DoctorChatSessionResponse {
     }>;
     next_cursor?: number;
     admin_brain?: DoctorAdminBrainProvider;
+    transport?: 'job' | 'runner_chat' | 'sync' | 'unavailable';
     job_id?: string;
     runner_chat?: { session_id?: string; turn_id?: string; job_id?: string };
+    error?: string;
+    message?: string;
+    code?: string;
 }
 
 export interface SkillItem {

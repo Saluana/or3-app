@@ -58,4 +58,11 @@ describe('BottomNav', () => {
       '/settings': '/settings/passkeys?tab=keys',
     })
   })
+
+  it('returns an active tab to its root when already on a sub-route', async () => {
+    const { wrapper } = await mountBottomNav('/computer/files', '/computer/files?root=workspace')
+
+    const links = wrapper.findAll('a')
+    expect(links[3].attributes('href')).toBe('/computer')
+  })
 })

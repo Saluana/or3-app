@@ -29,7 +29,12 @@ defineEmits<{ run: [] }>();
 
 const statusText = computed(() => {
     if (!props.result) return 'Run Doctor checks after applying the fix.';
-    if (props.result.status === 'passed') return 'Doctor checks passed after the fix.';
+    if (
+        props.result.status === 'passed' ||
+        props.result.status === 'complete'
+    ) {
+        return 'Doctor checks passed after the fix.';
+    }
     if (props.result.status === 'failed') return 'Doctor found a problem after the fix.';
     return `Doctor check status: ${props.result.status}.`;
 });

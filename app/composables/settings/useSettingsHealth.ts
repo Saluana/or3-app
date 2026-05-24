@@ -156,6 +156,60 @@ export function useSettingsHealth() {
         lastRun.value = new Date().toISOString();
     }
 
+    async function runMinimalClientChecks() {
+        const next: HealthFinding[] = [];
+        const host = activeHost.value;
+        if (!isPaired.value || !host) {
+            next.push({
+                id: 'connection',
+                label: 'Connected to your computer',
+                status: 'error',
+                detail: 'No paired computer. Pair this app to start using OR3.',
+                fixHref: '/settings/pair',
+                fixLabel: 'Pair now',
+            });
+            return next;
+        }
+        next.push({
+            id: 'connection',
+            label: 'Connected to your computer',
+            status: 'ok',
+            detail: `Paired with ${host.name || 'your computer'}.`,
+        });
+        const readiness = await safeRequest<ReadinessResponse>(
+            '/internal/v1/readiness',
+        );
+        if (readiness) {
+            const status = String(readiness.status ?? '').toLowerCase();
+            const hasWarnings = status.includes('warning');
+            const detail = formatReadinessDetail(readiness);
+            next.push({
+                id: 'readiness',
+                label: 'OR3 service is ready',
+                status: !readiness.ready
+                    ? 'error'
+                    : hasWarnings
+                      ? 'warning'
+                      : 'ok',
+                detail,
+                fixHref:
+                    hasWarnings || !readiness.ready
+                        ? '/computer/attention'
+                        : undefined,
+                fixLabel:
+                    hasWarnings || !readiness.ready ? 'Learn more' : undefined,
+            });
+        } else {
+            next.push({
+                id: 'readiness',
+                label: 'OR3 service is ready',
+                status: 'unknown',
+                detail: 'Could not reach the readiness endpoint.',
+            });
+        }
+        return next;
+    }
+
     async function runClientChecks() {
         try {
             logger.info('run:start', 'Settings health check started', {
@@ -401,7 +455,7 @@ export function useSettingsHealth() {
 
             let clientFindings: HealthFinding[] = [];
             try {
-                clientFindings = await runClientChecks();
+                clientFindings = await runMinimalClientChecks();
             } catch {
                 clientFindings = findings.value;
             }
@@ -412,7 +466,7 @@ export function useSettingsHealth() {
                 doctorStatus.value = null;
                 logger.warn(
                     'doctor:fallback',
-                    'Basic Doctor unavailable; using client health checks',
+                    'Basic Doctor unavailable; using minimal client health checks',
                     {
                         error:
                             error instanceof Error
@@ -421,7 +475,11 @@ export function useSettingsHealth() {
                     },
                 );
                 if (!clientFindings.length) {
-                    clientFindings = await runClientChecks();
+                    try {
+                        clientFindings = await runMinimalClientChecks();
+                    } catch {
+                        clientFindings = await runClientChecks();
+                    }
                 }
                 findings.value = [
                     {
