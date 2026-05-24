@@ -47,6 +47,8 @@ const CONFIG_METADATA_PATH_ALIASES: Record<string, string> = {
   'service.service_secret': 'service.secret',
   'agentcli.agentCLI_enabled': 'agentCLI.enabled',
   'agentcli.agentCLI_disabled_runners': 'agentCLI.disabledRunners',
+  'context.context_task_card_enforce_plan': 'context.taskCard.enforcePlan',
+  'context.context_task_card_enabled': 'context.taskCard.enabled',
 }
 
 export function useConfigure() {

@@ -29,6 +29,8 @@ export const FIELD_LABEL_MAP: Record<string, string> = {
     'memory.vectorScanLimit': 'Vector scan limit',
     'memory.consolidationEnabled': 'Background memory cleanup',
     'memory.consolidationCharLimit': 'Memory consolidation size',
+    'context.taskCard.enforcePlan': 'Require plan before writes',
+    'context.taskCard.enabled': 'Task card',
 
     // Files & Workspace
     'workspace.workspaceDir': 'Workspace folder',

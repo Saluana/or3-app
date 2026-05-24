@@ -577,7 +577,8 @@ export function useOr3Api() {
             ...options.headers,
         };
 
-        if (options.body !== undefined)
+        const formBody = options.body instanceof FormData;
+        if (options.body !== undefined && !formBody)
             headers['Content-Type'] = 'application/json';
         if (authToken && includesAuth)
             headers.Authorization = `Bearer ${authToken}`;
@@ -589,16 +590,19 @@ export function useOr3Api() {
             headers['X-Or3-Session'] = sessionToken;
         const traceId = getActiveTraceId();
         if (traceId && !headers['X-Trace-Id']) headers['X-Trace-Id'] = traceId;
+        const requestBody: BodyInit | undefined =
+            options.body === undefined
+                ? undefined
+                : formBody
+                  ? (options.body as FormData)
+                  : JSON.stringify(options.body);
 
         let response: Response;
         try {
             response = await fetch(buildUrl(path, options.baseUrl), {
                 method,
                 headers,
-                body:
-                    options.body === undefined
-                        ? undefined
-                        : JSON.stringify(options.body),
+                body: requestBody,
                 signal: options.signal,
             });
         } catch (error) {
@@ -770,7 +774,8 @@ export function useOr3Api() {
             ...options.headers,
         };
 
-        if (options.body !== undefined)
+        const formBody = options.body instanceof FormData;
+        if (options.body !== undefined && !formBody)
             headers['Content-Type'] = 'application/json';
         if (authToken && includesAuth)
             headers.Authorization = `Bearer ${authToken}`;
@@ -782,16 +787,19 @@ export function useOr3Api() {
             headers['X-Or3-Session'] = sessionToken;
         const traceId = getActiveTraceId();
         if (traceId && !headers['X-Trace-Id']) headers['X-Trace-Id'] = traceId;
+        const requestBody: BodyInit | undefined =
+            options.body === undefined
+                ? undefined
+                : formBody
+                  ? (options.body as FormData)
+                  : JSON.stringify(options.body);
 
         let response: Response;
         try {
             response = await fetch(buildUrl(path, options.baseUrl), {
                 method,
                 headers,
-                body:
-                    options.body === undefined
-                        ? undefined
-                        : JSON.stringify(options.body),
+                body: requestBody,
                 signal: options.signal,
             });
         } catch (error) {

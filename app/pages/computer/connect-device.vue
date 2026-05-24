@@ -82,7 +82,7 @@
                         </button>
                     </div>
                     <p class="mt-2 text-xs leading-5 text-(--or3-text-muted)">
-                        Changing access refreshes the QR. For safety, new invites use viewer/operator permissions; admin is not offered here.
+                        Changing access refreshes the QR. Admin is for devices you personally trust.
                     </p>
                 </div>
             </SurfaceCard>
@@ -126,31 +126,31 @@ const copiedQr = ref(false);
 const primaryInviteText = computed(() => qrInvite.value?.inviteLink || qrInvite.value?.qrText || '');
 const copyInviteLabel = computed(() => qrInvite.value?.inviteLink ? 'Copy link' : 'Copy invite');
 const inviteRouteHint = computed(() => qrInvite.value?.inviteLink ? 'opens /pair automatically' : 'scan with OR3 or paste invite text');
-const selectedAccessId = ref('control');
+const selectedAccessId = ref('operator');
 const accessLevels = [
     {
-        id: 'chat',
-        label: 'Chat only',
-        description: 'Send messages and view responses. No file or terminal access.',
+        id: 'reader',
+        label: 'Reader',
+        description: 'Chat and read workspace context. No file writes or terminal actions.',
         requestedRole: 'viewer',
         capabilities: ['chat'],
     },
     {
-        id: 'files',
-        label: 'Chat + files',
-        description: 'Use chat and file browsing without terminal control.',
-        requestedRole: 'operator',
-        capabilities: ['chat', 'files'],
-    },
-    {
-        id: 'control',
-        label: 'Full control',
-        description: 'Allow chat, files, and terminal actions for trusted devices.',
+        id: 'operator',
+        label: 'Operator',
+        description: 'Chat, browse files, and write workspace files with guarded actions.',
         requestedRole: 'operator',
         capabilities: ['chat', 'files', 'terminal'],
     },
+    {
+        id: 'admin',
+        label: 'Admin',
+        description: 'Full local control for trusted personal devices.',
+        requestedRole: 'admin',
+        capabilities: ['chat', 'files', 'terminal'],
+    },
 ] as const;
-const selectedAccess = computed(() => accessLevels.find((level) => level.id === selectedAccessId.value) || accessLevels[2]);
+const selectedAccess = computed(() => accessLevels.find((level) => level.id === selectedAccessId.value) || accessLevels[1]);
 
 onMounted(async () => {
     await ensureLoaded();

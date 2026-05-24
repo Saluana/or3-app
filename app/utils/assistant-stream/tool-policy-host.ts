@@ -55,8 +55,28 @@ export function persistServiceCapabilityCeilingHost(hostId?: string | null) {
     );
 }
 
+export function clearServiceCapabilityCeilingHost(hostId?: string | null) {
+    const normalized = hostId?.trim();
+    if (!normalized || !import.meta.client || !window.localStorage) return;
+    const hosts = loadPersistedServiceCapabilityCeilingHosts();
+    if (!hosts.delete(normalized)) return;
+    if (hosts.size === 0) {
+        window.localStorage.removeItem(SERVICE_CEILING_HOSTS_KEY);
+        return;
+    }
+    window.localStorage.setItem(
+        SERVICE_CEILING_HOSTS_KEY,
+        JSON.stringify([...hosts]),
+    );
+}
+
 export function servicePolicyMode(policy?: ToolPolicy) {
     return String(policy?.mode ?? 'work').trim().toLowerCase();
+}
+
+function hostHasElevatedRole(host?: Pick<Or3HostProfile, 'role'> | null) {
+    const role = String(host?.role ?? '').trim().toLowerCase();
+    return role === 'operator' || role === 'admin';
 }
 
 export function hostIdFromSessionKey(sessionKey?: string) {
@@ -81,7 +101,7 @@ function hostIdLooksLoopback(hostId?: string) {
 
 export function hostLikelyRequiresAskToolPolicy(options: {
     hostId?: string | null;
-    host?: Pick<Or3HostProfile, 'baseUrl'> | null;
+    host?: Pick<Or3HostProfile, 'baseUrl' | 'role'> | null;
     sessionKey?: string;
     rememberedHosts: Set<string>;
     policy?: ToolPolicy;
@@ -92,14 +112,16 @@ export function hostLikelyRequiresAskToolPolicy(options: {
         options.hostId?.trim() ||
         hostIdFromSessionKey(options.sessionKey) ||
         '';
+    if (hostHasElevatedRole(options.host)) return false;
+    if (hostIdLooksLoopback(hostId)) return false;
+    if (isLoopbackServiceHost(options.host)) return false;
     if (hostId && options.rememberedHosts.has(hostId)) return true;
-    if (hostIdLooksLoopback(hostId)) return true;
-    return isLoopbackServiceHost(options.host);
+    return false;
 }
 
 export function effectiveToolPolicyForHost(options: {
     hostId?: string | null;
-    host?: Pick<Or3HostProfile, 'baseUrl'> | null;
+    host?: Pick<Or3HostProfile, 'baseUrl' | 'role'> | null;
     sessionKey?: string;
     rememberedHosts: Set<string>;
     policy?: ToolPolicy;

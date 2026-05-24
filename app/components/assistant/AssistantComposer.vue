@@ -527,6 +527,8 @@ const {
 const { filterCommands, findCommand, runCommand } = useChatCommands();
 const { fetchRoots, ensureDirectoryPath, uploadFilesToPath } =
     useComputerFiles();
+const api = useOr3Api();
+const chat = useChatSessions();
 const toast = useToast();
 
 const displayedAttachments = computed(() => [
@@ -1075,13 +1077,64 @@ function createUploadBatchPath() {
 
 function toPayloadAttachment(attachment: DraftAttachment): ChatAttachment {
     const {
-        content: _content,
+        content,
         file: _file,
         thumbnailUrl: _thumbnailUrl,
         objectUrl: _objectUrl,
         ...rest
     } = attachment;
-    return rest;
+    const payload: ChatAttachment = { ...rest };
+    if (payload.path || payload.rootId || payload.root_id) {
+        payload.source = 'workspace_ref';
+    } else if (payload.kind === 'text' && content) {
+        payload.source = 'text_block';
+        payload.content_excerpt = content.slice(0, 1200);
+    } else if (!payload.source) {
+        payload.source = 'local_artifact';
+    }
+    return payload;
+}
+
+async function stageNativeInternDraftAttachments(
+    drafts: DraftAttachment[],
+    sessionKey: string,
+) {
+    const staged: ChatAttachment[] = [];
+    for (const draft of drafts) {
+        if (!(draft.file instanceof File)) {
+            staged.push(toPayloadAttachment(draft));
+            continue;
+        }
+        const form = new FormData();
+        form.append('session_key', sessionKey);
+        form.append('file', draft.file);
+        const uploaded = await api.request<{
+            artifact_id?: string;
+            id?: string;
+            name?: string;
+            mime_type?: string;
+            size_bytes?: number;
+            kind?: string;
+        }>('/internal/v1/artifacts', {
+            method: 'POST',
+            body: form,
+        });
+        const artifactId = uploaded.artifact_id || uploaded.id;
+        if (!artifactId) {
+            throw new Error('Artifact upload did not return an id.');
+        }
+        staged.push({
+            ...toPayloadAttachment(draft),
+            source: 'local_artifact',
+            artifact_id: artifactId,
+            mime_type: uploaded.mime_type || draft.mimeType,
+            size_bytes: uploaded.size_bytes ?? draft.size,
+            kind:
+                (uploaded.kind as ChatAttachment['kind']) ||
+                (draft.file.type.startsWith('image/') ? 'image' : 'file'),
+        });
+    }
+    return staged;
 }
 
 async function stageLocalFilesForExternalRunner() {
@@ -1177,14 +1230,38 @@ async function submit() {
         return;
     }
 
-    const attachments = payloadAttachments(stagedWorkspaceAttachments);
+    const draftAttachments = payloadAttachments(stagedWorkspaceAttachments);
+    const sessionKey = chat.activeSession.value?.sessionKey?.trim() || '';
+    let attachments: ChatAttachment[];
+    try {
+        if (selectedRunnerId.value === 'or3-intern' && sessionKey) {
+            attachments = await stageNativeInternDraftAttachments(
+                draftAttachments,
+                sessionKey,
+            );
+        } else {
+            attachments = draftAttachments.map(toPayloadAttachment);
+        }
+    } catch (error: any) {
+        toast.add({
+            title: 'Could not upload attachments',
+            description:
+                error?.message ||
+                'OR3 could not store local files as artifacts for this turn.',
+            color: 'error',
+            icon: 'i-pixelarticons-warning-box',
+        });
+        submitLocked.value = false;
+        return;
+    }
 
     const payload: AssistantSendPayload = {
         text: visiblePayloadText(),
-        transportText: buildTransportTextForAttachments(
-            stagedWorkspaceAttachments,
-        ),
-        attachments: attachments.map(toPayloadAttachment),
+        transportText:
+            selectedRunnerId.value === 'or3-intern'
+                ? formState.text.trim()
+                : buildTransportTextForAttachments(stagedWorkspaceAttachments),
+        attachments,
         runnerId: selectedRunnerId.value,
         runnerModel:
             selectedRunnerId.value !== 'or3-intern' && selectedRunnerModel.value

@@ -300,7 +300,7 @@ function createInviteLink(invite, appOrigin) {
 
 function normalizeInviteRole(value) {
     const role = String(value || '').trim().toLowerCase();
-    return role === 'viewer' || role === 'operator' ? role : 'operator';
+    return role === 'viewer' || role === 'operator' || role === 'admin' ? role : 'operator';
 }
 
 function normalizeInviteCapabilities(value) {
@@ -520,52 +520,76 @@ function clonePlainObject(value, fallback = {}) {
     return { ...value };
 }
 
-function ensureElectronServiceAccessProfile(config) {
+function builtinAccessProfiles() {
+    return {
+        reader: {
+            maxCapability: 'safe',
+            allowedTools: ['read_file', 'search_file', 'list_dir', 'read_artifact', 'memory_search', 'memory_recent', 'memory_get_pinned'],
+            allowedHosts: [],
+            writablePaths: [],
+            allowSubagents: false,
+        },
+        operator: {
+            maxCapability: 'guarded',
+            allowedTools: ['read_file', 'search_file', 'list_dir', 'read_artifact', 'write_file', 'edit_file', 'delete_file', 'memory_search', 'memory_recent', 'memory_get_pinned', 'web_search', 'web_fetch', 'web_fetch_markdown', 'exec'],
+            allowedHosts: [],
+            writablePaths: ['${workspaceDir}'],
+            allowSubagents: false,
+        },
+        admin: {
+            maxCapability: 'privileged',
+            allowedTools: ['read_file', 'search_file', 'list_dir', 'read_artifact', 'write_file', 'edit_file', 'delete_file', 'memory_set_pinned', 'memory_add_note', 'memory_search', 'memory_recent', 'memory_get_pinned', 'web_search', 'web_fetch', 'web_fetch_markdown', 'exec', 'run_skill', 'run_skill_script', 'spawn_subagent', 'send_message', 'cron'],
+            allowedHosts: [],
+            writablePaths: ['${workspaceDir}'],
+            allowSubagents: true,
+        },
+    };
+}
+
+function ensureElectronServiceAccessProfile(config, hostServiceConfig = {}) {
     const next = clonePlainObject(config);
-    const security = clonePlainObject(next.security);
-    const profiles = clonePlainObject(security.profiles, {
-        enabled: false,
-        default: '',
-        channels: {},
+	const security = clonePlainObject(next.security);
+	const hardening = clonePlainObject(next.hardening);
+	const tools = clonePlainObject(next.tools);
+	const service = clonePlainObject(next.service);
+	const profiles = clonePlainObject(security.profiles, {
+		enabled: false,
+		default: '',
+		channels: {},
         triggers: {},
         profiles: {},
     });
     const definedProfiles = clonePlainObject(profiles.profiles);
     const channels = clonePlainObject(profiles.channels);
     const triggers = clonePlainObject(profiles.triggers);
-    const profileName = 'electron_local_service';
+    const accessLevel = isNetworkListenHost(hostServiceConfig?.listenHost) ? 'operator' : 'admin';
 
-    definedProfiles[profileName] = {
-        maxCapability: 'safe',
-        allowedTools: [],
-        allowedHosts: [],
-        writablePaths: [],
-        allowSubagents: false,
-        ...clonePlainObject(definedProfiles[profileName]),
-        maxCapability: 'safe',
-        allowSubagents: false,
-    };
+    for (const [name, profile] of Object.entries(builtinAccessProfiles())) {
+        definedProfiles[name] = {
+            ...profile,
+            ...clonePlainObject(definedProfiles[name]),
+        };
+    }
 
     profiles.enabled = true;
     profiles.profiles = definedProfiles;
     profiles.channels = channels;
     profiles.triggers = triggers;
 
-    const serviceTrigger = String(triggers.service || '').trim();
-    const serviceChannel = String(channels.service || '').trim();
-    const defaultProfile = String(profiles.default || '').trim();
-    const hasEffectiveProfile = Boolean(
-        (serviceTrigger && definedProfiles[serviceTrigger]) ||
-        (serviceChannel && definedProfiles[serviceChannel]) ||
-        (defaultProfile && definedProfiles[defaultProfile]),
-    );
-    if (!hasEffectiveProfile) {
-        channels.service = profileName;
-    }
+	channels.service = accessLevel;
+    hardening.guardedTools = true;
+    tools.enableExec = true;
+	if (accessLevel === 'admin') {
+		hardening.privilegedTools = true;
+	}
+	service.maxCapability = accessLevel === 'admin' ? 'privileged' : 'guarded';
 
-    security.profiles = profiles;
-    next.security = security;
-    return next;
+	security.profiles = profiles;
+	next.security = security;
+	next.hardening = hardening;
+	next.tools = tools;
+	next.service = service;
+	return next;
 }
 
 async function buildElectronLaunchConfig(binaryPath, hostServiceConfig) {
@@ -576,9 +600,7 @@ async function buildElectronLaunchConfig(binaryPath, hostServiceConfig) {
             config = JSON.parse(await readFile(sourcePath, 'utf8'));
         } catch {}
     }
-    if (isNetworkListenHost(hostServiceConfig?.listenHost)) {
-        config = ensureElectronServiceAccessProfile(config);
-    }
+    config = ensureElectronServiceAccessProfile(config, hostServiceConfig);
     const file = join(userDataPath || process.cwd(), 'or3-electron-launch-config.json');
     await mkdir(dirname(file), { recursive: true });
     await writeFile(file, JSON.stringify(config, null, 2));

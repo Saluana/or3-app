@@ -7,6 +7,7 @@ import {
     serializeErrorForLog,
 } from '~/utils/assistant-stream/errors';
 import {
+    clearServiceCapabilityCeilingHost,
     effectiveToolPolicyForHost,
     loadPersistedServiceCapabilityCeilingHosts,
     persistServiceCapabilityCeilingHost,
@@ -21,6 +22,7 @@ import {
     recoverDirectExecutionError,
 } from '~/utils/assistant-stream/execution';
 import { normalizeTurnEvent } from '~/utils/assistant-stream/events';
+import { toServiceAttachments } from '~/utils/chat/service-attachments';
 import { createLogger } from '~/utils/logger';
 import { clearActiveTraceId, setActiveTraceId } from '~/utils/logTrace';
 import {
@@ -54,6 +56,13 @@ function rememberServiceCapabilityCeilingHost(hostId?: string | null) {
     if (!normalized) return;
     serviceCapabilityCeilingHosts.add(normalized);
     persistServiceCapabilityCeilingHost(normalized);
+}
+
+export function forgetServiceCapabilityCeilingHost(hostId?: string | null) {
+    const normalized = hostId?.trim();
+    if (!normalized) return;
+    serviceCapabilityCeilingHosts.delete(normalized);
+    clearServiceCapabilityCeilingHost(normalized);
 }
 
 export function modeToolPolicy(
@@ -209,10 +218,14 @@ export function useAssistantStream() {
                   rememberedHosts: serviceCapabilityCeilingHosts,
                   policy: requestedToolPolicy,
               });
+        const serviceAttachments = toServiceAttachments(payload.attachments);
         const buildTurnRequest = (toolPolicy = requestedToolPolicy) => ({
             session_key: session.sessionKey,
             message: text,
             meta: { trace_id: traceId },
+            ...(serviceAttachments.length
+                ? { attachments: serviceAttachments }
+                : {}),
             ...(toolPolicy ? { tool_policy: toolPolicy } : {}),
             ...(payload.approvalToken
                 ? { approval_token: payload.approvalToken }

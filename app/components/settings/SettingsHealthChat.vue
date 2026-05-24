@@ -212,7 +212,7 @@
 
             <div
                 v-else
-                class="or3-doctor-chat-pane w-full or3-chat-shell__content--virtualized"
+                class="or3-doctor-chat-pane or3-doctor-chat-pane--scrollable w-full or3-chat-shell__content--virtualized"
             >
                 <div
                     v-if="planOutcomeStrip"
@@ -254,7 +254,12 @@
                         </button>
                     </div>
                 </div>
-                <div ref="messageListRef" class="or3-doctor-message-list">
+                <div
+                    ref="messageListRef"
+                    class="or3-doctor-message-list"
+                    @scroll="onDoctorMessageListScroll"
+                    @wheel="onDoctorMessageListWheel"
+                >
                     <article
                         v-for="message in doctorChatMessages"
                         :key="message.id"
@@ -555,6 +560,20 @@
                         </div>
                     </article>
                 </div>
+                <button
+                    v-if="showDoctorScrollToBottom"
+                    type="button"
+                    class="or3-doctor-scroll-jump or3-focus-ring"
+                    aria-label="Scroll to latest messages"
+                    @click="scrollDoctorMessagesToBottom(true)"
+                >
+                    <Icon
+                        name="i-pixelarticons-arrow-down"
+                        class="size-4"
+                        aria-hidden="true"
+                    />
+                    <span>Latest</span>
+                </button>
             </div>
         </div>
 
@@ -652,6 +671,9 @@ const selectedRunnerId = ref('');
 const selectedRunnerModel = ref('');
 const selectedRunnerThinkingLevel = ref('');
 const messageListRef = ref<HTMLElement | null>(null);
+const DOCTOR_SCROLL_BOTTOM_THRESHOLD = 120;
+const doctorAutoScrollEnabled = ref(true);
+const doctorDistanceFromBottom = ref(0);
 const planApplyResults = chat.planApplyResults;
 const planApplyFailures = chat.planApplyFailures;
 const planApplyingId = ref<string | null>(null);
@@ -1024,11 +1046,51 @@ function postCheckResultFor(
         : (fallback ?? null);
 }
 
-function scrollDoctorMessagesToBottom() {
+function doctorMessageListDistanceFromBottom(element: HTMLElement) {
+    return Math.max(
+        0,
+        element.scrollHeight - element.scrollTop - element.clientHeight,
+    );
+}
+
+function isDoctorMessageListNearBottom(element: HTMLElement) {
+    return (
+        doctorMessageListDistanceFromBottom(element) <=
+        DOCTOR_SCROLL_BOTTOM_THRESHOLD
+    );
+}
+
+function onDoctorMessageListScroll() {
     const element = messageListRef.value;
     if (!element) return;
-    element.scrollTop = element.scrollHeight;
+    doctorDistanceFromBottom.value =
+        doctorMessageListDistanceFromBottom(element);
+    doctorAutoScrollEnabled.value = isDoctorMessageListNearBottom(element);
 }
+
+function onDoctorMessageListWheel(event: WheelEvent) {
+    if (event.deltaY < 0) {
+        doctorAutoScrollEnabled.value = false;
+    }
+}
+
+function scrollDoctorMessagesToBottom(force = false) {
+    const element = messageListRef.value;
+    if (!element) return;
+    if (!force && !doctorAutoScrollEnabled.value) return;
+    element.scrollTop = element.scrollHeight;
+    doctorDistanceFromBottom.value = 0;
+    if (force) {
+        doctorAutoScrollEnabled.value = true;
+    }
+}
+
+const showDoctorScrollToBottom = computed(
+    () =>
+        doctorChatMessages.value.length > 0 &&
+        !doctorAutoScrollEnabled.value &&
+        doctorDistanceFromBottom.value > DOCTOR_SCROLL_BOTTOM_THRESHOLD,
+);
 
 async function applyDoctorPlan(plan: DoctorSettingsChangePlan) {
     if (!plan.id) return;
@@ -1141,7 +1203,7 @@ async function approveDoctorApproval(messageID: number | string) {
     } finally {
         approvalBusy.value = false;
         await nextTick();
-        scrollDoctorMessagesToBottom();
+        scrollDoctorMessagesToBottom(true);
     }
 }
 
@@ -1163,6 +1225,7 @@ async function sendDoctorMessage(payload?: AssistantSendPayload) {
     ).trim();
     if (!content || chat.loading.value) return;
     draft.value = '';
+    doctorAutoScrollEnabled.value = true;
     try {
         const runnerId = resolveDoctorRunnerID({
             currentRunnerID: payload?.runnerId || selectedRunnerId.value,
@@ -1183,7 +1246,7 @@ async function sendDoctorMessage(payload?: AssistantSendPayload) {
         // chat.error is already populated
     } finally {
         await nextTick();
-        scrollDoctorMessagesToBottom();
+        scrollDoctorMessagesToBottom(true);
     }
 }
 
@@ -1294,7 +1357,7 @@ watch(
     [doctorChatMessages, () => chat.loading.value],
     async () => {
         await nextTick();
-        scrollDoctorMessagesToBottom();
+        scrollDoctorMessagesToBottom(false);
     },
 );
 
@@ -1532,6 +1595,32 @@ watch(
     }
 }
 
+.or3-doctor-chat-pane--scrollable {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+
+.or3-doctor-scroll-jump {
+    position: absolute;
+    right: 1rem;
+    bottom: 1rem;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    border: 1px solid var(--or3-border);
+    border-radius: 999px;
+    background: rgb(255 255 255 / 0.94);
+    padding: 0.4rem 0.75rem;
+    font-family: var(--or3-font-mono, ui-monospace, monospace);
+    font-size: 11px;
+    color: var(--or3-text);
+    box-shadow: 0 8px 24px rgb(15 23 42 / 0.12);
+}
+
 .or3-doctor-message-list {
     display: flex;
     flex-direction: column;
@@ -1542,6 +1631,7 @@ watch(
     min-height: 0;
     max-height: 100%;
     overflow-y: auto;
+    overscroll-behavior: contain;
     padding: 0.5rem 0 15rem;
     margin: 0 auto;
     box-sizing: border-box;

@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 import type { AppActionDescriptor, AppBootstrapResponse, CapabilitiesResponse, HealthResponse, ReadinessResponse } from '~/types/or3-api'
 import { coerceReadinessPayload } from '~/utils/or3/readiness'
+import { forgetServiceCapabilityCeilingHost } from './useAssistantStream'
 import { useActiveHost } from './useActiveHost'
 import { useLocalCache } from './useLocalCache'
 import { useOr3Api } from './useOr3Api'
@@ -80,6 +81,10 @@ export function useComputerStatus() {
         health.value = nextBootstrap.status?.health ?? null
         readiness.value = nextBootstrap.status?.readiness ?? null
         capabilities.value = nextBootstrap.status?.capabilities ?? null
+        const hostId = cache.state.value.activeHostId?.trim()
+        if (hostId && nextBootstrap.auth?.exec_allowed) {
+          forgetServiceCapabilityCeilingHost(hostId)
+        }
       } catch (error: any) {
         if (![404, 405].includes(error?.status) && error?.code !== 'capability_unavailable') {
           throw error

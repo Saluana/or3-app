@@ -65,14 +65,21 @@ export interface ChatActivityEntry {
 
 export interface ChatAttachment {
     id: string;
-    kind: 'file' | 'text';
+    kind: 'file' | 'image' | 'audio' | 'video' | 'text';
     name: string;
     preview?: string;
     mimeType?: string;
+    mime_type?: string;
     size?: number;
-    source?: 'local' | 'workspace';
+    size_bytes?: number;
+    source?: 'local' | 'workspace' | 'workspace_ref' | 'local_artifact' | 'text_block';
     path?: string;
     rootId?: string;
+    root_id?: string;
+    artifact_id?: string;
+    content_excerpt?: string;
+    /** Local draft-only payload for pasted text blocks. */
+    content?: string;
 }
 
 export interface AssistantReplayToolCall {

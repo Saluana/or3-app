@@ -530,7 +530,7 @@ const QUICK_KEYS: Record<FilterKey, string[]> = {
     safety: ['security', 'hardening', 'session'],
     'agent-behavior': ['provider', 'runtime', 'skills', 'automation'],
     knowledge: ['workspace', 'storage', 'docindex', 'context'],
-    advanced: ['service', 'hardening', 'tools'],
+    advanced: ['context', 'service', 'hardening', 'tools'],
 };
 
 // Filter membership for chips. `null` means all sections.

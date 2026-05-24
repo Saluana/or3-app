@@ -16,6 +16,7 @@ import type {
     ToolPolicy,
     TurnResponse,
 } from "~/types/or3-api";
+import { toServiceAttachments } from "~/utils/chat/service-attachments";
 import { createActivity } from "./activity";
 import { normalizeResultDisplayText } from "~/utils/or3/result-display";
 import {
@@ -635,6 +636,13 @@ export async function streamRunnerChat(
             signal: context.activeController.signal,
             body: {
                 user_message: context.text,
+                ...(toServiceAttachments(context.payload.attachments).length
+                    ? {
+                          attachments: toServiceAttachments(
+                              context.payload.attachments,
+                          ),
+                      }
+                    : {}),
                 continuation_mode: effectiveRunnerContinuationMode,
                 model:
                     context.payload.runnerModel || context.session.runnerModel,

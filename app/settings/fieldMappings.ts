@@ -634,6 +634,32 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 },
             },
             {
+                key: 'tools-enforce-plan',
+                label: 'Require plan before writes',
+                description:
+                    'Block write, exec, web, and skill tools until the agent calls create_plan. Best for untrusted or multi-step work; leave off for quick local edits.',
+                kind: 'toggle',
+                fieldRefs: [{ section: 'context', field: 'enforcePlan' }],
+                impacts: ['slower'],
+                warningLevel: 'medium',
+                advancedKeys: [
+                    'context.taskCard.enforcePlan',
+                    'context_task_card_enforce_plan',
+                ],
+                toggle: {
+                    on: {
+                        section: 'context',
+                        field: 'enforcePlan',
+                        value: true,
+                    },
+                    off: {
+                        section: 'context',
+                        field: 'enforcePlan',
+                        value: false,
+                    },
+                },
+            },
+            {
                 key: 'tools-allowed-programs',
                 label: 'Allowed command programs',
                 description:

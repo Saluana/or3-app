@@ -330,6 +330,14 @@ const FIELD_ALIASES: Record<string, BackendFieldRef> = {
         section: 'skills',
         field: 'skills_enable_exec',
     },
+    [refKey('context', 'enforcePlan')]: {
+        section: 'context',
+        field: 'context_task_card_enforce_plan',
+    },
+    [refKey('context', 'taskCardEnabled')]: {
+        section: 'context',
+        field: 'context_task_card_enabled',
+    },
     [refKey('service', 'maxCapability')]: {
         section: 'service',
         field: 'service_max_capability',

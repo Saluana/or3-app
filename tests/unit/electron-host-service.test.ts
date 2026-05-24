@@ -114,6 +114,13 @@ describe('Electron host service manager', () => {
         const status: any = await startService();
         expect(['starting', 'online']).toContain(status.state);
         expect(status.processId).toBeTypeOf('number');
+        const launchConfig = JSON.parse(await readFile(join(dir, 'or3-electron-launch-config.json'), 'utf8'));
+        expect(launchConfig.service.maxCapability).toBe('privileged');
+        expect(launchConfig.security.profiles.channels.service).toBe('admin');
+        expect(launchConfig.security.profiles.profiles.admin.allowedTools).toContain('delete_file');
+        expect(launchConfig.hardening.guardedTools).toBe(true);
+        expect(launchConfig.hardening.privilegedTools).toBe(true);
+        expect(launchConfig.tools.enableExec).toBe(true);
         await stopService();
     });
 
@@ -450,6 +457,13 @@ describe('Electron host service manager', () => {
         expect(intentBody).toMatchObject({
             requested_role: 'viewer',
             capabilities: ['chat'],
+        });
+
+        await createSecureInvite({ requestedRole: 'admin', capabilities: ['chat', 'files', 'terminal'] });
+
+        expect(intentBody).toMatchObject({
+            requested_role: 'admin',
+            capabilities: ['chat', 'files', 'terminal'],
         });
     });
 });
