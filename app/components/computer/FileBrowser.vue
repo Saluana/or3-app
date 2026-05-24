@@ -215,7 +215,9 @@
             v-model:open="memoryToolsOpen"
             :embeddings-status="embeddingsStatus"
             :audit-status="auditStatus"
-            :memory-loading="memoryLoading"
+            :status-loading="statusLoading"
+            :audit-loading="auditLoading"
+            :rebuild-loading="rebuildLoading"
             :memory-error="memoryError"
             :shortcuts="memoryShortcuts"
             @refresh-memory="handleRefreshMemory"
@@ -337,7 +339,9 @@ const {
 const {
     embeddingsStatus,
     auditStatus,
-    memoryLoading,
+    statusLoading,
+    auditLoading,
+    rebuildLoading,
     memoryError,
     loadEmbeddingsStatus,
     rebuildEmbeddings,
