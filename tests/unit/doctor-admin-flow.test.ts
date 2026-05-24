@@ -1297,6 +1297,364 @@ describe('Doctor admin flow app integration', () => {
         ]);
     });
 
+    it('keeps streamed approval state when doctor job reload has no assistant message', async () => {
+        pairedHost();
+        vi.stubGlobal(
+            'fetch',
+            vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+                const url = String(_url);
+                if (url.endsWith('/internal/v1/doctor/sessions')) {
+                    return new Response(
+                        JSON.stringify({
+                            session: { SessionKey: 'doctor-app-job-approval' },
+                            admin_brain: {
+                                available: true,
+                                kind: 'api_key',
+                            },
+                        }),
+                        {
+                            status: 201,
+                            headers: { 'Content-Type': 'application/json' },
+                        },
+                    );
+                }
+                if (
+                    /\/internal\/v1\/doctor\/sessions\/[^/]+\/messages$/.test(
+                        url,
+                    )
+                ) {
+                    expect(JSON.parse(String(init?.body ?? '{}'))).toEqual({
+                        content: 'needs approval',
+                        stream: true,
+                    });
+                    return new Response(
+                        JSON.stringify({
+                            job_id: 'doctor_job_approval',
+                            messages: [
+                                {
+                                    ID: 1,
+                                    Role: 'user',
+                                    Content: 'needs approval',
+                                    CreatedAt: 1779462000,
+                                },
+                            ],
+                            admin_brain: {
+                                available: true,
+                                kind: 'api_key',
+                            },
+                        }),
+                        {
+                            status: 202,
+                            headers: { 'Content-Type': 'application/json' },
+                        },
+                    );
+                }
+                if (url.endsWith('/internal/v1/jobs/doctor_job_approval/stream')) {
+                    const body = [
+                        'event: tool_call',
+                        'data: {"name":"doctor_create_plan","arguments":"{}","status":"running"}',
+                        '',
+                        'event: tool_result',
+                        'data: {"name":"doctor_create_plan","status":"approval_required","code":"approval_required","approval_id":42,"request_id":42}',
+                        '',
+                        'event: done',
+                        'data: {"status":"approval_required","approval_id":42,"request_id":42}',
+                        '',
+                    ].join('\n');
+                    return new Response(body, {
+                        status: 200,
+                        headers: { 'Content-Type': 'text/event-stream' },
+                    });
+                }
+                if (/\/internal\/v1\/doctor\/sessions\/[^/]+$/.test(url)) {
+                    return new Response(
+                        JSON.stringify({
+                            messages: [
+                                {
+                                    ID: 1,
+                                    Role: 'user',
+                                    Content: 'needs approval',
+                                    CreatedAt: 1779462000,
+                                },
+                            ],
+                        }),
+                        {
+                            status: 200,
+                            headers: { 'Content-Type': 'application/json' },
+                        },
+                    );
+                }
+                return new Response(JSON.stringify({}), {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/json' },
+                });
+            }),
+        );
+
+        const doctor = useDoctorAdminChat();
+        await doctor.createSession();
+        await doctor.sendMessage('needs approval');
+
+        expect(doctor.messages.value).toMatchObject([
+            { id: 1, role: 'user', content: 'needs approval' },
+            {
+                role: 'assistant',
+                status: 'attention',
+                approvalRequestId: 42,
+                approvalState: 'pending',
+            },
+        ]);
+    });
+
+    it('keeps streamed failure state when doctor job reload has no assistant message', async () => {
+        pairedHost();
+        vi.stubGlobal(
+            'fetch',
+            vi.fn(async (_url: string | URL | Request) => {
+                const url = String(_url);
+                if (url.endsWith('/internal/v1/doctor/sessions')) {
+                    return new Response(
+                        JSON.stringify({
+                            session: { SessionKey: 'doctor-app-job-failure' },
+                            admin_brain: {
+                                available: true,
+                                kind: 'api_key',
+                            },
+                        }),
+                        {
+                            status: 201,
+                            headers: { 'Content-Type': 'application/json' },
+                        },
+                    );
+                }
+                if (
+                    /\/internal\/v1\/doctor\/sessions\/[^/]+\/messages$/.test(
+                        url,
+                    )
+                ) {
+                    return new Response(
+                        JSON.stringify({
+                            job_id: 'doctor_job_failure',
+                            messages: [
+                                {
+                                    ID: 1,
+                                    Role: 'user',
+                                    Content: 'job failed',
+                                    CreatedAt: 1779462000,
+                                },
+                            ],
+                            admin_brain: {
+                                available: true,
+                                kind: 'api_key',
+                            },
+                        }),
+                        {
+                            status: 202,
+                            headers: { 'Content-Type': 'application/json' },
+                        },
+                    );
+                }
+                if (url.endsWith('/internal/v1/jobs/doctor_job_failure/stream')) {
+                    const body = [
+                        'event: error',
+                        'data: {"status":"failed","message":"doctor admin brain turn failed","code":"runtime_unavailable"}',
+                        '',
+                    ].join('\n');
+                    return new Response(body, {
+                        status: 200,
+                        headers: { 'Content-Type': 'text/event-stream' },
+                    });
+                }
+                if (/\/internal\/v1\/doctor\/sessions\/[^/]+$/.test(url)) {
+                    return new Response(
+                        JSON.stringify({
+                            messages: [
+                                {
+                                    ID: 1,
+                                    Role: 'user',
+                                    Content: 'job failed',
+                                    CreatedAt: 1779462000,
+                                },
+                            ],
+                        }),
+                        {
+                            status: 200,
+                            headers: { 'Content-Type': 'application/json' },
+                        },
+                    );
+                }
+                return new Response(JSON.stringify({}), {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/json' },
+                });
+            }),
+        );
+
+        const doctor = useDoctorAdminChat();
+        await doctor.createSession();
+        await doctor.sendMessage('job failed');
+
+        expect(doctor.messages.value).toMatchObject([
+            { id: 1, role: 'user', content: 'job failed' },
+            {
+                role: 'assistant',
+                status: 'failed',
+                error: 'doctor admin brain turn failed',
+            },
+        ]);
+    });
+
+    it('converts finalizing doctor jobs into empty-final warnings from job snapshots', async () => {
+        pairedHost();
+        vi.stubGlobal(
+            'fetch',
+            vi.fn(async (_url: string | URL | Request) => {
+                const url = String(_url);
+                if (url.endsWith('/internal/v1/doctor/sessions')) {
+                    return new Response(
+                        JSON.stringify({
+                            session: { SessionKey: 'doctor-app-job-empty' },
+                            admin_brain: {
+                                available: true,
+                                kind: 'api_key',
+                            },
+                        }),
+                        {
+                            status: 201,
+                            headers: { 'Content-Type': 'application/json' },
+                        },
+                    );
+                }
+                if (
+                    /\/internal\/v1\/doctor\/sessions\/[^/]+\/messages$/.test(
+                        url,
+                    )
+                ) {
+                    return new Response(
+                        JSON.stringify({
+                            job_id: 'doctor_job_empty',
+                            messages: [
+                                {
+                                    ID: 1,
+                                    Role: 'user',
+                                    Content: 'why no suggestion?',
+                                    CreatedAt: 1779462000,
+                                },
+                            ],
+                            admin_brain: {
+                                available: true,
+                                kind: 'api_key',
+                            },
+                        }),
+                        {
+                            status: 202,
+                            headers: { 'Content-Type': 'application/json' },
+                        },
+                    );
+                }
+                if (url.endsWith('/internal/v1/jobs/doctor_job_empty/stream')) {
+                    const body = [
+                        'event: tool_call',
+                        'data: {"name":"doctor_config_search","arguments":"{}","status":"running"}',
+                        '',
+                        'event: tool_result',
+                        'data: {"name":"doctor_config_search","status":"completed","result":"done"}',
+                        '',
+                        'event: completion',
+                        'data: {"status":"completed"}',
+                        '',
+                    ].join('\n');
+                    return new Response(body, {
+                        status: 200,
+                        headers: { 'Content-Type': 'text/event-stream' },
+                    });
+                }
+                if (url.endsWith('/internal/v1/jobs/doctor_job_empty')) {
+                    return new Response(
+                        JSON.stringify({
+                            job_id: 'doctor_job_empty',
+                            kind: 'doctor_admin_brain',
+                            status: 'completed',
+                            created_at: '2026-05-23T00:00:00Z',
+                            updated_at: '2026-05-23T00:00:01Z',
+                            events: [
+                                {
+                                    sequence: 1,
+                                    type: 'tool_call',
+                                    data: {
+                                        job_id: 'doctor_job_empty',
+                                        name: 'doctor_config_search',
+                                        status: 'running',
+                                    },
+                                },
+                                {
+                                    sequence: 2,
+                                    type: 'tool_result',
+                                    data: {
+                                        job_id: 'doctor_job_empty',
+                                        name: 'doctor_config_search',
+                                        status: 'completed',
+                                        result: 'done',
+                                    },
+                                },
+                                {
+                                    sequence: 3,
+                                    type: 'completion',
+                                    data: {
+                                        job_id: 'doctor_job_empty',
+                                        status: 'completed',
+                                    },
+                                },
+                            ],
+                        }),
+                        {
+                            status: 200,
+                            headers: { 'Content-Type': 'application/json' },
+                        },
+                    );
+                }
+                if (/\/internal\/v1\/doctor\/sessions\/[^/]+$/.test(url)) {
+                    return new Response(
+                        JSON.stringify({
+                            messages: [
+                                {
+                                    ID: 1,
+                                    Role: 'user',
+                                    Content: 'why no suggestion?',
+                                    CreatedAt: 1779462000,
+                                },
+                            ],
+                        }),
+                        {
+                            status: 200,
+                            headers: { 'Content-Type': 'application/json' },
+                        },
+                    );
+                }
+                return new Response(JSON.stringify({}), {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/json' },
+                });
+            }),
+        );
+
+        const doctor = useDoctorAdminChat();
+        await doctor.createSession();
+        await doctor.sendMessage('why no suggestion?');
+
+        expect(doctor.messages.value).toMatchObject([
+            { id: 1, role: 'user', content: 'why no suggestion?' },
+            {
+                role: 'assistant',
+                status: 'attention',
+                error: 'or3-intern completed without a final assistant message.',
+                errorCode: 'empty_final_text',
+                content:
+                    'Tool work completed, but or3-intern did not return a final assistant message. The last tool result is shown above; retry the turn if it still matters.',
+            },
+        ]);
+    });
+
     it('exposes metadata preview/apply helpers for settings UI plans', async () => {
         pairedHost();
         vi.stubGlobal(

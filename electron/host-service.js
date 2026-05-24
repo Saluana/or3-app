@@ -492,6 +492,89 @@ function packagedBinaryCandidates(appPath, resourcesPath) {
     ];
 }
 
+function defaultInternConfigPath() {
+    const home = String(process.env.HOME || '').trim();
+    return home ? join(home, '.config', 'or3', 'config.json') : '';
+}
+
+async function resolveInternConfigPath(binaryPath) {
+    try {
+        const resolved = String(await execFileText(binaryPath, ['config-path'])).trim();
+        if (resolved) return resolved;
+    } catch {}
+    return defaultInternConfigPath();
+}
+
+function clonePlainObject(value, fallback = {}) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return { ...fallback };
+    return { ...value };
+}
+
+function ensureElectronServiceAccessProfile(config) {
+    const next = clonePlainObject(config);
+    const security = clonePlainObject(next.security);
+    const profiles = clonePlainObject(security.profiles, {
+        enabled: false,
+        default: '',
+        channels: {},
+        triggers: {},
+        profiles: {},
+    });
+    const definedProfiles = clonePlainObject(profiles.profiles);
+    const channels = clonePlainObject(profiles.channels);
+    const triggers = clonePlainObject(profiles.triggers);
+    const profileName = 'electron_local_service';
+
+    definedProfiles[profileName] = {
+        maxCapability: 'safe',
+        allowedTools: [],
+        allowedHosts: [],
+        writablePaths: [],
+        allowSubagents: false,
+        ...clonePlainObject(definedProfiles[profileName]),
+        maxCapability: 'safe',
+        allowSubagents: false,
+    };
+
+    profiles.enabled = true;
+    profiles.profiles = definedProfiles;
+    profiles.channels = channels;
+    profiles.triggers = triggers;
+
+    const serviceTrigger = String(triggers.service || '').trim();
+    const serviceChannel = String(channels.service || '').trim();
+    const defaultProfile = String(profiles.default || '').trim();
+    const hasEffectiveProfile = Boolean(
+        (serviceTrigger && definedProfiles[serviceTrigger]) ||
+        (serviceChannel && definedProfiles[serviceChannel]) ||
+        (defaultProfile && definedProfiles[defaultProfile]),
+    );
+    if (!hasEffectiveProfile) {
+        channels.service = profileName;
+    }
+
+    security.profiles = profiles;
+    next.security = security;
+    return next;
+}
+
+async function buildElectronLaunchConfig(binaryPath, hostServiceConfig) {
+    const sourcePath = await resolveInternConfigPath(binaryPath);
+    let config = {};
+    if (sourcePath) {
+        try {
+            config = JSON.parse(await readFile(sourcePath, 'utf8'));
+        } catch {}
+    }
+    if (isNetworkListenHost(hostServiceConfig?.listenHost)) {
+        config = ensureElectronServiceAccessProfile(config);
+    }
+    const file = join(userDataPath || process.cwd(), 'or3-electron-launch-config.json');
+    await mkdir(dirname(file), { recursive: true });
+    await writeFile(file, JSON.stringify(config, null, 2));
+    return file;
+}
+
 async function binaryStatus(path, source) {
     if (!(await isExecutable(path))) return null;
     const version = await versionForBinary(path);
@@ -756,7 +839,9 @@ export async function startService({ appPath = '', resourcesPath = '' } = {}) {
     };
     if (config.hostService.dataDir) env.OR3_DATA_DIR = config.hostService.dataDir;
 
-    serviceProcess = spawn(located.binary.path, ['service'], {
+    const launchConfigPath = await buildElectronLaunchConfig(located.binary.path, config.hostService);
+
+    serviceProcess = spawn(located.binary.path, ['--config', launchConfigPath, 'service'], {
         cwd: config.hostService.workspaceDir,
         env,
         shell: false,

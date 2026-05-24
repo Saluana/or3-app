@@ -11,6 +11,7 @@ import type {
     DoctorAdminBrainProvider,
     DoctorChatSessionResponse,
     DoctorFindingCard,
+    JobSnapshot,
     DoctorPlanApplyResponse,
     DoctorPlanResponse,
     DoctorPostCheckResponse,
@@ -65,6 +66,9 @@ const activeOptimisticTurn = ref<{
 let activeSendPromise: Promise<DoctorChatSessionResponse> | null = null;
 let optimisticMessageID = -1;
 let messageGeneration = 0;
+
+const DOCTOR_EMPTY_FINAL_TEXT_WARNING =
+    'Tool work completed, but or3-intern did not return a final assistant message. The last tool result is shown above; retry the turn if it still matters.';
 
 function isAbortLikeError(value: unknown) {
     const record = value as { code?: unknown; cause?: unknown; name?: unknown };
@@ -773,6 +777,196 @@ function removeStreamingAssistant(id: number) {
     messages.value = messages.value.filter((message) => message.id !== id);
 }
 
+function hasMeaningfulDoctorStreamingState(
+    message: DoctorMessageState | undefined | null,
+) {
+    if (!message || message.role !== 'assistant') return false;
+    return Boolean(
+        String(message.content ?? '').trim() ||
+            String(message.reasoningText ?? '').trim() ||
+            message.status === 'failed' ||
+            message.status === 'attention' ||
+            message.error ||
+            message.errorCode ||
+            message.approvalRequestId ||
+            message.approvalState ||
+            message.retryPayload ||
+            message.parts?.length ||
+            message.toolCalls?.length ||
+            message.activityLog?.length,
+    );
+}
+
+function doctorHasToolWork(message: DoctorMessageState | undefined | null) {
+    if (!message) return false;
+    return Boolean(
+        message.toolCalls?.length ||
+            message.parts?.some((part) => part.type === 'tool') ||
+            message.activityLog?.some((entry) =>
+                [
+                    'tool_call',
+                    'tool_result',
+                    'command_execution',
+                    'file_change',
+                    'mcp_tool_call',
+                    'web_search',
+                    'collab_agent_tool_call',
+                    'dynamic_tool_call',
+                ].includes(entry.type),
+            ),
+    );
+}
+
+function isDoctorLiveJobStatus(status: string | undefined) {
+    return ['queued', 'running', 'started'].includes(
+        String(status || '')
+            .trim()
+            .toLowerCase(),
+    );
+}
+
+async function reconcileDoctorJobSnapshot(
+    jobID: string,
+    placeholderID: number,
+    requestJobSnapshot: (jobID: string) => Promise<JobSnapshot>,
+) {
+    const snapshot = await requestJobSnapshot(jobID);
+    if (
+        !snapshot ||
+        typeof snapshot !== 'object' ||
+        String(snapshot.job_id || '').trim() !== jobID ||
+        !String(snapshot.status || '').trim()
+    ) {
+        return null;
+    }
+    const applier = createDoctorStreamApplier(placeholderID);
+    for (const event of snapshot.events ?? []) {
+        applier.applyEvent(event, 'snapshot');
+    }
+
+    const latest = readStreamingAssistant(placeholderID);
+    const snapshotText = String(
+        snapshot.final_text || snapshot.error || '',
+    ).trim();
+    const hasToolWork = doctorHasToolWork(latest);
+    const emptyFinalAfterSnapshot =
+        !snapshotText &&
+        !snapshot.error &&
+        snapshot.status !== 'approval_required' &&
+        !isDoctorLiveJobStatus(snapshot.status) &&
+        hasToolWork;
+
+    if (snapshotText && latest?.errorCode === 'empty_final_text') {
+        patchStreamingAssistant(placeholderID, {
+            error: undefined,
+            errorCode: undefined,
+        });
+    }
+
+    if (emptyFinalAfterSnapshot) {
+        const currentContent = String(
+            readStreamingAssistant(placeholderID)?.content ?? '',
+        ).trim();
+        if (!currentContent || currentContent === 'Working…') {
+            patchStreamingAssistant(placeholderID, {
+                content: DOCTOR_EMPTY_FINAL_TEXT_WARNING,
+            });
+        }
+        patchStreamingAssistant(placeholderID, {
+            status: 'attention',
+            error: 'or3-intern completed without a final assistant message.',
+            errorCode: 'empty_final_text',
+            jobId: snapshot.job_id,
+        });
+        return snapshot;
+    }
+
+    const nextStatus: DoctorMessageState['status'] =
+        snapshot.status === 'approval_required'
+            ? 'attention'
+            : snapshot.error ||
+                snapshot.status === 'failed' ||
+                  snapshot.status === 'aborted'
+              ? 'failed'
+              : isDoctorLiveJobStatus(snapshot.status)
+                ? (latest?.status ?? 'streaming')
+                : 'complete';
+
+    patchStreamingAssistant(placeholderID, {
+        status: nextStatus,
+        error:
+            snapshotText || snapshot.status === 'approval_required'
+                ? undefined
+                : snapshot.error,
+        errorCode:
+            snapshotText
+                ? undefined
+                : snapshot.status === 'approval_required'
+                  ? 'approval_required'
+                  : readStreamingAssistant(placeholderID)?.errorCode,
+        approvalState:
+            snapshot.status === 'approval_required'
+                ? 'pending'
+                : readStreamingAssistant(placeholderID)?.approvalState,
+        jobId: snapshot.job_id,
+    });
+    return snapshot;
+}
+
+function doctorMessagesContainEquivalentAssistant(
+    items: DoctorMessageState[],
+    message: DoctorMessageState,
+) {
+    const content = String(message.content ?? '').trim();
+    const error = String(message.error ?? '').trim();
+    const approvalRequestId = Number(message.approvalRequestId ?? 0);
+    return items.some((item) => {
+        if (item.role !== 'assistant') return false;
+        const itemContent = String(item.content ?? '').trim();
+        const itemError = String(item.error ?? '').trim();
+        const itemApprovalRequestId = Number(item.approvalRequestId ?? 0);
+        if (content && itemContent && itemContent === content) return true;
+        if (error && itemError && itemError === error) return true;
+        if (
+            approvalRequestId > 0 &&
+            itemApprovalRequestId > 0 &&
+            itemApprovalRequestId === approvalRequestId
+        ) {
+            return true;
+        }
+        return false;
+    });
+}
+
+async function reloadSessionPreservingStreamingAssistant(
+    placeholderID: number,
+    reloadSession: () => Promise<unknown>,
+) {
+    const placeholder = readStreamingAssistant(placeholderID);
+    try {
+        const response = await reloadSession();
+        if (
+            hasMeaningfulDoctorStreamingState(placeholder) &&
+            !doctorMessagesContainEquivalentAssistant(messages.value, placeholder)
+        ) {
+            messages.value = [...messages.value, placeholder];
+        }
+        return response;
+    } catch (err) {
+        if (
+            hasMeaningfulDoctorStreamingState(placeholder) &&
+            !doctorMessagesContainEquivalentAssistant(messages.value, placeholder)
+        ) {
+            messages.value = messages.value.some(
+                (message) => message.id === placeholder.id,
+            )
+                ? messages.value
+                : [...messages.value, placeholder];
+        }
+        throw err;
+    }
+}
+
 function eventPayload(event: unknown) {
     if (!event || typeof event !== 'object') return {};
     const record = event as { json?: unknown; data?: unknown };
@@ -870,8 +1064,17 @@ async function followRunnerStream(
             activeRunnerTurn.value = null;
         }
     }
-    await reloadSession();
-    removeStreamingAssistant(input.placeholderID);
+    await reloadSessionPreservingStreamingAssistant(
+        input.placeholderID,
+        reloadSession,
+    );
+    if (
+        !hasMeaningfulDoctorStreamingState(
+            readStreamingAssistant(input.placeholderID),
+        )
+    ) {
+        removeStreamingAssistant(input.placeholderID);
+    }
 }
 
 async function followJobStream(
@@ -880,6 +1083,7 @@ async function followJobStream(
         placeholderID: number;
     },
     streamEvents: (path: string, options: any) => AsyncIterable<unknown>,
+    requestJobSnapshot: (jobID: string) => Promise<JobSnapshot>,
     reloadSession: () => Promise<unknown>,
 ) {
     stopStreaming();
@@ -908,8 +1112,22 @@ async function followJobStream(
             activeJobID.value = null;
         }
     }
-    await reloadSession();
-    removeStreamingAssistant(input.placeholderID);
+    await reconcileDoctorJobSnapshot(
+        input.jobID,
+        input.placeholderID,
+        requestJobSnapshot,
+    ).catch(() => undefined);
+    await reloadSessionPreservingStreamingAssistant(
+        input.placeholderID,
+        reloadSession,
+    );
+    if (
+        !hasMeaningfulDoctorStreamingState(
+            readStreamingAssistant(input.placeholderID),
+        )
+    ) {
+        removeStreamingAssistant(input.placeholderID);
+    }
 }
 
 function approvalFor(plan: DoctorSettingsChangePlan, rememberForMinutes = 0) {
@@ -1152,6 +1370,10 @@ export function useDoctorAdminChat() {
                         placeholderID,
                     },
                     (path, requestOptions) => api.stream(path, requestOptions),
+                    (jobID) =>
+                        api.request<JobSnapshot>(
+                            `/internal/v1/jobs/${encodeURIComponent(jobID)}`,
+                        ),
                     () => loadSession(sessionKey.value),
                 );
             } else if (runnerChat?.session_id && runnerChat.turn_id) {
@@ -1186,8 +1408,24 @@ export function useDoctorAdminChat() {
                 } as DoctorChatSessionResponse;
             }
             if (generation !== messageGeneration) throw err;
-            if (placeholderID !== 0) removeStreamingAssistant(placeholderID);
-            if (optimisticUserID !== 0) removeMessage(optimisticUserID);
+            if (
+                placeholderID !== 0 &&
+                !hasMeaningfulDoctorStreamingState(
+                    readStreamingAssistant(placeholderID),
+                )
+            ) {
+                removeStreamingAssistant(placeholderID);
+            }
+            if (
+                optimisticUserID !== 0 &&
+                !messages.value.some(
+                    (message) =>
+                        message.role === 'user' &&
+                        String(message.content ?? '').trim() === content,
+                )
+            ) {
+                removeMessage(optimisticUserID);
+            }
             error.value = errorMessage(err);
             throw err;
         } finally {

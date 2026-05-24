@@ -28,6 +28,9 @@ const binaryStatus = ref<InternBinaryStatus | null>(null);
 const activeInvite = ref<HostDeviceInvite | null>(null);
 const ready = ref(false);
 let loading: Promise<void> | null = null;
+let lastStatusRefreshAt = 0;
+
+const STATUS_REFRESH_INTERVAL_MS = 1500;
 
 function delay(ms: number) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -148,6 +151,24 @@ async function reconcilePendingHostSetup(bridge: NonNullable<ReturnType<typeof d
     }
 }
 
+async function refreshServiceStatus(
+    bridge: NonNullable<ReturnType<typeof desktopBridge>>,
+    force = false,
+) {
+    const now = Date.now();
+    if (
+        !force &&
+        lastStatusRefreshAt > 0 &&
+        now - lastStatusRefreshAt < STATUS_REFRESH_INTERVAL_MS
+    ) {
+        return serviceStatus.value;
+    }
+    serviceStatus.value = await bridge.intern.status().catch(() => ({ state: 'stopped' }));
+    lastStatusRefreshAt = now;
+    await reconcilePendingHostSetup(bridge);
+    return serviceStatus.value;
+}
+
 export function useElectronHostSetup() {
     async function ensureLoaded() {
         if (loading) return loading;
@@ -168,22 +189,29 @@ export function useElectronHostSetup() {
                 return;
             }
 
-            const [detectedCapabilities, persistedSetup] = await Promise.all([
-                bridge.platform.getCapabilities().catch(() => ({
-                    ...BROWSER_CAPABILITIES,
-                    platform: 'electron' as const,
-                })),
-                bridge.platform.getSetupState().catch(() => null),
-            ]);
-            capabilities.value = detectedCapabilities;
-            setupState.value =
-                sanitizeSetupState(persistedSetup) ?? readRendererState() ?? defaultSetupState();
-            persistRendererState(setupState.value);
-            serviceStatus.value = await bridge.intern.status().catch(() => ({ state: 'stopped' }));
-            await reconcilePendingHostSetup(bridge);
+            if (!ready.value) {
+                const [detectedCapabilities, persistedSetup] = await Promise.all([
+                    bridge.platform.getCapabilities().catch(() => ({
+                        ...BROWSER_CAPABILITIES,
+                        platform: 'electron' as const,
+                    })),
+                    bridge.platform.getSetupState().catch(() => null),
+                ]);
+                capabilities.value = detectedCapabilities;
+                setupState.value =
+                    sanitizeSetupState(persistedSetup) ?? readRendererState() ?? defaultSetupState();
+                persistRendererState(setupState.value);
+                ready.value = true;
+            }
+
+            await refreshServiceStatus(bridge, !lastStatusRefreshAt);
             ready.value = true;
         })();
-        await loading;
+        try {
+            await loading;
+        } finally {
+            loading = null;
+        }
     }
 
     async function chooseMode(mode: AppUseMode) {
@@ -218,7 +246,7 @@ export function useElectronHostSetup() {
 
     async function refreshStatus() {
         const bridge = desktopBridge();
-        serviceStatus.value = bridge ? await bridge.intern.status() : { state: 'stopped' };
+        serviceStatus.value = bridge ? await refreshServiceStatus(bridge, true) : { state: 'stopped' };
         return serviceStatus.value;
     }
 
@@ -252,6 +280,7 @@ export function useElectronHostSetup() {
         }
         await bridge.intern.setAutostart(config.autostartEnabled).catch(() => null);
         serviceStatus.value = await bridge.intern.start();
+        lastStatusRefreshAt = Date.now();
         if (serviceStatus.value.state === 'starting' || serviceStatus.value.state === 'stopped') {
             await pollServiceUntilSettled(bridge);
         }
@@ -264,20 +293,31 @@ export function useElectronHostSetup() {
     }
 
     async function startService() {
-        const status = await desktopBridge()?.intern.start();
+        const bridge = desktopBridge();
+        const status = await bridge?.intern.start();
         serviceStatus.value = status ?? { state: 'error', message: 'Desktop bridge is unavailable.' };
+        lastStatusRefreshAt = Date.now();
+        if (bridge && (serviceStatus.value.state === 'starting' || serviceStatus.value.state === 'stopped')) {
+            await pollServiceUntilSettled(bridge);
+        }
         return serviceStatus.value;
     }
 
     async function stopService() {
         const status = await desktopBridge()?.intern.stop();
         serviceStatus.value = status ?? { state: 'stopped' };
+        lastStatusRefreshAt = Date.now();
         return serviceStatus.value;
     }
 
     async function restartService() {
-        const status = await desktopBridge()?.intern.restart();
+        const bridge = desktopBridge();
+        const status = await bridge?.intern.restart();
         serviceStatus.value = status ?? { state: 'error', message: 'Desktop bridge is unavailable.' };
+        lastStatusRefreshAt = Date.now();
+        if (bridge && (serviceStatus.value.state === 'starting' || serviceStatus.value.state === 'stopped')) {
+            await pollServiceUntilSettled(bridge);
+        }
         return serviceStatus.value;
     }
 

@@ -64,7 +64,7 @@
         </div>
 
         <!-- Body: empty state OR virtualized chat list -->
-        <div class="or3-chat-shell__body">
+        <div class="flex-1 overflow-hidden">
             <div
                 v-if="!hasChatMessages"
                 class="or3-chat-shell__content or3-doctor-empty"
@@ -188,7 +188,7 @@
 
             <div
                 v-else
-                class="or3-chat-shell__content or3-chat-shell__content--virtualized"
+                class="w-full or3-chat-shell__content--virtualized"
             >
                 <div ref="messageListRef" class="or3-doctor-message-list">
                     <article
@@ -376,7 +376,7 @@
         <!-- Composer fixed at bottom -->
         <div class="or3-chat-shell__composer">
             <div class="or3-chat-shell__composer-inner">
-                <div class="or3-chat-shell__status">
+                <div class="or3-chat-shell__status flex items-center gap-2 px-1">
                     <AssistantStatusIndicator :active="chat.loading.value" />
                 </div>
                 <p
@@ -897,16 +897,23 @@ watch(
 .or3-doctor-message-list {
     display: flex;
     flex-direction: column;
+    align-items: center;
     gap: 0.75rem;
+    width: 100%;
     min-height: 100%;
     max-height: 100%;
     overflow-y: auto;
     padding: 0.5rem 0 15rem;
+    margin: 0 auto;
+    box-sizing: border-box;
+    scrollbar-gutter: stable;
 }
 
 .or3-doctor-message {
     display: flex;
-    width: 100%;
+    width: min(48rem, 100%);
+    max-width: calc(100% - 2rem);
+    box-sizing: border-box;
 }
 
 .or3-doctor-message--user {
@@ -918,16 +925,18 @@ watch(
 }
 
 .or3-doctor-message__bubble {
-    max-width: min(42rem, 100%);
+    width: 100%;
     border: 1px solid var(--or3-border);
     background: rgb(255 255 255 / 0.78);
     border-radius: 1rem;
     padding: 0.75rem;
     box-shadow: 0 10px 28px rgb(15 23 42 / 0.06);
+    box-sizing: border-box;
 }
 
 .or3-doctor-message--cards-only .or3-doctor-message__bubble {
-    width: min(42rem, 100%);
+    width: 100%;
+    max-width: 42rem;
     border: 0;
     background: transparent;
     border-radius: 0;
@@ -936,6 +945,8 @@ watch(
 }
 
 .or3-doctor-message--user .or3-doctor-message__bubble {
+    width: auto;
+    max-width: min(42rem, 100%);
     background: var(--or3-green-soft);
     border-color: rgb(30 126 85 / 0.18);
 }

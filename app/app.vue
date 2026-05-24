@@ -16,8 +16,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useKeyboardOpen } from './composables/useKeyboardOpen'
+import { useElectronHostSetup } from './composables/useElectronHostSetup'
 import { resetPinLock, usePinLockState } from './composables/usePinLock'
 import { useLocalCache } from './composables/useLocalCache'
 
@@ -29,10 +30,23 @@ const toaster = {
 } as const
 
 useKeyboardOpen()
+const electronHost = useElectronHostSetup()
 
 const pinLock = usePinLockState()
 const pinStateReady = ref(false)
 const showUnlockOverlay = computed(() => pinStateReady.value && pinLock.needsUnlock.value)
+
+function refreshElectronHost() {
+  void electronHost.ensureLoaded().catch(() => undefined)
+}
+
+function onWindowFocus() {
+  refreshElectronHost()
+}
+
+function onVisibilityChange() {
+  if (document.visibilityState === 'visible') refreshElectronHost()
+}
 
 onMounted(() => {
   const standalone =
@@ -41,7 +55,15 @@ onMounted(() => {
 
   document.documentElement.classList.toggle('or3-standalone', Boolean(standalone))
   pinLock.refresh()
+  refreshElectronHost()
+  window.addEventListener('focus', onWindowFocus)
+  document.addEventListener('visibilitychange', onVisibilityChange)
   pinStateReady.value = true
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('focus', onWindowFocus)
+  document.removeEventListener('visibilitychange', onVisibilityChange)
 })
 
 function onUnlocked() {
