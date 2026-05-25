@@ -6,6 +6,7 @@ import {
     serializeErrorForLog,
 } from '~/utils/assistant-stream/errors';
 import { formatApprovalSubjectPreview } from '~/utils/or3/approval-display';
+import { isExternalChannelSessionKey } from '~/utils/or3/approval-resume-target';
 import { normalizeApprovalRequest } from '~/utils/or3/approvals';
 import type { useChatRuntimeLog } from '../useChatRuntimeLog';
 import type { useChatSessions } from '../useChatSessions';
@@ -37,11 +38,12 @@ export function useApprovalHydration(options: UseApprovalHydrationOptions) {
         const hostId = options.activeHost.value?.id?.trim();
         const hasAuth = Boolean(
             options.activeHost.value?.pairedToken?.trim() ||
-                options.activeHost.value?.token?.trim() ||
-                options.activeHost.value?.authMode === 'secure-session',
+            options.activeHost.value?.token?.trim() ||
+            options.activeHost.value?.authMode === 'secure-session',
         );
         const sessionKey = options.chat.activeSession.value?.sessionKey?.trim();
         if (!hostId || !hasAuth || !sessionKey) return;
+        if (isExternalChannelSessionKey(sessionKey)) return;
 
         const hydrationKey = `${hostId}:${sessionKey}`;
         if (approvalHydrationInFlight.has(hydrationKey)) return;

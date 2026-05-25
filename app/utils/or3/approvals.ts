@@ -76,6 +76,14 @@ export function normalizeApprovalRequest(input: unknown): ApprovalRequest {
             'requester_session_id',
             'RequesterSessionID',
         ]),
+        requester_context:
+            parseJsonObject(pick(source, ['requester_context'])) ??
+            parseJsonObject(
+                pick(source, [
+                    'requester_context_json',
+                    'RequesterContextJSON',
+                ]),
+            ),
     };
     return result;
 }

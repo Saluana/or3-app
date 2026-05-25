@@ -757,6 +757,14 @@ export interface ApprovalRequest {
     created_at?: string;
     expires_at?: string;
     requester_session_id?: string;
+    requester_context?: {
+        channel?: string;
+        session_key?: string;
+        from?: string;
+        reply_target?: string;
+        reply_meta?: Record<string, unknown>;
+        source_message_id?: string;
+    };
 }
 
 export interface ApprovalActionResponse {
