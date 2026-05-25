@@ -51,4 +51,13 @@ describe('doctor approval hydration', () => {
         expect(skipped).toBeUndefined();
         expect(store.messages.value).toHaveLength(1);
     });
+
+    it('bounds resolved approval memory', () => {
+        for (let index = 0; index < 550; index += 1) {
+            markDoctorApprovalResolved(index, 'approved', 'doctor-app-test');
+        }
+
+        expect(isDoctorApprovalResolved(0, 'doctor-app-test')).toBe(false);
+        expect(isDoctorApprovalResolved(549, 'doctor-app-test')).toBe(true);
+    });
 });

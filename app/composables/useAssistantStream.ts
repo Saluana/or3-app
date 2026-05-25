@@ -204,8 +204,12 @@ export function useAssistantStream() {
             runtimeLog,
         });
         const executionState = messageState.executionState;
-        const { readAssistant, updateAssistant, completeRunningActivity } =
-            executionState;
+        const {
+            readAssistant,
+            updateAssistant,
+            completeRunningActivity,
+            flushAssistantUpdates,
+        } = executionState;
         const activeHostId = activeHost.value?.id?.trim() || '';
         const requestedToolPolicy =
             payload.toolPolicy ?? modeToolPolicy(payload.mode);
@@ -291,6 +295,7 @@ export function useAssistantStream() {
 
             if (streamEndedWithFailure) return;
 
+            flushAssistantUpdates();
             const messageAfterSnapshot = readAssistant();
             if (
                 !executionState.sawVisibleOutput() &&
@@ -310,6 +315,7 @@ export function useAssistantStream() {
                 });
             }
 
+            flushAssistantUpdates();
             const finalMessage = chat.messages.value.find(
                 (item) => item.id === assistant.id,
             );
@@ -356,7 +362,8 @@ export function useAssistantStream() {
             }
 
             const executionContext = buildExecutionContext();
-            const capabilityCeiling = isServiceCapabilityCeilingError(streamError);
+            const capabilityCeiling =
+                isServiceCapabilityCeilingError(streamError);
             const logPayload = {
                 sessionKey: session.sessionKey,
                 ...serializeErrorForLog(streamError),
@@ -387,6 +394,8 @@ export function useAssistantStream() {
                 fetchAndApplyJobSnapshot: runFetchAndApplyJobSnapshot,
             });
         } finally {
+            flushAssistantUpdates();
+            chat.flushMessage(assistant.id);
             isStreaming.value = false;
             if (controller === activeController) controller = null;
             clearActiveTraceId();

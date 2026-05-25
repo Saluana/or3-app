@@ -1,4 +1,4 @@
-import { computed, watch } from 'vue';
+import { computed, effectScope, watch } from 'vue';
 import { useActiveHost } from './useActiveHost';
 import { useDoctorChatStore } from './doctor/doctorChatStore';
 import type {
@@ -57,9 +57,12 @@ function store() {
     return useDoctorChatStore();
 }
 
+let doctorHostWatcherScope: ReturnType<typeof effectScope> | null = null;
+
 function doctorSessionStorageKey() {
     const { activeHost } = useActiveHost();
-    const hostId = String(activeHost.value?.id ?? 'default').trim() || 'default';
+    const hostId =
+        String(activeHost.value?.id ?? 'default').trim() || 'default';
     return `or3-doctor-session:${hostId}`;
 }
 
@@ -126,7 +129,10 @@ function errorMessage(value: unknown) {
 }
 
 function newSessionKey() {
-    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    if (
+        typeof crypto !== 'undefined' &&
+        typeof crypto.randomUUID === 'function'
+    ) {
         return `doctor-app-${crypto.randomUUID()}`;
     }
     return `doctor-app-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -212,12 +218,13 @@ function appendOrUpdateStreamingAssistant(
         status,
     } as DoctorChatMessage;
     if (existing >= 0) {
-        store().messages.value = store().messages.value.map((item, index) =>
-            index === existing ? message : item,
-        );
+        store().messages.value[existing] = message;
         return;
     }
-    store().messages.value = sortDoctorMessages([...store().messages.value, message]);
+    store().messages.value = sortDoctorMessages([
+        ...store().messages.value,
+        message,
+    ]);
 }
 
 function patchStreamingAssistant(
@@ -225,17 +232,19 @@ function patchStreamingAssistant(
     patch: Partial<DoctorMessageState>,
 ) {
     const key = String(id);
-    store().messages.value = store().messages.value.map((message) => {
-        if (String(message.id ?? '') !== key) return message;
-        return {
-            ...message,
-            ...patch,
-            meta: {
-                ...(parseRecordJSON(message.meta) ?? {}),
-                ...(parseRecordJSON(patch.meta) ?? {}),
-            },
-        };
-    });
+    const index = store().messages.value.findIndex(
+        (message) => String(message.id ?? '') === key,
+    );
+    const message = index >= 0 ? store().messages.value[index] : undefined;
+    if (!message) return;
+    store().messages.value[index] = {
+        ...message,
+        ...patch,
+        meta: {
+            ...(parseRecordJSON(message.meta) ?? {}),
+            ...(parseRecordJSON(patch.meta) ?? {}),
+        },
+    };
 }
 
 function mutateStreamingAssistant(
@@ -243,9 +252,12 @@ function mutateStreamingAssistant(
     mutate: (message: DoctorMessageState) => DoctorMessageState,
 ) {
     const key = messageIdKey(id);
-    store().messages.value = store().messages.value.map((message) =>
-        messageIdKey(message.id ?? '') === key ? mutate(message) : message,
+    const index = store().messages.value.findIndex(
+        (message) => messageIdKey(message.id ?? '') === key,
     );
+    const message = index >= 0 ? store().messages.value[index] : undefined;
+    if (!message) return;
+    store().messages.value[index] = mutate(message);
 }
 
 function readStreamingAssistant(id: PlaceholderID) {
@@ -473,7 +485,9 @@ function appendOptimisticUser(id: number, content: string) {
         return created > max ? created : max;
     }, 0);
     const createdAt =
-        latestCreatedAt > 0 ? latestCreatedAt + 1 : Math.floor(Date.now() / 1000);
+        latestCreatedAt > 0
+            ? latestCreatedAt + 1
+            : Math.floor(Date.now() / 1000);
     store().messages.value = [
         ...store().messages.value,
         {
@@ -487,7 +501,9 @@ function appendOptimisticUser(id: number, content: string) {
 }
 
 function removeMessage(id: number) {
-    store().messages.value = store().messages.value.filter((message) => message.id !== id);
+    store().messages.value = store().messages.value.filter(
+        (message) => message.id !== id,
+    );
 }
 
 function removeStreamingAssistant(id: PlaceholderID) {
@@ -596,17 +612,17 @@ function hasMeaningfulDoctorStreamingState(
     if (!message || message.role !== 'assistant') return false;
     return Boolean(
         String(message.content ?? '').trim() ||
-            String(message.reasoningText ?? '').trim() ||
-            message.status === 'failed' ||
-            message.status === 'attention' ||
-            message.error ||
-            message.errorCode ||
-            message.approvalRequestId ||
-            message.approvalState ||
-            message.retryPayload ||
-            message.parts?.length ||
-            message.toolCalls?.length ||
-            message.activityLog?.length,
+        String(message.reasoningText ?? '').trim() ||
+        message.status === 'failed' ||
+        message.status === 'attention' ||
+        message.error ||
+        message.errorCode ||
+        message.approvalRequestId ||
+        message.approvalState ||
+        message.retryPayload ||
+        message.parts?.length ||
+        message.toolCalls?.length ||
+        message.activityLog?.length,
     );
 }
 
@@ -614,19 +630,19 @@ function doctorHasToolWork(message: DoctorMessageState | undefined | null) {
     if (!message) return false;
     return Boolean(
         message.toolCalls?.length ||
-            message.parts?.some((part) => part.type === 'tool') ||
-            message.activityLog?.some((entry) =>
-                [
-                    'tool_call',
-                    'tool_result',
-                    'command_execution',
-                    'file_change',
-                    'mcp_tool_call',
-                    'web_search',
-                    'collab_agent_tool_call',
-                    'dynamic_tool_call',
-                ].includes(entry.type),
-            ),
+        message.parts?.some((part) => part.type === 'tool') ||
+        message.activityLog?.some((entry) =>
+            [
+                'tool_call',
+                'tool_result',
+                'command_execution',
+                'file_change',
+                'mcp_tool_call',
+                'web_search',
+                'collab_agent_tool_call',
+                'dynamic_tool_call',
+            ].includes(entry.type),
+        ),
     );
 }
 
@@ -689,9 +705,9 @@ async function reconcileDoctorJobSnapshot(
         resolvedSummary;
     const hasMeaningfulSummary = Boolean(
         effectiveText.trim() &&
-            !isDoctorEmptyFinalTextWarning(effectiveText) &&
-            !isGenericEmptyFinalRecovery(effectiveText) &&
-            !isEmptyFinalUserMessage(effectiveText),
+        !isDoctorEmptyFinalTextWarning(effectiveText) &&
+        !isGenericEmptyFinalRecovery(effectiveText) &&
+        !isEmptyFinalUserMessage(effectiveText),
     );
     const hasToolWork = doctorHasToolWork(latest);
     const emptyFinalAfterSnapshot =
@@ -735,7 +751,7 @@ async function reconcileDoctorJobSnapshot(
             ? 'attention'
             : snapshot.error ||
                 snapshot.status === 'failed' ||
-                  snapshot.status === 'aborted'
+                snapshot.status === 'aborted'
               ? 'failed'
               : isDoctorLiveJobStatus(snapshot.status)
                 ? (latest?.status ?? 'streaming')
@@ -747,12 +763,11 @@ async function reconcileDoctorJobSnapshot(
             snapshotText || snapshot.status === 'approval_required'
                 ? undefined
                 : snapshot.error,
-        errorCode:
-            snapshotText
-                ? undefined
-                : snapshot.status === 'approval_required'
-                  ? 'approval_required'
-                  : readStreamingAssistant(placeholderID)?.errorCode,
+        errorCode: snapshotText
+            ? undefined
+            : snapshot.status === 'approval_required'
+              ? 'approval_required'
+              : readStreamingAssistant(placeholderID)?.errorCode,
         approvalState:
             snapshot.status === 'approval_required'
                 ? 'pending'
@@ -844,6 +859,38 @@ function eventName(event: unknown) {
 function stopStreaming() {
     store().activeStreamController.value?.abort();
     store().activeStreamController.value = null;
+}
+
+function resetDoctorStoreForHostSwitch() {
+    store().bumpMessageGeneration();
+    store().activeSendPromise = null;
+    stopStreaming();
+    store().sessionKey.value = null;
+    store().messages.value = [];
+    store().activePlan.value = null;
+    store().applyResult.value = null;
+    store().postCheckResult.value = null;
+    store().planApplyResults.value = {};
+    store().planApplyFailures.value = {};
+    store().planPostCheckResults.value = {};
+}
+
+function installDoctorHostWatcher(
+    activeHost: ReturnType<typeof useActiveHost>['activeHost'],
+    hydratePersistedSession: () => void,
+) {
+    if (!import.meta.client || doctorHostWatcherScope) return;
+    doctorHostWatcherScope = effectScope(true);
+    doctorHostWatcherScope.run(() => {
+        watch(
+            () => activeHost.value?.id ?? 'default',
+            (hostId, previousHostId) => {
+                if (!previousHostId || hostId === previousHostId) return;
+                resetDoctorStoreForHostSwitch();
+                hydratePersistedSession();
+            },
+        );
+    });
 }
 
 async function streamDoctorEvents(
@@ -1010,29 +1057,13 @@ export function useDoctorAdminChat() {
     const approvals = useApprovals();
     const { activeHost } = useActiveHost();
 
-    watch(
-        () => activeHost.value?.id ?? 'default',
-        (hostId, previousHostId) => {
-            if (!previousHostId || hostId === previousHostId) return;
-            store().bumpMessageGeneration();
-            store().activeSendPromise = null;
-            stopStreaming();
-            store().sessionKey.value = null;
-            store().messages.value = [];
-            store().activePlan.value = null;
-            store().applyResult.value = null;
-            store().postCheckResult.value = null;
-            store().planApplyResults.value = {};
-            store().planApplyFailures.value = {};
-            store().planPostCheckResults.value = {};
-            void hydratePersistedSession().catch(() => undefined);
-        },
-    );
-
     async function hydratePersistedSession() {
         const persisted = readPersistedSessionKey();
         if (!persisted) return null;
-        if (store().sessionKey.value && store().sessionKey.value !== persisted) {
+        if (
+            store().sessionKey.value &&
+            store().sessionKey.value !== persisted
+        ) {
             store().sessionKey.value = null;
             store().messages.value = [];
         }
@@ -1043,6 +1074,10 @@ export function useDoctorAdminChat() {
             return null;
         }
     }
+
+    installDoctorHostWatcher(activeHost, () => {
+        void hydratePersistedSession().catch(() => undefined);
+    });
 
     async function loadStatus() {
         store().loading.value = true;
@@ -1123,7 +1158,8 @@ export function useDoctorAdminChat() {
             persistSessionKey(key);
             const nextMessages = normalizeDoctorMessages(response.messages);
             store().messages.value = nextMessages;
-            store().adminBrain.value = response.admin_brain ?? store().adminBrain.value;
+            store().adminBrain.value =
+                response.admin_brain ?? store().adminBrain.value;
             return response;
         } catch (err) {
             store().error.value = errorMessage(err);
@@ -1140,17 +1176,17 @@ export function useDoctorAdminChat() {
         );
         store().sessionKey.value = key;
         persistSessionKey(key);
-        const placeholderID = store().activeOptimisticTurn.value?.placeholderID ?? 0;
+        const placeholderID =
+            store().activeOptimisticTurn.value?.placeholderID ?? 0;
         const placeholder =
-            placeholderID !== 0
-                ? readStreamingAssistant(placeholderID)
-                : null;
+            placeholderID !== 0 ? readStreamingAssistant(placeholderID) : null;
         store().messages.value = mergeDoctorSessionWithLocal(
             normalizeDoctorMessages(response.messages),
             store().messages.value,
             placeholder,
         );
-        store().adminBrain.value = response.admin_brain ?? store().adminBrain.value;
+        store().adminBrain.value =
+            response.admin_brain ?? store().adminBrain.value;
         return response;
     }
 
@@ -1236,7 +1272,8 @@ export function useDoctorAdminChat() {
             }
             if (generation !== store().messageGeneration) return response;
             const nextMessages = normalizeDoctorMessages(response.messages);
-            store().adminBrain.value = response.admin_brain ?? store().adminBrain.value;
+            store().adminBrain.value =
+                response.admin_brain ?? store().adminBrain.value;
             const runnerChat = response.runner_chat;
             if (response.job_id) {
                 await followJobStream(
@@ -1307,10 +1344,14 @@ export function useDoctorAdminChat() {
             if (store().activeRequestController.value === controller) {
                 store().activeRequestController.value = null;
             }
-            if (store().activeOptimisticTurn.value?.placeholderID === placeholderID) {
+            if (
+                store().activeOptimisticTurn.value?.placeholderID ===
+                placeholderID
+            ) {
                 store().activeOptimisticTurn.value = null;
             }
-            if (generation === store().messageGeneration) store().loading.value = false;
+            if (generation === store().messageGeneration)
+                store().loading.value = false;
         }
     }
 
@@ -1338,7 +1379,8 @@ export function useDoctorAdminChat() {
         store().activeSendPromise = promise;
         void promise
             .finally(() => {
-                if (store().activeSendPromise === promise) store().activeSendPromise = null;
+                if (store().activeSendPromise === promise)
+                    store().activeSendPromise = null;
             })
             .catch(() => undefined);
         return promise;
@@ -1358,7 +1400,9 @@ export function useDoctorAdminChat() {
                 method: 'POST',
                 body: {
                     conversation_id:
-                        options.conversationID ?? store().sessionKey.value ?? '',
+                        options.conversationID ??
+                        store().sessionKey.value ??
+                        '',
                     accepted_card_id: options.acceptedCardID ?? '',
                     plan,
                 },
@@ -1453,10 +1497,11 @@ export function useDoctorAdminChat() {
 
     async function runPostChecks(planID = store().activePlan.value?.plan?.id) {
         if (!planID) throw new Error('No Doctor plan selected.');
-        store().postCheckResult.value = await api.request<DoctorPostCheckResponse>(
-            `/internal/v1/doctor/plans/${encodeURIComponent(planID)}/post-checks`,
-            { method: 'POST', body: {} },
-        );
+        store().postCheckResult.value =
+            await api.request<DoctorPostCheckResponse>(
+                `/internal/v1/doctor/plans/${encodeURIComponent(planID)}/post-checks`,
+                { method: 'POST', body: {} },
+            );
         return store().postCheckResult.value;
     }
 
@@ -1546,14 +1591,12 @@ export function useDoctorAdminChat() {
         return true;
     }
 
-    async function resumeApprovedApprovalFromDesk(
-        options: {
-            resumeJobId: string;
-            approvalRequestId?: number | string;
-            sessionKey?: string;
-            approval?: ApprovalRequest | null;
-        },
-    ) {
+    async function resumeApprovedApprovalFromDesk(options: {
+        resumeJobId: string;
+        approvalRequestId?: number | string;
+        sessionKey?: string;
+        approval?: ApprovalRequest | null;
+    }) {
         const resumeJobId = String(options.resumeJobId ?? '').trim();
         const sessionKey = String(
             options.sessionKey?.trim() || store().sessionKey.value || '',
@@ -1581,8 +1624,7 @@ export function useDoctorAdminChat() {
                 ),
             });
         }
-        const placeholderID =
-            message?.id ?? store().nextOptimisticMessageID();
+        const placeholderID = message?.id ?? store().nextOptimisticMessageID();
         patchStreamingAssistant(placeholderID, {
             approvalState: 'retrying',
             status: 'attention',
@@ -1602,9 +1644,7 @@ export function useDoctorAdminChat() {
         );
         const latest = readStreamingAssistant(placeholderID);
         if (
-            !(
-                latest?.approvalState === 'pending' && latest.approvalRequestId
-            )
+            !(latest?.approvalState === 'pending' && latest.approvalRequestId)
         ) {
             markDoctorApprovalResolved(
                 approvalRequestId ?? resumeJobId,

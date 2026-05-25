@@ -217,7 +217,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from '#app';
 import { useComputerFiles } from '~/composables/useComputerFiles';
 import { useTerminalPrefs } from '~/composables/useTerminalPrefs';
@@ -256,6 +256,7 @@ const {
     sendKeys,
     resize,
     close,
+    detach,
     reset,
     restoreSession,
     reconnect,
@@ -489,6 +490,10 @@ onMounted(async () => {
         selectedRootId.value = restored.root_id || selectedRootId.value;
         selectedPath.value = restored.path || selectedPath.value;
     }
+});
+
+onBeforeUnmount(() => {
+    detach();
 });
 </script>
 

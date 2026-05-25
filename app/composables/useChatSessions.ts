@@ -1,22 +1,41 @@
-import { computed } from "vue";
+import { computed } from 'vue';
 import type {
     ChatActivityEntry,
     ChatMessage,
     ChatMessagePart,
     ChatSession,
     ChatToolCall,
-} from "~/types/app-state";
-import type { ChatHistoryMessage, ChatSessionMeta } from "~/types/or3-api";
-import { isSyntheticApprovalContinuationUserMessage } from "~/utils/chat/approval-continuation";
+} from '~/types/app-state';
+import type { ChatHistoryMessage, ChatSessionMeta } from '~/types/or3-api';
+import { isSyntheticApprovalContinuationUserMessage } from '~/utils/chat/approval-continuation';
 import {
     compactAssistantRunMessages,
     mergeAssistantMessages,
     shouldMergeAssistantRunMessages,
-} from "~/utils/chat/merge-assistant-run";
-import { useActiveHost } from "./useActiveHost";
-import { useLocalCache } from "./useLocalCache";
+} from '~/utils/chat/merge-assistant-run';
+import { useActiveHost } from './useActiveHost';
+import { useLocalCache } from './useLocalCache';
 
+const MAX_RESOLVED_APPROVAL_KEYS = 500;
 const resolvedApprovalKeys = new Set<string>();
+
+interface MessageMutationOptions {
+    persist?: boolean;
+    touch?: boolean;
+    syncSummary?: boolean;
+}
+
+function rememberResolvedApprovalKey(key: string) {
+    if (resolvedApprovalKeys.has(key)) resolvedApprovalKeys.delete(key);
+    resolvedApprovalKeys.add(key);
+    while (resolvedApprovalKeys.size > MAX_RESOLVED_APPROVAL_KEYS) {
+        const oldest = resolvedApprovalKeys.values().next().value as
+            | string
+            | undefined;
+        if (!oldest) break;
+        resolvedApprovalKeys.delete(oldest);
+    }
+}
 
 function now() {
     return new Date().toISOString();
@@ -34,9 +53,9 @@ function msToIso(value?: number) {
 
 function defaultRunnerFields() {
     return {
-        runnerId: "or3-intern",
-        runnerLabel: "OR3 Intern",
-        runnerContinuationMode: "replay",
+        runnerId: 'or3-intern',
+        runnerLabel: 'OR3 Intern',
+        runnerContinuationMode: 'replay',
         archived: false,
     } satisfies Partial<ChatSession>;
 }
@@ -47,14 +66,14 @@ function patchFromBackendSessionMeta(
 ): Partial<ChatSession> {
     return {
         title: meta.title || session.title,
-        runnerId: meta.runner_id || session.runnerId || "or3-intern",
+        runnerId: meta.runner_id || session.runnerId || 'or3-intern',
         runnerLabel: meta.runner_label || session.runnerLabel,
         runnerChatSessionId:
             meta.runner_chat_session_id || session.runnerChatSessionId,
         runnerContinuationMode:
             meta.runner_continuation_mode ||
             session.runnerContinuationMode ||
-            "replay",
+            'replay',
         runnerModel: meta.runner_model || session.runnerModel,
         runnerMode: meta.runner_mode || session.runnerMode,
         runnerIsolation: meta.runner_isolation || session.runnerIsolation,
@@ -76,29 +95,39 @@ function patchFromBackendSessionMeta(
     };
 }
 
-function backendRole(backend: ChatHistoryMessage): ChatMessage["role"] {
-    return backend.role === "user" ||
-        backend.role === "assistant" ||
-        backend.role === "system" ||
-        backend.role === "tool"
+function backendRole(backend: ChatHistoryMessage): ChatMessage['role'] {
+    return backend.role === 'user' ||
+        backend.role === 'assistant' ||
+        backend.role === 'system' ||
+        backend.role === 'tool'
         ? backend.role
-        : "assistant";
+        : 'assistant';
 }
 
 function normalizeContent(value?: string) {
-    return (value ?? "").trim();
+    return (value ?? '').trim();
 }
 
 function messagePreview(value?: string) {
-    return normalizeContent(value).replace(/\s+/g, " ").slice(0, 160);
+    return normalizeContent(value).replace(/\s+/g, ' ').slice(0, 160);
 }
 
 function uniqueBackendIds(...values: Array<number | undefined>) {
-    return [...new Set(values.filter((value): value is number => typeof value === "number" && value > 0))];
+    return [
+        ...new Set(
+            values.filter(
+                (value): value is number =>
+                    typeof value === 'number' && value > 0,
+            ),
+        ),
+    ];
 }
 
 function backendIdsForMessage(message: ChatMessage) {
-    return uniqueBackendIds(message.backendMessageId, ...(message.backendMessageIds ?? []));
+    return uniqueBackendIds(
+        message.backendMessageId,
+        ...(message.backendMessageIds ?? []),
+    );
 }
 
 function appendBackendId(message: ChatMessage, backendID: number) {
@@ -108,21 +137,26 @@ function appendBackendId(message: ChatMessage, backendID: number) {
 function payloadText(payload: Record<string, unknown>, keys: string[]) {
     for (const key of keys) {
         const value = payload[key];
-        if (typeof value === "string" && value.trim()) return value;
+        if (typeof value === 'string' && value.trim()) return value;
     }
-    return "";
+    return '';
 }
 
 function previewValue(value: unknown, limit = 2_000) {
-    if (value === undefined || value === null) return "";
-    const text = typeof value === "string" ? value : JSON.stringify(value, null, 2) || String(value);
+    if (value === undefined || value === null) return '';
+    const text =
+        typeof value === 'string'
+            ? value
+            : JSON.stringify(value, null, 2) || String(value);
     return text.length > limit ? `${text.slice(0, limit)}\n...` : text;
 }
 
 function parseToolResult(content: string) {
     try {
         const parsed = JSON.parse(content) as unknown;
-        return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : undefined;
+        return parsed && typeof parsed === 'object'
+            ? (parsed as Record<string, unknown>)
+            : undefined;
     } catch {
         return undefined;
     }
@@ -131,31 +165,46 @@ function parseToolResult(content: string) {
 function toolResultPreview(content: string, payload: Record<string, unknown>) {
     const result = parseToolResult(content);
     return (
-        payloadText(payload, ["preview", "summary"]) ||
-        (result ? payloadText(result, ["summary", "preview", "status"]) : "") ||
+        payloadText(payload, ['preview', 'summary']) ||
+        (result ? payloadText(result, ['summary', 'preview', 'status']) : '') ||
         messagePreview(content)
     );
 }
 
-function toolResultStatus(content: string): ChatToolCall["status"] {
+function toolResultStatus(content: string): ChatToolCall['status'] {
     const result = parseToolResult(content);
-    if (!result) return "complete";
-    if (result.ok === false) return "error";
-    if (String(result.status ?? "").toLowerCase() === "approval_required") return "attention";
-    return "complete";
+    if (!result) return 'complete';
+    if (result.ok === false) return 'error';
+    if (String(result.status ?? '').toLowerCase() === 'approval_required')
+        return 'attention';
+    return 'complete';
 }
 
-function normalizeToolCall(raw: unknown, index: number, createdAt: string): ChatToolCall | null {
-    if (!raw || typeof raw !== "object") return null;
+function normalizeToolCall(
+    raw: unknown,
+    index: number,
+    createdAt: string,
+): ChatToolCall | null {
+    if (!raw || typeof raw !== 'object') return null;
     const record = raw as Record<string, unknown>;
-    const fn = record.function && typeof record.function === "object" ? (record.function as Record<string, unknown>) : undefined;
-    const name = String(fn?.name ?? record.name ?? "tool").trim() || "tool";
-    const id = String(record.id ?? record.tool_call_id ?? `tool_${index}`).trim() || `tool_${index}`;
-    const args = typeof fn?.arguments === "string" ? fn.arguments : typeof record.arguments === "string" ? record.arguments : undefined;
+    const fn =
+        record.function && typeof record.function === 'object'
+            ? (record.function as Record<string, unknown>)
+            : undefined;
+    const name = String(fn?.name ?? record.name ?? 'tool').trim() || 'tool';
+    const id =
+        String(record.id ?? record.tool_call_id ?? `tool_${index}`).trim() ||
+        `tool_${index}`;
+    const args =
+        typeof fn?.arguments === 'string'
+            ? fn.arguments
+            : typeof record.arguments === 'string'
+              ? record.arguments
+              : undefined;
     return {
         id,
         name,
-        status: "running",
+        status: 'running',
         arguments: args,
         startedAt: createdAt,
     };
@@ -164,7 +213,7 @@ function normalizeToolCall(raw: unknown, index: number, createdAt: string): Chat
 function toolPart(call: ChatToolCall): ChatMessagePart {
     return {
         id: `tool:${call.id}`,
-        type: "tool",
+        type: 'tool',
         toolCallId: call.id,
         name: call.name,
         status: call.status,
@@ -177,10 +226,18 @@ function toolPart(call: ChatToolCall): ChatMessagePart {
 function activityForTool(call: ChatToolCall): ChatActivityEntry {
     return {
         id: `tool:${call.id}`,
-        type: "tool_call",
-        label: call.status === "running" ? `Running ${call.name}` : `Used ${call.name}`,
+        type: 'tool_call',
+        label:
+            call.status === 'running'
+                ? `Running ${call.name}`
+                : `Used ${call.name}`,
         detail: call.error || call.result || call.arguments,
-        status: call.status === "error" || call.status === "attention" ? call.status : call.status === "complete" ? "complete" : "running",
+        status:
+            call.status === 'error' || call.status === 'attention'
+                ? call.status
+                : call.status === 'complete'
+                  ? 'complete'
+                  : 'running',
         createdAt: call.completedAt || call.startedAt,
     };
 }
@@ -197,14 +254,14 @@ function approvalResolutionKeys(
     approvalRequestId: number | string | undefined,
     sessionKey?: string,
 ) {
-    const approvalKey = String(approvalRequestId ?? "").trim();
+    const approvalKey = String(approvalRequestId ?? '').trim();
     if (!approvalKey) return [];
     const requestedSessionKey = sessionKey?.trim();
     return [
         `approval:${approvalKey}`,
         requestedSessionKey
             ? `approval:${requestedSessionKey}:${approvalKey}`
-            : "",
+            : '',
     ].filter(Boolean);
 }
 
@@ -236,7 +293,9 @@ export function useChatSessions() {
         const activeId =
             cache.state.value.activeChatSessionIdByHost?.[hostId]?.trim();
         if (activeId) {
-            const match = hostSessions.find((session) => session.id === activeId);
+            const match = hostSessions.find(
+                (session) => session.id === activeId,
+            );
             if (match) return match;
         }
         return hostSessions[0] ?? null;
@@ -252,8 +311,8 @@ export function useChatSessions() {
         );
         return cache.state.value.messages.filter(
             (message) =>
-                message.role === "assistant" &&
-                message.status === "streaming" &&
+                message.role === 'assistant' &&
+                message.status === 'streaming' &&
                 sessionIds.has(message.sessionId) &&
                 (Boolean(message.jobId) || Boolean(message.runnerChatTurnId)),
         );
@@ -265,10 +324,10 @@ export function useChatSessions() {
     );
     const draftKey = computed(
         () =>
-            `${activeHost.value?.id ?? "none"}:${activeSession.value?.id ?? "new"}`,
+            `${activeHost.value?.id ?? 'none'}:${activeSession.value?.id ?? 'new'}`,
     );
     const draft = computed({
-        get: () => cache.state.value.drafts[draftKey.value] ?? "",
+        get: () => cache.state.value.drafts[draftKey.value] ?? '',
         set: (value: string) => cache.setDraft(draftKey.value, value),
     });
 
@@ -285,7 +344,11 @@ export function useChatSessions() {
             touchSession(sessionId);
             setActiveChatSessionId(sessionId);
             cache.persist();
-            return cache.state.value.sessions.find((item) => item.id === sessionId) ?? null;
+            return (
+                cache.state.value.sessions.find(
+                    (item) => item.id === sessionId,
+                ) ?? null
+            );
         }
         const [session] = cache.state.value.sessions.splice(index, 1);
         if (!session) return null;
@@ -298,14 +361,14 @@ export function useChatSessions() {
 
     function ensureSession() {
         if (activeSession.value) return activeSession.value;
-        const hostId = activeHost.value?.id ?? "local";
+        const hostId = activeHost.value?.id ?? 'local';
         const timestamp = now();
-        const id = createId("session");
+        const id = createId('session');
         const session: ChatSession = {
             id,
             hostId,
             sessionKey: `or3-app:${hostId}:${id}`,
-            title: "New conversation",
+            title: 'New conversation',
             createdAt: timestamp,
             updatedAt: timestamp,
             ...defaultRunnerFields(),
@@ -335,7 +398,7 @@ export function useChatSessions() {
         const existing = findSessionByKey(requestedKey);
         if (existing) {
             if (
-                (!existing.title || existing.title === "New conversation") &&
+                (!existing.title || existing.title === 'New conversation') &&
                 title?.trim()
             ) {
                 existing.title = title.trim().slice(0, 48);
@@ -343,13 +406,13 @@ export function useChatSessions() {
             return promoteSession(existing.id);
         }
 
-        const hostId = activeHost.value?.id ?? "local";
+        const hostId = activeHost.value?.id ?? 'local';
         const timestamp = now();
         const session: ChatSession = {
-            id: createId("session"),
+            id: createId('session'),
             hostId,
             sessionKey: requestedKey,
-            title: title?.trim().slice(0, 48) || "New conversation",
+            title: title?.trim().slice(0, 48) || 'New conversation',
             createdAt: timestamp,
             updatedAt: timestamp,
             ...defaultRunnerFields(),
@@ -367,7 +430,7 @@ export function useChatSessions() {
         if (!session) return;
         session.updatedAt = now();
         if (
-            (!session.title || session.title === "New conversation") &&
+            (!session.title || session.title === 'New conversation') &&
             fallbackTitle?.trim()
         ) {
             session.title = fallbackTitle.trim().slice(0, 48);
@@ -396,33 +459,69 @@ export function useChatSessions() {
     }
 
     function addMessage(
-        message: Omit<ChatMessage, "id" | "createdAt"> &
-            Partial<Pick<ChatMessage, "id" | "createdAt">>,
+        message: Omit<ChatMessage, 'id' | 'createdAt'> &
+            Partial<Pick<ChatMessage, 'id' | 'createdAt'>>,
     ) {
         const complete: ChatMessage = {
-            id: message.id ?? createId("msg"),
+            id: message.id ?? createId('msg'),
             createdAt: message.createdAt ?? now(),
             ...message,
         };
         cache.state.value.messages.push(complete);
         touchSession(
             complete.sessionId,
-            complete.role === "user" ? complete.content : undefined,
+            complete.role === 'user' ? complete.content : undefined,
         );
         syncSessionMessageSummary(complete.sessionId);
         cache.persist();
         return complete;
     }
 
-    function updateMessage(id: string, patch: Partial<ChatMessage>) {
-        const message = cache.state.value.messages.find(
-            (item) => item.id === id,
-        );
+    function applyMessagePatch(
+        message: ChatMessage,
+        patch: Partial<ChatMessage>,
+        options: MessageMutationOptions = {},
+    ) {
         if (!message) return;
         Object.assign(message, patch);
+        if (options.touch !== false) touchSession(message.sessionId);
+        if (options.syncSummary !== false)
+            syncSessionMessageSummary(message.sessionId);
+        if (options.persist !== false) cache.persist();
+        return message;
+    }
+
+    function findMessageById(id: string) {
+        return (
+            cache.state.value.messages.find((item) => item.id === id) ?? null
+        );
+    }
+
+    function updateMessage(
+        id: string,
+        patch: Partial<ChatMessage>,
+        options: MessageMutationOptions = {},
+    ) {
+        const message = findMessageById(id);
+        if (!message) return;
+        return applyMessagePatch(message, patch, options);
+    }
+
+    function updateMessageRecord(
+        message: ChatMessage,
+        patch: Partial<ChatMessage>,
+        options: MessageMutationOptions = {},
+    ) {
+        return applyMessagePatch(message, patch, options);
+    }
+
+    function flushMessage(id: string) {
+        const message = findMessageById(id);
+        if (!message) return;
         touchSession(message.sessionId);
         syncSessionMessageSummary(message.sessionId);
         cache.persist();
+        return message;
     }
 
     function toggleMessagePin(id: string) {
@@ -440,7 +539,7 @@ export function useChatSessions() {
         approvalRequestId: number | string | undefined,
         sessionKey?: string,
     ) {
-        const approvalKey = String(approvalRequestId ?? "").trim();
+        const approvalKey = String(approvalRequestId ?? '').trim();
         if (!approvalKey) return null;
 
         const hostId = activeHost.value?.id;
@@ -463,9 +562,9 @@ export function useChatSessions() {
             index--
         ) {
             const message = cache.state.value.messages[index];
-            if (!message || message.role !== "assistant") continue;
+            if (!message || message.role !== 'assistant') continue;
             if (!sessionIds.has(message.sessionId)) continue;
-            if (String(message.approvalRequestId ?? "").trim() !== approvalKey)
+            if (String(message.approvalRequestId ?? '').trim() !== approvalKey)
                 continue;
             return message;
         }
@@ -494,13 +593,13 @@ export function useChatSessions() {
             index--
         ) {
             const message = cache.state.value.messages[index];
-            if (!message || message.role !== "assistant") continue;
+            if (!message || message.role !== 'assistant') continue;
             if (message.sessionId !== targetSession.id) continue;
             if (message.approvalRequestId) continue;
             if (
-                message.status === "streaming" ||
-                message.status === "attention" ||
-                message.errorCode === "approval_required"
+                message.status === 'streaming' ||
+                message.status === 'attention' ||
+                message.errorCode === 'approval_required'
             ) {
                 return message;
             }
@@ -510,22 +609,22 @@ export function useChatSessions() {
 
     function markApprovalResolved(
         approvalRequestId: number | string | undefined,
-        state: NonNullable<ChatMessage["approvalState"]>,
+        state: NonNullable<ChatMessage['approvalState']>,
         sessionKey?: string,
         error?: string,
     ) {
         const keys = approvalResolutionKeys(approvalRequestId, sessionKey);
-        for (const key of keys) resolvedApprovalKeys.add(key);
+        for (const key of keys) rememberResolvedApprovalKey(key);
 
-        const approvalKey = String(approvalRequestId ?? "").trim();
+        const approvalKey = String(approvalRequestId ?? '').trim();
         if (!approvalKey) return;
         const resolvedSessionKey = sessionKey?.trim();
         const sessionById = new Map(
             cache.state.value.sessions.map((session) => [session.id, session]),
         );
         for (const message of cache.state.value.messages) {
-            if (message.role !== "assistant") continue;
-            if (String(message.approvalRequestId ?? "").trim() !== approvalKey)
+            if (message.role !== 'assistant') continue;
+            if (String(message.approvalRequestId ?? '').trim() !== approvalKey)
                 continue;
             if (
                 resolvedSessionKey &&
@@ -535,17 +634,17 @@ export function useChatSessions() {
                 continue;
             }
             const preserveLiveStatus =
-                message.status === "streaming" ||
-                message.approvalState === "retrying";
+                message.status === 'streaming' ||
+                message.approvalState === 'retrying';
             updateMessage(message.id, {
                 approvalRequestId: undefined,
-                approvalState: state === "approved" ? undefined : state,
+                approvalState: state === 'approved' ? undefined : state,
                 status:
-                    state === "failed"
-                        ? "failed"
+                    state === 'failed'
+                        ? 'failed'
                         : preserveLiveStatus
                           ? message.status
-                          : "complete",
+                          : 'complete',
                 error,
                 errorCode: undefined,
             });
@@ -557,12 +656,12 @@ export function useChatSessions() {
         sessionKey?: string;
         content?: string;
         createdAt?: string;
-        status?: ChatMessage["status"];
-        approvalState?: ChatMessage["approvalState"];
+        status?: ChatMessage['status'];
+        approvalState?: ChatMessage['approvalState'];
         approvalType?: string;
         approvalPreview?: string;
     }) {
-        const approvalKey = String(options.approvalRequestId ?? "").trim();
+        const approvalKey = String(options.approvalRequestId ?? '').trim();
         if (!approvalKey) return null;
         if (isApprovalResolved(options.approvalRequestId, options.sessionKey)) {
             return null;
@@ -574,15 +673,14 @@ export function useChatSessions() {
         );
         if (existing) {
             updateMessage(existing.id, {
-                status: options.status ?? existing.status ?? "attention",
+                status: options.status ?? existing.status ?? 'attention',
                 approvalState:
                     options.approvalState ??
                     existing.approvalState ??
-                    "pending",
+                    'pending',
                 content:
                     existing.content || options.content || existing.content,
-                approvalType:
-                    options.approvalType ?? existing.approvalType,
+                approvalType: options.approvalType ?? existing.approvalType,
                 approvalPreview:
                     options.approvalPreview ?? existing.approvalPreview,
                 error: undefined,
@@ -598,18 +696,17 @@ export function useChatSessions() {
         if (attachTarget) {
             updateMessage(attachTarget.id, {
                 approvalRequestId: options.approvalRequestId,
-                approvalState: options.approvalState ?? "pending",
-                status: options.status ?? "attention",
+                approvalState: options.approvalState ?? 'pending',
+                status: options.status ?? 'attention',
                 content:
                     attachTarget.content ||
                     options.content ||
                     attachTarget.content,
-                approvalType:
-                    options.approvalType ?? attachTarget.approvalType,
+                approvalType: options.approvalType ?? attachTarget.approvalType,
                 approvalPreview:
                     options.approvalPreview ?? attachTarget.approvalPreview,
                 error: undefined,
-                errorCode: "approval_required",
+                errorCode: 'approval_required',
             });
             return (
                 cache.state.value.messages.find(
@@ -625,27 +722,27 @@ export function useChatSessions() {
 
         return addMessage({
             sessionId: session.id,
-            role: "assistant",
+            role: 'assistant',
             content:
                 options.content ||
-                "Approval is needed before or3-intern can continue.",
-            status: options.status ?? "attention",
+                'Approval is needed before or3-intern can continue.',
+            status: options.status ?? 'attention',
             approvalRequestId: options.approvalRequestId,
             approvalType: options.approvalType,
             approvalPreview: options.approvalPreview,
-            approvalState: options.approvalState ?? "pending",
+            approvalState: options.approvalState ?? 'pending',
             createdAt: options.createdAt,
-            reasoningText: "",
+            reasoningText: '',
             toolCalls: [],
             parts: [],
             activityLog: [],
         });
     }
 
-    function newSession(title = "New conversation") {
-        const hostId = activeHost.value?.id ?? "local";
+    function newSession(title = 'New conversation') {
+        const hostId = activeHost.value?.id ?? 'local';
         const timestamp = now();
-        const id = createId("session");
+        const id = createId('session');
         const session: ChatSession = {
             id,
             hostId,
@@ -673,7 +770,7 @@ export function useChatSessions() {
         );
         if (session) {
             session.updatedAt = now();
-            session.title = "New conversation";
+            session.title = 'New conversation';
             session.backendMessageCount = 0;
             session.lastMessagePreview = undefined;
             session.lastMessageAt = undefined;
@@ -692,9 +789,9 @@ export function useChatSessions() {
         const resolvedSession = targetSession ?? ensureSession();
         return addMessage({
             sessionId: resolvedSession.id,
-            role: "system",
+            role: 'system',
             content,
-            status: "complete",
+            status: 'complete',
         });
     }
 
@@ -777,11 +874,12 @@ export function useChatSessions() {
             new Map(
                 sessionMessages()
                     .filter(
-                        (message) =>
-                            backendIdsForMessage(message).length > 0,
+                        (message) => backendIdsForMessage(message).length > 0,
                     )
                     .flatMap((message) =>
-                        backendIdsForMessage(message).map((id) => [id, message] as const),
+                        backendIdsForMessage(message).map(
+                            (id) => [id, message] as const,
+                        ),
                     ),
             );
         const claimedLocalMessageIds = new Set<string>();
@@ -789,27 +887,45 @@ export function useChatSessions() {
             backend: ChatHistoryMessage,
             payload: Record<string, unknown>,
         ) => {
-            const toolCallId = String(payload.tool_call_id ?? payload.call_id ?? "").trim();
-            const toolName = String(payload.tool ?? payload.name ?? "tool").trim() || "tool";
+            const toolCallId = String(
+                payload.tool_call_id ?? payload.call_id ?? '',
+            ).trim();
+            const toolName =
+                String(payload.tool ?? payload.name ?? 'tool').trim() || 'tool';
             const messages = sessionMessages();
-            const assistant = [...messages]
-                .reverse()
-                .find((message) => {
-                    if (message.role !== "assistant") return false;
-                    if (!toolCallId) return Boolean(message.toolCalls?.length || message.parts?.some((part) => part.type === "tool"));
+            const assistant = [...messages].reverse().find((message) => {
+                if (message.role !== 'assistant') return false;
+                if (!toolCallId)
                     return Boolean(
-                        message.toolCalls?.some((call) => call.id === toolCallId) ||
-                            message.parts?.some((part) => part.toolCallId === toolCallId),
+                        message.toolCalls?.length ||
+                        message.parts?.some((part) => part.type === 'tool'),
                     );
-                });
+                return Boolean(
+                    message.toolCalls?.some((call) => call.id === toolCallId) ||
+                    message.parts?.some(
+                        (part) => part.toolCallId === toolCallId,
+                    ),
+                );
+            });
             if (!assistant) return false;
 
             const status = toolResultStatus(backend.content);
-            const result = status === "complete" ? toolResultPreview(backend.content, payload) : undefined;
-            const error = status !== "complete" ? toolResultPreview(backend.content, payload) : undefined;
-            const existingCall = assistant.toolCalls?.find((call) => call.id === toolCallId);
+            const result =
+                status === 'complete'
+                    ? toolResultPreview(backend.content, payload)
+                    : undefined;
+            const error =
+                status !== 'complete'
+                    ? toolResultPreview(backend.content, payload)
+                    : undefined;
+            const existingCall = assistant.toolCalls?.find(
+                (call) => call.id === toolCallId,
+            );
             const call: ChatToolCall = {
-                id: toolCallId || existingCall?.id || `tool_backend_${backend.id}`,
+                id:
+                    toolCallId ||
+                    existingCall?.id ||
+                    `tool_backend_${backend.id}`,
                 name: existingCall?.name || toolName,
                 status,
                 arguments:
@@ -817,14 +933,18 @@ export function useChatSessions() {
                     previewValue(payload.args ?? payload.arguments),
                 result,
                 error,
-                startedAt: existingCall?.startedAt || msToIso(backend.created_at),
+                startedAt:
+                    existingCall?.startedAt || msToIso(backend.created_at),
                 completedAt: msToIso(backend.created_at),
             };
             updateMessage(assistant.id, {
                 backendMessageIds: appendBackendId(assistant, backend.id),
                 toolCalls: upsertById(assistant.toolCalls, call),
                 parts: upsertById(assistant.parts, toolPart(call)),
-                activityLog: upsertById(assistant.activityLog, activityForTool(call)).slice(-30),
+                activityLog: upsertById(
+                    assistant.activityLog,
+                    activityForTool(call),
+                ).slice(-30),
             });
             cache.state.value.messages = cache.state.value.messages.filter(
                 (message) =>
@@ -838,11 +958,11 @@ export function useChatSessions() {
             const backendID = backend.id;
             const role = backendRole(backend);
             const payload =
-                backend.payload && typeof backend.payload === "object"
+                backend.payload && typeof backend.payload === 'object'
                     ? (backend.payload as Record<string, unknown>)
                     : {};
             if (
-                role === "user" &&
+                role === 'user' &&
                 isSyntheticApprovalContinuationUserMessage(
                     backend.content,
                     payload,
@@ -853,104 +973,115 @@ export function useChatSessions() {
             }
             const runnerPermissionPayload =
                 payload.runner_permission &&
-                typeof payload.runner_permission === "object"
+                typeof payload.runner_permission === 'object'
                     ? (payload.runner_permission as Record<string, unknown>)
                     : undefined;
-            if (role === "tool" && attachToolResultToAssistant(backend, payload)) {
+            if (
+                role === 'tool' &&
+                attachToolResultToAssistant(backend, payload)
+            ) {
                 continue;
             }
             const toolCalls = Array.isArray(payload.tool_calls)
                 ? payload.tool_calls
-                      .map((item, index) => normalizeToolCall(item, index, msToIso(backend.created_at)))
+                      .map((item, index) =>
+                          normalizeToolCall(
+                              item,
+                              index,
+                              msToIso(backend.created_at),
+                          ),
+                      )
                       .filter((item): item is ChatToolCall => Boolean(item))
                 : [];
             const toolParts = toolCalls.map(toolPart);
-            const toolActivities = toolCalls.map((call) => activityForTool(call));
+            const toolActivities = toolCalls.map((call) =>
+                activityForTool(call),
+            );
             const patch: Partial<ChatMessage> = {
                 backendMessageId: backendID,
                 backendMessageIds: uniqueBackendIds(backendID),
                 sourceSessionKey: session.sessionKey,
                 runnerId:
-                    typeof payload.runner_id === "string"
+                    typeof payload.runner_id === 'string'
                         ? payload.runner_id
                         : session.runnerId,
                 runnerChatSessionId:
-                    typeof payload.runner_chat_session_id === "string"
+                    typeof payload.runner_chat_session_id === 'string'
                         ? payload.runner_chat_session_id
                         : session.runnerChatSessionId,
                 runnerChatTurnId:
-                    typeof payload.runner_chat_turn_id === "string"
+                    typeof payload.runner_chat_turn_id === 'string'
                         ? payload.runner_chat_turn_id
                         : undefined,
                 approvalRequestId:
-                    typeof payload.approval_request_id === "string" ||
-                    typeof payload.approval_request_id === "number"
+                    typeof payload.approval_request_id === 'string' ||
+                    typeof payload.approval_request_id === 'number'
                         ? payload.approval_request_id
-                        : typeof payload.approval_id === "string" ||
-                            typeof payload.approval_id === "number"
+                        : typeof payload.approval_id === 'string' ||
+                            typeof payload.approval_id === 'number'
                           ? payload.approval_id
                           : undefined,
                 approvalState:
-                    payload.approval_state === "pending"
-                        ? "pending"
+                    payload.approval_state === 'pending'
+                        ? 'pending'
                         : undefined,
                 retryPayload:
-                    payload.status === "approval_required" &&
-                    typeof payload.user_message === "string" &&
+                    payload.status === 'approval_required' &&
+                    typeof payload.user_message === 'string' &&
                     payload.user_message.trim()
                         ? {
                               text: payload.user_message,
                               transportText: payload.user_message,
                               suppressUserEcho: true,
                               runnerId:
-                                  typeof payload.runner_id === "string"
+                                  typeof payload.runner_id === 'string'
                                       ? payload.runner_id
                                       : session.runnerId,
                               runnerChatSessionId:
                                   typeof payload.runner_chat_session_id ===
-                                  "string"
+                                  'string'
                                       ? payload.runner_chat_session_id
                                       : session.runnerChatSessionId,
                               runnerContinuationMode:
-                                  typeof payload.continuation_mode === "string"
+                                  typeof payload.continuation_mode === 'string'
                                       ? payload.continuation_mode
                                       : session.runnerContinuationMode,
                               runnerModel:
-                                  typeof payload.model === "string"
+                                  typeof payload.model === 'string'
                                       ? payload.model
                                       : session.runnerModel,
                               runnerMode:
-                                  typeof payload.mode === "string"
+                                  typeof payload.mode === 'string'
                                       ? payload.mode
                                       : session.runnerMode,
                               runnerIsolation:
-                                  typeof payload.isolation === "string"
+                                  typeof payload.isolation === 'string'
                                       ? payload.isolation
                                       : session.runnerIsolation,
                               runnerCwd:
-                                  typeof payload.cwd === "string"
+                                  typeof payload.cwd === 'string'
                                       ? payload.cwd
                                       : session.runnerCwd,
                               runnerPermission: runnerPermissionPayload
                                   ? {
                                         runnerId:
                                             typeof runnerPermissionPayload.runner_id ===
-                                            "string"
+                                            'string'
                                                 ? runnerPermissionPayload.runner_id
                                                 : undefined,
                                         kind:
                                             typeof runnerPermissionPayload.kind ===
-                                            "string"
+                                            'string'
                                                 ? runnerPermissionPayload.kind
                                                 : undefined,
                                         access:
                                             typeof runnerPermissionPayload.access ===
-                                            "string"
+                                            'string'
                                                 ? runnerPermissionPayload.access
                                                 : undefined,
                                         targetPath:
                                             typeof runnerPermissionPayload.target_path ===
-                                            "string"
+                                            'string'
                                                 ? runnerPermissionPayload.target_path
                                                 : undefined,
                                     }
@@ -958,9 +1089,9 @@ export function useChatSessions() {
                           }
                         : undefined,
                 status:
-                    payload.status === "approval_required"
-                        ? "attention"
-                        : "complete",
+                    payload.status === 'approval_required'
+                        ? 'attention'
+                        : 'complete',
             };
             if (toolCalls.length) {
                 patch.toolCalls = toolCalls;
@@ -969,7 +1100,7 @@ export function useChatSessions() {
                         ? [
                               {
                                   id: `text:${backendID}`,
-                                  type: "text" as const,
+                                  type: 'text' as const,
                                   content: backend.content,
                               },
                           ]
@@ -984,19 +1115,18 @@ export function useChatSessions() {
                 mergeNextAssistantIntoPrevious = false;
                 continue;
             }
-            if (role === "assistant" && mergeNextAssistantIntoPrevious) {
+            if (role === 'assistant' && mergeNextAssistantIntoPrevious) {
                 const previousAssistant = [...sessionMessages()]
                     .reverse()
-                    .find((message) => message.role === "assistant");
+                    .find((message) => message.role === 'assistant');
                 if (previousAssistant) {
                     const merged = mergeAssistantMessages(previousAssistant, {
                         ...previousAssistant,
                         ...patch,
                         id: previousAssistant.id,
                         sessionId: session.id,
-                        role: "assistant",
-                        content:
-                            previousAssistant.content || backend.content,
+                        role: 'assistant',
+                        content: previousAssistant.content || backend.content,
                         createdAt:
                             previousAssistant.createdAt ||
                             msToIso(backend.created_at),
@@ -1030,15 +1160,15 @@ export function useChatSessions() {
                 sessionId: session.id,
                 role,
                 content: backend.content,
-                status: "complete" as const,
+                status: 'complete' as const,
                 createdAt: msToIso(backend.created_at),
                 ...patch,
             };
             const previousAssistant = [...sessionMessages()]
                 .reverse()
-                .find((message) => message.role === "assistant");
+                .find((message) => message.role === 'assistant');
             if (
-                role === "assistant" &&
+                role === 'assistant' &&
                 shouldMergeAssistantRunMessages(
                     previousAssistant,
                     nextMessage as ChatMessage,
@@ -1048,7 +1178,10 @@ export function useChatSessions() {
             ) {
                 updateMessage(
                     previousAssistant.id,
-                    mergeAssistantMessages(previousAssistant, nextMessage as ChatMessage),
+                    mergeAssistantMessages(
+                        previousAssistant,
+                        nextMessage as ChatMessage,
+                    ),
                 );
             } else {
                 addMessage(nextMessage);
@@ -1074,6 +1207,9 @@ export function useChatSessions() {
         newSession,
         addMessage,
         updateMessage,
+        updateMessageRecord,
+        findMessageById,
+        flushMessage,
         toggleMessagePin,
         findAssistantMessageForApproval,
         isApprovalResolved,

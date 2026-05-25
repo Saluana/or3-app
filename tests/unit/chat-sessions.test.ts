@@ -1,52 +1,52 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from 'vitest';
 
-import { useChatSessions } from "../../app/composables/useChatSessions";
-import { useLocalCache } from "../../app/composables/useLocalCache";
+import { useChatSessions } from '../../app/composables/useChatSessions';
+import { useLocalCache } from '../../app/composables/useLocalCache';
 
-describe("useChatSessions", () => {
+describe('useChatSessions', () => {
     afterEach(() => {
         useLocalCache().clearAll();
     });
 
-    it("finds the active assistant message tied to an approval request", () => {
+    it('finds the active assistant message tied to an approval request', () => {
         useLocalCache().updateHost({
-            id: "test-host",
-            name: "Test Host",
-            baseUrl: "http://127.0.0.1:9100",
-            token: "secret",
+            id: 'test-host',
+            name: 'Test Host',
+            baseUrl: 'http://127.0.0.1:9100',
+            token: 'secret',
         });
 
         const chat = useChatSessions();
         const session = chat.ensureSession();
         chat.addMessage({
             sessionId: session.id,
-            role: "assistant",
-            content: "waiting",
-            status: "attention",
+            role: 'assistant',
+            content: 'waiting',
+            status: 'attention',
             approvalRequestId: 73,
-            approvalState: "pending",
+            approvalState: 'pending',
         });
 
         expect(
             chat.findAssistantMessageForApproval(73, session.sessionKey)
                 ?.content,
-        ).toBe("waiting");
+        ).toBe('waiting');
         expect(
             chat.findAssistantMessageForApproval(74, session.sessionKey),
         ).toBeNull();
     });
 
-    it("keeps the active session stable via activeChatSessionIdByHost", () => {
+    it('keeps the active session stable via activeChatSessionIdByHost', () => {
         useLocalCache().updateHost({
-            id: "test-host",
-            name: "Test Host",
-            baseUrl: "http://127.0.0.1:9100",
-            token: "secret",
+            id: 'test-host',
+            name: 'Test Host',
+            baseUrl: 'http://127.0.0.1:9100',
+            token: 'secret',
         });
 
         const chat = useChatSessions();
         const older = chat.ensureSession();
-        const newer = chat.newSession("Newer conversation");
+        const newer = chat.newSession('Newer conversation');
 
         expect(chat.activeSession.value?.id).toBe(newer.id);
 
@@ -54,48 +54,50 @@ describe("useChatSessions", () => {
 
         expect(chat.activeSession.value?.id).toBe(older.id);
         expect(
-            useLocalCache().state.value.activeChatSessionIdByHost?.["test-host"],
+            useLocalCache().state.value.activeChatSessionIdByHost?.[
+                'test-host'
+            ],
         ).toBe(older.id);
     });
 
-    it("lists pending streaming messages across every host session", () => {
+    it('lists pending streaming messages across every host session', () => {
         useLocalCache().updateHost({
-            id: "test-host",
-            name: "Test Host",
-            baseUrl: "http://127.0.0.1:9100",
-            token: "secret",
+            id: 'test-host',
+            name: 'Test Host',
+            baseUrl: 'http://127.0.0.1:9100',
+            token: 'secret',
         });
 
         const chat = useChatSessions();
         const first = chat.ensureSession();
-        const second = chat.newSession("Second");
+        const second = chat.newSession('Second');
 
         chat.addMessage({
             sessionId: first.id,
-            role: "assistant",
-            content: "still going",
-            status: "streaming",
-            jobId: "job_1",
+            role: 'assistant',
+            content: 'still going',
+            status: 'streaming',
+            jobId: 'job_1',
         });
         chat.setActiveChatSessionId(second.id);
 
         const pending = chat.pendingStreamingMessagesForHost();
         expect(pending).toHaveLength(1);
         expect(pending[0]?.sessionId).toBe(first.id);
-        expect(pending[0]?.jobId).toBe("job_1");
+        expect(pending[0]?.jobId).toBe('job_1');
     });
 
-    it("promotes a session by key and reuses it for approval placeholders", () => {
+    it('promotes a session by key and reuses it for approval placeholders', () => {
         useLocalCache().updateHost({
-            id: "test-host",
-            name: "Test Host",
-            baseUrl: "http://127.0.0.1:9100",
-            token: "secret",
+            id: 'test-host',
+            name: 'Test Host',
+            baseUrl: 'http://127.0.0.1:9100',
+            token: 'secret',
         });
 
         const chat = useChatSessions();
         const original = chat.ensureSession();
-        const newer = chat.newSession("Newer conversation");
+        const newer = chat.newSession('Newer conversation');
 
         expect(chat.activeSession.value?.id).toBe(newer.id);
 
@@ -103,7 +105,7 @@ describe("useChatSessions", () => {
         const placeholder = chat.ensureApprovalMessage({
             approvalRequestId: 101,
             sessionKey: original.sessionKey,
-            content: "Approval is needed before or3-intern can continue.",
+            content: 'Approval is needed before or3-intern can continue.',
         });
 
         expect(activated?.id).toBe(original.id);
@@ -114,83 +116,83 @@ describe("useChatSessions", () => {
         ).toBe(placeholder?.id);
     });
 
-    it("creates a session when activating an unseen session key", () => {
+    it('creates a session when activating an unseen session key', () => {
         useLocalCache().updateHost({
-            id: "test-host",
-            name: "Test Host",
-            baseUrl: "http://127.0.0.1:9100",
-            token: "secret",
+            id: 'test-host',
+            name: 'Test Host',
+            baseUrl: 'http://127.0.0.1:9100',
+            token: 'secret',
         });
 
         const chat = useChatSessions();
         const activated = chat.activateSessionByKey(
-            "svc:approval-session",
-            "Imported approval",
+            'svc:approval-session',
+            'Imported approval',
         );
 
-        expect(activated?.sessionKey).toBe("svc:approval-session");
-        expect(activated?.title).toBe("Imported approval");
+        expect(activated?.sessionKey).toBe('svc:approval-session');
+        expect(activated?.title).toBe('Imported approval');
         expect(chat.activeSession.value?.sessionKey).toBe(
-            "svc:approval-session",
+            'svc:approval-session',
         );
     });
 
-    it("attaches hydrated approvals to the in-flight assistant message", () => {
+    it('attaches hydrated approvals to the in-flight assistant message', () => {
         useLocalCache().updateHost({
-            id: "test-host",
-            name: "Test Host",
-            baseUrl: "http://127.0.0.1:9100",
-            token: "secret",
+            id: 'test-host',
+            name: 'Test Host',
+            baseUrl: 'http://127.0.0.1:9100',
+            token: 'secret',
         });
 
         const chat = useChatSessions();
         const session = chat.ensureSession();
         const assistant = chat.addMessage({
             sessionId: session.id,
-            role: "assistant",
-            content: "",
-            status: "attention",
-            errorCode: "approval_required",
+            role: 'assistant',
+            content: '',
+            status: 'attention',
+            errorCode: 'approval_required',
         });
 
         const approvalMessage = chat.ensureApprovalMessage({
             approvalRequestId: 202,
             sessionKey: session.sessionKey,
-            content: "Approval is needed before or3-intern can continue.",
+            content: 'Approval is needed before or3-intern can continue.',
         });
 
         expect(approvalMessage?.id).toBe(assistant.id);
         expect(chat.messages.value).toHaveLength(1);
         expect(approvalMessage?.approvalRequestId).toBe(202);
-        expect(approvalMessage?.approvalState).toBe("pending");
+        expect(approvalMessage?.approvalState).toBe('pending');
     });
 
-    it("does not recreate a resolved approval placeholder", () => {
+    it('does not recreate a resolved approval placeholder', () => {
         useLocalCache().updateHost({
-            id: "test-host",
-            name: "Test Host",
-            baseUrl: "http://127.0.0.1:9100",
-            token: "secret",
+            id: 'test-host',
+            name: 'Test Host',
+            baseUrl: 'http://127.0.0.1:9100',
+            token: 'secret',
         });
 
         const chat = useChatSessions();
         const session = chat.ensureSession();
         chat.addMessage({
             sessionId: session.id,
-            role: "assistant",
-            content: "waiting",
-            status: "attention",
+            role: 'assistant',
+            content: 'waiting',
+            status: 'attention',
             approvalRequestId: 303,
-            approvalState: "pending",
+            approvalState: 'pending',
         });
 
-        chat.markApprovalResolved(303, "approved", session.sessionKey);
+        chat.markApprovalResolved(303, 'approved', session.sessionKey);
 
         expect(
             chat.ensureApprovalMessage({
                 approvalRequestId: 303,
                 sessionKey: session.sessionKey,
-                content: "Approval is needed before or3-intern can continue.",
+                content: 'Approval is needed before or3-intern can continue.',
             }),
         ).toBeNull();
         expect(chat.messages.value).toHaveLength(1);
@@ -198,33 +200,68 @@ describe("useChatSessions", () => {
         expect(chat.messages.value[0]?.approvalState).toBeUndefined();
     });
 
-    it("hydrates backend tool rows into the assistant activity instead of raw chat bubbles", () => {
+    it('updates live streaming messages without forcing a localStorage write', () => {
         useLocalCache().updateHost({
-            id: "test-host",
-            name: "Test Host",
-            baseUrl: "http://127.0.0.1:9100",
-            token: "secret",
+            id: 'test-host',
+            name: 'Test Host',
+            baseUrl: 'http://127.0.0.1:9100',
+            token: 'secret',
         });
 
         const chat = useChatSessions();
-        const session = chat.activateSessionByKey("discord:C1:U1", "Discord C1:U1");
-        if (!session) throw new Error("expected session");
+        const session = chat.ensureSession();
+        const assistant = chat.addMessage({
+            sessionId: session.id,
+            role: 'assistant',
+            content: '',
+            status: 'streaming',
+        });
+
+        chat.updateMessage(
+            assistant.id,
+            { content: 'partial' },
+            { persist: false, touch: false, syncSummary: false },
+        );
+
+        expect(chat.messages.value[0]?.content).toBe('partial');
+        expect(session.lastMessagePreview).toBeUndefined();
+
+        chat.flushMessage(assistant.id);
+
+        expect(session.lastMessagePreview).toBe('partial');
+    });
+
+    it('hydrates backend tool rows into the assistant activity instead of raw chat bubbles', () => {
+        useLocalCache().updateHost({
+            id: 'test-host',
+            name: 'Test Host',
+            baseUrl: 'http://127.0.0.1:9100',
+            token: 'secret',
+        });
+
+        const chat = useChatSessions();
+        const session = chat.activateSessionByKey(
+            'discord:C1:U1',
+            'Discord C1:U1',
+        );
+        if (!session) throw new Error('expected session');
 
         chat.hydrateBackendMessages(session, [
             {
                 id: 10,
-                session_key: "discord:C1:U1",
-                role: "assistant",
-                content: "",
+                session_key: 'discord:C1:U1',
+                role: 'assistant',
+                content: '',
                 created_at: 1_717_171_717_000,
                 payload: {
                     tool_calls: [
                         {
-                            id: "tc-list",
-                            type: "function",
+                            id: 'tc-list',
+                            type: 'function',
                             function: {
-                                name: "list_dir",
-                                arguments: '{"path":"/Users/brendon/Documents/or3-intern"}',
+                                name: 'list_dir',
+                                arguments:
+                                    '{"path":"/Users/brendon/Documents/or3-intern"}',
                             },
                         },
                     ],
@@ -232,21 +269,22 @@ describe("useChatSessions", () => {
             },
             {
                 id: 11,
-                session_key: "discord:C1:U1",
-                role: "tool",
-                content: '{"kind":"list_dir","ok":true,"summary":"Listed 26 entries"}',
+                session_key: 'discord:C1:U1',
+                role: 'tool',
+                content:
+                    '{"kind":"list_dir","ok":true,"summary":"Listed 26 entries"}',
                 created_at: 1_717_171_718_000,
                 payload: {
-                    tool: "list_dir",
-                    tool_call_id: "tc-list",
-                    args: { path: "/Users/brendon/Documents/or3-intern" },
+                    tool: 'list_dir',
+                    tool_call_id: 'tc-list',
+                    args: { path: '/Users/brendon/Documents/or3-intern' },
                 },
             },
             {
                 id: 12,
-                session_key: "discord:C1:U1",
-                role: "assistant",
-                content: "Here is what I see.",
+                session_key: 'discord:C1:U1',
+                role: 'assistant',
+                content: 'Here is what I see.',
                 created_at: 1_717_171_719_000,
                 payload: { in_reply_to: 9 },
             },
@@ -254,35 +292,36 @@ describe("useChatSessions", () => {
 
         expect(chat.messages.value).toHaveLength(2);
         const toolAssistant = chat.messages.value[0];
-        expect(toolAssistant?.content).toBe("");
+        expect(toolAssistant?.content).toBe('');
         expect(toolAssistant?.toolCalls?.[0]).toMatchObject({
-            id: "tc-list",
-            name: "list_dir",
-            status: "complete",
-            result: "Listed 26 entries",
+            id: 'tc-list',
+            name: 'list_dir',
+            status: 'complete',
+            result: 'Listed 26 entries',
         });
         expect(toolAssistant?.parts?.[0]).toMatchObject({
-            type: "tool",
-            toolCallId: "tc-list",
-            status: "complete",
+            type: 'tool',
+            toolCallId: 'tc-list',
+            status: 'complete',
         });
         expect(toolAssistant?.activityLog?.[0]).toMatchObject({
-            type: "tool_call",
-            status: "complete",
+            type: 'tool_call',
+            status: 'complete',
         });
         expect(chat.latestBackendMessageId(session.id)).toBe(12);
-        expect(chat.messages.value[1]?.content).toBe("Here is what I see.");
+        expect(chat.messages.value[1]?.content).toBe('Here is what I see.');
 
         chat.hydrateBackendMessages(session, [
             {
                 id: 11,
-                session_key: "discord:C1:U1",
-                role: "tool",
-                content: '{"kind":"list_dir","ok":true,"summary":"Listed 26 entries"}',
+                session_key: 'discord:C1:U1',
+                role: 'tool',
+                content:
+                    '{"kind":"list_dir","ok":true,"summary":"Listed 26 entries"}',
                 created_at: 1_717_171_718_000,
                 payload: {
-                    tool: "list_dir",
-                    tool_call_id: "tc-list",
+                    tool: 'list_dir',
+                    tool_call_id: 'tc-list',
                 },
             },
         ]);

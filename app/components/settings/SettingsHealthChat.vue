@@ -108,7 +108,9 @@
                     v-if="health.findings.value.length"
                     class="mt-4 space-y-3"
                 >
-                    <div class="flex flex-wrap items-center justify-between gap-2">
+                    <div
+                        class="flex flex-wrap items-center justify-between gap-2"
+                    >
                         <p
                             class="font-mono text-xs uppercase tracking-wide text-(--or3-text-muted)"
                         >
@@ -392,7 +394,9 @@
                                             :disabled="approvalBusy"
                                             label="Deny"
                                             @click="
-                                                denyDoctorApproval(message.rawId)
+                                                denyDoctorApproval(
+                                                    message.rawId,
+                                                )
                                             "
                                         />
                                         <UButton
@@ -411,7 +415,9 @@
                                     </div>
                                 </div>
                                 <p
-                                    v-else-if="message.approvalState === 'denied'"
+                                    v-else-if="
+                                        message.approvalState === 'denied'
+                                    "
                                     class="or3-doctor-message__notice"
                                 >
                                     Approval denied. The tool call was not run.
@@ -580,7 +586,9 @@
         <!-- Composer fixed at bottom -->
         <div class="or3-chat-shell__composer">
             <div class="or3-chat-shell__composer-inner">
-                <div class="or3-chat-shell__status flex items-center gap-2 px-1">
+                <div
+                    class="or3-chat-shell__status flex items-center gap-2 px-1"
+                >
                     <AssistantStatusIndicator :active="chat.loading.value" />
                 </div>
                 <p
@@ -615,7 +623,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import {
+    computed,
+    nextTick,
+    onMounted,
+    onUnmounted,
+    ref,
+    shallowRef,
+    watch,
+} from 'vue';
 import { useRouter } from 'vue-router';
 import {
     useSettingsHealth,
@@ -684,6 +700,9 @@ const planOutcomeStrip = ref<{
 } | null>(null);
 const planOutcomeUndoing = ref(false);
 let planOutcomeDismissTimer: ReturnType<typeof setTimeout> | null = null;
+let stopDoctorApprovalHydrationWatcher: (() => void) | null = null;
+let doctorDisplayFrame: number | null = null;
+let doctorDisplayMicrotaskQueued = false;
 const planPostCheckResults = chat.planPostCheckResults;
 const rememberApproval = ref<Record<string, boolean>>({});
 const dismissedPlanKeys = ref<Record<string, boolean>>({});
@@ -807,15 +826,37 @@ type DoctorPlanApplyState =
     | 'rolled_back'
     | 'failed';
 
-const doctorChatMessages = computed(() =>
-    buildDoctorChatDisplayMessages(chat.messages.value, {
-        isCardDismissed: isDoctorCardDismissed,
-        stripUserPrompt: scrubDoctorUserMessageContent,
-    }).map((message) => ({
+const doctorChatMessages = shallowRef<DoctorDisplayMessage[]>([]);
+
+function rebuildDoctorChatMessages() {
+    doctorChatMessages.value = buildDoctorChatDisplayMessages(
+        chat.messages.value,
+        {
+            isCardDismissed: isDoctorCardDismissed,
+            stripUserPrompt: scrubDoctorUserMessageContent,
+        },
+    ).map((message) => ({
         ...message,
         activityLog: doctorShowActivityLog(message) ? message.activityLog : [],
-    })),
-);
+    }));
+}
+
+function scheduleDoctorChatMessageRebuild() {
+    if (typeof requestAnimationFrame === 'function') {
+        if (doctorDisplayFrame !== null) return;
+        doctorDisplayFrame = requestAnimationFrame(() => {
+            doctorDisplayFrame = null;
+            rebuildDoctorChatMessages();
+        });
+        return;
+    }
+    if (doctorDisplayMicrotaskQueued) return;
+    doctorDisplayMicrotaskQueued = true;
+    queueMicrotask(() => {
+        doctorDisplayMicrotaskQueued = false;
+        rebuildDoctorChatMessages();
+    });
+}
 
 function goBackToSettings() {
     router.push('/settings');
@@ -877,11 +918,15 @@ function doctorHasOrderedParts(message: Pick<DoctorDisplayMessage, 'parts'>) {
     });
 }
 
-function doctorMessageHasToolParts(message: Pick<DoctorDisplayMessage, 'parts'>) {
+function doctorMessageHasToolParts(
+    message: Pick<DoctorDisplayMessage, 'parts'>,
+) {
     return message.parts.some((part) => part.type === 'tool');
 }
 
-function doctorShowActivityLog(message: Pick<DoctorDisplayMessage, 'parts' | 'activityLog'>) {
+function doctorShowActivityLog(
+    message: Pick<DoctorDisplayMessage, 'parts' | 'activityLog'>,
+) {
     if (!message.activityLog.length) return false;
     return !doctorMessageHasToolParts(message);
 }
@@ -1332,7 +1377,8 @@ void _typeKeep;
 
 onMounted(() => {
     chat.clearError();
-    installDoctorApprovalHydrationWatcher();
+    stopDoctorApprovalHydrationWatcher =
+        installDoctorApprovalHydrationWatcher();
     void health.run();
     void chat.loadAdminBrain().catch(() => undefined);
     void refreshRunners().catch(() => undefined);
@@ -1349,17 +1395,29 @@ watch(
 );
 
 onUnmounted(() => {
+    if (
+        doctorDisplayFrame !== null &&
+        typeof cancelAnimationFrame === 'function'
+    ) {
+        cancelAnimationFrame(doctorDisplayFrame);
+    }
+    doctorDisplayFrame = null;
+    stopDoctorApprovalHydrationWatcher?.();
+    stopDoctorApprovalHydrationWatcher = null;
     clearPlanOutcomeDismissTimer();
     chat.stopStreaming();
 });
 
 watch(
-    [doctorChatMessages, () => chat.loading.value],
-    async () => {
-        await nextTick();
-        scrollDoctorMessagesToBottom(false);
-    },
+    [() => chat.messages.value, dismissedPlanKeys],
+    scheduleDoctorChatMessageRebuild,
+    { immediate: true, deep: true },
 );
+
+watch([doctorChatMessages, () => chat.loading.value], async () => {
+    await nextTick();
+    scrollDoctorMessagesToBottom(false);
+});
 
 watch(
     [
@@ -1511,7 +1569,8 @@ watch(
     margin: 0 auto 0.75rem;
     padding: 0.7rem 0.85rem;
     border-radius: 0.9rem;
-    border: 1px solid color-mix(in srgb, var(--or3-green) 38%, var(--or3-border));
+    border: 1px solid
+        color-mix(in srgb, var(--or3-green) 38%, var(--or3-border));
     background: color-mix(in srgb, var(--or3-green-soft) 88%, white);
     box-shadow: 0 6px 18px rgba(16, 24, 16, 0.08);
     animation: or3-doctor-outcome-enter 0.22s ease-out;
@@ -1727,7 +1786,8 @@ watch(
 .or3-doctor-message__summary--attention {
     padding: 0.65rem 0.75rem;
     border-radius: 0.8rem;
-    border: 1px solid color-mix(in srgb, var(--or3-amber) 35%, var(--or3-border));
+    border: 1px solid
+        color-mix(in srgb, var(--or3-amber) 35%, var(--or3-border));
     background: color-mix(in srgb, var(--or3-amber-soft) 55%, white);
 }
 
@@ -1799,7 +1859,8 @@ watch(
     align-items: center;
     justify-content: space-between;
     gap: 0.75rem;
-    border: 1px solid color-mix(in srgb, var(--or3-amber) 35%, var(--or3-border));
+    border: 1px solid
+        color-mix(in srgb, var(--or3-amber) 35%, var(--or3-border));
     border-radius: 0.8rem;
     background: color-mix(in srgb, var(--or3-amber-soft) 70%, white);
     padding: 0.7rem 0.8rem;

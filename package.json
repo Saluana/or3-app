@@ -74,5 +74,8 @@
     "typescript": "^6.0.3",
     "vitest": "^4.1.5",
     "vue-tsc": "^3.2.7"
+  },
+  "patchedDependencies": {
+    "streamdown-vue@1.0.29": "patches/streamdown-vue@1.0.29.patch"
   }
 }

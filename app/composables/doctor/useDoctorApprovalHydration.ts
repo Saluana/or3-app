@@ -1,17 +1,19 @@
-import { ref, watch } from 'vue';
+import { effectScope, ref, watch } from 'vue';
 import { useActiveHost } from '../useActiveHost';
 import { useOr3Api } from '../useOr3Api';
 import { useDoctorChatStore } from './doctorChatStore';
 import { pendingApprovalPlaceholderContent } from '~/utils/assistant-stream/approval';
 import { normalizeApprovalRequest } from '~/utils/or3/approvals';
-import {
-    sortDoctorMessages,
-    type DoctorMessageState,
-} from '~/utils/doctor';
+import { sortDoctorMessages, type DoctorMessageState } from '~/utils/doctor';
 
 const doctorApprovalHydrationInFlight = new Set<string>();
 export const doctorApprovalHydrationError = ref<string | null>(null);
-const resolvedDoctorApprovals = ref<Record<string, string>>({});
+const MAX_RESOLVED_DOCTOR_APPROVALS = 500;
+const resolvedDoctorApprovals = new Map<string, string>();
+let doctorApprovalHydrationConsumerCount = 0;
+let doctorApprovalHydrationScope: ReturnType<typeof effectScope> | null = null;
+let stopDoctorApprovalHydrationWatch: (() => void) | null = null;
+let doctorApprovalHydrationVisibilityHandler: (() => void) | null = null;
 
 function resolutionKey(sessionKey: string, approvalId: number | string) {
     return `${sessionKey.trim()}:${String(approvalId).trim()}`;
@@ -23,7 +25,7 @@ export function isDoctorApprovalResolved(
 ) {
     const key = sessionKey?.trim();
     if (!key) return false;
-    return Boolean(resolvedDoctorApprovals.value[resolutionKey(key, approvalId)]);
+    return resolvedDoctorApprovals.has(resolutionKey(key, approvalId));
 }
 
 export function markDoctorApprovalResolved(
@@ -33,10 +35,18 @@ export function markDoctorApprovalResolved(
 ) {
     const key = sessionKey?.trim();
     if (!key) return;
-    resolvedDoctorApprovals.value = {
-        ...resolvedDoctorApprovals.value,
-        [resolutionKey(key, approvalId)]: state,
-    };
+    const resolvedKey = resolutionKey(key, approvalId);
+    if (resolvedDoctorApprovals.has(resolvedKey)) {
+        resolvedDoctorApprovals.delete(resolvedKey);
+    }
+    resolvedDoctorApprovals.set(resolvedKey, state);
+    while (resolvedDoctorApprovals.size > MAX_RESOLVED_DOCTOR_APPROVALS) {
+        const oldest = resolvedDoctorApprovals.keys().next().value as
+            | string
+            | undefined;
+        if (!oldest) break;
+        resolvedDoctorApprovals.delete(oldest);
+    }
 }
 
 function findDoctorMessageForApproval(
@@ -60,7 +70,9 @@ export function ensureDoctorApprovalMessage(
         createdAt?: number;
     },
 ) {
-    const sessionKey = String(options.sessionKey ?? store.sessionKey.value ?? '').trim();
+    const sessionKey = String(
+        options.sessionKey ?? store.sessionKey.value ?? '',
+    ).trim();
     const approvalKey = String(options.approvalRequestId).trim();
     if (!approvalKey) return undefined;
     if (sessionKey && isDoctorApprovalResolved(approvalKey, sessionKey)) {
@@ -93,8 +105,6 @@ export function ensureDoctorApprovalMessage(
     return message;
 }
 
-let doctorApprovalHydrationWatcherInstalled = false;
-
 export function useDoctorApprovalHydration() {
     const store = useDoctorChatStore();
     const { activeHost } = useActiveHost();
@@ -106,7 +116,7 @@ export function useDoctorApprovalHydration() {
         const hostId = activeHost.value?.id?.trim();
         const hasAuth = Boolean(
             activeHost.value?.token?.trim() ||
-                activeHost.value?.authMode === 'secure-session',
+            activeHost.value?.authMode === 'secure-session',
         );
         const sessionKey = store.sessionKey.value?.trim();
         if (!hostId || !hasAuth || !sessionKey) return;
@@ -131,7 +141,12 @@ export function useDoctorApprovalHydration() {
                 if (isDoctorApprovalResolved(approval.id, sessionKey)) {
                     continue;
                 }
-                if (findDoctorMessageForApproval(store.messages.value, approval.id)) {
+                if (
+                    findDoctorMessageForApproval(
+                        store.messages.value,
+                        approval.id,
+                    )
+                ) {
                     continue;
                 }
                 ensureDoctorApprovalMessage(store, {
@@ -156,33 +171,68 @@ export function useDoctorApprovalHydration() {
     };
 
     const installDoctorApprovalHydrationWatcher = () => {
-        if (!import.meta.client || doctorApprovalHydrationWatcherInstalled) {
-            return;
+        if (!import.meta.client) return () => undefined;
+        doctorApprovalHydrationConsumerCount += 1;
+        if (!stopDoctorApprovalHydrationWatch) {
+            doctorApprovalHydrationScope = effectScope(true);
+            doctorApprovalHydrationScope.run(() => {
+                stopDoctorApprovalHydrationWatch = watch(
+                    () => ({
+                        hostId: activeHost.value?.id ?? '',
+                        token:
+                            activeHost.value?.token ||
+                            activeHost.value?.authMode === 'secure-session'
+                                ? 'ready'
+                                : 'none',
+                        sessionKey: store.sessionKey.value ?? '',
+                        streaming: store.loading.value,
+                    }),
+                    () => {
+                        void hydratePendingDoctorApprovals();
+                    },
+                    { immediate: true },
+                );
+            });
         }
-        doctorApprovalHydrationWatcherInstalled = true;
-        watch(
-            () => ({
-                hostId: activeHost.value?.id ?? '',
-                token:
-                    activeHost.value?.token ||
-                    activeHost.value?.authMode === 'secure-session'
-                        ? 'ready'
-                        : 'none',
-                sessionKey: store.sessionKey.value ?? '',
-                streaming: store.loading.value,
-            }),
-            () => {
-                void hydratePendingDoctorApprovals();
-            },
-            { immediate: true },
-        );
-        if (typeof document !== 'undefined') {
-            document.addEventListener('visibilitychange', () => {
+        if (
+            typeof document !== 'undefined' &&
+            !doctorApprovalHydrationVisibilityHandler
+        ) {
+            doctorApprovalHydrationVisibilityHandler = () => {
                 if (document.visibilityState === 'visible') {
                     void hydratePendingDoctorApprovals();
                 }
-            });
+            };
+            document.addEventListener(
+                'visibilitychange',
+                doctorApprovalHydrationVisibilityHandler,
+            );
         }
+
+        let disposed = false;
+        return () => {
+            if (disposed) return;
+            disposed = true;
+            doctorApprovalHydrationConsumerCount = Math.max(
+                0,
+                doctorApprovalHydrationConsumerCount - 1,
+            );
+            if (doctorApprovalHydrationConsumerCount > 0) return;
+            doctorApprovalHydrationScope?.stop();
+            doctorApprovalHydrationScope = null;
+            stopDoctorApprovalHydrationWatch?.();
+            stopDoctorApprovalHydrationWatch = null;
+            if (
+                typeof document !== 'undefined' &&
+                doctorApprovalHydrationVisibilityHandler
+            ) {
+                document.removeEventListener(
+                    'visibilitychange',
+                    doctorApprovalHydrationVisibilityHandler,
+                );
+            }
+            doctorApprovalHydrationVisibilityHandler = null;
+        };
     };
 
     return {

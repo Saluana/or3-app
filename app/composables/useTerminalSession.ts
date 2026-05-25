@@ -145,8 +145,7 @@ function handleMissingSession(error: any, fallbackMessage: string) {
 }
 
 function resetTerminalState() {
-    streamAbortController?.abort();
-    closeTerminalSocket();
+    detachTerminalStream();
     chunkSeq = 0;
     session.value = null;
     terminalLines.value = [];
@@ -154,6 +153,13 @@ function resetTerminalState() {
     terminalBusy.value = false;
     terminalStreaming.value = false;
     writePersistedTerminalSession(null);
+}
+
+function detachTerminalStream() {
+    streamAbortController?.abort();
+    streamAbortController = null;
+    closeTerminalSocket();
+    terminalStreaming.value = false;
 }
 
 function closeTerminalSocket() {
@@ -393,17 +399,23 @@ export function useTerminalSession() {
         if (!sessionId) return;
         streamAbortController?.abort();
         closeTerminalSocket();
-        streamAbortController = new AbortController();
+        const activeStreamController = new AbortController();
+        streamAbortController = activeStreamController;
         terminalStreaming.value = true;
 
-        if (await attachWebSocket(sessionId)) return;
+        if (await attachWebSocket(sessionId)) {
+            if (streamAbortController === activeStreamController) {
+                streamAbortController = null;
+            }
+            return;
+        }
 
         try {
             for await (const event of api.stream(
                 `/internal/v1/terminal/sessions/${sessionId}/stream`,
                 {
                     method: 'GET',
-                    signal: streamAbortController.signal,
+                    signal: activeStreamController.signal,
                 },
             )) {
                 applyTerminalEvent(
@@ -412,7 +424,7 @@ export function useTerminalSession() {
                 );
             }
         } catch (error: any) {
-            if (streamAbortController?.signal.aborted) return;
+            if (activeStreamController.signal.aborted) return;
             if (
                 handleMissingSession(
                     error,
@@ -423,7 +435,10 @@ export function useTerminalSession() {
             terminalError.value =
                 error?.message ?? 'Terminal stream ended unexpectedly.';
         } finally {
-            terminalStreaming.value = false;
+            if (streamAbortController === activeStreamController) {
+                streamAbortController = null;
+                terminalStreaming.value = false;
+            }
         }
     }
 
@@ -687,6 +702,7 @@ export function useTerminalSession() {
         if (!session.value) return;
         const sessionId = session.value.session_id;
         streamAbortController?.abort();
+        streamAbortController = null;
         if (terminalSocketReady(sessionId)) {
             terminalSocket?.send(JSON.stringify({ type: 'close' }));
             closeTerminalSocket();
@@ -729,6 +745,7 @@ export function useTerminalSession() {
         start,
         refresh,
         attach,
+        detach: detachTerminalStream,
         restoreSession,
         reconnect,
         resumePendingApproval,

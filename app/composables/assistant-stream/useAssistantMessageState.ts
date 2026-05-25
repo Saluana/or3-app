@@ -60,6 +60,27 @@ function stableToolCallId(name: string, args?: string, toolCallId?: string) {
 export function useAssistantMessageState(
     options: UseAssistantMessageStateOptions,
 ) {
+    const initialAssistant =
+        options.existingAssistant ??
+        options.chat.findMessageById(options.assistantId) ??
+        null;
+    let assistantDraft: ChatMessage | null = initialAssistant
+        ? {
+              ...initialAssistant,
+              toolCalls: initialAssistant.toolCalls
+                  ? [...initialAssistant.toolCalls]
+                  : undefined,
+              parts: initialAssistant.parts
+                  ? [...initialAssistant.parts]
+                  : undefined,
+              activityLog: initialAssistant.activityLog
+                  ? [...initialAssistant.activityLog]
+                  : undefined,
+          }
+        : null;
+    let pendingAssistantPatch: Partial<ChatMessage> | null = null;
+    let scheduledFrame: number | null = null;
+    let scheduledMicrotask = false;
     let rawAssistantContent = options.existingAssistant?.content || '';
     let activeTextPartId: string | null = null;
     let activeTextPartRaw = '';
@@ -75,13 +96,49 @@ export function useAssistantMessageState(
         ),
     );
 
-    const readAssistant = () =>
-        options.chat.messages.value.find(
-            (item) => item.id === options.assistantId,
-        );
+    const commitAssistantPatch = () => {
+        if (
+            scheduledFrame !== null &&
+            typeof cancelAnimationFrame === 'function'
+        ) {
+            cancelAnimationFrame(scheduledFrame);
+        }
+        scheduledFrame = null;
+        scheduledMicrotask = false;
+        if (!pendingAssistantPatch) return;
+        const target = options.chat.findMessageById(options.assistantId);
+        if (target) {
+            options.chat.updateMessageRecord(target, pendingAssistantPatch, {
+                persist: false,
+                touch: false,
+                syncSummary: false,
+            });
+        }
+        pendingAssistantPatch = null;
+    };
+    const scheduleAssistantCommit = () => {
+        if (typeof requestAnimationFrame === 'function') {
+            if (scheduledFrame !== null) return;
+            scheduledFrame = requestAnimationFrame(commitAssistantPatch);
+            return;
+        }
+        if (scheduledMicrotask) return;
+        scheduledMicrotask = true;
+        queueMicrotask(commitAssistantPatch);
+    };
+    const readAssistant = () => assistantDraft ?? undefined;
     const updateAssistant = (
         patch: Parameters<ChatStore['updateMessage']>[1],
-    ) => options.chat.updateMessage(options.assistantId, patch);
+    ) => {
+        const current = readAssistant();
+        if (!current) return;
+        assistantDraft = { ...current, ...patch };
+        pendingAssistantPatch = {
+            ...(pendingAssistantPatch ?? {}),
+            ...patch,
+        };
+        scheduleAssistantCommit();
+    };
     const appendAssistantContent = (value: string) => {
         rawAssistantContent += value;
         updateAssistant({
@@ -517,6 +574,7 @@ export function useAssistantMessageState(
             },
             sanitizeAssistantText,
             applyRunnerStructuredResult,
+            flushAssistantUpdates: commitAssistantPatch,
         },
     };
 }
