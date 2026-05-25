@@ -16,9 +16,11 @@ export function isDoctorSessionKey(sessionKey?: string) {
 
 export function resolveApprovalResumeTarget(input: {
     approval?: ApprovalRequest | null;
-    response?: Pick<
-        ApprovalActionResponse,
-        'session_key' | 'request_id' | 'resume_job_id'
+    response?: Partial<
+        Pick<
+            ApprovalActionResponse,
+            'session_key' | 'request_id' | 'resume_job_id'
+        >
     > | null;
 }): ApprovalResumeTarget | null {
     const sessionKey = String(

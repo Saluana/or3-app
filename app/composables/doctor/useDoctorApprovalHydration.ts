@@ -138,7 +138,11 @@ export function useDoctorApprovalHydration() {
                     approvalRequestId: approval.id,
                     sessionKey,
                     content: pendingApprovalPlaceholderContent(approval),
-                    createdAt: approval.created_at,
+                    createdAt: approval.created_at
+                        ? Math.floor(
+                              new Date(approval.created_at).getTime() / 1000,
+                          )
+                        : undefined,
                 });
             }
         } catch (error) {

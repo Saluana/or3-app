@@ -536,6 +536,12 @@ watch(
     { immediate: true },
 );
 
+function toastNotificationId(
+    value: string | number | { id: string | number },
+): string | number {
+    return typeof value === 'object' ? value.id : value;
+}
+
 const runnersToastId = ref<string | number | undefined>();
 const liveChannelToastId = ref<string | number | undefined>();
 const historyToastId = ref<string | number | undefined>();
@@ -559,7 +565,7 @@ watch(liveChannelPaused, (paused) => {
         liveChannelToastId.value = undefined;
     }
     if (!paused || !canUseHostApi(activeHost.value)) return;
-    liveChannelToastId.value = toast.add({
+    liveChannelToastId.value = toastNotificationId(toast.add({
         title: 'Live updates paused',
         description:
             'Refresh to load the latest messages for this channel.',
@@ -573,7 +579,7 @@ watch(liveChannelPaused, (paused) => {
                 },
             },
         ],
-    });
+    }));
 });
 
 watch(historyError, (message) => {
@@ -591,7 +597,7 @@ watch(historyError, (message) => {
     ) {
         return;
     }
-    historyToastId.value = toast.add({
+    historyToastId.value = toastNotificationId(toast.add({
         title: "Couldn't load conversations",
         description: message,
         color: 'warning',
@@ -604,7 +610,7 @@ watch(historyError, (message) => {
                 },
             },
         ],
-    });
+    }));
 });
 
 watch(runnersError, (message) => {
@@ -614,7 +620,7 @@ watch(runnersError, (message) => {
     }
     if (!message || !canUseHostApi(activeHost.value)) return;
     if (defaultRunner.value) return;
-    runnersToastId.value = toast.add({
+    runnersToastId.value = toastNotificationId(toast.add({
         title: "Couldn't load agents",
         description: 'Using OR3 Intern for now.',
         color: 'warning',
@@ -627,7 +633,7 @@ watch(runnersError, (message) => {
                 },
             },
         ],
-    });
+    }));
 });
 
 onBeforeUnmount(() => {

@@ -41,14 +41,14 @@ describe('assistant stream service ceiling handling', () => {
         vi.clearAllMocks();
     });
 
-    it('uses ask mode on loopback hosts before the first stream request', async () => {
+    it('keeps work mode on loopback hosts before the first stream request', async () => {
         addHost();
         const assistant = useAssistantStream();
         assistant.chatMode.value = 'work';
         await assistant.send('hello loopback');
 
         expect(streamCallBody).toMatchObject({
-            tool_policy: { mode: 'ask' },
+            tool_policy: { mode: 'work' },
         });
         expect(requestMock).not.toHaveBeenCalled();
     });

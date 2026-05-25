@@ -6,11 +6,13 @@ function approvalToolName(approval?: ApprovalRequest | null) {
     return typeof tool === 'string' ? tool.trim() : '';
 }
 
+type ApprovalResumeResponse = Pick<
+    ApprovalActionResponse,
+    'request_id' | 'token' | 'resume_job_id'
+>;
+
 export async function resumeApprovalOperation(input: {
-    response?: Pick<
-        ApprovalActionResponse,
-        'request_id' | 'token' | 'resume_job_id'
-    > | null;
+    response?: Partial<ApprovalResumeResponse> | null;
     approval?: ApprovalRequest | null;
     consumeToken: (id: number | string) => string | undefined;
     resumeTerminal?: (approvalId: number | string, token: string) => Promise<void>;

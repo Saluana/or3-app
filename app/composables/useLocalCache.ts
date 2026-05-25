@@ -107,7 +107,16 @@ function normalizePersistedMessages(
     }
     const compacted: typeof normalized = [];
     for (const bucket of bySession.values()) {
-        compacted.push(...compactAssistantRunMessages(bucket));
+        compacted.push(
+            ...compactAssistantRunMessages(bucket).map((message) => ({
+                ...message,
+                attachments: message.attachments ?? [],
+                backendMessageIds: message.backendMessageIds ?? [],
+                toolCalls: message.toolCalls ?? [],
+                parts: message.parts ?? [],
+                activityLog: message.activityLog ?? [],
+            })),
+        );
     }
     return compacted;
 }

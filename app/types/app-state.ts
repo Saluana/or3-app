@@ -217,7 +217,10 @@ export interface Or3AppState {
     messages: ChatMessage[];
     drafts: Record<string, string>;
     recentJobs: Record<string, RecentJobSummary[]>;
-    lastKnownStatus: Record<string, unknown>;
+    lastKnownStatus: Record<
+        string,
+        { value?: unknown; checkedAt?: string } | undefined
+    >;
     preferences: Record<string, unknown>;
 }
 
@@ -232,6 +235,7 @@ export type Or3AppErrorCode =
     | 'session_required'
     | 'session_expired'
     | 'passkey_required'
+    | 'pin_locked'
     | 'step_up_required'
     | 'auth_unsupported'
     | 'forbidden'

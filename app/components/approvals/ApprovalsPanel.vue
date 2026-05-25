@@ -81,6 +81,12 @@
 
         <!-- Saved rules tab -->
         <template v-if="selectedFilter === 'saved'">
+            <div
+                v-if="allowlistsError"
+                class="rounded-2xl border border-rose-200 bg-rose-50/90 px-4 py-3 text-sm text-rose-700"
+            >
+                {{ allowlistsError }}
+            </div>
             <SavedApprovalsList
                 :items="allowlists"
                 show-section-header
@@ -262,6 +268,7 @@ const {
     cancel,
     consumeIssuedApprovalToken,
     removeAllowlist,
+    allowlistsError,
 } = useApprovals();
 const { resumePendingApproval } = useTerminalSession();
 const { resumePendingRestart } = useServiceRestart();
@@ -436,7 +443,11 @@ async function followApprovalResumeJob(
 async function changeFilter(filter: string) {
     selectedFilter.value = filter;
     if (filter === "saved") {
-        await loadAllowlists();
+        try {
+            await loadAllowlists();
+        } catch {
+            /* allowlistsError is set in the composable */
+        }
         return;
     }
     await loadApprovals(filter);

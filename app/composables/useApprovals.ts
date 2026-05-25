@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import type {
     ApprovalActionResponse,
     ApprovalAllowlist,
@@ -12,6 +12,8 @@ import { createLogger } from '~/utils/logger';
 import { useActiveHost } from './useActiveHost';
 import { needsUnlock } from './usePinLock';
 import { canUseHostApi } from './useSecureHostTokens';
+import type { AuthChallengeError } from '~/types/auth';
+import { useAuthSession } from './useAuthSession';
 import { useOr3Api } from './useOr3Api';
 
 const approvals = ref<ApprovalRequest[]>([]);
@@ -19,12 +21,33 @@ const allowlists = ref<ApprovalAllowlist[]>([]);
 const selectedApproval = ref<ApprovalRequest | null>(null);
 const approvalsLoading = ref(false);
 const approvalsError = ref<string | null>(null);
+const allowlistsError = ref<string | null>(null);
 const pendingCount = ref(0);
 const activeApprovalStatus = ref('');
 let approvalsPollTimer: ReturnType<typeof setInterval> | null = null;
 let pendingCountInFlight: Promise<void> | null = null;
 const approvalActionsInFlight = new Set<string>();
 const issuedApprovalTokens = ref<Record<string, string>>({});
+let approvalsHostKey = '';
+let hostWatcherStarted = false;
+
+function stopApprovalsPolling() {
+    if (!approvalsPollTimer) return;
+    clearInterval(approvalsPollTimer);
+    approvalsPollTimer = null;
+}
+
+function resetApprovalsState() {
+    approvals.value = [];
+    allowlists.value = [];
+    selectedApproval.value = null;
+    approvalsError.value = null;
+    allowlistsError.value = null;
+    pendingCount.value = 0;
+    activeApprovalStatus.value = '';
+    clearIssuedApprovalTokens();
+    stopApprovalsPolling();
+}
 
 function approvalTokenKey(id: number | string) {
     return String(id).trim();
@@ -112,8 +135,66 @@ async function withApprovalAction<T>(
 
 export function useApprovals() {
     const api = useOr3Api();
+    const authSession = useAuthSession();
     const { activeHost, isPaired } = useActiveHost();
     const logger = createLogger('approvals');
+
+    function hostKnownUnavailable() {
+        return (
+            needsUnlock() ||
+            !canUseHostApi(activeHost.value) ||
+            !isPaired.value ||
+            activeHost.value?.status === 'offline' ||
+            activeHost.value?.status === 'unauthorized'
+        );
+    }
+
+    function hostContextKey() {
+        if (!canUseHostApi(activeHost.value)) return '';
+        const host = activeHost.value;
+        if (!host?.id || !host.baseUrl) return '';
+        return `${host.id}:${host.baseUrl}`;
+    }
+
+    function syncApprovalsHostContext() {
+        const nextKey = hostContextKey();
+        if (nextKey === approvalsHostKey) return;
+        approvalsHostKey = nextKey;
+        resetApprovalsState();
+        if (!nextKey || hostKnownUnavailable()) return;
+        void loadPendingCount();
+        startPolling();
+    }
+
+    function ensureApprovalsHostWatcher() {
+        if (hostWatcherStarted || !import.meta.client) return;
+        hostWatcherStarted = true;
+        watch(
+            () =>
+                [
+                    hostContextKey(),
+                    isPaired.value,
+                    needsUnlock(),
+                    activeHost.value?.status ?? '',
+                ].join('|'),
+            () => {
+                syncApprovalsHostContext();
+            },
+            { immediate: true },
+        );
+    }
+
+    async function withAuthRequest<T>(
+        reason: string,
+        operation: (
+            onAuthChallenge: (challenge: AuthChallengeError) => Promise<boolean>,
+        ) => Promise<T>,
+    ) {
+        return authSession.retryWithAuth(
+            (onAuthChallenge) => operation(onAuthChallenge),
+            reason,
+        );
+    }
 
     const pendingApprovals = computed(() =>
         approvals.value.filter((item) => item.status === 'pending'),
@@ -175,21 +256,29 @@ export function useApprovals() {
             allowlists.value = [];
             return;
         }
+        allowlistsError.value = null;
         try {
-            const response = await api.request<{ items: unknown[] }>(
-                '/internal/v1/approvals/allowlists',
+            const response = await withAuthRequest('approval-allowlists', (onAuthChallenge) =>
+                api.request<{ items: unknown[] }>(
+                    '/internal/v1/approvals/allowlists',
+                    { onAuthChallenge },
+                ),
             );
             allowlists.value = (response.items ?? []).map(
                 normalizeApprovalAllowlist,
             );
         } catch (error: any) {
+            allowlistsError.value =
+                error?.message ?? 'Unable to load saved rules.';
             throw error;
         }
     }
 
     async function fetchApproval(id: number | string) {
-        const response = await api.request<{ item: unknown }>(
-            `/internal/v1/approvals/${id}`,
+        const response = await withAuthRequest('approval-detail', (onAuthChallenge) =>
+            api.request<{ item: unknown }>(`/internal/v1/approvals/${id}`, {
+                onAuthChallenge,
+            }),
         );
         const normalized = normalizeApprovalRequest(response.item);
         selectedApproval.value = normalized;
@@ -216,12 +305,15 @@ export function useApprovals() {
                 approvalId: id,
                 remember: allowlist,
             });
-            const response = await api.request<ApprovalActionResponse>(
-                `/internal/v1/approvals/${id}/approve`,
-                {
-                    method: 'POST',
-                    body: { allowlist, note },
-                },
+            const response = await withAuthRequest('approval', (onAuthChallenge) =>
+                api.request<ApprovalActionResponse>(
+                    `/internal/v1/approvals/${id}/approve`,
+                    {
+                        method: 'POST',
+                        body: { allowlist, note },
+                        onAuthChallenge,
+                    },
+                ),
             );
             if (response.token) {
                 rememberIssuedApprovalToken(
@@ -244,12 +336,15 @@ export function useApprovals() {
             logger.info('deny:start', 'Approval deny requested', {
                 approvalId: id,
             });
-            const response = await api.request<ApprovalActionResponse>(
-                `/internal/v1/approvals/${id}/deny`,
-                {
-                    method: 'POST',
-                    body: { note },
-                },
+            const response = await withAuthRequest('approval', (onAuthChallenge) =>
+                api.request<ApprovalActionResponse>(
+                    `/internal/v1/approvals/${id}/deny`,
+                    {
+                        method: 'POST',
+                        body: { note },
+                        onAuthChallenge,
+                    },
+                ),
             );
             consumeIssuedApprovalToken(response.request_id ?? id);
             applyLocalDenyOrCancel(response.request_id ?? id, 'denied');
@@ -266,12 +361,15 @@ export function useApprovals() {
             logger.info('cancel:start', 'Approval cancel requested', {
                 approvalId: id,
             });
-            const response = await api.request<ApprovalActionResponse>(
-                `/internal/v1/approvals/${id}/cancel`,
-                {
-                    method: 'POST',
-                    body: { note },
-                },
+            const response = await withAuthRequest('approval', (onAuthChallenge) =>
+                api.request<ApprovalActionResponse>(
+                    `/internal/v1/approvals/${id}/cancel`,
+                    {
+                        method: 'POST',
+                        body: { note },
+                        onAuthChallenge,
+                    },
+                ),
             );
             consumeIssuedApprovalToken(response.request_id ?? id);
             applyLocalDenyOrCancel(response.request_id ?? id, 'canceled');
@@ -289,54 +387,53 @@ export function useApprovals() {
         matcher: Record<string, unknown>,
         expires_at = 0,
     ) {
-        await api.request('/internal/v1/approvals/allowlists', {
-            method: 'POST',
-            body: { domain, scope, matcher, expires_at },
-        });
+        await withAuthRequest('approval-allowlist', (onAuthChallenge) =>
+            api.request('/internal/v1/approvals/allowlists', {
+                method: 'POST',
+                body: { domain, scope, matcher, expires_at },
+                onAuthChallenge,
+            }),
+        );
         await loadAllowlists();
     }
 
     async function expirePending() {
         logger.info('expire:start', 'Expiring pending approvals');
-        await api.request('/internal/v1/approvals/expire', {
-            method: 'POST',
-            body: {},
-        });
+        await withAuthRequest('approval', (onAuthChallenge) =>
+            api.request('/internal/v1/approvals/expire', {
+                method: 'POST',
+                body: {},
+                onAuthChallenge,
+            }),
+        );
         logger.info('expire:complete', 'Pending approvals expired');
         refreshApprovalsInBackground();
     }
 
     async function removeAllowlist(id: number | string) {
-        await api.request(`/internal/v1/approvals/allowlists/${id}/remove`, {
-            method: 'POST',
-            body: {},
-        });
+        await withAuthRequest('approval-allowlist', (onAuthChallenge) =>
+            api.request(`/internal/v1/approvals/allowlists/${id}/remove`, {
+                method: 'POST',
+                body: {},
+                onAuthChallenge,
+            }),
+        );
         await loadAllowlists();
     }
 
     function startPolling(intervalMs = 15000) {
-        if (!import.meta.client || approvalsPollTimer || hostKnownUnavailable())
-            return;
+        stopApprovalsPolling();
+        if (!import.meta.client || hostKnownUnavailable()) return;
         approvalsPollTimer = setInterval(() => {
             if (document.visibilityState === 'visible') void loadPendingCount();
         }, intervalMs);
     }
 
-    function hostKnownUnavailable() {
-        return (
-            needsUnlock() ||
-            !canUseHostApi(activeHost.value) ||
-            !isPaired.value ||
-            activeHost.value?.status === 'offline' ||
-            activeHost.value?.status === 'unauthorized'
-        );
+    function stopPolling() {
+        stopApprovalsPolling();
     }
 
-    function stopPolling() {
-        if (!approvalsPollTimer) return;
-        clearInterval(approvalsPollTimer);
-        approvalsPollTimer = null;
-    }
+    ensureApprovalsHostWatcher();
 
     return {
         approvals,
@@ -344,6 +441,7 @@ export function useApprovals() {
         selectedApproval,
         approvalsLoading,
         approvalsError,
+        allowlistsError,
         pendingApprovals,
         pendingCount,
         loadPendingCount,

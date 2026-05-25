@@ -18,7 +18,7 @@ function remapColor(color: string | undefined): string | undefined {
 function remapTokenColors(
     tokenColors: ThemeRegistration['tokenColors'],
 ): ThemeRegistration['tokenColors'] {
-    return tokenColors.map((entry) => {
+    return (tokenColors ?? []).map((entry) => {
         const foreground = entry.settings?.foreground;
         if (!foreground || typeof foreground !== 'string') return entry;
         const next = remapColor(foreground);

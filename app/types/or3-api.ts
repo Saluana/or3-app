@@ -752,6 +752,7 @@ export interface ApprovalRequest {
     status: string;
     type?: string;
     domain?: string;
+    preview?: string;
     subject?: unknown;
     created_at?: string;
     expires_at?: string;

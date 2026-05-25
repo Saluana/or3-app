@@ -64,6 +64,7 @@ export function normalizeApprovalRequest(input: unknown): ApprovalRequest {
         status: String(pick(source, ['status', 'Status']) ?? ''),
         type: pick<string>(source, ['type', 'Type']),
         domain: pick<string>(source, ['domain', 'Domain']),
+        preview: pick<string>(source, ['preview', 'Preview']),
         subject: subjectRaw,
         created_at:
             pick<string>(source, ['created_at', 'CreatedAt']) ??

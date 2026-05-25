@@ -1203,8 +1203,22 @@ function collapseDoctorAssistantTurn(
     }
 
     if (parts.length > 0) {
-        if (isStreamingTurn || doctorSummaryInParts(text, parts)) {
+        if (isStreamingTurn) {
             text = '';
+        } else if (doctorSummaryInParts(text, parts)) {
+            const textParts = parts.filter((part) => part.type === 'text');
+            const hasToolParts = parts.some((part) => part.type === 'tool');
+            if (hasToolParts) {
+                text = '';
+            } else if (textParts.length === 1) {
+                text = String(textParts[0]?.content ?? '').trim();
+            } else if (textParts.length > 1) {
+                text = String(
+                    textParts[textParts.length - 1]?.content ?? '',
+                ).trim();
+            } else {
+                text = '';
+            }
         }
     } else {
         parts = dedupeDoctorTextParts(parts, text);

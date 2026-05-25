@@ -112,6 +112,9 @@ const cache = useLocalCache();
 const computerStatus = useComputerStatus();
 const snapshots = useSettingsSnapshots();
 const simple = useSimpleSettings();
+import { createLogger } from '~/utils/logger';
+
+const logger = createLogger('settings');
 const electronHost = useElectronHostSetup();
 const toast = useToast();
 const undoing = ref(false);

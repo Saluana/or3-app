@@ -21,6 +21,7 @@ import type {
     DoctorStatusResponse,
 } from '~/types/or3-api';
 import { createAssistantEventApplier } from '~/utils/assistant-stream/event-applier';
+import { isEmptyFinalUserMessage } from '~/utils/assistant-stream/userErrorCopy';
 import { suppressOr3ApiNetworkErrorLogsFor, useOr3Api } from './useOr3Api';
 import { useAuthSession } from './useAuthSession';
 import { useApprovals } from './useApprovals';
@@ -507,11 +508,13 @@ function applyDoctorRecoveredFinalText(
     const recoveringEmptyFinal =
         message?.errorCode === 'empty_final_text' ||
         isDoctorEmptyFinalTextWarning(message?.content) ||
+        isEmptyFinalUserMessage(message?.content) ||
         Boolean(
             message?.parts?.some(
                 (part) =>
                     part.type === 'text' &&
-                    isDoctorEmptyFinalTextWarning(part.content),
+                    (isDoctorEmptyFinalTextWarning(part.content) ||
+                        isEmptyFinalUserMessage(part.content)),
             ),
         );
 
@@ -520,7 +523,8 @@ function applyDoctorRecoveredFinalText(
             (part) =>
                 !(
                     part.type === 'text' &&
-                    isDoctorEmptyFinalTextWarning(part.content)
+                    (isDoctorEmptyFinalTextWarning(part.content) ||
+                        isEmptyFinalUserMessage(part.content))
                 ),
         );
         if (nextParts.length !== message.parts.length) {
@@ -686,7 +690,8 @@ async function reconcileDoctorJobSnapshot(
     const hasMeaningfulSummary = Boolean(
         effectiveText.trim() &&
             !isDoctorEmptyFinalTextWarning(effectiveText) &&
-            !isGenericEmptyFinalRecovery(effectiveText),
+            !isGenericEmptyFinalRecovery(effectiveText) &&
+            !isEmptyFinalUserMessage(effectiveText),
     );
     const hasToolWork = doctorHasToolWork(latest);
     const emptyFinalAfterSnapshot =
@@ -707,7 +712,11 @@ async function reconcileDoctorJobSnapshot(
         const currentContent = String(
             readStreamingAssistant(placeholderID)?.content ?? '',
         ).trim();
-        if (!currentContent || currentContent === 'Working…') {
+        if (
+            !currentContent ||
+            currentContent === 'Working…' ||
+            isEmptyFinalUserMessage(currentContent)
+        ) {
             patchStreamingAssistant(placeholderID, {
                 content: DOCTOR_EMPTY_FINAL_TEXT_WARNING,
             });

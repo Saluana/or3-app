@@ -137,12 +137,13 @@ export function useMessageApproval(
     watch(
         () => [approvalRequestKey.value, approvalIsPending.value],
         ([requestId, pending]) => {
-            if (!pending || !requestId) {
+            const approvalId = String(requestId ?? '').trim();
+            if (!pending || !approvalId) {
                 approvalDetail.value = null;
                 return;
             }
             void loadApprovals('pending').catch(() => undefined);
-            void loadApprovalDetail(requestId);
+            void loadApprovalDetail(approvalId);
         },
         { immediate: true },
     );

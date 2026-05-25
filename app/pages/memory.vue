@@ -30,6 +30,10 @@
           <UButton label="Re-scan documents" icon="i-pixelarticons-files" color="neutral" variant="soft" class="or3-touch-target" :loading="rebuildLoading" @click="handleRebuild('docs')" />
         </div>
 
+        <p v-if="lastRebuildResult" class="text-sm text-(--or3-text-muted)">
+          Last re-scan: {{ formatRebuildSummary(lastRebuildResult) }}
+        </p>
+
         <details class="rounded-2xl border border-(--or3-border) bg-white/70 p-3">
           <summary class="cursor-pointer select-none text-xs font-semibold uppercase tracking-wide text-(--or3-text-muted)">Show technical details</summary>
           <pre class="mt-2 max-h-64 overflow-auto whitespace-pre-wrap text-xs text-(--or3-text-muted)">{{ formatObject(embeddingsStatus) }}</pre>
@@ -93,6 +97,7 @@ const sessionKey = ref('')
 const scopeKey = ref('')
 const {
   embeddingsStatus,
+  lastRebuildResult,
   auditStatus,
   scopeResult,
   statusLoading,
@@ -112,6 +117,15 @@ const {
 
 function formatObject(value: unknown) {
   return JSON.stringify(value ?? { status: 'unavailable' }, null, 2)
+}
+
+function formatRebuildSummary(result: Record<string, unknown>) {
+  const notes = Number(result.memoryNotesRebuilt ?? 0)
+  const docs = result.docsRebuilt === true
+  const target = String(result.target ?? 'memory')
+  if (target === 'docs') return docs ? 'Document index refreshed.' : 'Document re-scan finished with no changes.'
+  if (target === 'all') return `Rebuilt ${notes} notes${docs ? ' and refreshed documents' : ''}.`
+  return notes > 0 ? `Rebuilt ${notes} memory notes.` : 'Memory re-scan finished with no note changes.'
 }
 
 async function handleRefreshEmbeddings() {

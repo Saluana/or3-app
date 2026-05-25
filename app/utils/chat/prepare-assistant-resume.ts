@@ -16,14 +16,11 @@ export function buildApprovedResumePayload(
 }
 
 export function prepareAssistantResumeContinuation(
-    patchMessage: (
-        messageId: string,
-        patch: Partial<ChatMessage>,
-    ) => ChatMessage | null | undefined,
+    patchMessage: (messageId: string, patch: Partial<ChatMessage>) => void,
     messageId: string,
     jobId: string,
 ) {
-    return patchMessage(messageId, {
+    patchMessage(messageId, {
         jobId,
         status: 'streaming',
         approvalState: 'retrying',

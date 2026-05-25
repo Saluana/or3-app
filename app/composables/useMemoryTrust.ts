@@ -34,19 +34,30 @@ export function useMemoryTrust() {
   }
 
   async function rebuildEmbeddings(target: 'memory' | 'docs' | 'all' = 'memory') {
+    if (rebuildLoading.value) {
+      return lastRebuildResult.value
+    }
     rebuildLoading.value = true
     memoryError.value = null
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 10 * 60 * 1000)
     try {
       lastRebuildResult.value = await api.request<Record<string, unknown>>('/internal/v1/embeddings/rebuild', {
         method: 'POST',
         body: { target },
+        signal: controller.signal,
       })
       await loadEmbeddingsStatus()
       return lastRebuildResult.value
     } catch (error: any) {
-      memoryError.value = error?.message ?? 'Unable to rebuild embeddings.'
+      if (error?.code === 'aborted') {
+        memoryError.value = 'Re-scan timed out after 10 minutes. Check status and try again with a smaller target.'
+      } else {
+        memoryError.value = error?.message ?? 'Unable to rebuild embeddings.'
+      }
       throw error
     } finally {
+      clearTimeout(timeout)
       rebuildLoading.value = false
     }
   }

@@ -160,8 +160,14 @@ export function formatApprovalInlineCopy(
 }
 
 export function formatApprovalSubjectPreview(
-    approval: Pick<ApprovalRequest, 'type' | 'domain' | 'subject'>,
+    approval: Pick<
+        ApprovalRequest,
+        'type' | 'domain' | 'subject' | 'preview'
+    >,
 ) {
+    const preview = stringValue(approval.preview);
+    if (preview) return preview;
+
     const subj = approval.subject;
     if (!subj) return '';
     if (typeof subj === 'string') return subj;

@@ -57,6 +57,7 @@ function pickStatus(
     right: ChatMessage['status'],
 ): ChatMessage['status'] {
     const rank: Record<ChatMessage['status'], number> = {
+        sending: 0,
         streaming: 4,
         attention: 3,
         complete: 2,
@@ -100,7 +101,6 @@ export function mergeAssistantMessages(
         retryPayload: target.retryPayload ?? source.retryPayload,
         error: target.error ?? source.error,
         errorCode: target.errorCode ?? source.errorCode,
-        updatedAt: source.updatedAt || target.updatedAt,
     };
 }
 

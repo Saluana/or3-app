@@ -4,6 +4,10 @@ import { coerceErrorText, extractErrorCode } from './errors';
 export const EMPTY_FINAL_USER_MESSAGE =
     "I finished the steps but didn't have a final answer to show. Try asking again, or open Approvals if something is waiting.";
 
+export function isEmptyFinalUserMessage(text: string | undefined) {
+    return String(text ?? '').trim() === EMPTY_FINAL_USER_MESSAGE;
+}
+
 export const EMPTY_STREAM_USER_MESSAGE =
     "I didn't get a reply back. Try sending your message again.";
 
