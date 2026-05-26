@@ -217,11 +217,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from '#app';
 import { useComputerFiles } from '~/composables/useComputerFiles';
 import { useTerminalPrefs } from '~/composables/useTerminalPrefs';
 import { useTerminalSession } from '~/composables/useTerminalSession';
+import { serializeErrorForLog } from '~/utils/assistant-stream/errors';
 import { createLogger } from '~/utils/logger';
 import TerminalSurface from '~/components/computer/terminal/TerminalSurface.vue';
 
@@ -255,6 +256,7 @@ const {
     sendKeys,
     resize,
     close,
+    detach,
     reset,
     restoreSession,
     reconnect,
@@ -369,7 +371,7 @@ const menuItems = computed(() => {
 function logTerminalActionError(action: string, error: unknown) {
     logger.error('action:failed', `${action} failed`, {
         action,
-        error: error instanceof Error ? error.message : String(error),
+        ...serializeErrorForLog(error),
     });
 }
 
@@ -488,6 +490,10 @@ onMounted(async () => {
         selectedRootId.value = restored.root_id || selectedRootId.value;
         selectedPath.value = restored.path || selectedPath.value;
     }
+});
+
+onBeforeUnmount(() => {
+    detach();
 });
 </script>
 

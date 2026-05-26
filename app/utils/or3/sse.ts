@@ -1,4 +1,5 @@
 import type { Or3SseEvent } from '~/types/or3-api';
+import { serializeErrorForLog } from '~/utils/assistant-stream/errors';
 import { createLogger } from '~/utils/logger';
 
 const logger = createLogger('sse');
@@ -38,7 +39,7 @@ export function parseSseBlock(block: string): Or3SseEvent {
             logger.warn('parse:invalid_json', 'SSE data was not valid JSON', {
                 event: event.event,
                 preview: event.data.slice(0, 300),
-                error: error instanceof Error ? error.message : String(error),
+                ...serializeErrorForLog(error),
             });
             event.json = undefined;
         }

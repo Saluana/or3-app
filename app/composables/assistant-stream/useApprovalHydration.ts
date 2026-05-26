@@ -1,6 +1,12 @@
-import { watch, type Ref } from 'vue';
+import { ref, watch, type Ref } from 'vue';
 import type { Or3HostProfile } from '~/types/app-state';
 import { pendingApprovalPlaceholderContent } from '~/utils/assistant-stream/approval';
+import {
+    describeRequestError,
+    serializeErrorForLog,
+} from '~/utils/assistant-stream/errors';
+import { formatApprovalSubjectPreview } from '~/utils/or3/approval-display';
+import { isExternalChannelSessionKey } from '~/utils/or3/approval-resume-target';
 import { normalizeApprovalRequest } from '~/utils/or3/approvals';
 import type { useChatRuntimeLog } from '../useChatRuntimeLog';
 import type { useChatSessions } from '../useChatSessions';
@@ -21,6 +27,7 @@ interface UseApprovalHydrationOptions {
 
 let approvalHydrationWatcherInstalled = false;
 const approvalHydrationInFlight = new Set<string>();
+export const approvalHydrationError = ref<string | null>(null);
 
 export function useApprovalHydration(options: UseApprovalHydrationOptions) {
     const isClient = options.isClient ?? import.meta.client;
@@ -30,16 +37,19 @@ export function useApprovalHydration(options: UseApprovalHydrationOptions) {
 
         const hostId = options.activeHost.value?.id?.trim();
         const hasAuth = Boolean(
+            options.activeHost.value?.pairedToken?.trim() ||
             options.activeHost.value?.token?.trim() ||
-                options.activeHost.value?.authMode === 'secure-session',
+            options.activeHost.value?.authMode === 'secure-session',
         );
         const sessionKey = options.chat.activeSession.value?.sessionKey?.trim();
         if (!hostId || !hasAuth || !sessionKey) return;
+        if (isExternalChannelSessionKey(sessionKey)) return;
 
         const hydrationKey = `${hostId}:${sessionKey}`;
         if (approvalHydrationInFlight.has(hydrationKey)) return;
 
         approvalHydrationInFlight.add(hydrationKey);
+        approvalHydrationError.value = null;
         try {
             options.runtimeLog.add(
                 'approval',
@@ -84,6 +94,8 @@ export function useApprovalHydration(options: UseApprovalHydrationOptions) {
                     approvalRequestId: approval.id,
                     sessionKey,
                     content: pendingApprovalPlaceholderContent(approval),
+                    approvalType: approval.type || approval.domain,
+                    approvalPreview: formatApprovalSubjectPreview(approval),
                     createdAt: approval.created_at,
                     status: 'attention',
                     approvalState: 'pending',
@@ -99,10 +111,14 @@ export function useApprovalHydration(options: UseApprovalHydrationOptions) {
                 );
             }
         } catch (error) {
+            approvalHydrationError.value =
+                describeRequestError(error) ||
+                'Could not refresh approval requests';
             options.runtimeLog.add(
                 'approval',
                 'hydrate_pending:error',
-                String(error),
+                describeRequestError(error),
+                serializeErrorForLog(error),
             );
         } finally {
             approvalHydrationInFlight.delete(hydrationKey);
@@ -117,6 +133,7 @@ export function useApprovalHydration(options: UseApprovalHydrationOptions) {
             () => ({
                 hostId: options.activeHost.value?.id ?? '',
                 token:
+                    options.activeHost.value?.pairedToken ||
                     options.activeHost.value?.token ||
                     options.activeHost.value?.authMode === 'secure-session'
                         ? 'ready'
@@ -132,6 +149,7 @@ export function useApprovalHydration(options: UseApprovalHydrationOptions) {
     };
 
     return {
+        approvalHydrationError,
         hydratePendingApprovalsForActiveSession,
         installApprovalHydrationWatcher,
     };

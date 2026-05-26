@@ -1,9 +1,9 @@
 <template>
     <LockScreenWelcomeSection
         :can-host-locally="canHostLocally"
-        @setup-host="$emit('setupHost')"
-        @pair-device="$emit('pairDevice')"
-        @learn-more="$emit('learnMore')"
+        @setup-host="$emit('setup-host')"
+        @pair-device="$emit('pair-device')"
+        @learn-more="$emit('learn-more')"
     />
 </template>
 
@@ -13,8 +13,8 @@ defineProps<{
 }>();
 
 defineEmits<{
-    setupHost: [];
-    pairDevice: [];
-    learnMore: [];
+    'setup-host': [];
+    'pair-device': [];
+    'learn-more': [];
 }>();
 </script>

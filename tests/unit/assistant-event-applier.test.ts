@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { ref } from 'vue';
 import { useChatRuntimeLog } from '../../app/composables/useChatRuntimeLog';
 import { createAssistantEventApplier } from '../../app/utils/assistant-stream/event-applier';
+import { EMPTY_FINAL_USER_MESSAGE } from '../../app/utils/assistant-stream/userErrorCopy';
 import { clearActiveTraceId } from '../../app/utils/logTrace';
 import { setDebugLoggingEnabled } from '../../app/utils/logger';
 import type {
@@ -264,8 +265,7 @@ describe('createAssistantEventApplier', () => {
 
     it('removes the empty-final warning when a late final text event arrives', () => {
         const { applyEvent, assistant } = createApplier();
-        const warning =
-            'Tool work completed, but or3-intern did not return a final assistant message. The last tool result is shown above; retry the turn if it still matters.';
+        const warning = EMPTY_FINAL_USER_MESSAGE;
         assistant.value.content = warning;
         assistant.value.status = 'attention';
         assistant.value.error = 'or3-intern completed without a final assistant message.';
@@ -315,5 +315,42 @@ describe('createAssistantEventApplier', () => {
                 content: 'Recovered answer.',
             },
         ]);
+    });
+
+    it('marks tool_result failed lifecycle events as errors', () => {
+        const { assistant, applyEvent } = createApplier();
+
+        applyEvent(
+            {
+                event: 'tool_call',
+                json: {
+                    name: 'write_file',
+                    tool_call_id: 'call_write',
+                    arguments: '{"path":"test.md"}',
+                },
+            },
+            'stream',
+        );
+        applyEvent(
+            {
+                event: 'tool_result',
+                json: {
+                    name: 'write_file',
+                    tool_call_id: 'call_write',
+                    status: 'failed',
+                    result: JSON.stringify({
+                        ok: false,
+                        summary: 'write_file failed: tool not available in this turn',
+                    }),
+                },
+            },
+            'stream',
+        );
+
+        const toolPart = assistant.value.parts?.find(
+            (part) => part.type === 'tool',
+        );
+        expect(toolPart?.status).toBe('error');
+        expect(assistant.value.toolCalls[0]?.status).toBe('error');
     });
 });

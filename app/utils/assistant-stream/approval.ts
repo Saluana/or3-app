@@ -1,5 +1,9 @@
 import type { ApprovalRequest } from '~/types/or3-api';
-import { formatApprovalSubjectPreview } from '~/utils/or3/approval-display';
+import {
+    formatApprovalInlineCopy,
+    formatApprovalSubjectPreview,
+} from '~/utils/or3/approval-display';
+import { coerceErrorText } from './errors';
 import { truncateLogDetail } from './activity';
 
 export function isApprovalRequiredPayload(payload?: Record<string, unknown>) {
@@ -124,6 +128,117 @@ export function describeApprovalRequest(toolName: string, argsJson?: string) {
         '',
         'Approve if this matches what you asked for. Deny it if it looks unexpected.',
     ].join('\n');
+}
+
+function parseQuotaPreviewFromText(text: string) {
+    const normalized = text.trim();
+    if (!normalized) return '';
+    const scoped = normalized.match(
+        /for\s+(\w+):\s+[^.]*?limit\s+(\d+)\s*\/\s*(\d+)/i,
+    );
+    if (scoped) {
+        const limitName = normalized.includes('max_tool_calls')
+            ? 'max_tool_calls'
+            : normalized.includes('tool-call')
+              ? 'tool_calls'
+              : 'tool_calls';
+        return `${scoped[1]} ${limitName} (${scoped[2]}/${scoped[3]})`;
+    }
+    const bare = normalized.match(/limit\s+(\d+)\s*\/\s*(\d+)/i);
+    if (bare) return `tool_calls (${bare[1]}/${bare[2]})`;
+    return '';
+}
+
+export function inferApprovalMetadataFromToolPayload(
+    toolName: string,
+    payload?: Record<string, unknown>,
+) {
+    const err = coerceErrorText(payload?.error);
+    const preview = coerceErrorText(
+        payload?.result_preview ?? payload?.result ?? payload?.summary,
+    );
+    const combined = `${err} ${preview}`.toLowerCase();
+    if (
+        combined.includes('tool quota') ||
+        combined.includes('max_tool_calls') ||
+        combined.includes('per-message total tool-call') ||
+        combined.includes('per-session total tool-call')
+    ) {
+        const approvalPreview =
+            parseQuotaPreviewFromText(`${err} ${preview}`) ||
+            parseQuotaPreviewFromText(preview) ||
+            parseQuotaPreviewFromText(err);
+        return {
+            approvalType: 'tool_quota',
+            approvalPreview: approvalPreview || undefined,
+        };
+    }
+    if (String(payload?.code ?? '').trim() === 'approval_required') {
+        return {
+            approvalType: toolName.trim() || undefined,
+            approvalPreview: preview || err || undefined,
+        };
+    }
+    return {};
+}
+
+export function buildInlineApprovalContent(options: {
+    approvalType?: string;
+    approvalPreview?: string;
+    toolName?: string;
+    argsJson?: string;
+}) {
+    if (options.approvalType === 'tool_quota') {
+        const copy = formatApprovalInlineCopy({
+            type: 'tool_quota',
+            subject: options.approvalPreview
+                ? { summary: options.approvalPreview }
+                : undefined,
+        });
+        const lines = [
+            copy.description,
+            '',
+            `**${copy.title}**`,
+            options.approvalPreview
+                ? `**Usage:** ${options.approvalPreview}`
+                : 'This turn hit the configured tool-call limit.',
+            '',
+            'Approve to let or3-intern continue with more tool calls for this message. Deny to stop here.',
+        ];
+        return lines.join('\n');
+    }
+    return describeApprovalRequest(options.toolName || 'tool', options.argsJson);
+}
+
+export function extractApprovalMetadata(payload?: Record<string, unknown>) {
+    if (!payload) return {};
+    const nested =
+        payload.approval && typeof payload.approval === 'object'
+            ? (payload.approval as Record<string, unknown>)
+            : undefined;
+    const approvalType = String(
+        payload.approval_type ??
+            nested?.type ??
+            payload.type ??
+            '',
+    ).trim();
+    const subject =
+        payload.approval_subject ??
+        nested?.subject ??
+        payload.subject;
+    let approvalPreview = '';
+    if (typeof subject === 'string') {
+        approvalPreview = subject.trim();
+    } else if (subject && typeof subject === 'object') {
+        approvalPreview = formatApprovalSubjectPreview({
+            type: approvalType,
+            subject,
+        });
+    }
+    return {
+        approvalType: approvalType || undefined,
+        approvalPreview: approvalPreview || undefined,
+    };
 }
 
 export function pendingApprovalPlaceholderContent(approval: ApprovalRequest) {

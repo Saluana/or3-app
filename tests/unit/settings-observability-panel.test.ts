@@ -7,6 +7,10 @@ const mockState = vi.hoisted(() => ({
         value: { id: 'host-1', token: 'paired-token' },
         __v_isRef: true,
     },
+    isPaired: {
+        value: true,
+        __v_isRef: true,
+    },
     latestChatRuntimeEntries: {
         value: [{ id: 'app-1' }],
         __v_isRef: true,
@@ -41,7 +45,10 @@ const mockState = vi.hoisted(() => ({
 }));
 
 vi.mock('../../app/composables/useActiveHost', () => ({
-    useActiveHost: () => ({ activeHost: mockState.activeHost }),
+    useActiveHost: () => ({
+        activeHost: mockState.activeHost,
+        isPaired: mockState.isPaired,
+    }),
 }));
 
 vi.mock('../../app/composables/useChatRuntimeLog', () => ({
@@ -97,6 +104,7 @@ function mountPanel() {
 describe('SettingsObservabilityPanel', () => {
     beforeEach(() => {
         mockState.activeHost.value = { id: 'host-1', token: 'paired-token' };
+        mockState.isPaired.value = true;
         mockState.serverLogsStreaming.value = false;
         mockState.serverLogsError.value = null;
         mockState.chatRuntimeExportText.value = '[{"id":"app-1"}]';

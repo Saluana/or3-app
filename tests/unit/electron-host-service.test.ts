@@ -114,7 +114,69 @@ describe('Electron host service manager', () => {
         const status: any = await startService();
         expect(['starting', 'online']).toContain(status.state);
         expect(status.processId).toBeTypeOf('number');
+        const launchConfig = JSON.parse(await readFile(join(dir, 'or3-electron-launch-config.json'), 'utf8'));
+        expect(launchConfig.service.maxCapability).toBe('privileged');
+        expect(launchConfig.security.profiles.channels.service).toBe('admin');
+        expect(launchConfig.security.profiles.profiles.admin.allowedTools).toContain('delete_file');
+        expect(launchConfig.hardening.guardedTools).toBe(true);
+        expect(launchConfig.hardening.privilegedTools).toBe(true);
+        expect(launchConfig.tools.enableExec).toBe(true);
         await stopService();
+    });
+
+    it('rejects a missing workspace before spawning the local service', async () => {
+        const binary = await makeFakeIntern(dir);
+        const missingWorkspace = join(dir, 'missing-workspace');
+        const configured = await configureService({
+            machineName: 'Desk',
+            workspaceDir: missingWorkspace,
+            listenHost: '127.0.0.1',
+            listenPort: 65530,
+            securityPreset: 'private',
+            autostartEnabled: false,
+            serviceBehavior: 'stop-with-app',
+            internBinaryPath: binary,
+        });
+
+        expect(configured).toMatchObject({
+            ok: false,
+            recoverable: true,
+        });
+    });
+
+    it('surfaces a moved saved workspace as a recoverable start error', async () => {
+        const binary = await makeFakeIntern(dir);
+        const missingWorkspace = join(dir, 'moved-workspace');
+        await writeFile(
+            join(dir, 'or3-electron-host.json'),
+            JSON.stringify({
+                version: 1,
+                mode: 'host',
+                hostService: {
+                    machineName: 'Desk',
+                    workspaceDir: missingWorkspace,
+                    listenHost: '127.0.0.1',
+                    listenPort: 65530,
+                    securityPreset: 'private',
+                    autostartEnabled: false,
+                    serviceBehavior: 'stop-with-app',
+                    internBinaryPath: binary,
+                },
+                serviceAuth: {
+                    version: 1,
+                    secret: 'a'.repeat(64),
+                    createdAt: new Date().toISOString(),
+                },
+            }),
+        );
+
+        const status: any = await startService();
+
+        expect(status).toMatchObject({
+            state: 'error',
+            recoverable: true,
+        });
+        expect(status.message).toContain('workspace folder');
     });
 
     it('binds desktop service tokens to the decoded Go request path', async () => {
@@ -395,6 +457,13 @@ describe('Electron host service manager', () => {
         expect(intentBody).toMatchObject({
             requested_role: 'viewer',
             capabilities: ['chat'],
+        });
+
+        await createSecureInvite({ requestedRole: 'admin', capabilities: ['chat', 'files', 'terminal'] });
+
+        expect(intentBody).toMatchObject({
+            requested_role: 'admin',
+            capabilities: ['chat', 'files', 'terminal'],
         });
     });
 });

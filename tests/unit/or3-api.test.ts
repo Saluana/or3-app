@@ -124,7 +124,7 @@ describe('useOr3Api', () => {
         });
     });
 
-    it('prefers session tokens and includes the session header when available', async () => {
+    it('uses paired bearer tokens and includes the passkey session header when available', async () => {
         const cache = useLocalCache();
         cache.clearAll();
         cache.updateHost({
@@ -142,7 +142,7 @@ describe('useOr3Api', () => {
                     'http://127.0.0.1:9100/internal/v1/auth/session',
                 );
                 expect(init?.headers).toMatchObject({
-                    Authorization: 'Bearer session-token',
+                    Authorization: 'Bearer paired-token',
                     'X-Or3-Session': 'session-token',
                 });
                 return new Response(

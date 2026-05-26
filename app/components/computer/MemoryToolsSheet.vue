@@ -50,9 +50,9 @@
             <p class="mt-2 font-mono text-sm font-semibold text-(--or3-text)">{{ embeddingStatusTitle }}</p>
             <p class="mt-1 text-xs leading-5 text-(--or3-text-muted)">{{ embeddingStatusDescription }}</p>
             <div class="mt-3 flex flex-wrap gap-2">
-              <UButton size="sm" label="Refresh" icon="i-pixelarticons-reload" color="neutral" variant="soft" :loading="memoryLoading" @click="emit('refresh-memory')" />
-              <UButton size="sm" label="Re-scan notes" icon="i-pixelarticons-database" color="primary" :loading="memoryLoading" @click="emit('rebuild', 'memory')" />
-              <UButton size="sm" label="Re-scan documents" icon="i-pixelarticons-files" color="neutral" variant="soft" :loading="memoryLoading" @click="emit('rebuild', 'docs')" />
+              <UButton size="sm" label="Refresh" icon="i-pixelarticons-reload" color="neutral" variant="soft" :loading="statusLoading" @click="emit('refresh-memory')" />
+              <UButton size="sm" label="Re-scan notes" icon="i-pixelarticons-database" color="primary" :loading="rebuildLoading" @click="emit('rebuild', 'memory')" />
+              <UButton size="sm" label="Re-scan documents" icon="i-pixelarticons-files" color="neutral" variant="soft" :loading="rebuildLoading" @click="emit('rebuild', 'docs')" />
             </div>
           </section>
 
@@ -61,8 +61,8 @@
             <p class="mt-2 font-mono text-sm font-semibold text-(--or3-text)">{{ auditStatusTitle }}</p>
             <p class="mt-1 text-xs leading-5 text-(--or3-text-muted)">{{ auditStatusDescription }}</p>
             <div class="mt-3 flex flex-wrap gap-2">
-              <UButton size="sm" label="Refresh" icon="i-pixelarticons-shield" color="neutral" variant="soft" :loading="memoryLoading" @click="emit('refresh-audit')" />
-              <UButton size="sm" label="Verify log" icon="i-pixelarticons-check-double" color="primary" :loading="memoryLoading" @click="emit('verify-audit')" />
+              <UButton size="sm" label="Refresh" icon="i-pixelarticons-shield" color="neutral" variant="soft" :loading="auditLoading" @click="emit('refresh-audit')" />
+              <UButton size="sm" label="Verify log" icon="i-pixelarticons-check-double" color="primary" :loading="auditLoading" @click="emit('verify-audit')" />
               <UButton size="sm" label="Open memory page" icon="i-pixelarticons-link" to="/memory" color="neutral" variant="ghost" />
             </div>
           </section>
@@ -112,13 +112,17 @@ const props = withDefaults(defineProps<{
   open: boolean
   embeddingsStatus: Record<string, unknown> | null
   auditStatus: Record<string, unknown> | null
-  memoryLoading: boolean
+  statusLoading: boolean
+  auditLoading: boolean
+  rebuildLoading: boolean
   memoryError: string | null
   shortcuts: MemoryShortcut[]
 }>(), {
   embeddingsStatus: null,
   auditStatus: null,
-  memoryLoading: false,
+  statusLoading: false,
+  auditLoading: false,
+  rebuildLoading: false,
   memoryError: null,
   shortcuts: () => [],
 })
@@ -153,22 +157,41 @@ useSheetSwipeDismiss({
 const embeddingStatusTitle = computed(() => {
   const status = String(props.embeddingsStatus?.status || '').trim().toLowerCase()
   if (status === 'ok') return 'Memory search looks healthy'
+  if (status === 'degraded') return 'Memory search needs attention'
   if (status === 'mismatch') return 'Memory embeddings need a refresh'
   if (status === 'legacy-unknown') return 'Memory index is from an older setup'
+  if (status === 'unavailable') return 'Memory embeddings are not configured'
   return 'Memory status is unavailable'
 })
 
 const embeddingStatusDescription = computed(() => {
   const status = String(props.embeddingsStatus?.status || '').trim().toLowerCase()
   const dims = Number(props.embeddingsStatus?.memoryVectorDims || 0)
+  const missing = Number(props.embeddingsStatus?.missingVectorCount || 0)
+  const dirty = Number(props.embeddingsStatus?.dirtyVectorCount || 0)
+  const searchMode = String(props.embeddingsStatus?.searchMode || '').trim().toLowerCase()
   if (status === 'ok') {
-    const docsEnabled = props.embeddingsStatus?.docIndexEnabled ? ' Document search is on.' : ''
+    const docsEnabled = props.embeddingsStatus?.docIndexEnabled
+      ? searchMode === 'fts'
+        ? ' Documents use keyword search (FTS).'
+        : ' Document search is on.'
+      : ''
     return dims > 0
       ? `Your saved memory vectors are ready (${dims} dimensions).${docsEnabled}`
       : `The index reports as healthy.${docsEnabled}`
   }
-  if (status === 'mismatch') return 'The embedding model changed since the last build. Re-scan notes and documents so recall stays accurate.'
+  if (status === 'degraded') {
+    const parts = []
+    if (missing > 0) parts.push(`${missing} notes missing vectors`)
+    if (dirty > 0) parts.push(`${dirty} notes need vector repair`)
+    if (props.embeddingsStatus?.lastVectorIndexError) parts.push('recent vector index errors')
+    if (props.embeddingsStatus?.lastDocRetrievalError) parts.push('recent document retrieval errors')
+    const detail = parts.length ? ` Issues: ${parts.join(', ')}.` : ''
+    return `Memory recall may be incomplete.${detail} Try Re-scan notes or Check status.`
+  }
+  if (status === 'mismatch') return 'The embedding model changed since the last build. Re-scan notes so recall stays accurate.'
   if (status === 'legacy-unknown') return 'OR3 found older vectors without a matching fingerprint. A re-scan will normalize them.'
+  if (status === 'unavailable') return 'Configure provider.embedModel in or3-intern to enable vector memory search. Notes still use keyword fallback.'
   return 'Refresh to see whether memory search and document indexing are ready.'
 })
 

@@ -1,4 +1,5 @@
 import { computed, ref } from 'vue';
+import { describeRequestError } from '~/utils/assistant-stream/errors';
 import { createLogger } from '~/utils/logger';
 import { useOr3Api } from './useOr3Api';
 
@@ -117,10 +118,7 @@ export function useServerLogs() {
             reconnectAttempt = 0;
         } catch (streamError) {
             if (activeController.signal.aborted || manualDisconnect) return;
-            const message =
-                streamError instanceof Error
-                    ? streamError.message
-                    : String(streamError);
+            const message = describeRequestError(streamError);
             error.value = message;
             logger.warn('connect:error', 'Server log stream disconnected', {
                 error: message,

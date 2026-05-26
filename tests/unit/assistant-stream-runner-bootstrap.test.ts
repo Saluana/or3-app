@@ -29,6 +29,7 @@ vi.mock('../../app/composables/useOr3Api', () => ({
 import { useAssistantStream } from '../../app/composables/useAssistantStream';
 import { useChatSessions } from '../../app/composables/useChatSessions';
 import { useLocalCache } from '../../app/composables/useLocalCache';
+import { EMPTY_FINAL_USER_MESSAGE } from '../../app/utils/assistant-stream/userErrorCopy';
 
 function addHost() {
     useLocalCache().updateHost({
@@ -220,8 +221,7 @@ describe('assistant stream runner bootstrap', () => {
 
         const chat = useChatSessions();
         const session = chat.ensureSession();
-        const warning =
-            'Tool work completed, but or3-intern did not return a final assistant message. The last tool result is shown above; retry the turn if it still matters.';
+        const warning = EMPTY_FINAL_USER_MESSAGE;
         const assistant = chat.addMessage({
             sessionId: session.id,
             role: 'assistant',

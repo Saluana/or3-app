@@ -1,5 +1,5 @@
 <template>
-    <SurfaceCard class-name="space-y-4">
+    <SurfaceCard class-name="space-y-4 or3-pin-lock-settings">
         <div class="flex items-start gap-3">
             <div
                 class="grid size-10 shrink-0 place-items-center rounded-xl border border-(--or3-border) bg-white/70"
@@ -170,11 +170,12 @@
         >
             <div>
                 <p class="font-mono text-xs font-semibold text-(--or3-text)">
-                    Unlock grace period
+                    Auto-lock after inactivity
                 </p>
                 <p class="mt-1 text-xs leading-5 text-(--or3-text-muted)">
-                    Keep OR3 unlocked for a short time after you leave the app
-                    so quick app switches do not prompt for your PIN again.
+                    Re-lock after this much time without using OR3. Active use
+                    keeps you signed in; a soft refresh will not ask again
+                    until you are idle.
                 </p>
             </div>
 
@@ -220,7 +221,7 @@
                 color="neutral"
                 variant="outline"
                 :label="showSetup ? 'Cancel' : 'Disable'"
-                icon="i-pixelarticons-lock-off"
+                icon="i-pixelarticons-close"
                 @click="showSetup ? cancel() : startDisable()"
             />
             <UButton
@@ -330,7 +331,7 @@ const unlockStatusMessage = computed(() => {
         return 'PIN lock is active. Your tokens are encrypted and OR3 will ask for your PIN again whenever the app is reopened.';
     }
 
-    return `PIN lock is active. Your tokens are encrypted and OR3 will stay unlocked for ${unlockDurationLabel.value.toLowerCase()} after you leave the app.`;
+    return `PIN lock is active. Your tokens are encrypted. OR3 stays unlocked for ${unlockDurationLabel.value.toLowerCase()} while you are using the app, then asks for your PIN again after that much idle time.`;
 });
 
 function cancel() {

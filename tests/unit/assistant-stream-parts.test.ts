@@ -33,6 +33,7 @@ vi.mock("../../app/composables/useOr3Api", () => ({
 import { useAssistantStream } from "../../app/composables/useAssistantStream";
 import { useChatSessions } from "../../app/composables/useChatSessions";
 import { useLocalCache } from "../../app/composables/useLocalCache";
+import { EMPTY_FINAL_USER_MESSAGE } from "../../app/utils/assistant-stream/userErrorCopy";
 
 describe("assistant stream ordered parts", () => {
     beforeEach(() => {
@@ -238,9 +239,7 @@ describe("assistant stream ordered parts", () => {
         );
         expect(assistant?.status).toBe("attention");
         expect(assistant?.errorCode).toBe("empty_final_text");
-        expect(assistant?.content).toContain(
-            "did not return a final assistant message",
-        );
+        expect(assistant?.content).toContain(EMPTY_FINAL_USER_MESSAGE);
         expect(
             assistant?.activityLog?.find(
                 (entry) => entry.type === "completion",
@@ -300,9 +299,7 @@ describe("assistant stream ordered parts", () => {
         expect(assistant?.status).toBe("complete");
         expect(assistant?.errorCode).toBeUndefined();
         expect(assistant?.content).toContain("glue-board traps");
-        expect(assistant?.content).not.toContain(
-            "did not return a final assistant message",
-        );
+        expect(assistant?.content).not.toContain(EMPTY_FINAL_USER_MESSAGE);
     });
 
     it("replaces an empty-final warning with recovered final text without duplicating it", async () => {
@@ -359,9 +356,7 @@ describe("assistant stream ordered parts", () => {
         );
         expect(assistant?.status).toBe("attention");
         expect(assistant?.errorCode).toBe("empty_final_text");
-        expect(assistant?.content).toContain(
-            "did not return a final assistant message",
-        );
+        expect(assistant?.content).toContain(EMPTY_FINAL_USER_MESSAGE);
 
         streamEvents.length = 0;
         snapshotResponse = {
@@ -397,7 +392,7 @@ describe("assistant stream ordered parts", () => {
         expect(latest?.content).toBe("Recovered final answer.");
         expect(
             textParts.some((part) =>
-                part.content?.includes("did not return a final assistant message"),
+                part.content?.includes(EMPTY_FINAL_USER_MESSAGE),
             ),
         ).toBe(false);
         expect(
@@ -428,7 +423,7 @@ describe("assistant stream ordered parts", () => {
         );
         expect(assistant?.status).toBe("attention");
         expect(assistant?.errorCode).toBe("empty_final_text");
-        expect(assistant?.content).toContain("did not return any visible text");
+        expect(assistant?.content).toContain(EMPTY_FINAL_USER_MESSAGE);
     });
 
     it("merges legacy pending tool records when replay provides the canonical tool id", async () => {

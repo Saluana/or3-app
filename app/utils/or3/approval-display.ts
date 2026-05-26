@@ -1,7 +1,10 @@
 import type { ApprovalRequest } from '~/types/or3-api';
 
 function stringValue(value: unknown) {
-    return typeof value === 'string' ? value.trim() : '';
+    if (typeof value === 'string') return value.trim();
+    if (typeof value === 'number' && Number.isFinite(value))
+        return String(value);
+    return '';
 }
 
 function stringArray(value: unknown) {
@@ -60,9 +63,111 @@ export function approvalStatusTone(status?: string) {
     }
 }
 
-export function formatApprovalSubjectPreview(
-    approval: Pick<ApprovalRequest, 'type' | 'domain' | 'subject'>,
+export function approvalKindType(
+    approval: Pick<ApprovalRequest, 'type' | 'domain' | 'subject'> | undefined,
 ) {
+    if (!approval) return '';
+    const subj = approval.subject;
+    if (subj && typeof subj === 'object' && !Array.isArray(subj)) {
+        const obj = subj as Record<string, unknown>;
+        const fromSubject = stringValue(obj.type);
+        if (fromSubject) return fromSubject;
+    }
+    return String(approval.type || approval.domain || '').trim();
+}
+
+export function approvalKindLabel(type?: string) {
+    const normalized = String(type ?? '').trim();
+    if (!normalized) return 'Permission needed';
+    if (normalized === 'exec') return 'Run command';
+    if (normalized === 'file_write') return 'Write file';
+    if (normalized === 'network') return 'Reach the internet';
+    if (normalized === 'tool_quota') return 'Tool call limit reached';
+    if (
+        normalized === 'skill_exec' ||
+        normalized === 'skill_execution' ||
+        normalized === 'run_skill_script'
+    ) {
+        return 'Run skill script';
+    }
+    if (normalized === 'runner_permission') return 'Runner permission';
+    return normalized
+        .replace(/_/g, ' ')
+        .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+export function approvalKindDescription(type?: string) {
+    const normalized = String(type ?? '').trim();
+    if (!normalized) {
+        return 'or3-intern needs your permission before it can continue this turn.';
+    }
+    if (normalized === 'exec') {
+        return 'or3-intern wants to run a shell command on this machine.';
+    }
+    if (normalized === 'file_write') {
+        return 'or3-intern wants to create or update a file.';
+    }
+    if (normalized === 'network') {
+        return 'or3-intern wants to reach an external service.';
+    }
+    if (normalized === 'tool_quota') {
+        return 'This turn used more tool calls than the current limit allows. Approve to let or3-intern continue with more tool calls.';
+    }
+    if (
+        normalized === 'skill_exec' ||
+        normalized === 'skill_execution' ||
+        normalized === 'run_skill_script'
+    ) {
+        return 'or3-intern wants to run a skill script.';
+    }
+    if (normalized === 'runner_permission') {
+        return 'or3-intern needs permission to use a runner on your computer.';
+    }
+    return 'or3-intern is asking for permission to continue.';
+}
+
+export function approvalKindIcon(type?: string) {
+    const normalized = String(type ?? '').trim();
+    if (normalized === 'exec') return 'i-pixelarticons-terminal';
+    if (normalized === 'file_write') return 'i-pixelarticons-file-text';
+    if (normalized === 'network') return 'i-pixelarticons-globe';
+    if (normalized === 'tool_quota') return 'i-pixelarticons-alert';
+    if (
+        normalized === 'skill_exec' ||
+        normalized === 'skill_execution' ||
+        normalized === 'run_skill_script'
+    ) {
+        return 'i-pixelarticons-script';
+    }
+    if (normalized === 'runner_permission') return 'i-pixelarticons-shield';
+    return 'i-pixelarticons-shield';
+}
+
+export function formatApprovalInlineCopy(
+    approval: Pick<ApprovalRequest, 'type' | 'domain' | 'subject'> | undefined,
+) {
+    const type = approvalKindType(approval);
+    const preview = approval
+        ? formatApprovalSubjectPreview(approval)
+        : '';
+    return {
+        type,
+        title: approvalKindLabel(type),
+        description: approvalKindDescription(type),
+        icon: approvalKindIcon(type),
+        preview,
+    };
+}
+
+export function formatApprovalSubjectPreview(
+    approval: Pick<
+        ApprovalRequest,
+        'type' | 'domain' | 'subject' | 'preview'
+    >,
+) {
+    const preview = stringValue(approval.preview);
+    if (preview) return preview;
+
     const subj = approval.subject;
     if (!subj) return '';
     if (typeof subj === 'string') return subj;
@@ -87,7 +192,11 @@ export function formatApprovalSubjectPreview(
         if (cwd) return `cwd: ${cwd}`;
     }
 
-    if (type === 'skill_exec' || type === 'run_skill_script') {
+    if (
+        type === 'skill_exec' ||
+        type === 'skill_execution' ||
+        type === 'run_skill_script'
+    ) {
         const skill =
             stringValue(obj.skill_id) ||
             stringValue(obj.skillName) ||
@@ -109,6 +218,19 @@ export function formatApprovalSubjectPreview(
         if (runner && access && target) return `${runner} ${access} ${target}`;
         if (runner && target) return `${runner}: ${target}`;
         if (target) return target;
+    }
+
+    if (type === 'tool_quota') {
+        const scope = stringValue(obj.scope);
+        const limitName = stringValue(obj.limit_name);
+        const tool = stringValue(obj.tool_name);
+        const current = stringValue(obj.current);
+        const limit = stringValue(obj.limit);
+        const target = [scope, limitName || tool].filter(Boolean).join(' ');
+        const usage = current && limit ? `${current}/${limit}` : '';
+        if (target && usage) return `${target} (${usage})`;
+        if (target) return target;
+        if (usage) return usage;
     }
 
     return (

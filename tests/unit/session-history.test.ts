@@ -27,6 +27,7 @@ async function loadComposable(options?: {
             sessionKey,
         })),
         hydrateBackendMessages: vi.fn(),
+        clearSessionMessages: vi.fn(),
         ...(options?.chatOverrides || {}),
     };
 
@@ -37,11 +38,30 @@ async function loadComposable(options?: {
             })),
     );
 
+    const activeHost = ref({
+        id: 'test-host',
+        baseUrl: 'http://127.0.0.1:9100',
+        pairedToken: 'paired-token',
+        status: 'online',
+    });
+
     vi.doMock('../../app/composables/useChatSessions', () => ({
         useChatSessions: () => chat,
     }));
     vi.doMock('../../app/composables/useOr3Api', () => ({
         useOr3Api: () => ({ request }),
+    }));
+    vi.doMock('../../app/composables/useActiveHost', () => ({
+        useActiveHost: () => ({ activeHost }),
+    }));
+    vi.doMock('../../app/composables/useSecureHostTokens', () => ({
+        canUseHostApi: () => true,
+    }));
+    vi.doMock('../../app/composables/useCredentialsSync', () => ({
+        syncCredentialsAfterUnlock: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../../app/composables/usePinLock', () => ({
+        usePinLockState: () => ({ needsUnlock: ref(false) }),
     }));
 
     const mod = await import('../../app/composables/useSessionHistory');
@@ -169,6 +189,42 @@ describe('useSessionHistory', () => {
             'local-session',
             { archived: true },
         );
+    });
+
+    it('clears local messages before hydrating an opened session', async () => {
+        const clearSessionMessages = vi.fn();
+        const { sessionHistory, chat, request } = await loadComposable({
+            chatOverrides: { clearSessionMessages },
+            requestImpl: async (path: string) => {
+                if (
+                    path ===
+                    '/internal/v1/chat-sessions/svc%3Ahistory/messages?limit=100'
+                ) {
+                    return {
+                        messages: [
+                            {
+                                id: 1,
+                                session_key: 'svc:history',
+                                role: 'user',
+                                content: 'hello',
+                                created_at: 1,
+                            },
+                        ],
+                    };
+                }
+                throw new Error(`unexpected path ${path}`);
+            },
+        });
+
+        await sessionHistory.openSession({
+            session_key: 'svc:history',
+            title: 'History',
+        });
+
+        expect(chat.activateSessionByKey).toHaveBeenCalledWith('svc:history');
+        expect(clearSessionMessages).toHaveBeenCalledWith('local:svc:history');
+        expect(chat.hydrateBackendMessages).toHaveBeenCalled();
+        expect(request).toHaveBeenCalledTimes(1);
     });
 
     it('forks through replay, hydrates the new session, and closes the panel', async () => {

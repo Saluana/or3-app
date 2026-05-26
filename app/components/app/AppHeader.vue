@@ -49,21 +49,36 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, ref } from 'vue';
 import { useApprovals } from '~/composables/useApprovals';
+import { useWhenHostApiReady } from '~/composables/useWhenHostApiReady';
 
 withDefaults(defineProps<{ subtitle?: string }>(), {
   subtitle: 'YOUR AI ASSISTANT',
 });
 
 const approvalsOpen = ref(false);
-const { pendingCount, loadPendingCount, startPolling, stopPolling } = useApprovals();
+const { pendingCount, startPolling, stopPolling } = useApprovals();
 const route = useRoute();
 const router = useRouter();
 
-const showBackButton = computed(() => route.path.startsWith('/settings'));
+const computerHome = '/computer';
+
+function isComputerSectionDeepLink(path: string) {
+  if (path.startsWith('/computer/')) return true;
+  return path === '/scheduled' || path === '/approvals' || path === '/activity';
+}
+
+const showBackButton = computed(() => {
+  if (isComputerSectionDeepLink(route.path)) return true;
+  return route.path.startsWith('/settings') && route.path !== '/settings';
+});
 
 function goBack() {
+  if (isComputerSectionDeepLink(route.path)) {
+    void router.push(computerHome);
+    return;
+  }
   if (window.history.length > 1) {
     router.back();
     return;
@@ -71,8 +86,7 @@ function goBack() {
   void router.push('/');
 }
 
-onMounted(async () => {
-  await loadPendingCount();
+useWhenHostApiReady(() => {
   startPolling();
 });
 

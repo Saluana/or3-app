@@ -2,6 +2,7 @@ import { computed } from 'vue';
 import type { Or3HostProfile } from '~/types/app-state';
 import { useLocalCache } from './useLocalCache';
 import { useElectronHostSetup } from './useElectronHostSetup';
+import { hasPinProtectedTokenStore } from './usePinLock';
 
 export const ELECTRON_HOST_PROFILE_ID = 'electron-local-host';
 export const ELECTRON_HOST_TOKEN_SENTINEL = 'electron-local-service-token';
@@ -44,12 +45,15 @@ export function useActiveHost() {
         );
     });
 
-    const isPaired = computed(() =>
-        Boolean(
-            activeHost.value?.token ||
-                activeHost.value?.authMode === 'secure-session',
-        ),
-    );
+    function hostRetainsPairing(host: Or3HostProfile | null | undefined) {
+        if (!host?.baseUrl) return false;
+        if (host.authMode === 'secure-session') return true;
+        if (host.token || host.pairedToken) return true;
+        if (hasPinProtectedTokenStore()) return true;
+        return false;
+    }
+
+    const isPaired = computed(() => hostRetainsPairing(activeHost.value));
     const isConnected = computed(
         () => isPaired.value && activeHost.value?.status === 'online',
     );

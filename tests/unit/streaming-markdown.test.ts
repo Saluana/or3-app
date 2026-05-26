@@ -1,38 +1,25 @@
 import { describe, expect, it } from 'vitest';
+import { parseIncompleteMarkdown } from 'streamdown-vue';
 
-import {
-    repairStreamingMarkdownContent,
-    shouldRepairIncompleteMarkdownForStatus,
-} from '../../app/utils/streamingMarkdown';
+import { shouldRepairIncompleteMarkdownForStatus } from '../../app/utils/streamingMarkdown';
 
 describe('StreamingMarkdown', () => {
-    it('does not append a fake trailing underscore for completed messages', () => {
+    it('lets streamdown-vue repair incomplete markdown without corrupting inline code', () => {
         expect(
-            repairStreamingMarkdownContent(
+            parseIncompleteMarkdown(
                 'The `invalid_grant` error we have seen before.',
-                shouldRepairIncompleteMarkdownForStatus('complete'),
             ),
         ).toBe('The `invalid_grant` error we have seen before.');
     });
 
-    it('preserves inline code with underscores while a message is still streaming', () => {
-        expect(
-            repairStreamingMarkdownContent(
-                'The `invalid_grant` error we have seen before.',
-                shouldRepairIncompleteMarkdownForStatus('streaming'),
-            ),
-        ).toBe('The `invalid_grant` error we have seen before.');
+    it('keeps streamdown-vue incomplete emphasis repair working', () => {
+        expect(parseIncompleteMarkdown('This is *unfinished')).toBe(
+            'This is *unfinished*',
+        );
     });
 
-    it('still repairs incomplete emphasis while streaming', () => {
-        expect(
-            repairStreamingMarkdownContent('This is *unfinished', true),
-        ).toBe('This is *unfinished*');
-    });
-
-    it('closes an open fenced code block while streaming', () => {
-        expect(
-            repairStreamingMarkdownContent('```ts\nconst value = 1', true),
-        ).toBe('```ts\nconst value = 1\n```');
+    it('only asks streamdown-vue to repair messages while they are streaming', () => {
+        expect(shouldRepairIncompleteMarkdownForStatus('streaming')).toBe(true);
+        expect(shouldRepairIncompleteMarkdownForStatus('complete')).toBe(false);
     });
 });

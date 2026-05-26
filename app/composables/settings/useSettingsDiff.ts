@@ -5,6 +5,7 @@
 import type { SimpleSettingChange } from '~/settings/simpleSettings'
 import { labelForFieldRef } from '~/settings/labels'
 import { evaluateRisk, type RiskFinding } from '~/settings/riskRules'
+import { useConfigure } from '~/composables/useConfigure'
 
 export interface DiffLine {
     text: string
@@ -12,7 +13,36 @@ export interface DiffLine {
 }
 
 export function useSettingsDiff() {
+    const configure = useConfigure()
+
+    function metadataRisk(change: SimpleSettingChange): DiffLine | null {
+        const meta = configure.metadataFor(change.section, change.field)
+        if (!meta) return null
+        const label = meta.label || labelForFieldRef(change.section, change.field)
+        if (meta.risk_level === 'danger') {
+            return {
+                text: `${label} is a danger-level setting. ${meta.description || 'Review the exact diff before applying.'}`,
+                severity: 'high',
+            }
+        }
+        if (meta.risk_level === 'warning') {
+            return {
+                text: `${label} requires approval. ${meta.description || 'Review before applying.'}`,
+                severity: 'medium',
+            }
+        }
+        if (meta.risk_level === 'notice' || meta.restart_required) {
+            return {
+                text: `${label}${meta.restart_required ? ' requires a restart' : ' needs review'}. ${meta.description || ''}`.trim(),
+                severity: 'low',
+            }
+        }
+        return null
+    }
+
     function describe(change: SimpleSettingChange): DiffLine {
+        const backendRisk = metadataRisk(change)
+        if (backendRisk) return backendRisk
         const risk: RiskFinding | null = evaluateRisk(change)
         if (risk) {
             return { text: risk.message, severity: risk.level }

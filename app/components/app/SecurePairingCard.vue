@@ -136,6 +136,14 @@ function inferredLocalServiceBaseUrl() {
     return `${window.location.origin}/api/or3`;
 }
 
+function inferredSameHostServiceBaseUrl() {
+    if (typeof window === 'undefined') return '';
+    if (window.location.protocol !== 'http:' && window.location.protocol !== 'https:') return '';
+    const url = new URL(window.location.href);
+    if (!url.hostname) return '';
+    return `${url.protocol}//${url.hostname}:9100`;
+}
+
 function canUseSecureEnrollment() {
     return Boolean(globalThis.isSecureContext && globalThis.crypto?.subtle?.generateKey);
 }
@@ -153,7 +161,10 @@ function normalizedHttpBaseUrl(baseUrl?: string | null) {
 }
 
 function resolveInvitePairingBaseUrl(routes?: PairingInviteRouteV2[]) {
-    const appProxyRoute = routes?.find((route) => route.kind === 'app-proxy');
+    const sorted = [...(routes ?? [])].sort((a, b) => a.priority - b.priority);
+    const directRoute = sorted.find((route) => route.kind === 'direct');
+    if (directRoute) return normalizedHttpBaseUrl(directRoute.baseUrl);
+    const appProxyRoute = sorted.find((route) => route.kind === 'app-proxy');
     if (appProxyRoute) return normalizedHttpBaseUrl(appProxyRoute.baseUrl);
     return '';
 }
@@ -199,16 +210,17 @@ async function routeIsHealthy(baseUrl: string, timeoutMs = 750) {
 
 async function resolvePairingBaseUrl(payload?: PairingQRCodeV1 | null, routeBaseUrl = '') {
     const candidates = uniqueBaseUrls([
-        inferredLocalServiceBaseUrl(),
+        inferredSameHostServiceBaseUrl(),
         routeBaseUrl,
         payload?.serviceBaseUrl,
         activeHost.value?.baseUrl,
+        inferredLocalServiceBaseUrl(),
     ]);
     if (!candidates.length) return '';
     for (const candidate of candidates) {
         if (await routeIsHealthy(candidate)) return candidate;
     }
-    return candidates[0] || '';
+    return '';
 }
 
 async function enrollFromQR(raw: string, payload?: PairingQRCodeV1 | null, routeBaseUrl = '') {

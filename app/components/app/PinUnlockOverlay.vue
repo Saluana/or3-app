@@ -69,10 +69,22 @@
             {{ error }}
           </p>
           <p
+            v-else-if="submitting"
+            class="text-center font-mono text-xs text-(--or3-green-dark)"
+          >
+            Unlocking…
+          </p>
+          <p
             v-else-if="attemptsRemaining > 0 && attemptsRemaining < 5"
             class="text-center font-mono text-xs text-(--or3-text-muted)"
           >
             {{ attemptsRemaining }} attempt{{ attemptsRemaining === 1 ? '' : 's' }} remaining
+          </p>
+          <p
+            v-else
+            class="text-center font-mono text-xs text-(--or3-text-muted)"
+          >
+            Enter your 4–6 digit PIN
           </p>
 
           <div
@@ -100,13 +112,14 @@
             </button>
             <button
               type="button"
-              class="aspect-square rounded-2xl border-2 border-(--or3-border) bg-(--or3-surface) font-mono text-2xl font-semibold text-(--or3-text) shadow-(--or3-shadow-soft) transition-all active:scale-95 enabled:hover:border-(--or3-green) enabled:hover:text-(--or3-green-dark) disabled:opacity-30"
-              :disabled="pin.length === 0 || pin.length < 4"
+              aria-label="Unlock"
+              class="aspect-square rounded-2xl border-2 border-(--or3-border) bg-(--or3-surface) font-mono text-2xl font-semibold text-(--or3-text) shadow-(--or3-shadow-soft) transition-all active:scale-95 enabled:border-(--or3-green) enabled:bg-(--or3-green-soft) enabled:hover:border-(--or3-green-dark) disabled:opacity-30"
+              :disabled="pin.length < 4 || submitting"
               @click="submit"
             >
               <Icon
                 name="i-pixelarticons-arrow-right"
-                class="mx-auto size-6 text-(--or3-green)"
+                class="mx-auto size-6 text-(--or3-green-dark)"
               />
             </button>
           </div>
@@ -199,9 +212,12 @@ const attemptsRemaining = computed(() => {
 const digits = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0]
 
 function addDigit(digit: number) {
-  if (pin.value.length >= 6) return
+  if (pin.value.length >= 6 || submitting.value) return
   pin.value += String(digit)
   error.value = null
+  if (pin.value.length >= 4) {
+    void submit()
+  }
 }
 
 function backspace() {

@@ -330,6 +330,14 @@ const FIELD_ALIASES: Record<string, BackendFieldRef> = {
         section: 'skills',
         field: 'skills_enable_exec',
     },
+    [refKey('context', 'enforcePlan')]: {
+        section: 'context',
+        field: 'context_task_card_enforce_plan',
+    },
+    [refKey('context', 'taskCardEnabled')]: {
+        section: 'context',
+        field: 'context_task_card_enabled',
+    },
     [refKey('service', 'maxCapability')]: {
         section: 'service',
         field: 'service_max_capability',
@@ -507,6 +515,21 @@ function valuesEqual(a: unknown, b: unknown): boolean {
     return String(a) === String(b);
 }
 
+function canFallbackFromDoctorPlanError(error: any): boolean {
+    const status = Number(error?.status ?? error?.cause?.status ?? 0);
+    const code = String(error?.code ?? error?.cause?.code ?? '').toLowerCase();
+    if (status === 404 || status === 405) return true;
+    return [
+        'not_found',
+        'method_not_allowed',
+        'capability_unavailable',
+    ].includes(code);
+}
+
+function canUseDoctorPlanForMetadataError(error: unknown): boolean {
+    return error instanceof Error && error.message === 'doctor_metadata_missing';
+}
+
 function buildOverrideMap(
     changes: readonly SimpleSettingChange[] = [],
 ): Map<string, unknown> {
@@ -591,7 +614,11 @@ export function useSimpleSettings() {
      */
     async function ensureLoaded(targetSection?: SimpleSettingSectionKey) {
         const sections = targetSection
-            ? SIMPLE_SETTING_SECTIONS.filter((s) => s.key === targetSection)
+            ? SIMPLE_SETTING_SECTIONS.filter(
+                  (s) =>
+                      s.key === targetSection ||
+                      (targetSection === 'ai' && s.key === 'providers'),
+              )
             : SIMPLE_SETTING_SECTIONS;
 
         // Collect unique (section, channel?) pairs to fetch.
@@ -724,7 +751,7 @@ export function useSimpleSettings() {
         isControlAvailable,
         lastError,
         applyChanges: async (changes: SimpleSettingChange[]) => {
-            const wire: ConfigureChange[] = changes.map((change) => {
+            const plannedChanges = changes.map((change) => {
                 const resolved = resolveFieldRef(
                     change.section,
                     change.field,
@@ -744,13 +771,108 @@ export function useSimpleSettings() {
                 );
                 if (backendField?.kind === 'choice') {
                     return {
-                        ...base,
-                        op: 'choose',
+                        original: change,
+                        resolved,
+                        backendField,
+                        wire: {
+                            ...base,
+                            op: 'choose' as const,
+                        },
                     };
                 }
 
-                return base;
+                return { original: change, resolved, backendField, wire: base };
             });
+            const wire: ConfigureChange[] = plannedChanges.map(
+                (change) => change.wire,
+            );
+            try {
+                await configure.loadMetadata();
+                const metadataByChange = plannedChanges.map((change) =>
+                    configure.metadataFor(
+                        change.original.section,
+                        change.original.field,
+                    ) ??
+                    configure.metadataFor(
+                        change.resolved.section,
+                        change.resolved.field,
+                    ),
+                );
+                if (metadataByChange.some((meta) => !meta?.path)) {
+                    throw new Error('doctor_metadata_missing');
+                }
+                const plan = {
+                    title: 'Apply settings changes',
+                    summary: `Apply ${wire.length} settings change${wire.length === 1 ? '' : 's'} from Simple Settings.`,
+                    created_by: 'or3-app',
+                    risk_level: plannedChanges.reduce((risk, _change, index) => {
+                        const meta = metadataByChange[index];
+                        const next = meta?.risk_level ?? 'notice';
+                        const rank: Record<string, number> = {
+                            safe: 1,
+                            notice: 2,
+                            warning: 3,
+                            danger: 4,
+                        };
+                        return (rank[next] ?? 0) > (rank[risk] ?? 0)
+                            ? next
+                            : risk;
+                    }, 'safe'),
+                    restart_required: metadataByChange.some(
+                        (meta) => meta?.restart_required,
+                    ),
+                    changes: plannedChanges.map((change, index) => {
+                        const meta = metadataByChange[index];
+                        return {
+                            config_path: meta?.path,
+                            section: change.wire.section,
+                            channel: change.wire.channel,
+                            field: change.wire.field,
+                            operation: change.wire.op ?? 'set',
+                            old_value: {
+                                value: change.backendField?.value ?? null,
+                                redacted: Boolean(meta?.secret),
+                                present: change.backendField?.value !== undefined,
+                                summary: meta?.secret ? 'configured secret' : undefined,
+                            },
+                            new_value: {
+                                value: change.wire.value,
+                                redacted: Boolean(meta?.secret),
+                                present:
+                                    change.wire.value !== undefined &&
+                                    change.wire.value !== null &&
+                                    change.wire.value !== '',
+                                summary: meta?.secret ? 'new secret value' : undefined,
+                            },
+                            impact:
+                                meta?.description ||
+                                `Change ${meta?.label || change.wire.field}.`,
+                            risk_reason: meta?.requires_approval
+                                ? 'Backend metadata requires approval.'
+                                : '',
+                            metadata_risk: meta?.risk_level ?? 'notice',
+                        };
+                    }),
+                    exact_config_diff: plannedChanges.map((change, index) => ({
+                        path:
+                            metadataByChange[index]?.path ??
+                            `${change.wire.section}.${change.wire.field}`,
+                        old_value: String(change.backendField?.value ?? ''),
+                        new_value: String(change.wire.value ?? ''),
+                    })),
+                };
+                const preview = await configure.previewPlan(plan);
+                if (preview.plan?.id) {
+                    return await configure.applyPlan(preview.plan.id);
+                }
+            } catch (error) {
+                if (canUseDoctorPlanForMetadataError(error)) {
+                    return configure.applyChanges(wire);
+                }
+                if (!canFallbackFromDoctorPlanError(error)) throw error;
+                // Older intern builds do not expose Doctor plans; keep the
+                // existing configure/apply path as compatibility fallback.
+            }
             return configure.applyChanges(wire);
         },
     };

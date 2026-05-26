@@ -20,8 +20,12 @@
                 </p>
             </div>
             <div class="or3-approval-hero__stage" aria-hidden="true">
-                <span class="or3-approval-hero__sparkle or3-approval-hero__sparkle--a" />
-                <span class="or3-approval-hero__sparkle or3-approval-hero__sparkle--b" />
+                <span
+                    class="or3-approval-hero__sparkle or3-approval-hero__sparkle--a"
+                />
+                <span
+                    class="or3-approval-hero__sparkle or3-approval-hero__sparkle--b"
+                />
                 <span class="or3-approval-hero__glow" />
                 <span class="or3-approval-hero__badge">
                     <Icon
@@ -57,6 +61,25 @@
         </div>
 
         <div
+            v-if="approvalHydrationError"
+            class="rounded-2xl border border-(--or3-amber)/30 bg-(--or3-amber)/10 px-4 py-3 text-sm text-(--or3-text)"
+        >
+            <p>
+                Couldn't refresh approval requests. Open this panel again or tap
+                Retry.
+            </p>
+            <UButton
+                class="mt-2"
+                size="xs"
+                color="primary"
+                variant="soft"
+                @click="retryApprovalHydration"
+            >
+                Retry
+            </UButton>
+        </div>
+
+        <div
             v-if="approvalsError"
             class="rounded-2xl border border-rose-200 bg-rose-50/90 px-4 py-3 text-sm text-rose-700"
         >
@@ -65,6 +88,12 @@
 
         <!-- Saved rules tab -->
         <template v-if="selectedFilter === 'saved'">
+            <div
+                v-if="allowlistsError"
+                class="rounded-2xl border border-rose-200 bg-rose-50/90 px-4 py-3 text-sm text-rose-700"
+            >
+                {{ allowlistsError }}
+            </div>
             <SavedApprovalsList
                 :items="allowlists"
                 show-section-header
@@ -159,22 +188,35 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
-import { useRouter } from "vue-router";
-import { useToast } from "@nuxt/ui/composables";
-import type { ApprovalRequest } from "~/types/or3-api";
-import { useApprovals } from "~/composables/useApprovals";
-import { useAssistantStream } from "~/composables/useAssistantStream";
-import { useChatSessions } from "~/composables/useChatSessions";
-import { approvalActionErrorMessage } from "~/utils/assistantApproval";
-import { formatApprovalSubjectPreview } from "~/utils/or3/approval-display";
+import { computed, nextTick, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
+import { useToast } from '@nuxt/ui/composables';
+import type { ApprovalRequest } from '~/types/or3-api';
+import { useActiveHost } from '~/composables/useActiveHost';
+import { useApprovals } from '~/composables/useApprovals';
+import { useAssistantStream } from '~/composables/useAssistantStream';
+import { useApprovalHydration } from '~/composables/assistant-stream/useApprovalHydration';
+import { useChatRuntimeLog } from '~/composables/useChatRuntimeLog';
+import { useChatSessions } from '~/composables/useChatSessions';
+import { useOr3Api } from '~/composables/useOr3Api';
+import { approvalActionErrorMessage } from '~/utils/assistantApproval';
+import { formatApprovalSubjectPreview } from '~/utils/or3/approval-display';
+import { resolveApprovalResumeTarget } from '~/utils/or3/approval-resume-target';
+import { resumeApprovalOperation } from '~/utils/or3/approval-operation-resume';
+import {
+    buildApprovedResumePayload,
+    prepareAssistantResumeContinuation,
+} from '~/utils/chat/prepare-assistant-resume';
+import { useDoctorAdminChat } from '~/composables/useDoctorAdminChat';
+import { useServiceRestart } from '~/composables/useServiceRestart';
+import { useTerminalSession } from '~/composables/useTerminalSession';
 
 const filters = [
-    { label: "Waiting", value: "pending", icon: "" },
-    { label: "Expired", value: "expired", icon: "" },
-    { label: "Approved", value: "approved", icon: "" },
-    { label: "Denied", value: "denied", icon: "" },
-    { label: "Saved Rules", value: "saved", icon: "i-pixelarticons-bookmark" },
+    { label: 'Waiting', value: 'pending', icon: '' },
+    { label: 'Expired', value: 'expired', icon: '' },
+    { label: 'Approved', value: 'approved', icon: '' },
+    { label: 'Denied', value: 'denied', icon: '' },
+    { label: 'Saved Rules', value: 'saved', icon: 'i-pixelarticons-bookmark' },
 ];
 
 const props = withDefaults(
@@ -188,16 +230,30 @@ const props = withDefaults(
 
 const toast = useToast();
 const router = useRouter();
+const chat = useChatSessions();
 const {
     activeSession,
     activateSessionByKey,
     ensureApprovalMessage,
+    findAssistantMessageForApproval,
     markApprovalResolved,
     messages,
     updateMessage,
-} = useChatSessions();
-const { send } = useAssistantStream();
-const selectedFilter = ref("pending");
+} = chat;
+const { send, isStreaming } = useAssistantStream();
+const doctorChat = useDoctorAdminChat();
+const { activeHost } = useActiveHost();
+const api = useOr3Api();
+const runtimeLog = useChatRuntimeLog();
+const { approvalHydrationError, hydratePendingApprovalsForActiveSession } =
+    useApprovalHydration({
+        activeHost,
+        api,
+        chat,
+        runtimeLog,
+        isStreaming,
+    });
+const selectedFilter = ref('pending');
 const detailOpen = ref(false);
 const approvalActionBusy = ref(false);
 const busyId = ref<number | string | null>(null);
@@ -217,36 +273,46 @@ const {
     approve,
     deny,
     cancel,
+    consumeIssuedApprovalToken,
     removeAllowlist,
+    allowlistsError,
 } = useApprovals();
+const { resumePendingApproval } = useTerminalSession();
+const { resumePendingRestart } = useServiceRestart();
+
+async function retryApprovalHydration() {
+    approvalHydrationError.value = null;
+    await hydratePendingApprovalsForActiveSession();
+    await reloadApprovals();
+}
 
 const heroTitle = computed(() => {
-    if (selectedFilter.value === "saved") return "Saved approval rules";
-    if (selectedFilter.value === "expired") return "Expired approval requests";
-    if (selectedFilter.value === "approved") return "Approved requests";
-    if (selectedFilter.value === "denied") return "Denied requests";
+    if (selectedFilter.value === 'saved') return 'Saved approval rules';
+    if (selectedFilter.value === 'expired') return 'Expired approval requests';
+    if (selectedFilter.value === 'approved') return 'Approved requests';
+    if (selectedFilter.value === 'denied') return 'Denied requests';
     if (!pendingCount.value) return "You're all caught up";
-    if (pendingCount.value === 1) return "1 request needs your approval";
+    if (pendingCount.value === 1) return '1 request needs your approval';
     return `${pendingCount.value} requests need your approval`;
 });
 
 const emptyDescription = computed(() => {
     switch (selectedFilter.value) {
-        case "pending":
+        case 'pending':
             return "You're all caught up. New requests will pop up here when or3-intern needs the okay.";
-        case "expired":
-            return "Expired requests move here automatically after they time out.";
-        case "approved":
-            return "Approved requests will show up here after you allow them.";
-        case "denied":
-            return "Denied requests will show up here after you block them.";
+        case 'expired':
+            return 'Expired requests move here automatically after they time out.';
+        case 'approved':
+            return 'Approved requests will show up here after you allow them.';
+        case 'denied':
+            return 'Denied requests will show up here after you block them.';
         default:
-            return "Try a different filter above.";
+            return 'Try a different filter above.';
     }
 });
 
 async function refreshApprovalView() {
-    if (selectedFilter.value !== "saved") {
+    if (selectedFilter.value !== 'saved') {
         await reloadApprovals();
     }
     await loadPendingCount();
@@ -266,10 +332,10 @@ async function handleApprovalActionFailure(error: unknown, fallback: string) {
     const message = approvalActionErrorMessage(error, fallback);
     approvalsError.value = message;
     toast.add({
-        title: "Approval update failed",
+        title: 'Approval update failed',
         description: message,
-        color: "error",
-        icon: "i-pixelarticons-warning-box",
+        color: 'error',
+        icon: 'i-pixelarticons-warning-box',
     });
 }
 
@@ -280,15 +346,15 @@ function approvalPlaceholderContent(approval?: ApprovalRequest | null) {
               domain: approval.domain,
               subject: approval.subject,
           })
-        : "";
+        : '';
     if (!preview) {
-        return "Approval is needed before or3-intern can continue.";
+        return 'Approval is needed before or3-intern can continue.';
     }
     return [
-        "Approval is needed before or3-intern can continue.",
-        "",
+        'Approval is needed before or3-intern can continue.',
+        '',
         `Requested action: ${preview}`,
-    ].join("\n");
+    ].join('\n');
 }
 
 async function followApprovalResumeJob(
@@ -296,56 +362,100 @@ async function followApprovalResumeJob(
         request_id?: number | string;
         resume_job_id?: string;
         session_key?: string;
+        token?: string;
     },
     approval?: ApprovalRequest | null,
 ) {
+    const resumedOperation = await resumeApprovalOperation({
+        response,
+        approval,
+        consumeToken: consumeIssuedApprovalToken,
+        resumeTerminal: async (approvalId, token) => {
+            await resumePendingApproval(approvalId);
+            if (!token) return;
+        },
+        resumeRestart: async (approvalId) => {
+            await resumePendingRestart(approvalId);
+        },
+    });
+    if (resumedOperation) return;
+
     const jobId = response?.resume_job_id?.trim();
     if (!jobId) return;
     const targetSessionKey =
         response?.session_key?.trim() ||
         approval?.requester_session_id?.trim() ||
         activeSession.value?.sessionKey?.trim() ||
-        "";
-    if (targetSessionKey) {
-        activateSessionByKey(targetSessionKey, "Approval follow-up");
-    }
-    const targetMessage = ensureApprovalMessage({
-        approvalRequestId:
-            response?.request_id ??
-            approval?.id ??
-            response?.resume_job_id ??
-            "",
-        sessionKey: targetSessionKey || undefined,
-        content: approvalPlaceholderContent(approval),
-        createdAt: approval?.created_at,
-        status: "attention",
-        approvalState: "retrying",
+        '';
+    const target = resolveApprovalResumeTarget({
+        approval,
+        response,
     });
-    if (targetMessage) {
-        updateMessage(targetMessage.id, {
-            approvalState: "retrying",
-            status: "attention",
-            error: undefined,
+
+    if (target?.surface === 'doctor_health') {
+        if (router.currentRoute.value.path !== target.path) {
+            await router.push(target.path);
+            await nextTick();
+        }
+        await doctorChat.resumeApprovedApprovalFromDesk({
+            resumeJobId: jobId,
+            approvalRequestId: response?.request_id ?? approval?.id,
+            sessionKey: target.sessionKey || targetSessionKey,
+            approval,
         });
+        return;
     }
-    if (router.currentRoute.value.path !== "/") {
-        await router.push("/");
+
+    if (target?.surface === 'external_channel') {
+        toast.add({
+            title: 'Approval accepted',
+            description: `or3-intern will continue in ${target.channel ?? 'the original channel'}.`,
+            color: 'success',
+            icon: 'i-pixelarticons-check',
+        });
+        return;
+    }
+
+    if (targetSessionKey) {
+        activateSessionByKey(targetSessionKey, 'Approval follow-up');
+    }
+    const targetMessage =
+        findAssistantMessageForApproval(
+            response?.request_id ?? approval?.id,
+            targetSessionKey || undefined,
+        ) ??
+        ensureApprovalMessage({
+            approvalRequestId:
+                response?.request_id ??
+                approval?.id ??
+                response?.resume_job_id ??
+                '',
+            sessionKey: targetSessionKey || undefined,
+            content: approvalPlaceholderContent(approval),
+            createdAt: approval?.created_at,
+            status: 'attention',
+            approvalState: 'retrying',
+        });
+    const chatPath = target?.path ?? '/';
+    if (router.currentRoute.value.path !== chatPath) {
+        await router.push(chatPath);
         await nextTick();
     }
-    await send({
-        text: "",
-        transportText: "",
-        followJobId: jobId,
-        continueMessageId: targetMessage?.id,
-        suppressUserEcho: true,
-    });
+    if (targetMessage) {
+        prepareAssistantResumeContinuation(
+            updateMessage,
+            targetMessage.id,
+            jobId,
+        );
+        await send(buildApprovedResumePayload(targetMessage, jobId));
+    }
     const latest = targetMessage
         ? messages.value.find((message) => message.id === targetMessage.id)
         : null;
-    if (!(latest?.approvalState === "pending" && latest.approvalRequestId)) {
+    if (!(latest?.approvalState === 'pending' && latest.approvalRequestId)) {
         markApprovalResolved(
             response?.request_id ?? approval?.id,
-            "approved",
+            'approved',
             targetSessionKey || undefined,
         );
     }
@@ -353,8 +463,12 @@ async function followApprovalResumeJob(
 
 async function changeFilter(filter: string) {
     selectedFilter.value = filter;
-    if (filter === "saved") {
-        await loadAllowlists();
+    if (filter === 'saved') {
+        try {
+            await loadAllowlists();
+        } catch {
+            /* allowlistsError is set in the composable */
+        }
         return;
     }
     await loadApprovals(filter);
@@ -376,14 +490,14 @@ async function handleQuickApprove(
             approval.id,
             remember,
             remember
-                ? "approved and remembered from mobile"
-                : "approved from mobile",
+                ? 'approved and remembered from mobile'
+                : 'approved from mobile',
         );
         await followApprovalResumeJob(response, approval);
     } catch (error) {
         await handleApprovalActionFailure(
             error,
-            "Could not approve this request.",
+            'Could not approve this request.',
         );
     } finally {
         busyId.value = null;
@@ -394,16 +508,16 @@ async function handleQuickDeny(approval: ApprovalRequest) {
     busyId.value = approval.id;
     approvalsError.value = null;
     try {
-        await deny(approval.id, "denied from mobile");
+        await deny(approval.id, 'denied from mobile');
         markApprovalResolved(
             approval.id,
-            "denied",
+            'denied',
             approval.requester_session_id,
         );
     } catch (error) {
         await handleApprovalActionFailure(
             error,
-            "Could not deny this request.",
+            'Could not deny this request.',
         );
     } finally {
         busyId.value = null;
@@ -420,15 +534,15 @@ async function handleApprove(remember: boolean) {
             approval.id,
             remember,
             remember
-                ? "approved and remembered from mobile"
-                : "approved from mobile",
+                ? 'approved and remembered from mobile'
+                : 'approved from mobile',
         );
         await followApprovalResumeJob(response, approval);
         detailOpen.value = false;
     } catch (error) {
         await handleApprovalActionFailure(
             error,
-            "Could not approve this request.",
+            'Could not approve this request.',
         );
     } finally {
         approvalActionBusy.value = false;
@@ -440,17 +554,17 @@ async function handleDeny() {
     approvalActionBusy.value = true;
     approvalsError.value = null;
     try {
-        await deny(selectedApproval.value.id, "denied from mobile");
+        await deny(selectedApproval.value.id, 'denied from mobile');
         markApprovalResolved(
             selectedApproval.value.id,
-            "denied",
+            'denied',
             selectedApproval.value.requester_session_id,
         );
         detailOpen.value = false;
     } catch (error) {
         await handleApprovalActionFailure(
             error,
-            "Could not deny this request.",
+            'Could not deny this request.',
         );
     } finally {
         approvalActionBusy.value = false;
@@ -462,12 +576,12 @@ async function handleCancel() {
     approvalActionBusy.value = true;
     approvalsError.value = null;
     try {
-        await cancel(selectedApproval.value.id, "canceled from mobile");
+        await cancel(selectedApproval.value.id, 'canceled from mobile');
         detailOpen.value = false;
     } catch (error) {
         await handleApprovalActionFailure(
             error,
-            "Could not cancel this request.",
+            'Could not cancel this request.',
         );
     } finally {
         approvalActionBusy.value = false;
@@ -478,10 +592,7 @@ watch(
     () => props.open,
     (isOpen) => {
         if (!isOpen && isOpen !== undefined) return;
-        void Promise.all([
-            loadApprovals(selectedFilter.value),
-            loadAllowlists(),
-        ]);
+        void loadApprovals(selectedFilter.value);
     },
     { immediate: true },
 );
@@ -678,7 +789,7 @@ watch(
     line-height: 1;
 }
 
-.or3-chip[aria-pressed="true"] .or3-chip__count {
+.or3-chip[aria-pressed='true'] .or3-chip__count {
     background: white;
     color: var(--or3-green-dark);
 }

@@ -153,8 +153,17 @@ function rememberCurrentRoute() {
     writeRememberedRoutes();
 }
 
+function isTabRoot(path: string, tab: string) {
+    if (tab === '/') return path === '/';
+    return path === tab || path === `${tab}/`;
+}
+
 function navTarget(item: NavItem) {
     if (item.center) return item.to;
+    // Re-tapping the active tab returns to its root instead of staying on a sub-route.
+    if (isActive(item.to) && !isTabRoot(route.path, item.to)) {
+        return item.to;
+    }
     return rememberedRoutes.value[item.to] || item.to;
 }
 

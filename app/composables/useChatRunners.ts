@@ -1,4 +1,4 @@
-import { computed, ref, watch } from 'vue';
+import { computed, ref } from 'vue';
 import type {
     AgentRunnerId,
     AgentRunnerInfo,
@@ -7,6 +7,7 @@ import type {
     ChatRunnersResponse,
 } from '~/types/or3-api';
 import { useActiveHost } from './useActiveHost';
+import { canUseHostApi } from './useSecureHostTokens';
 import { useOr3Api } from './useOr3Api';
 import { createLogger } from '~/utils/logger';
 
@@ -14,6 +15,7 @@ const runnersByHost = ref<Record<string, ChatRunnerInfo[]>>({});
 const loadingByHost = ref<Record<string, boolean>>({});
 const errorByHost = ref<Record<string, string | null>>({});
 const logger = createLogger('chat_runners');
+let refreshGeneration = 0;
 
 function runnerLabel(runner: Pick<ChatRunnerInfo, 'display_name' | 'id'>) {
     return runner.display_name || runner.id;
@@ -31,6 +33,15 @@ function isSelectableRunner(runner: ChatRunnerInfo) {
     }
     const caps = runner.chat_capabilities || runner.supports?.chat;
     return caps?.chatSelectable !== false && caps?.chatReplay !== false;
+}
+
+function isPinLockedError(err: unknown) {
+    return (
+        err &&
+        typeof err === 'object' &&
+        'code' in err &&
+        (err as { code?: unknown }).code === 'pin_locked'
+    );
 }
 
 function normalizeChatRunners(runners: ChatRunnerInfo[]): ChatRunnerInfo[] {
@@ -76,7 +87,13 @@ export function useChatRunners() {
     );
 
     async function refresh() {
+        if (!canUseHostApi(activeHost.value)) {
+            errorByHost.value[hostId.value] = null;
+            return;
+        }
+
         const currentHost = hostId.value;
+        const generation = ++refreshGeneration;
         loadingByHost.value[currentHost] = true;
         errorByHost.value[currentHost] = null;
         logger.info('refresh:start', 'Chat runner discovery started', {
@@ -86,6 +103,7 @@ export function useChatRunners() {
         let chatRunners: ChatRunnerInfo[] | null = null;
         let agentRunners: AgentRunnerInfo[] | null = null;
         let errors: string[] = [];
+        let pinLocked = false;
 
         try {
             const response = await api.request<ChatRunnersResponse>(
@@ -93,6 +111,9 @@ export function useChatRunners() {
             );
             chatRunners = response.runners ?? [];
         } catch (err) {
+            if (isPinLockedError(err)) {
+                pinLocked = true;
+            } else {
             const msg =
                 err && typeof err === 'object' && 'message' in err
                     ? String((err as { message?: unknown }).message)
@@ -102,14 +123,18 @@ export function useChatRunners() {
                 hostId: currentHost,
                 error: msg,
             });
+            }
         }
 
-        try {
+        if (!pinLocked) try {
             const response = await api.request<AgentRunnersResponse>(
                 '/internal/v1/agent-runners',
             );
             agentRunners = response.runners ?? [];
         } catch (err) {
+            if (isPinLockedError(err)) {
+                pinLocked = true;
+            } else {
             const msg =
                 err && typeof err === 'object' && 'message' in err
                     ? String((err as { message?: unknown }).message)
@@ -120,6 +145,14 @@ export function useChatRunners() {
                 'Agent runner discovery failed',
                 { hostId: currentHost, error: msg },
             );
+            }
+        }
+
+        if (pinLocked) {
+            if (generation === refreshGeneration) {
+                loadingByHost.value[currentHost] = false;
+            }
+            return;
         }
 
         const merged = mergeRunnerResults(chatRunners, agentRunners);
@@ -132,7 +165,7 @@ export function useChatRunners() {
                 selectableCount: normalized.filter(isSelectableRunner).length,
             });
         } else {
-            errorByHost.value[currentHost] = errors.join('; ') || 'Runner discovery failed';
+            errorByHost.value[currentHost] = null;
             runnersByHost.value[currentHost] = [
                 {
                     id: 'or3-intern',
@@ -162,7 +195,9 @@ export function useChatRunners() {
             );
         }
 
-        loadingByHost.value[currentHost] = false;
+        if (generation === refreshGeneration) {
+            loadingByHost.value[currentHost] = false;
+        }
     }
 
     function mergeRunnerResults(
@@ -202,14 +237,6 @@ export function useChatRunners() {
         if (!runner) return null;
         return isSelectableRunner(runner) ? runner : defaultRunner.value;
     }
-
-    watch(
-        () => activeHost.value?.id,
-        () => {
-            if (import.meta.client) void refresh();
-        },
-        { immediate: true },
-    );
 
     return {
         runners,

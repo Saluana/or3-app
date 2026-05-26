@@ -98,21 +98,23 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useToast } from '@nuxt/ui/composables';
 import { useActiveHost } from '../../composables/useActiveHost';
 import { useComputerStatus } from '../../composables/useComputerStatus';
+import { useLocalCache } from '../../composables/useLocalCache';
 import { useSettingsSnapshots } from '../../composables/settings/useSettingsSnapshots';
 import { useSimpleSettings } from '../../composables/settings/useSimpleSettings';
 import { useElectronHostSetup } from '../../composables/useElectronHostSetup';
-import { createLogger } from '../../utils/logger';
-
-const logger = createLogger('settings');
 
 const { activeHost, isConnected, isPaired, disconnectActiveHost } = useActiveHost();
+const cache = useLocalCache();
 const computerStatus = useComputerStatus();
 const snapshots = useSettingsSnapshots();
 const simple = useSimpleSettings();
+import { createLogger } from '~/utils/logger';
+
+const logger = createLogger('settings');
 const electronHost = useElectronHostSetup();
 const toast = useToast();
 const undoing = ref(false);
@@ -151,9 +153,11 @@ const connectionDescription = computed(() => {
     if (isConnected.value) return 'Your or3-intern app is connected and ready.';
     return 'This app still has a saved pairing, but it cannot reach that computer right now.';
 });
-const connectionPillLabel = computed(() =>
-    isConnected.value ? 'Connected' : 'Unavailable',
-);
+const connectionPillLabel = computed(() => {
+    if (isConnected.value) return 'Connected';
+    if (isPaired.value) return 'Connecting…';
+    return 'Unavailable';
+});
 const connectionPillTone = computed<'green' | 'amber'>(() =>
     isConnected.value ? 'green' : 'amber',
 );
@@ -167,10 +171,23 @@ const activeTerminalCount = computed(
     () => computerStatus.bootstrap.value?.counts?.active_terminals ?? 0,
 );
 
+const cachedRuntimeProfile = computed(() => {
+    const hostId = activeHost.value?.id;
+    if (!hostId) return '';
+    const entry = cache.state.value.lastKnownStatus[hostId];
+    const payload = entry?.value as {
+        capabilities?: { runtimeProfile?: string };
+    } | null;
+    return payload?.capabilities?.runtimeProfile?.trim() || '';
+});
+
 const connectionStats = computed(() => [
     {
         label: 'Mode',
-        value: computerStatus.capabilities.value?.runtimeProfile || 'unknown',
+        value:
+            computerStatus.capabilities.value?.runtimeProfile ||
+            cachedRuntimeProfile.value ||
+            (computerStatus.loadingStatus.value ? '…' : 'unknown'),
         icon: 'i-pixelarticons-terminal',
     },
     {
@@ -220,37 +237,6 @@ const formattedTime = computed(() => {
         return s.createdAt;
     }
 });
-
-async function refreshConnectionStats() {
-    if (!isPaired.value) return;
-    if (
-        activeHost.value?.status === 'offline' ||
-        activeHost.value?.status === 'unauthorized'
-    )
-        return;
-    try {
-        await computerStatus.refreshStatus();
-    } catch (err) {
-        logger.error(
-            'connection_stats:failed',
-            'Connection stats refresh failed',
-            {
-                error: err instanceof Error ? err.message : String(err),
-            },
-        );
-    }
-}
-
-onMounted(() => {
-    void refreshConnectionStats();
-});
-
-watch(
-    () => activeHost.value?.id,
-    () => {
-        void refreshConnectionStats();
-    },
-);
 
 function disconnectHost() {
     disconnectConfirmOpen.value = true;

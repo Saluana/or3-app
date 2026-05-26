@@ -16,18 +16,23 @@ import type {
     ToolPolicy,
     TurnResponse,
 } from "~/types/or3-api";
+import { toServiceAttachments } from "~/utils/chat/service-attachments";
 import { createActivity } from "./activity";
 import { normalizeResultDisplayText } from "~/utils/or3/result-display";
 import {
     describeRequestError,
-    describeRequestErrorDetails,
     downgradeToolPolicyForServiceCapability,
     extractApprovalRequestId,
     extractErrorCode,
+    formatUserFacingErrorInline,
     isServiceCapabilityCeilingError,
     showFailureToast,
     type ToastLike,
 } from "./errors";
+import {
+    EMPTY_FINAL_USER_MESSAGE,
+    userFacingErrorCopy,
+} from "./userErrorCopy";
 import { eventJobId, normalizeRunnerChatEvent, responseJobId } from "./events";
 import { useChatRuntimeLog } from "~/composables/useChatRuntimeLog";
 
@@ -158,8 +163,7 @@ const COMPLETION_ACTIVITY_TYPES = [
 ];
 
 const STREAM_IDLE_TIMEOUT_MS = 45_000;
-const EMPTY_FINAL_TEXT_WARNING =
-    "Tool work completed, but or3-intern did not return a final assistant message. The last tool result is shown above; retry the turn if it still matters.";
+const EMPTY_FINAL_TEXT_WARNING = EMPTY_FINAL_USER_MESSAGE;
 
 function isLiveJobStatus(status: string) {
     return ["queued", "running", "started"].includes(
@@ -388,7 +392,7 @@ export function applyJobSnapshot(
         context.setSawVisibleOutput(true);
         context.updateAssistant({
             status: "attention",
-            error: "or3-intern completed without a final assistant message.",
+            error: EMPTY_FINAL_USER_MESSAGE,
             errorCode: "empty_final_text",
             jobId: snapshot.job_id,
         });
@@ -632,6 +636,13 @@ export async function streamRunnerChat(
             signal: context.activeController.signal,
             body: {
                 user_message: context.text,
+                ...(toServiceAttachments(context.payload.attachments).length
+                    ? {
+                          attachments: toServiceAttachments(
+                              context.payload.attachments,
+                          ),
+                      }
+                    : {}),
                 continuation_mode: effectiveRunnerContinuationMode,
                 model:
                     context.payload.runnerModel || context.session.runnerModel,
@@ -768,16 +779,16 @@ export async function handleRunnerExecutionError(context: RunnerErrorContext) {
             // Surface the original streaming failure below.
         }
     }
-    const message = describeRequestError(context.streamError);
-    const details = describeRequestErrorDetails(context.streamError);
+    const errorCode = extractErrorCode(context.streamError);
+    const friendly = formatUserFacingErrorInline(context.streamError, errorCode);
     context.updateActivity((entry) => entry.status === "running", {
         status: "error",
     });
     context.updateAssistant({
-        content: details ? `${message}\n\n${details}` : message,
+        content: friendly,
         status: "failed",
-        error: message,
-        errorCode: extractErrorCode(context.streamError),
+        error: userFacingErrorCopy(context.streamError, errorCode).message,
+        errorCode,
         runnerChatSessionId:
             context.runnerChatTurnForRecovery?.sessionId ||
             context.readAssistant()?.runnerChatSessionId,
@@ -932,8 +943,8 @@ export async function recoverDirectExecutionError(
         context.completeRunningActivity(COMPLETION_ACTIVITY_TYPES);
     } catch (error) {
         const primaryError = error || context.streamError;
-        const message = describeRequestError(primaryError);
-        const details = describeRequestErrorDetails(primaryError);
+        const errorCode = extractErrorCode(primaryError);
+        const friendly = formatUserFacingErrorInline(primaryError, errorCode);
         const approvalRequestId = extractApprovalRequestId(primaryError);
         context.updateActivity(
             (entry: ChatActivityEntry) => entry.status === "running",
@@ -942,10 +953,10 @@ export async function recoverDirectExecutionError(
             },
         );
         context.updateAssistant({
-            content: details ? `${message}\n\n${details}` : message,
+            content: friendly,
             status: "failed",
-            error: message,
-            errorCode: extractErrorCode(primaryError),
+            error: userFacingErrorCopy(primaryError, errorCode).message,
+            errorCode,
             approvalRequestId,
             approvalState: approvalRequestId ? "pending" : undefined,
         });

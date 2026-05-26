@@ -1,6 +1,7 @@
 import { computed, markRaw, reactive, type Component } from 'vue';
 import { useActiveHost } from './useActiveHost';
 import { useElectronHostSetup } from './useElectronHostSetup';
+import { needsUnlock } from './usePinLock';
 
 /**
  * Section that can be rendered on the lock screen (/connect page).
@@ -61,7 +62,8 @@ export function useConnectionGate() {
     const isGated = computed(() => {
         if (shouldShowSetup.value) return false;
         if (isElectronHostMode.value) return false;
-        return !isConnected.value;
+        if (needsUnlock()) return false;
+        return !isPaired.value;
     });
 
     function isAllowedPath(path: string): boolean {

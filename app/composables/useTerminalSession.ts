@@ -4,6 +4,7 @@ import type {
     TerminalSessionSnapshot,
 } from '~/types/or3-api';
 import { createLogger } from '~/utils/logger';
+import { useApprovals } from './useApprovals';
 import { useOr3Api } from './useOr3Api';
 
 const logger = createLogger('terminal');
@@ -144,8 +145,7 @@ function handleMissingSession(error: any, fallbackMessage: string) {
 }
 
 function resetTerminalState() {
-    streamAbortController?.abort();
-    closeTerminalSocket();
+    detachTerminalStream();
     chunkSeq = 0;
     session.value = null;
     terminalLines.value = [];
@@ -153,6 +153,13 @@ function resetTerminalState() {
     terminalBusy.value = false;
     terminalStreaming.value = false;
     writePersistedTerminalSession(null);
+}
+
+function detachTerminalStream() {
+    streamAbortController?.abort();
+    streamAbortController = null;
+    closeTerminalSocket();
+    terminalStreaming.value = false;
 }
 
 function closeTerminalSocket() {
@@ -183,6 +190,7 @@ function terminalSocketReady(sessionId = session.value?.session_id) {
 
 export function useTerminalSession() {
     const api = useOr3Api();
+    const { consumeIssuedApprovalToken } = useApprovals();
 
     const transcript = computed(() => terminalLines.value.join(''));
     const status = computed(() => session.value?.status ?? 'idle');
@@ -286,12 +294,23 @@ export function useTerminalSession() {
         };
     }
 
-    async function start(payload: CreateTerminalSessionRequest) {
+    async function start(
+        payload: CreateTerminalSessionRequest,
+        approvalId?: number | string | null,
+    ) {
         terminalBusy.value = true;
         terminalError.value = null;
         terminalUnavailable.value = false;
+        const launchPayload = { ...payload };
+        const tokenSourceId = approvalId ?? pendingApprovalId.value;
+        const approvalToken = tokenSourceId
+            ? consumeIssuedApprovalToken(tokenSourceId)
+            : undefined;
+        if (approvalToken) {
+            launchPayload.approval_token = approvalToken;
+        }
         pendingApprovalId.value = null;
-        rememberLaunchPayload({ ...payload });
+        rememberLaunchPayload(launchPayload);
         streamAbortController?.abort();
 
         try {
@@ -299,7 +318,7 @@ export function useTerminalSession() {
                 '/internal/v1/terminal/sessions',
                 {
                     method: 'POST',
-                    body: payload,
+                    body: launchPayload,
                 },
             );
             chunkSeq = 0;
@@ -353,7 +372,7 @@ export function useTerminalSession() {
         }
     }
 
-    async function reconnect() {
+    async function reconnect(approvalId?: number | string | null) {
         const payload = buildReconnectPayload();
         if (!payload?.root_id) {
             terminalError.value =
@@ -362,24 +381,41 @@ export function useTerminalSession() {
         }
         resetTerminalState();
         terminalError.value = null;
-        await start(payload);
+        await start(payload, approvalId ?? pendingApprovalId.value);
+    }
+
+    async function resumePendingApproval(approvalId?: number | string | null) {
+        const id = approvalId ?? pendingApprovalId.value;
+        if (!id) return false;
+        const payload = buildReconnectPayload();
+        if (!payload?.root_id) return false;
+        resetTerminalState();
+        terminalError.value = null;
+        await start(payload, id);
+        return true;
     }
 
     async function attach(sessionId = session.value?.session_id) {
         if (!sessionId) return;
         streamAbortController?.abort();
         closeTerminalSocket();
-        streamAbortController = new AbortController();
+        const activeStreamController = new AbortController();
+        streamAbortController = activeStreamController;
         terminalStreaming.value = true;
 
-        if (await attachWebSocket(sessionId)) return;
+        if (await attachWebSocket(sessionId)) {
+            if (streamAbortController === activeStreamController) {
+                streamAbortController = null;
+            }
+            return;
+        }
 
         try {
             for await (const event of api.stream(
                 `/internal/v1/terminal/sessions/${sessionId}/stream`,
                 {
                     method: 'GET',
-                    signal: streamAbortController.signal,
+                    signal: activeStreamController.signal,
                 },
             )) {
                 applyTerminalEvent(
@@ -388,7 +424,7 @@ export function useTerminalSession() {
                 );
             }
         } catch (error: any) {
-            if (streamAbortController?.signal.aborted) return;
+            if (activeStreamController.signal.aborted) return;
             if (
                 handleMissingSession(
                     error,
@@ -399,7 +435,10 @@ export function useTerminalSession() {
             terminalError.value =
                 error?.message ?? 'Terminal stream ended unexpectedly.';
         } finally {
-            terminalStreaming.value = false;
+            if (streamAbortController === activeStreamController) {
+                streamAbortController = null;
+                terminalStreaming.value = false;
+            }
         }
     }
 
@@ -663,6 +702,7 @@ export function useTerminalSession() {
         if (!session.value) return;
         const sessionId = session.value.session_id;
         streamAbortController?.abort();
+        streamAbortController = null;
         if (terminalSocketReady(sessionId)) {
             terminalSocket?.send(JSON.stringify({ type: 'close' }));
             closeTerminalSocket();
@@ -705,8 +745,10 @@ export function useTerminalSession() {
         start,
         refresh,
         attach,
+        detach: detachTerminalStream,
         restoreSession,
         reconnect,
+        resumePendingApproval,
         sendInput,
         sendKeys,
         resize,

@@ -1,7 +1,7 @@
 <template>
   <div class="overflow-hidden rounded-2xl border border-(--or3-border) bg-(--or3-surface) shadow-(--or3-shadow-soft)">
     <div class="flex items-center gap-2 border-b border-(--or3-border) px-3 py-2 text-xs text-(--or3-text-muted)">
-      <Icon name="i-pixelarticons-slash" class="size-3.5 text-(--or3-green-dark)" />
+      <Icon name="i-pixelarticons-message-text" class="size-3.5 text-(--or3-green-dark)" />
       <span class="font-mono uppercase tracking-[0.16em]">Slash command</span>
     </div>
     <div v-if="items.length" class="max-h-64 overflow-y-auto p-1">

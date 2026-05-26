@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import type {
     ChatMessagePageResponse,
     ChatHistoryMessage,
@@ -8,14 +8,65 @@ import type {
     ChatSessionUpdateRequest,
     Or3SseEvent,
 } from '~/types/or3-api';
-import type { ChatMessage, ChatSession } from '~/types/app-state';
+import type { ChatMessage, ChatSession, Or3HostProfile } from '~/types/app-state';
+import { useActiveHost } from './useActiveHost';
 import { useChatSessions } from './useChatSessions';
+import { usePinLockState } from './usePinLock';
+import { canUseHostApi } from './useSecureHostTokens';
 import { useOr3Api } from './useOr3Api';
 
 const historyOpen = ref(false);
 const loading = ref(false);
 const error = ref<string | null>(null);
 const backendSessions = ref<ChatSessionMeta[]>([]);
+let unlockRefreshWatchAttached = false;
+let refreshGeneration = 0;
+
+function delay(ms: number) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableSessionListError(err: unknown) {
+    if (!err || typeof err !== 'object') return false;
+    const status = Number((err as { status?: unknown }).status);
+    return status === 503 || status === 429;
+}
+
+function isTransientSessionListError(err: unknown) {
+    if (!err || typeof err !== 'object') return false;
+    const record = err as { code?: unknown; status?: unknown; message?: unknown };
+    const status = Number(record.status);
+    if (status !== 401 && status !== 403) return false;
+    const code = String(record.code || '').toLowerCase();
+    if (
+        code === 'pin_locked' ||
+        code === 'auth_required' ||
+        code === 'unauthorized' ||
+        code === 'invalid_token'
+    ) {
+        return true;
+    }
+    const message = String(record.message || '').toLowerCase();
+    return message.includes('unauthorized') || message.includes('unlock');
+}
+
+function credentialsReadyForHost(host: Or3HostProfile | null | undefined) {
+    return canUseHostApi(host);
+}
+
+function attachUnlockRefreshWatch(refresh: () => Promise<unknown>) {
+    if (!import.meta.client || unlockRefreshWatchAttached) return;
+    unlockRefreshWatchAttached = true;
+    const pin = usePinLockState();
+    watch(
+        () => pin.needsUnlock.value,
+        (locked, wasLocked) => {
+            if (!wasLocked || locked) return;
+            error.value = null;
+            void refresh();
+        },
+    );
+}
 
 function createSessionKey(hostId = 'local') {
     return `or3-app:${hostId}:session_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -114,6 +165,7 @@ function isChatHistoryMessage(value: unknown): value is ChatHistoryMessage {
 export function useSessionHistory() {
     const api = useOr3Api();
     const chat = useChatSessions();
+    const { activeHost } = useActiveHost();
 
     const sessions = computed(() => {
         const merged = new Map<string, ChatSessionMeta>();
@@ -155,34 +207,80 @@ export function useSessionHistory() {
     });
 
     async function refresh(options: { includeArchived?: boolean; runnerId?: string; q?: string } = {}) {
+        attachUnlockRefreshWatch(() => refresh(options));
+        if (!credentialsReadyForHost(activeHost.value)) {
+            error.value = null;
+            return sessions.value;
+        }
+
+        const generation = ++refreshGeneration;
         loading.value = true;
         error.value = null;
+        let lastError: unknown = null;
         try {
             const params = new URLSearchParams();
             if (options.includeArchived) params.set('include_archived', 'true');
             if (options.runnerId) params.set('runner_id', options.runnerId);
             if (options.q) params.set('q', options.q);
             const suffix = params.toString() ? `?${params.toString()}` : '';
-            const response = await api.request<ChatSessionListResponse>(
-                `/internal/v1/chat-sessions${suffix}`,
-            );
-            backendSessions.value = response.sessions ?? [];
-            for (const meta of backendSessions.value) chat.syncBackendSessionMeta(meta);
-            return sessions.value;
-        } catch (err) {
+
+            for (let attempt = 0; attempt < 3; attempt++) {
+                if (attempt > 0) await delay(250 * attempt);
+                try {
+                    const response = await api.request<ChatSessionListResponse>(
+                        `/internal/v1/chat-sessions${suffix}`,
+                    );
+                    backendSessions.value = response.sessions ?? [];
+                    for (const meta of backendSessions.value)
+                        chat.syncBackendSessionMeta(meta);
+                    return sessions.value;
+                } catch (err) {
+                    lastError = err;
+                    if (!isRetryableSessionListError(err) || attempt >= 2) break;
+                }
+            }
+
+            const localSessions =
+                (chat as { sessions?: { value?: ChatSession[] } }).sessions
+                    ?.value ?? [];
+            if (
+                generation !== refreshGeneration ||
+                localSessions.length > 0 ||
+                backendSessions.value.length > 0 ||
+                isTransientSessionListError(lastError)
+            ) {
+                error.value = null;
+                return sessions.value;
+            }
+
+            if (generation !== refreshGeneration) return sessions.value;
+
             error.value =
-                err && typeof err === 'object' && 'message' in err
-                    ? String((err as { message?: unknown }).message || 'Session history failed')
+                lastError &&
+                typeof lastError === 'object' &&
+                'message' in lastError
+                    ? String(
+                          (lastError as { message?: unknown }).message ||
+                              'Session history failed',
+                      )
                     : 'Session history failed';
-            return [];
+            return sessions.value;
         } finally {
-            loading.value = false;
+            if (generation === refreshGeneration) loading.value = false;
         }
     }
 
-    async function hydrate(sessionKey: string, limit = 100) {
+    async function hydrate(
+        sessionKey: string,
+        limit = 100,
+        options: { replaceLocal?: boolean } = {},
+    ) {
+        if (!credentialsReadyForHost(activeHost.value)) return null;
         const local = chat.activateSessionByKey(sessionKey);
         if (!local) return null;
+        if (options.replaceLocal !== false) {
+            chat.clearSessionMessages(local.id);
+        }
         const params = new URLSearchParams({ limit: String(limit) });
         const response = await api.request<ChatMessagePageResponse>(
             `/internal/v1/chat-sessions/${encodeURIComponent(sessionKey)}/messages?${params.toString()}`,
@@ -211,9 +309,12 @@ export function useSessionHistory() {
         }
     }
 
-    async function openSession(meta: ChatSessionMeta) {
+    async function openSession(
+        meta: ChatSessionMeta,
+        options: { replaceLocal?: boolean } = {},
+    ) {
         const session = chat.applyBackendSessionMeta(meta);
-        await hydrate(meta.session_key);
+        await hydrate(meta.session_key, 100, { replaceLocal: options.replaceLocal });
         historyOpen.value = false;
         return session;
     }

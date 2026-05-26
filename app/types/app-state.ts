@@ -65,14 +65,21 @@ export interface ChatActivityEntry {
 
 export interface ChatAttachment {
     id: string;
-    kind: 'file' | 'text';
+    kind: 'file' | 'image' | 'audio' | 'video' | 'text';
     name: string;
     preview?: string;
     mimeType?: string;
+    mime_type?: string;
     size?: number;
-    source?: 'local' | 'workspace';
+    size_bytes?: number;
+    source?: 'local' | 'workspace' | 'workspace_ref' | 'local_artifact' | 'text_block';
     path?: string;
     rootId?: string;
+    root_id?: string;
+    artifact_id?: string;
+    content_excerpt?: string;
+    /** Local draft-only payload for pasted text blocks. */
+    content?: string;
 }
 
 export interface AssistantReplayToolCall {
@@ -147,6 +154,8 @@ export interface ChatMessage {
     error?: string;
     errorCode?: Or3AppErrorCode;
     approvalRequestId?: number | string;
+    approvalType?: string;
+    approvalPreview?: string;
     approvalState?:
         | 'pending'
         | 'retrying'
@@ -201,17 +210,23 @@ export interface RecentJobSummary {
 
 export interface Or3AppState {
     activeHostId: string | null;
+    /** Most recently opened chat session per paired host. */
+    activeChatSessionIdByHost?: Record<string, string>;
     hosts: Or3HostProfile[];
     sessions: ChatSession[];
     messages: ChatMessage[];
     drafts: Record<string, string>;
     recentJobs: Record<string, RecentJobSummary[]>;
-    lastKnownStatus: Record<string, unknown>;
+    lastKnownStatus: Record<
+        string,
+        { value?: unknown; checkedAt?: string } | undefined
+    >;
     preferences: Record<string, unknown>;
 }
 
 export type Or3AppErrorCode =
     | 'host_unreachable'
+    | 'aborted'
     | 'auth_required'
     | 'missing_token'
     | 'invalid_token'
@@ -220,6 +235,7 @@ export type Or3AppErrorCode =
     | 'session_required'
     | 'session_expired'
     | 'passkey_required'
+    | 'pin_locked'
     | 'step_up_required'
     | 'auth_unsupported'
     | 'forbidden'
@@ -237,12 +253,12 @@ export type Or3AppErrorCode =
     | 'stream_failed'
     | 'provider_error'
     | 'stream_error'
+    | 'stream_idle_timeout'
     | 'empty_final_text'
     | 'validation_error'
     | 'policy_error'
     | 'tool_execution_error'
     | 'tool_loop_limit'
-    | 'aborted'
     | 'file_not_found'
     | 'file_conflict'
     | 'file_read_only'

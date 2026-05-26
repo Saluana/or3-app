@@ -63,6 +63,11 @@ const appClientIcons = [
     'gridicons:italic',
 ];
 
+const devScriptSrc =
+    process.env.NODE_ENV === 'production'
+        ? "'self' 'unsafe-inline'"
+        : "'self' 'unsafe-inline' 'unsafe-eval'";
+
 export default defineNuxtConfig({
     compatibilityDate: '2025-07-15',
     devtools: { enabled: false },
@@ -140,7 +145,7 @@ export default defineNuxtConfig({
                 {
                     'http-equiv': 'Content-Security-Policy',
                     content:
-                        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' http: https: ws: wss:; worker-src 'self' blob:; object-src 'none'; base-uri 'none'",
+                        `default-src 'self'; script-src ${devScriptSrc}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' http: https: ws: wss:; worker-src 'self' blob:; object-src 'none'; base-uri 'none'`,
                 },
             ],
         },

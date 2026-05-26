@@ -31,7 +31,10 @@ vi.mock('../../app/utils/assistant-stream/execution', () => ({
 
 import { useApprovalHydration } from '../../app/composables/assistant-stream/useApprovalHydration';
 import { useExecutionRouter } from '../../app/composables/assistant-stream/useExecutionRouter';
-import { useStreamRecovery } from '../../app/composables/assistant-stream/useStreamRecovery';
+import {
+    resetStreamRecoveryForTests,
+    useStreamRecovery,
+} from '../../app/composables/assistant-stream/useStreamRecovery';
 
 function createHost(): Or3HostProfile {
     return {
@@ -70,6 +73,7 @@ function createState(): Or3AppState {
 }
 
 afterEach(() => {
+    resetStreamRecoveryForTests();
     vi.clearAllMocks();
 });
 
@@ -133,28 +137,31 @@ describe('assistant-stream helper composables', () => {
         );
     });
 
-    it('does not recover a pending stream from an inactive session into the active chat', async () => {
+    it('recovers pending streams from non-active sessions on the same host', async () => {
         const isStreaming = ref(false);
         const send = vi.fn<
             (message: string | AssistantSendPayload) => Promise<void>
-        >(async () => {});
+        >(async () => {
+            isStreaming.value = true;
+        });
         const state = createState();
         state.sessions.unshift({
             ...createSession(),
             id: 'session_active',
             sessionKey: 'or3-app:test-host:session_active',
         });
+        state.activeChatSessionIdByHost = { 'test-host': 'session_active' };
         state.messages.push({
-            id: 'msg_inactive',
+            id: 'msg_background',
             sessionId: 'session_1',
             role: 'assistant',
             content: 'old paused response',
             status: 'streaming',
             createdAt: '2026-05-13T00:00:00.000Z',
-            jobId: 'job_inactive',
+            jobId: 'job_background',
             retryPayload: {
-                text: 'retry inactive',
-                transportText: 'retry inactive',
+                text: 'retry background',
+                transportText: 'retry background',
             },
         });
 
@@ -168,7 +175,15 @@ describe('assistant-stream helper composables', () => {
 
         await recoverPendingMessages();
 
-        expect(send).not.toHaveBeenCalled();
+        expect(send).toHaveBeenCalledTimes(1);
+        expect(send).toHaveBeenCalledWith(
+            expect.objectContaining({
+                text: 'retry background',
+                followJobId: 'job_background',
+                continueMessageId: 'msg_background',
+                suppressUserEcho: true,
+            }),
+        );
     });
 
     it('hydrates pending approvals for the active session only', async () => {

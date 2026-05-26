@@ -95,12 +95,8 @@ export function getReadinessGuidance(
             summary,
             detail:
                 detail ??
-                'Review the safety settings for terminal access and sandboxing before using privileged tools.',
+                'Open the health report for the exact Doctor finding, then adjust sandboxing or privileged-tool access from there.',
             action: {
-                href: '/settings/section/safety',
-                label: 'Review settings',
-            },
-            secondaryAction: {
                 href: '/settings/health',
                 label: 'Open health report',
             },
@@ -197,7 +193,7 @@ export function getBootstrapWarningGuidance(
             detail:
                 readinessGuidance.detail ??
                 'The host is reachable, but one of its readiness checks still needs attention before everything feels normal.',
-            action: { href: '/computer/attention', label: 'Learn more' },
+            action: { href: '/settings/health', label: 'Open health report' },
             secondaryAction: readinessGuidance.action,
         };
     }
@@ -251,8 +247,8 @@ export function getBootstrapWarningGuidance(
             detail: 'Open the pairing screen to confirm the host address and token this device is using.',
             action: { href: '/settings/pair', label: 'Review pairing' },
             secondaryAction: {
-                href: '/computer/attention',
-                label: 'Learn more',
+                href: '/settings/health',
+                label: 'Open health report',
             },
         };
     }
@@ -260,11 +256,11 @@ export function getBootstrapWarningGuidance(
     return {
         title: 'There is a connection warning to review',
         summary: message,
-        detail: 'Open the attention page for a plain-language explanation and the most likely next step.',
-        action: { href: '/computer/attention', label: 'Learn more' },
+        detail: 'Open the health report for the host checks and the most likely next step.',
+        action: { href: '/settings/health', label: 'Open health report' },
         secondaryAction: {
-            href: '/settings/health',
-            label: 'Open health report',
+            href: '/settings/pair',
+            label: 'Review pairing',
         },
     };
 }

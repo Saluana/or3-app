@@ -701,8 +701,42 @@
                             />
                             Discuss in chat
                         </button>
+
                         <div
-                            v-if="canCancel || canRetry"
+                            v-if="canContinue"
+                            class="flex flex-wrap gap-2"
+                        >
+                            <button
+                                type="button"
+                                class="or3-focus-ring or3-touch-target inline-flex flex-1 items-center justify-center gap-2 rounded-2xl border border-(--or3-border) bg-(--or3-surface-soft) px-3 py-2 text-sm font-medium text-(--or3-text)"
+                                @click="copyResult"
+                            >
+                                <Icon
+                                    :name="
+                                        resultCopied
+                                            ? 'i-pixelarticons-check'
+                                            : 'i-pixelarticons-copy'
+                                    "
+                                    class="size-4"
+                                />
+                                Copy result
+                            </button>
+                            <button
+                                type="button"
+                                class="or3-focus-ring or3-touch-target inline-flex flex-1 items-center justify-center gap-2 rounded-2xl border border-(--or3-border) bg-(--or3-surface-soft) px-3 py-2 text-sm font-medium text-(--or3-text)"
+                                :disabled="busy"
+                                @click="$emit('prefill', job)"
+                            >
+                                <Icon
+                                    name="i-pixelarticons-redo"
+                                    class="size-4"
+                                />
+                                Run again
+                            </button>
+                        </div>
+
+                        <div
+                            v-if="canCancel || canRetry || canMarkReviewed"
                             class="flex flex-wrap items-center justify-end gap-2"
                         >
                             <button
@@ -727,6 +761,19 @@
                                 type="button"
                                 class="or3-focus-ring or3-touch-target inline-flex items-center gap-2 rounded-2xl border border-(--or3-border) bg-(--or3-surface-soft) px-3.5 py-2 text-sm font-medium text-(--or3-text) transition hover:border-(--or3-green)/40 disabled:cursor-not-allowed disabled:opacity-60"
                                 :disabled="busy"
+                                @click="$emit('prefill', job)"
+                            >
+                                <Icon
+                                    name="i-pixelarticons-edit"
+                                    class="size-4"
+                                />
+                                Retry with changes
+                            </button>
+                            <button
+                                v-if="canRetry"
+                                type="button"
+                                class="or3-focus-ring or3-touch-target inline-flex items-center gap-2 rounded-2xl border border-(--or3-border) bg-(--or3-green-soft) px-3.5 py-2 text-sm font-medium text-(--or3-green-dark) transition hover:border-(--or3-green)/40 disabled:cursor-not-allowed disabled:opacity-60"
+                                :disabled="busy"
                                 @click="$emit('retry', job)"
                             >
                                 <Icon
@@ -737,7 +784,23 @@
                                     "
                                     :class="['size-4', busy && 'animate-spin']"
                                 />
-                                Try again
+                                Retry now
+                            </button>
+                            <button
+                                v-if="canMarkReviewed"
+                                type="button"
+                                class="or3-focus-ring or3-touch-target inline-flex items-center gap-2 rounded-2xl border border-(--or3-border) bg-(--or3-surface-soft) px-3.5 py-2 text-sm font-medium text-(--or3-text-muted) transition hover:text-(--or3-text) disabled:cursor-not-allowed disabled:opacity-60"
+                                @click="$emit('mark-reviewed', job)"
+                            >
+                                <Icon
+                                    :name="
+                                        reviewed
+                                            ? 'i-pixelarticons-check'
+                                            : 'i-pixelarticons-archive'
+                                    "
+                                    class="size-4"
+                                />
+                                {{ reviewed ? 'Reviewed' : 'Mark reviewed' }}
                             </button>
                         </div>
                     </div>
@@ -765,6 +828,7 @@ const props = defineProps<{
     open: boolean;
     job: JobSnapshot | null;
     busy?: boolean;
+    reviewed?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -772,6 +836,8 @@ const emit = defineEmits<{
     cancel: [job: JobSnapshot];
     retry: [job: JobSnapshot];
     continue: [job: JobSnapshot];
+    prefill: [job: JobSnapshot];
+    'mark-reviewed': [job: JobSnapshot];
 }>();
 
 function onUpdateOpen(value: boolean) {
@@ -889,6 +955,13 @@ const canRetry = computed(
 );
 const canContinue = computed(
     () => !!props.job && props.job.status === 'completed',
+);
+const canMarkReviewed = computed(
+    () =>
+        !!props.job &&
+        (props.job.status === 'completed' ||
+            props.job.status === 'failed' ||
+            props.job.status === 'aborted'),
 );
 const canDiscussError = computed(
     () =>

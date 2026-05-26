@@ -19,8 +19,22 @@ import {
     sanitizeAssistantText,
     truncateLogDetail,
 } from './activity';
-import { describeApprovalRequest, isApprovalRequiredPayload } from './approval';
-import { extractApprovalRequestId, extractErrorCode } from './errors';
+import {
+    buildInlineApprovalContent,
+    describeApprovalRequest,
+    extractApprovalMetadata,
+    inferApprovalMetadataFromToolPayload,
+    isApprovalRequiredPayload,
+} from './approval';
+import {
+    extractApprovalRequestId,
+    extractErrorCode,
+    formatUserFacingErrorInline,
+} from './errors';
+import {
+    EMPTY_FINAL_USER_MESSAGE,
+    userFacingErrorCopy,
+} from './userErrorCopy';
 import { eventJobId, eventName, eventPayload, eventSequence } from './events';
 import { normalizeRunnerPermissionPayload } from './payload';
 
@@ -65,8 +79,7 @@ export function createAssistantEventApplier(
     const appliedEventSequenceKeys = new Set<string>();
     const streamedEventPayloadKeys = new Set<string>();
     const completionActivityId = 'activity:completion:final-response';
-    const emptyFinalTextWarning =
-        'Tool work completed, but or3-intern did not return a final assistant message. The last tool result is shown above; retry the turn if it still matters.';
+    const emptyFinalTextWarning = EMPTY_FINAL_USER_MESSAGE;
 
     const markVisibleOutput = (value: string) => {
         if (sanitizeAssistantText(value)) {
@@ -426,8 +439,7 @@ export function createAssistantEventApplier(
             const toolName = String(payload?.name || 'tool');
             const toolCallId = toolCallIdentity(payload, toolName);
             const approvalRequired = isApprovalRequiredPayload(payload);
-            const toolError =
-                typeof payload?.error === 'string' ? payload.error : undefined;
+            const toolError = toolResultError(payload);
             options.resolveToolCall(
                 toolName,
                 typeof payload?.result === 'string'
@@ -471,10 +483,20 @@ export function createAssistantEventApplier(
                 const baseRetryPayload =
                     current?.retryPayload ??
                     options.readAssistant()?.retryPayload;
-                const approvalMessage = describeApprovalRequest(
+                const inferredApproval = inferApprovalMetadataFromToolPayload(
                     toolName,
-                    replayToolCall?.arguments,
+                    payload,
                 );
+                const approvalMetadata = {
+                    ...extractApprovalMetadata(payload),
+                    ...inferredApproval,
+                };
+                const approvalMessage = buildInlineApprovalContent({
+                    approvalType: approvalMetadata.approvalType,
+                    approvalPreview: approvalMetadata.approvalPreview,
+                    toolName,
+                    argsJson: replayToolCall?.arguments,
+                });
                 const content =
                     current?.content?.trim() &&
                     !current.content.includes('**Tool:**')
@@ -497,6 +519,8 @@ export function createAssistantEventApplier(
                     approvalRequestId,
                     approvalState: 'pending',
                     errorCode: 'approval_required',
+                    approvalType: approvalMetadata.approvalType,
+                    approvalPreview: approvalMetadata.approvalPreview,
                     retryPayload: baseRetryPayload
                         ? {
                               ...baseRetryPayload,
@@ -539,16 +563,20 @@ export function createAssistantEventApplier(
                 streamStatus === 'failed' ||
                 streamStatus === 'aborted')
         ) {
-            const failureText =
-                streamError ||
-                sanitizeAssistantText(options.rawAssistantContent()) ||
-                options.readAssistant()?.content ||
-                'or3-intern could not finish this request.';
+            const errorCode = extractErrorCode(payload);
+            const failureCopy = userFacingErrorCopy(
+                streamError ? { message: streamError, code: errorCode } : payload,
+                errorCode,
+            );
+            const failureText = formatUserFacingErrorInline(
+                streamError ? { message: streamError, code: errorCode } : payload,
+                errorCode,
+            );
             options.updateAssistant({
                 content: failureText,
                 status: 'failed',
-                error: streamError || `Turn ${streamStatus || 'failed'}`,
-                errorCode: extractErrorCode(payload),
+                error: failureCopy.message,
+                errorCode,
                 approvalRequestId: extractApprovalRequestId(payload),
                 approvalState: extractApprovalRequestId(payload)
                     ? 'pending'
@@ -567,15 +595,28 @@ export function createAssistantEventApplier(
             const runnerPermission = normalizeRunnerPermissionPayload(
                 payload?.runner_permission,
             );
+            const inferredApproval = inferApprovalMetadataFromToolPayload('', payload);
+            const approvalMetadata = {
+                ...extractApprovalMetadata(payload),
+                ...inferredApproval,
+            };
+            const approvalMessage =
+                approvalMetadata.approvalType === 'tool_quota'
+                    ? buildInlineApprovalContent({
+                          approvalType: approvalMetadata.approvalType,
+                          approvalPreview: approvalMetadata.approvalPreview,
+                      })
+                    : options.readAssistant()?.content ||
+                      'Approval is needed before or3-intern can continue.';
             options.updateAssistant({
-                content:
-                    options.readAssistant()?.content ||
-                    'Approval is needed before or3-intern can continue.',
+                content: approvalMessage,
                 status: 'attention',
                 error: undefined,
                 errorCode: 'approval_required',
                 approvalRequestId,
                 approvalState: approvalRequestId ? 'pending' : undefined,
+                approvalType: approvalMetadata.approvalType,
+                approvalPreview: approvalMetadata.approvalPreview,
                 retryPayload: baseRetryPayload
                     ? {
                           ...baseRetryPayload,
@@ -666,7 +707,7 @@ export function createAssistantEventApplier(
                 options.setSawVisibleOutput(true);
                 options.updateAssistant({
                     status: 'attention',
-                    error: 'or3-intern completed without a final assistant message.',
+                    error: EMPTY_FINAL_USER_MESSAGE,
                     errorCode: 'empty_final_text',
                     jobId,
                 });
@@ -703,3 +744,41 @@ export function createAssistantEventApplier(
 
     return { applyEvent };
 }
+
+function toolResultError(payload: Record<string, unknown> | undefined): string | undefined {
+    const explicit =
+        typeof payload?.error === 'string' ? payload.error.trim() : '';
+    if (explicit) return explicit;
+
+    const result =
+        typeof payload?.result === 'string' ? payload.result.trim() : '';
+    if (result) {
+        try {
+            const parsed = JSON.parse(result) as {
+                ok?: boolean;
+                summary?: string;
+            };
+            if (parsed?.ok === false) {
+                return parsed.summary?.trim() || 'Tool failed';
+            }
+        } catch {
+            // Non-JSON tool output; fall through to status handling.
+        }
+    }
+
+    const status = String(payload?.status ?? '')
+        .trim()
+        .toLowerCase();
+    if (status === 'failed' || status === 'error') {
+        if (result) return result.slice(0, 500);
+        const publicCode =
+            typeof payload?.public_code === 'string'
+                ? payload.public_code.trim()
+                : '';
+        return publicCode || 'Tool failed';
+    }
+
+    return undefined;
+}
+
+export { toolResultError };

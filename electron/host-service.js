@@ -300,7 +300,7 @@ function createInviteLink(invite, appOrigin) {
 
 function normalizeInviteRole(value) {
     const role = String(value || '').trim().toLowerCase();
-    return role === 'viewer' || role === 'operator' ? role : 'operator';
+    return role === 'viewer' || role === 'operator' || role === 'admin' ? role : 'operator';
 }
 
 function normalizeInviteCapabilities(value) {
@@ -464,6 +464,16 @@ async function isExecutable(path) {
     }
 }
 
+async function isAccessibleDirectory(path) {
+    if (!path) return false;
+    try {
+        await access(path, constants.R_OK | constants.X_OK);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 async function versionForBinary(path) {
     const commands = [['--version'], ['version']];
     for (const args of commands) {
@@ -490,6 +500,111 @@ function packagedBinaryCandidates(appPath, resourcesPath) {
         join(appPath || '', '..', 'or3-intern', executable),
         join(appPath || '', '..', 'or3-intern', 'bin', executable),
     ];
+}
+
+function defaultInternConfigPath() {
+    const home = String(process.env.HOME || '').trim();
+    return home ? join(home, '.config', 'or3', 'config.json') : '';
+}
+
+async function resolveInternConfigPath(binaryPath) {
+    try {
+        const resolved = String(await execFileText(binaryPath, ['config-path'])).trim();
+        if (resolved) return resolved;
+    } catch {}
+    return defaultInternConfigPath();
+}
+
+function clonePlainObject(value, fallback = {}) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return { ...fallback };
+    return { ...value };
+}
+
+function builtinAccessProfiles() {
+    return {
+        reader: {
+            maxCapability: 'safe',
+            allowedTools: ['read_file', 'search_file', 'list_dir', 'read_artifact', 'memory_search', 'memory_recent', 'memory_get_pinned'],
+            allowedHosts: [],
+            writablePaths: [],
+            allowSubagents: false,
+        },
+        operator: {
+            maxCapability: 'guarded',
+            allowedTools: ['read_file', 'search_file', 'list_dir', 'read_artifact', 'write_file', 'edit_file', 'delete_file', 'memory_search', 'memory_recent', 'memory_get_pinned', 'web_search', 'web_fetch', 'web_fetch_markdown', 'exec'],
+            allowedHosts: [],
+            writablePaths: ['${workspaceDir}'],
+            allowSubagents: false,
+        },
+        admin: {
+            maxCapability: 'privileged',
+            allowedTools: ['read_file', 'search_file', 'list_dir', 'read_artifact', 'write_file', 'edit_file', 'delete_file', 'memory_set_pinned', 'memory_add_note', 'memory_search', 'memory_recent', 'memory_get_pinned', 'web_search', 'web_fetch', 'web_fetch_markdown', 'exec', 'run_skill', 'run_skill_script', 'spawn_subagent', 'send_message', 'cron'],
+            allowedHosts: [],
+            writablePaths: ['${workspaceDir}'],
+            allowSubagents: true,
+        },
+    };
+}
+
+function ensureElectronServiceAccessProfile(config, hostServiceConfig = {}) {
+    const next = clonePlainObject(config);
+	const security = clonePlainObject(next.security);
+	const hardening = clonePlainObject(next.hardening);
+	const tools = clonePlainObject(next.tools);
+	const service = clonePlainObject(next.service);
+	const profiles = clonePlainObject(security.profiles, {
+		enabled: false,
+		default: '',
+		channels: {},
+        triggers: {},
+        profiles: {},
+    });
+    const definedProfiles = clonePlainObject(profiles.profiles);
+    const channels = clonePlainObject(profiles.channels);
+    const triggers = clonePlainObject(profiles.triggers);
+    const accessLevel = isNetworkListenHost(hostServiceConfig?.listenHost) ? 'operator' : 'admin';
+
+    for (const [name, profile] of Object.entries(builtinAccessProfiles())) {
+        definedProfiles[name] = {
+            ...profile,
+            ...clonePlainObject(definedProfiles[name]),
+        };
+    }
+
+    profiles.enabled = true;
+    profiles.profiles = definedProfiles;
+    profiles.channels = channels;
+    profiles.triggers = triggers;
+
+	channels.service = accessLevel;
+    hardening.guardedTools = true;
+    tools.enableExec = true;
+	if (accessLevel === 'admin') {
+		hardening.privilegedTools = true;
+	}
+	service.maxCapability = accessLevel === 'admin' ? 'privileged' : 'guarded';
+
+	security.profiles = profiles;
+	next.security = security;
+	next.hardening = hardening;
+	next.tools = tools;
+	next.service = service;
+	return next;
+}
+
+async function buildElectronLaunchConfig(binaryPath, hostServiceConfig) {
+    const sourcePath = await resolveInternConfigPath(binaryPath);
+    let config = {};
+    if (sourcePath) {
+        try {
+            config = JSON.parse(await readFile(sourcePath, 'utf8'));
+        } catch {}
+    }
+    config = ensureElectronServiceAccessProfile(config, hostServiceConfig);
+    const file = join(userDataPath || process.cwd(), 'or3-electron-launch-config.json');
+    await mkdir(dirname(file), { recursive: true });
+    await writeFile(file, JSON.stringify(config, null, 2));
+    return file;
 }
 
 async function binaryStatus(path, source) {
@@ -628,11 +743,19 @@ export async function locateInternBinary({ appPath = '', resourcesPath = '', man
 
 export async function configureService(input) {
     if (!input || typeof input !== 'object') return { ok: false, message: 'Invalid service configuration.' };
-    if (!String(input.workspaceDir || '').trim()) return { ok: false, message: 'Choose a workspace folder first.' };
+    const workspaceDir = String(input.workspaceDir || '').trim();
+    if (!workspaceDir) return { ok: false, message: 'Choose a workspace folder first.' };
+    if (!(await isAccessibleDirectory(workspaceDir))) {
+        return {
+            ok: false,
+            message: 'The selected workspace folder does not exist or cannot be opened.',
+            recoverable: true,
+        };
+    }
     const config = await readConfig();
     const hostService = {
         machineName: String(input.machineName || 'This computer'),
-        workspaceDir: String(input.workspaceDir),
+        workspaceDir,
         dataDir: input.dataDir ? String(input.dataDir) : undefined,
         listenHost: String(input.listenHost || '127.0.0.1'),
         listenPort: Number(input.listenPort || 9100),
@@ -733,6 +856,14 @@ export async function startService({ appPath = '', resourcesPath = '' } = {}) {
         if (!stopped) return adopted;
     }
     if (serviceProcess && !serviceProcess.killed) return processStatus(config);
+    if (!(await isAccessibleDirectory(config.hostService.workspaceDir))) {
+        return {
+            state: 'error',
+            recoverable: true,
+            baseUrl: baseUrlFromServiceConfig(config.hostService),
+            message: 'The saved OR3 workspace folder does not exist or cannot be opened. Choose the moved workspace folder in setup.',
+        };
+    }
 
     const located = await locateInternBinary({
         appPath,
@@ -756,7 +887,9 @@ export async function startService({ appPath = '', resourcesPath = '' } = {}) {
     };
     if (config.hostService.dataDir) env.OR3_DATA_DIR = config.hostService.dataDir;
 
-    serviceProcess = spawn(located.binary.path, ['service'], {
+    const launchConfigPath = await buildElectronLaunchConfig(located.binary.path, config.hostService);
+
+    serviceProcess = spawn(located.binary.path, ['--config', launchConfigPath, 'service'], {
         cwd: config.hostService.workspaceDir,
         env,
         shell: false,
@@ -768,6 +901,10 @@ export async function startService({ appPath = '', resourcesPath = '' } = {}) {
         lastLogs.push(String(chunk).slice(-2000));
         lastLogs = lastLogs.slice(-20);
     };
+    serviceProcess.once('error', (error) => {
+        collect(error instanceof Error ? error.message : String(error));
+        serviceProcess = null;
+    });
     serviceProcess.stdout?.on('data', collect);
     serviceProcess.stderr?.on('data', collect);
     serviceProcess.once('exit', () => {

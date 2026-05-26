@@ -3,10 +3,12 @@ import type { ChatActivityEntry, ChatMessage } from '../../app/types/app-state';
 
 const requestMock = vi.fn();
 let streamFailure: unknown = null;
+let streamCallBody: unknown = null;
 
 vi.mock('../../app/composables/useOr3Api', () => ({
     useOr3Api: () => ({
-        async *stream() {
+        async *stream(_path: string, options?: { body?: unknown }) {
+            streamCallBody = options?.body ?? null;
             if (streamFailure) throw streamFailure;
         },
         request: requestMock,
@@ -31,6 +33,7 @@ describe('assistant stream service ceiling handling', () => {
         vi.stubGlobal('useToast', () => ({ add: vi.fn() }));
         requestMock.mockReset();
         streamFailure = null;
+        streamCallBody = null;
     });
 
     afterEach(() => {
@@ -38,8 +41,25 @@ describe('assistant stream service ceiling handling', () => {
         vi.clearAllMocks();
     });
 
-    it('retries OR3 turns in ask mode when work mode exceeds the service ceiling', async () => {
+    it('keeps work mode on loopback hosts before the first stream request', async () => {
         addHost();
+        const assistant = useAssistantStream();
+        assistant.chatMode.value = 'work';
+        await assistant.send('hello loopback');
+
+        expect(streamCallBody).toMatchObject({
+            tool_policy: { mode: 'work' },
+        });
+        expect(requestMock).not.toHaveBeenCalled();
+    });
+
+    it('retries OR3 turns in ask mode when work mode exceeds the service ceiling', async () => {
+        useLocalCache().updateHost({
+            id: 'remote-host',
+            name: 'Remote Host',
+            baseUrl: 'http://100.82.202.111:9100',
+            token: 'secret',
+        });
         streamFailure = Object.assign(
             new Error('requested tools exceed service capability ceiling'),
             {

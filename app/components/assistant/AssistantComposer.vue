@@ -96,7 +96,11 @@
 
                         <div class="or3-composer-menu__divider" />
                         <p class="or3-composer-menu__eyebrow">Runner</p>
-                        <div class="or3-composer-menu__modes" role="radiogroup" aria-label="Chat runner">
+                        <div
+                            class="or3-composer-menu__modes"
+                            role="radiogroup"
+                            aria-label="Chat runner"
+                        >
                             <button
                                 v-for="runner in runnerOptions"
                                 :key="runner.id"
@@ -149,8 +153,14 @@
                                         v-model="modelSearch"
                                         class="or3-composer-menu__input"
                                         type="text"
-                                        :placeholder="activeRunnerModels.length ? 'Search models…' : 'Custom model id…'"
-                                        @keydown.enter.prevent="selectRunnerModel(modelSearch)"
+                                        :placeholder="
+                                            activeRunnerModels.length
+                                                ? 'Search models…'
+                                                : 'Custom model id…'
+                                        "
+                                        @keydown.enter.prevent="
+                                            selectRunnerModel(modelSearch)
+                                        "
                                     />
                                     <div
                                         v-if="filteredRunnerModels.length"
@@ -161,15 +171,33 @@
                                             :key="runnerModelValue(model)"
                                             type="button"
                                             class="or3-composer-menu__model-option"
-                                            :class="{ 'is-active': selectedRunnerModel === runnerModelValue(model) }"
-                                            @click="selectRunnerModel(runnerModelValue(model))"
+                                            :class="{
+                                                'is-active':
+                                                    selectedRunnerModel ===
+                                                    runnerModelValue(model),
+                                            }"
+                                            @click="
+                                                selectRunnerModel(
+                                                    runnerModelValue(model),
+                                                )
+                                            "
                                         >
                                             <span>
-                                                <span>{{ model.display_name || model.id }}</span>
-                                                <small>{{ runnerModelProviderLabel(model) }}</small>
+                                                <span>{{
+                                                    model.display_name ||
+                                                    model.id
+                                                }}</span>
+                                                <small>{{
+                                                    runnerModelProviderLabel(
+                                                        model,
+                                                    )
+                                                }}</small>
                                             </span>
                                             <Icon
-                                                v-if="selectedRunnerModel === runnerModelValue(model)"
+                                                v-if="
+                                                    selectedRunnerModel ===
+                                                    runnerModelValue(model)
+                                                "
                                                 name="i-pixelarticons-check"
                                                 class="size-4"
                                             />
@@ -179,10 +207,18 @@
                                         v-if="customModelCandidate"
                                         type="button"
                                         class="or3-composer-menu__model-option"
-                                        @click="selectRunnerModel(customModelCandidate)"
+                                        @click="
+                                            selectRunnerModel(
+                                                customModelCandidate,
+                                            )
+                                        "
                                     >
                                         <span>
-                                            <span>Use “{{ customModelCandidate }}”</span>
+                                            <span
+                                                >Use “{{
+                                                    customModelCandidate
+                                                }}”</span
+                                            >
                                             <small>Custom model id</small>
                                         </span>
                                     </button>
@@ -194,13 +230,20 @@
                                     >
                                         <span>
                                             <span>Use runner default</span>
-                                            <small>{{ activeRunnerDefaultModel || 'No model override' }}</small>
+                                            <small>{{
+                                                activeRunnerDefaultModel ||
+                                                'No model override'
+                                            }}</small>
                                         </span>
                                     </button>
                                 </div>
                             </div>
                             <template v-if="activeModelReasoningOptions.length">
-                                <p class="or3-composer-menu__eyebrow or3-composer-menu__eyebrow--sub">Thinking</p>
+                                <p
+                                    class="or3-composer-menu__eyebrow or3-composer-menu__eyebrow--sub"
+                                >
+                                    Thinking
+                                </p>
                                 <div
                                     class="or3-composer-menu__chips"
                                     role="radiogroup"
@@ -209,7 +252,10 @@
                                     <button
                                         type="button"
                                         class="or3-composer-menu__chip"
-                                        :class="{ 'is-active': !selectedRunnerThinkingLevel }"
+                                        :class="{
+                                            'is-active':
+                                                !selectedRunnerThinkingLevel,
+                                        }"
                                         @click="selectRunnerThinkingLevel('')"
                                     >
                                         Auto
@@ -219,15 +265,25 @@
                                         :key="option"
                                         type="button"
                                         class="or3-composer-menu__chip"
-                                        :class="{ 'is-active': selectedRunnerThinkingLevel === option }"
-                                        @click="selectRunnerThinkingLevel(option)"
+                                        :class="{
+                                            'is-active':
+                                                selectedRunnerThinkingLevel ===
+                                                option,
+                                        }"
+                                        @click="
+                                            selectRunnerThinkingLevel(option)
+                                        "
                                     >
                                         {{ option }}
                                     </button>
                                 </div>
                             </template>
                             <small class="or3-composer-menu__hint">
-                                {{ activeRunnerModels.length ? 'Pick a discovered model or type a custom id.' : 'No model list yet; type a custom id if needed.' }}
+                                {{
+                                    activeRunnerModels.length
+                                        ? 'Pick a discovered model or type a custom id.'
+                                        : 'No model list yet; type a custom id if needed.'
+                                }}
                             </small>
                         </template>
 
@@ -276,7 +332,7 @@
                 @change="handleFiles"
             />
 
-            <div class="or3-composer__editor-wrap" @click="focusEditor">
+            <div class="or3-composer__editor-wrap" @click.self="focusEditorAtEnd">
                 <EditorContent
                     v-if="editor"
                     :editor="editor"
@@ -428,6 +484,7 @@ const isFocused = ref(false);
 const actionMenuOpen = ref(false);
 const workspaceFilePickerOpen = ref(false);
 const dragDepth = ref(0);
+const submitLocked = ref(false);
 const enterCreatesNewLine = ref(false);
 const formState = reactive({
     text: props.modelValue,
@@ -468,7 +525,10 @@ const {
     reset: resetMentionSearch,
 } = useFileMentionSuggestions();
 const { filterCommands, findCommand, runCommand } = useChatCommands();
-const { fetchRoots, ensureDirectoryPath, uploadFilesToPath } = useComputerFiles();
+const { fetchRoots, ensureDirectoryPath, uploadFilesToPath } =
+    useComputerFiles();
+const api = useOr3Api();
+const chat = useChatSessions();
 const toast = useToast();
 
 const displayedAttachments = computed(() => [
@@ -477,7 +537,7 @@ const displayedAttachments = computed(() => [
     ...manualAttachments.value,
 ]);
 
-const modeOptions = [
+const allModeOptions = [
     {
         id: 'ask' as const,
         label: 'Ask',
@@ -496,7 +556,13 @@ const modeOptions = [
         icon: 'i-pixelarticons-shield',
         description: 'Expose powerful tools when allowed.',
     },
-];
+] as const;
+
+const { activeHost } = useActiveHost();
+const modeOptions = computed(() => {
+    if (activeHost.value?.role === 'admin') return [...allModeOptions];
+    return allModeOptions.filter((option) => option.id !== 'admin');
+});
 
 const selectedMode = computed(() => props.mode ?? 'work');
 const selectedRunnerId = computed(() => props.selectedRunnerId || 'or3-intern');
@@ -582,9 +648,11 @@ const activeRunnerDefaultModel = computed(
         '',
 );
 const activeRunnerSelectedModel = computed(() => {
-    const selected = selectedRunnerModel.value || activeRunnerDefaultModel.value;
+    const selected =
+        selectedRunnerModel.value || activeRunnerDefaultModel.value;
     return activeRunnerModels.value.find(
-        (model) => model.id === selected || runnerModelValue(model) === selected,
+        (model) =>
+            model.id === selected || runnerModelValue(model) === selected,
     );
 });
 const activeModelReasoningOptions = computed(() =>
@@ -633,20 +701,33 @@ const customModelCandidate = computed(() => {
     return value;
 });
 
-const canSend = computed(
+const hasSendableContent = computed(
     () => !!formState.text.trim() || displayedAttachments.value.length > 0,
 );
+const canSend = computed(
+    () => !props.streaming && !submitLocked.value && hasSendableContent.value,
+);
+
+function editorPlainText() {
+    return editor.value?.getText({ blockSeparator: '\n\n' }) ?? '';
+}
 
 watch(
     () => props.modelValue,
     (value) => {
-        if (formState.text === value) return;
-        formState.text = value;
-        if (
-            editor.value &&
-            editor.value.getText({ blockSeparator: '\n\n' }) !== value
-        ) {
-            editor.value.commands.setContent(value || '', { emitUpdate: false });
+        const normalized = value ?? '';
+        if (formState.text === normalized) return;
+        formState.text = normalized;
+        const instance = editor.value;
+        if (!instance || editorPlainText() === normalized) return;
+
+        const selection = instance.state.selection;
+        instance.commands.setContent(normalized, { emitUpdate: false });
+        if (instance.isFocused) {
+            const end = instance.state.doc.content.size;
+            const from = Math.min(selection.from, end);
+            const to = Math.min(selection.to, end);
+            instance.commands.setTextSelection({ from, to });
         }
     },
 );
@@ -676,7 +757,7 @@ function updateEditorText(value: string) {
     editor.value?.commands.setContent(value || '', { emitUpdate: false });
 }
 
-function focusEditor() {
+function focusEditorAtEnd() {
     editor.value?.commands.focus('end');
 }
 
@@ -716,7 +797,10 @@ function selectRunnerModel(model: string) {
     );
     const options = selected?.reasoning || [];
     if (!options.includes(selectedRunnerThinkingLevel.value)) {
-        emit('update:selectedRunnerThinkingLevel', selected?.reasoning_default || '');
+        emit(
+            'update:selectedRunnerThinkingLevel',
+            selected?.reasoning_default || '',
+        );
     }
 }
 
@@ -927,7 +1011,9 @@ function payloadAttachments(extraWorkspaceFiles: DraftAttachment[] = []) {
     ];
 }
 
-function buildTransportTextForAttachments(extraWorkspaceFiles: DraftAttachment[] = []) {
+function buildTransportTextForAttachments(
+    extraWorkspaceFiles: DraftAttachment[] = [],
+) {
     const sections: string[] = [];
     const promptText = formState.text.trim();
     if (promptText) sections.push(promptText);
@@ -991,13 +1077,64 @@ function createUploadBatchPath() {
 
 function toPayloadAttachment(attachment: DraftAttachment): ChatAttachment {
     const {
-        content: _content,
+        content,
         file: _file,
         thumbnailUrl: _thumbnailUrl,
         objectUrl: _objectUrl,
         ...rest
     } = attachment;
-    return rest;
+    const payload: ChatAttachment = { ...rest };
+    if (payload.path || payload.rootId || payload.root_id) {
+        payload.source = 'workspace_ref';
+    } else if (payload.kind === 'text' && content) {
+        payload.source = 'text_block';
+        payload.content_excerpt = content.slice(0, 1200);
+    } else if (!payload.source) {
+        payload.source = 'local_artifact';
+    }
+    return payload;
+}
+
+async function stageNativeInternDraftAttachments(
+    drafts: DraftAttachment[],
+    sessionKey: string,
+) {
+    const staged: ChatAttachment[] = [];
+    for (const draft of drafts) {
+        if (!(draft.file instanceof File)) {
+            staged.push(toPayloadAttachment(draft));
+            continue;
+        }
+        const form = new FormData();
+        form.append('session_key', sessionKey);
+        form.append('file', draft.file);
+        const uploaded = await api.request<{
+            artifact_id?: string;
+            id?: string;
+            name?: string;
+            mime_type?: string;
+            size_bytes?: number;
+            kind?: string;
+        }>('/internal/v1/artifacts', {
+            method: 'POST',
+            body: form,
+        });
+        const artifactId = uploaded.artifact_id || uploaded.id;
+        if (!artifactId) {
+            throw new Error('Artifact upload did not return an id.');
+        }
+        staged.push({
+            ...toPayloadAttachment(draft),
+            source: 'local_artifact',
+            artifact_id: artifactId,
+            mime_type: uploaded.mime_type || draft.mimeType,
+            size_bytes: uploaded.size_bytes ?? draft.size,
+            kind:
+                (uploaded.kind as ChatAttachment['kind']) ||
+                (draft.file.type.startsWith('image/') ? 'image' : 'file'),
+        });
+    }
+    return staged;
 }
 
 async function stageLocalFilesForExternalRunner() {
@@ -1035,7 +1172,8 @@ async function stageLocalFilesForExternalRunner() {
 
     return attachments.map((attachment, index) => {
         const uploaded = uploads[index];
-        const uploadedPath = uploaded?.path || `${batchPath}/${attachment.name}`;
+        const uploadedPath =
+            uploaded?.path || `${batchPath}/${attachment.name}`;
         return {
             id: `${workspaceRoot.id}:${uploadedPath}`,
             kind: 'file' as const,
@@ -1063,9 +1201,18 @@ async function maybeRunSlashCommandFromInput() {
 }
 
 async function submit() {
-    if (props.streaming) return;
-    if (await maybeRunSlashCommandFromInput()) return;
-    if (!canSend.value) return;
+    if (props.streaming || submitLocked.value) return;
+    submitLocked.value = true;
+    if (await maybeRunSlashCommandFromInput()) {
+        window.setTimeout(() => {
+            submitLocked.value = false;
+        }, 350);
+        return;
+    }
+    if (!hasSendableContent.value) {
+        submitLocked.value = false;
+        return;
+    }
 
     let stagedWorkspaceAttachments: DraftAttachment[] = [];
     try {
@@ -1079,17 +1226,42 @@ async function submit() {
             color: 'error',
             icon: 'i-pixelarticons-warning-box',
         });
+        submitLocked.value = false;
         return;
     }
 
-    const attachments = payloadAttachments(stagedWorkspaceAttachments);
+    const draftAttachments = payloadAttachments(stagedWorkspaceAttachments);
+    const sessionKey = chat.activeSession.value?.sessionKey?.trim() || '';
+    let attachments: ChatAttachment[];
+    try {
+        if (selectedRunnerId.value === 'or3-intern' && sessionKey) {
+            attachments = await stageNativeInternDraftAttachments(
+                draftAttachments,
+                sessionKey,
+            );
+        } else {
+            attachments = draftAttachments.map(toPayloadAttachment);
+        }
+    } catch (error: any) {
+        toast.add({
+            title: 'Could not upload attachments',
+            description:
+                error?.message ||
+                'OR3 could not store local files as artifacts for this turn.',
+            color: 'error',
+            icon: 'i-pixelarticons-warning-box',
+        });
+        submitLocked.value = false;
+        return;
+    }
 
     const payload: AssistantSendPayload = {
         text: visiblePayloadText(),
-        transportText: buildTransportTextForAttachments(
-            stagedWorkspaceAttachments,
-        ),
-        attachments: attachments.map(toPayloadAttachment),
+        transportText:
+            selectedRunnerId.value === 'or3-intern'
+                ? formState.text.trim()
+                : buildTransportTextForAttachments(stagedWorkspaceAttachments),
+        attachments,
         runnerId: selectedRunnerId.value,
         runnerModel:
             selectedRunnerId.value !== 'or3-intern' && selectedRunnerModel.value
@@ -1111,6 +1283,9 @@ async function submit() {
     clearManualAttachments();
     clearWorkspacePickedAttachments();
     updateEditorText('');
+    window.setTimeout(() => {
+        submitLocked.value = false;
+    }, 350);
 }
 
 function addFiles(files: File[]) {
@@ -1580,7 +1755,7 @@ onMounted(() => {
     registerPaneInput(props.paneId, {
         setText: (value) => {
             updateEditorText(value);
-            nextTick(() => focusEditor());
+            nextTick(() => focusEditorAtEnd());
         },
         triggerSend: submit,
     });
@@ -1856,7 +2031,11 @@ onBeforeUnmount(() => {
 }
 
 .or3-composer-menu__chip.is-active {
-    border-color: color-mix(in srgb, var(--or3-green-dark) 52%, var(--or3-border));
+    border-color: color-mix(
+        in srgb,
+        var(--or3-green-dark) 52%,
+        var(--or3-border)
+    );
     background: color-mix(in srgb, var(--or3-green-soft) 42%, white 58%);
     color: var(--or3-green-dark);
 }

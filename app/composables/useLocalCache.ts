@@ -1,5 +1,6 @@
 import { ref } from 'vue';
 import type { Or3AppState, Or3HostProfile } from '~/types/app-state';
+import { compactAssistantRunMessages } from '~/utils/chat/merge-assistant-run';
 import { needsUnlock } from './usePinLock';
 import {
     useSecureHostTokens,
@@ -7,6 +8,9 @@ import {
 } from './useSecureHostTokens';
 
 const STORAGE_KEY = 'or3-app:v1:state';
+const MAX_PERSISTED_SESSIONS_PER_HOST = 30;
+const MAX_PERSISTED_MESSAGES_PER_SESSION = 300;
+const MAX_PERSISTED_DRAFTS = 120;
 
 const defaultState = (): Or3AppState => ({
     activeHostId: null,
@@ -24,6 +28,7 @@ let loaded = false;
 let listeningForExternalChanges = false;
 
 function serializableState() {
+    prunePersistedChatCache();
     return {
         ...state.value,
         hosts: state.value.hosts.map(
@@ -35,6 +40,99 @@ function serializableState() {
             }) => host,
         ),
     };
+}
+
+function timestampValue(value?: string) {
+    if (!value) return 0;
+    const timestamp = Date.parse(value);
+    return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function prunePersistedChatCache() {
+    const activeSessionIds = new Set(
+        Object.values(state.value.activeChatSessionIdByHost ?? {}).filter(
+            Boolean,
+        ),
+    );
+    const sessionsByHost = new Map<string, Or3AppState['sessions']>();
+    for (const session of state.value.sessions) {
+        const bucket = sessionsByHost.get(session.hostId) ?? [];
+        bucket.push(session);
+        sessionsByHost.set(session.hostId, bucket);
+    }
+
+    const keptSessionIds = new Set<string>();
+    const nextSessions: Or3AppState['sessions'] = [];
+    for (const sessions of sessionsByHost.values()) {
+        const ranked = [...sessions].sort(
+            (left, right) =>
+                timestampValue(right.updatedAt || right.lastMessageAt) -
+                timestampValue(left.updatedAt || left.lastMessageAt),
+        );
+        const active = ranked.filter((session) =>
+            activeSessionIds.has(session.id),
+        );
+        const recent = ranked.filter(
+            (session) => !activeSessionIds.has(session.id),
+        );
+        const kept = [...active, ...recent].slice(
+            0,
+            Math.max(MAX_PERSISTED_SESSIONS_PER_HOST, active.length),
+        );
+        for (const session of kept) {
+            keptSessionIds.add(session.id);
+            nextSessions.push(session);
+        }
+    }
+    state.value.sessions = nextSessions.sort(
+        (left, right) =>
+            timestampValue(right.updatedAt || right.lastMessageAt) -
+            timestampValue(left.updatedAt || left.lastMessageAt),
+    );
+
+    const messagesBySession = new Map<string, Or3AppState['messages']>();
+    for (const message of state.value.messages) {
+        if (!keptSessionIds.has(message.sessionId)) continue;
+        const bucket = messagesBySession.get(message.sessionId) ?? [];
+        bucket.push(message);
+        messagesBySession.set(message.sessionId, bucket);
+    }
+
+    const nextMessages: Or3AppState['messages'] = [];
+    for (const messages of messagesBySession.values()) {
+        const pinnedOrLive = messages.filter(
+            (message) =>
+                message.pinned ||
+                message.status === 'streaming' ||
+                message.status === 'attention',
+        );
+        const pinnedOrLiveIds = new Set(
+            pinnedOrLive.map((message) => message.id),
+        );
+        const recent = messages
+            .filter((message) => !pinnedOrLiveIds.has(message.id))
+            .sort(
+                (left, right) =>
+                    timestampValue(right.createdAt) -
+                    timestampValue(left.createdAt),
+            )
+            .slice(0, MAX_PERSISTED_MESSAGES_PER_SESSION);
+        nextMessages.push(
+            ...[...pinnedOrLive, ...recent].sort(
+                (left, right) =>
+                    timestampValue(left.createdAt) -
+                    timestampValue(right.createdAt),
+            ),
+        );
+    }
+    state.value.messages = nextMessages;
+
+    const draftEntries = Object.entries(state.value.drafts);
+    if (draftEntries.length > MAX_PERSISTED_DRAFTS) {
+        state.value.drafts = Object.fromEntries(
+            draftEntries.slice(-MAX_PERSISTED_DRAFTS),
+        );
+    }
 }
 
 function persistSessionTokens() {
@@ -90,7 +188,7 @@ function normalizePersistedSessions(
 function normalizePersistedMessages(
     messages: Or3AppState['messages'] = [],
 ): Or3AppState['messages'] {
-    return messages.map((message) => ({
+    const normalized = messages.map((message) => ({
         ...message,
         attachments: message.attachments ?? [],
         backendMessageIds: message.backendMessageIds ?? [],
@@ -98,6 +196,26 @@ function normalizePersistedMessages(
         parts: message.parts ?? [],
         activityLog: message.activityLog ?? [],
     }));
+    const bySession = new Map<string, typeof normalized>();
+    for (const message of normalized) {
+        const bucket = bySession.get(message.sessionId) ?? [];
+        bucket.push(message);
+        bySession.set(message.sessionId, bucket);
+    }
+    const compacted: typeof normalized = [];
+    for (const bucket of bySession.values()) {
+        compacted.push(
+            ...compactAssistantRunMessages(bucket).map((message) => ({
+                ...message,
+                attachments: message.attachments ?? [],
+                backendMessageIds: message.backendMessageIds ?? [],
+                toolCalls: message.toolCalls ?? [],
+                parts: message.parts ?? [],
+                activityLog: message.activityLog ?? [],
+            })),
+        );
+    }
+    return compacted;
 }
 
 function readPersistedState() {
@@ -120,7 +238,6 @@ function readPersistedState() {
     const activeHostId = hosts.some((host) => host.id === parsed.activeHostId)
         ? parsed.activeHostId
         : (hosts.find((host) => host.token)?.id ?? hosts[0]?.id ?? null);
-
     return {
         ...parsed,
         activeHostId,
@@ -175,8 +292,7 @@ function load() {
                             nativeTokens[host.id]?.sessionToken ??
                             host.sessionToken,
                         tokenOrigin:
-                            nativeTokens[host.id]?.origin ??
-                            host.tokenOrigin,
+                            nativeTokens[host.id]?.origin ?? host.tokenOrigin,
                     }),
                 ),
             };

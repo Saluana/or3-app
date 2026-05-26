@@ -213,6 +213,29 @@
                             >
                                 {{ match.field.description }}
                             </p>
+                            <div
+                                v-if="metadataFor(match.sectionKey, match.field.key)"
+                                class="mt-2 flex flex-wrap items-center gap-2"
+                            >
+                                <StatusPill
+                                    :label="metadataFor(match.sectionKey, match.field.key)?.risk_level || 'metadata'"
+                                    :tone="riskTone(metadataFor(match.sectionKey, match.field.key)?.risk_level)"
+                                />
+                                <span
+                                    v-if="metadataFor(match.sectionKey, match.field.key)?.restart_required"
+                                    class="font-mono text-[11px] text-amber-700"
+                                >
+                                    restart required
+                                </span>
+                                <NuxtLink
+                                    v-if="metadataFor(match.sectionKey, match.field.key)?.user_intents?.length"
+                                    to="/settings/health"
+                                    class="rounded-full border border-(--or3-border) px-2 py-0.5 font-mono text-[11px] text-(--or3-green-dark)"
+                                    @click.stop
+                                >
+                                    Ask Admin Assistant to change this
+                                </NuxtLink>
+                            </div>
                         </div>
                         <Icon
                             name="i-pixelarticons-chevron-right"
@@ -392,6 +415,8 @@ const {
     fieldsBySection,
     allFieldsLoading,
     loadAllFields,
+    loadMetadata,
+    metadataFor,
 } = useConfigure();
 const { activeHost, isConnected, isPaired, disconnectActiveHost } = useActiveHost();
 const connectionHeadline = computed(() => {
@@ -406,9 +431,11 @@ const connectionDescription = computed(() => {
     if (isConnected.value) return 'Your or3-intern app is connected and ready.';
     return 'This app still has a saved pairing, but it cannot reach that computer right now.';
 });
-const connectionPillLabel = computed(() =>
-    isConnected.value ? 'Connected' : 'Unavailable',
-);
+const connectionPillLabel = computed(() => {
+    if (isConnected.value) return 'Connected';
+    if (isPaired.value) return 'Connecting…';
+    return 'Unavailable';
+});
 const connectionPillTone = computed<'green' | 'amber'>(() =>
     isConnected.value ? 'green' : 'amber',
 );
@@ -503,7 +530,7 @@ const QUICK_KEYS: Record<FilterKey, string[]> = {
     safety: ['security', 'hardening', 'session'],
     'agent-behavior': ['provider', 'runtime', 'skills', 'automation'],
     knowledge: ['workspace', 'storage', 'docindex', 'context'],
-    advanced: ['service', 'hardening', 'tools'],
+    advanced: ['context', 'service', 'hardening', 'tools'],
 };
 
 // Filter membership for chips. `null` means all sections.
@@ -545,6 +572,13 @@ const ICON_MAP: Record<string, string> = {
 
 function iconFor(key: string) {
     return ICON_MAP[key] ?? 'i-pixelarticons-settings-cog-2';
+}
+
+function riskTone(risk?: string): 'green' | 'amber' | 'danger' | 'neutral' {
+    if (risk === 'safe') return 'green';
+    if (risk === 'warning' || risk === 'danger') return 'danger';
+    if (risk === 'notice') return 'amber';
+    return 'neutral';
 }
 
 function matchesSearch(text: string | undefined | null) {
@@ -652,6 +686,7 @@ function onGroupClick(group: SettingsGroup) {
 
 onMounted(async () => {
     await loadSections();
+    void loadMetadata().catch(() => null);
     // Build the searchable field index in the background. Errors here are
     // non-fatal; section-level search still works without it.
     void loadAllFields().catch(() => null);

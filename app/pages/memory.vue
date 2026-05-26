@@ -25,10 +25,14 @@
         </DangerCallout>
 
         <div class="flex flex-wrap gap-2">
-          <UButton label="Check status" icon="i-pixelarticons-reload" color="neutral" variant="soft" class="or3-touch-target" :loading="memoryLoading" @click="handleRefreshEmbeddings" />
-          <UButton label="Re-scan notes" icon="i-pixelarticons-database" color="primary" class="or3-touch-target" :loading="memoryLoading" @click="handleRebuild('memory')" />
-          <UButton label="Re-scan documents" icon="i-pixelarticons-files" color="neutral" variant="soft" class="or3-touch-target" :loading="memoryLoading" @click="handleRebuild('docs')" />
+          <UButton label="Check status" icon="i-pixelarticons-reload" color="neutral" variant="soft" class="or3-touch-target" :loading="statusLoading" @click="handleRefreshEmbeddings" />
+          <UButton label="Re-scan notes" icon="i-pixelarticons-database" color="primary" class="or3-touch-target" :loading="rebuildLoading" @click="handleRebuild('memory')" />
+          <UButton label="Re-scan documents" icon="i-pixelarticons-files" color="neutral" variant="soft" class="or3-touch-target" :loading="rebuildLoading" @click="handleRebuild('docs')" />
         </div>
+
+        <p v-if="lastRebuildResult" class="text-sm text-(--or3-text-muted)">
+          Last re-scan: {{ formatRebuildSummary(lastRebuildResult) }}
+        </p>
 
         <details class="rounded-2xl border border-(--or3-border) bg-white/70 p-3">
           <summary class="cursor-pointer select-none text-xs font-semibold uppercase tracking-wide text-(--or3-text-muted)">Show technical details</summary>
@@ -47,8 +51,8 @@
           </div>
         </div>
         <div class="flex flex-wrap gap-2">
-          <UButton label="Refresh" icon="i-pixelarticons-shield" color="neutral" variant="soft" class="or3-touch-target" :loading="memoryLoading" @click="handleRefreshAudit" />
-          <UButton label="Verify activity log" icon="i-pixelarticons-check-double" color="primary" class="or3-touch-target" :loading="memoryLoading" @click="handleVerifyAudit" />
+          <UButton label="Refresh" icon="i-pixelarticons-shield" color="neutral" variant="soft" class="or3-touch-target" :loading="auditLoading" @click="handleRefreshAudit" />
+          <UButton label="Verify activity log" icon="i-pixelarticons-check-double" color="primary" class="or3-touch-target" :loading="auditLoading" @click="handleVerifyAudit" />
         </div>
         <details class="rounded-2xl border border-(--or3-border) bg-white/70 p-3">
           <summary class="cursor-pointer select-none text-xs font-semibold uppercase tracking-wide text-(--or3-text-muted)">Show technical details</summary>
@@ -71,10 +75,11 @@
             <UInput v-model="scopeKey" placeholder="scope_key" />
           </div>
           <div class="flex flex-wrap gap-2">
-            <UButton label="Resolve session scope" color="neutral" variant="soft" :loading="memoryLoading" @click="resolveScope(sessionKey)" />
-            <UButton label="Link scope" color="primary" :loading="memoryLoading" @click="linkScope(sessionKey, scopeKey)" />
-            <UButton label="List scope sessions" color="neutral" variant="soft" :loading="memoryLoading" @click="listScopeSessions(scopeKey)" />
+            <UButton label="Resolve session scope" color="neutral" variant="soft" :loading="scopeLoading" @click="handleResolveScope" />
+            <UButton label="Link scope" color="primary" :loading="scopeLoading" @click="handleLinkScope" />
+            <UButton label="List scope sessions" color="neutral" variant="soft" :loading="scopeLoading" @click="listScopeSessions(scopeKey)" />
           </div>
+          <p v-if="scopeError" class="text-sm text-rose-600">{{ scopeError }}</p>
           <pre class="max-h-64 overflow-auto rounded-2xl border border-(--or3-border) bg-white/70 p-3 text-xs text-(--or3-text-muted)">{{ formatObject(scopeResult) }}</pre>
         </div>
       </details>
@@ -92,10 +97,15 @@ const sessionKey = ref('')
 const scopeKey = ref('')
 const {
   embeddingsStatus,
+  lastRebuildResult,
   auditStatus,
   scopeResult,
-  memoryLoading,
+  statusLoading,
+  auditLoading,
+  rebuildLoading,
+  scopeLoading,
   memoryError,
+  scopeError,
   loadEmbeddingsStatus,
   rebuildEmbeddings,
   loadAuditStatus,
@@ -107,6 +117,15 @@ const {
 
 function formatObject(value: unknown) {
   return JSON.stringify(value ?? { status: 'unavailable' }, null, 2)
+}
+
+function formatRebuildSummary(result: Record<string, unknown>) {
+  const notes = Number(result.memoryNotesRebuilt ?? 0)
+  const docs = result.docsRebuilt === true
+  const target = String(result.target ?? 'memory')
+  if (target === 'docs') return docs ? 'Document index refreshed.' : 'Document re-scan finished with no changes.'
+  if (target === 'all') return `Rebuilt ${notes} notes${docs ? ' and refreshed documents' : ''}.`
+  return notes > 0 ? `Rebuilt ${notes} memory notes.` : 'Memory re-scan finished with no note changes.'
 }
 
 async function handleRefreshEmbeddings() {
@@ -123,6 +142,24 @@ async function handleRefreshAudit() {
 
 async function handleVerifyAudit() {
   await verifyAudit()
+}
+
+async function handleResolveScope() {
+  await resolveScope(sessionKey.value)
+}
+
+async function handleLinkScope() {
+  const key = sessionKey.value.trim()
+  const scope = scopeKey.value.trim()
+  if (!key || !scope) {
+    scopeError.value = 'Enter both session_key and scope_key before linking.'
+    return
+  }
+  const confirmed = window.confirm(
+    `Link session "${key}" to scope "${scope}"? Linked sessions share memory and history.`,
+  )
+  if (!confirmed) return
+  await linkScope(key, scope, { reason: 'memory-page-link' })
 }
 
 onMounted(async () => {

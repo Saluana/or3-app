@@ -18,9 +18,9 @@ describe('useSecureHostTokens', () => {
     expect(localStorage.getItem('or3-app:v1:secure-host-tokens')).toBeNull()
   })
 
-  it('prefers session tokens while preserving paired enrollment tokens', () => {
+  it('uses paired tokens for bearer auth and keeps passkey sessions in the session header', () => {
     expect(resolvePreferredHostToken({ pairedToken: 'paired', token: 'paired' })).toBe('paired')
-    expect(resolvePreferredHostToken({ pairedToken: 'paired', sessionToken: 'session', token: 'session' })).toBe('session')
+    expect(resolvePreferredHostToken({ pairedToken: 'paired', sessionToken: 'session', token: 'session' })).toBe('paired')
     expect(withResolvedHostTokens({ id: 'host-1', token: 'paired' })).toMatchObject({
       pairedToken: 'paired',
       sessionToken: undefined,
@@ -46,7 +46,7 @@ describe('useSecureHostTokens', () => {
       token: 'session',
     })
     expect(resolveHostAuthTokens(resolved)).toEqual({
-      authToken: 'session',
+      authToken: 'paired',
       sessionToken: 'session',
     })
     expect(resolvePreferredHostToken({

@@ -27,8 +27,10 @@ import {
     runnerLabel,
     summaryToSnapshot,
 } from '~/utils/or3/jobs';
+import { useActiveHost } from './useActiveHost';
 import { useLocalCache } from './useLocalCache';
 import { useOr3Api } from './useOr3Api';
+import { canUseHostApi } from './useSecureHostTokens';
 
 export interface AgentJobUiMeta {
     task?: string;
@@ -409,6 +411,8 @@ export function useJobs() {
     }
 
     async function loadJobs(options: { status?: string; limit?: number } = {}) {
+        const { activeHost } = useActiveHost();
+        if (!canUseHostApi(activeHost.value)) return;
         loadingJobs.value = true;
         lastListError.value = null;
         try {
@@ -430,6 +434,18 @@ export function useJobs() {
             }
         } catch (error) {
             const err = error as Or3AppError;
+            if (err?.code === 'pin_locked') return;
+            if (
+                err?.status === 401 ||
+                err?.status === 403 ||
+                err?.status === 429 ||
+                err?.code === 'auth_required' ||
+                err?.code === 'unauthorized' ||
+                err?.code === 'invalid_token' ||
+                err?.code === 'auth_rate_limited'
+            ) {
+                if (hostJobSummaries(cache).length > 0) return;
+            }
             if (
                 err?.status === 404 ||
                 err?.status === 405 ||
@@ -470,6 +486,8 @@ export function useJobs() {
     }
 
     async function loadAgentRunners() {
+        const { activeHost } = useActiveHost();
+        if (!canUseHostApi(activeHost.value)) return;
         loadingRunners.value = true;
         lastRunnerError.value = null;
         try {

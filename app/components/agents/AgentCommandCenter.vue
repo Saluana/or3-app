@@ -1,5 +1,9 @@
 <template>
-    <SurfaceCard class-name="or3-command-center space-y-5" padded>
+    <SurfaceCard
+        id="agent-command-center"
+        class-name="or3-command-center space-y-5"
+        padded
+    >
         <!-- Header: hero with mascot on a podium -->
         <header class="or3-cc-hero">
             <div class="or3-cc-hero__copy">
@@ -633,7 +637,10 @@ import {
 import type { ChatAttachment } from '~/types/app-state';
 import type { AgentRunnerInfo } from '~/types/or3-api';
 import { runnerLabel } from '~/utils/or3/jobs';
+import type { AgentCommandDraft } from '~/utils/or3/agent-jobs';
 import CwdPickerSheet from '~/components/agents/CwdPickerSheet.vue';
+
+export type { AgentCommandDraft };
 
 export interface AgentTaskPayload {
     task: string;
@@ -1018,6 +1025,38 @@ function selectCategory(id: AgentCategory) {
         const tpl = categories.find((c) => c.id === id)?.template ?? '';
         updateEditorText(tpl);
     }
+}
+
+function setDraft(draft: AgentCommandDraft) {
+    if (draft.category) {
+        formState.category = draft.category as AgentCategory;
+    }
+    if (draft.priority) {
+        formState.priority = draft.priority as AgentPriority;
+    }
+    if (draft.notify) {
+        formState.notify = draft.notify as AgentNotify;
+    }
+    if (draft.autoApprove !== undefined) {
+        formState.autoApprove = draft.autoApprove;
+    }
+    if (draft.runnerId) {
+        selectedRunner.value = draft.runnerId;
+    }
+    if (draft.mode) {
+        selectedMode.value = draft.mode as AgentCommandMode;
+    }
+    if (draft.model) {
+        selectedModel.value = draft.model;
+    }
+    if (draft.maxTurns !== undefined) {
+        selectedMaxTurns.value = draft.maxTurns;
+    }
+    if (draft.cwd) {
+        cwdText.value = draft.cwd;
+    }
+    updateEditorText(draft.task || '');
+    focusEditor();
 }
 
 function attachmentId() {
@@ -1639,7 +1678,7 @@ onBeforeUnmount(() => {
     editor.value?.destroy();
 });
 
-defineExpose({ resetForm });
+defineExpose({ resetForm, setDraft });
 </script>
 
 <style scoped>

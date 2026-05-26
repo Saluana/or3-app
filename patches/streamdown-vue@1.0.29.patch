@@ -1,0 +1,42 @@
+diff --git a/dist/StreamMarkdown-BUAEdLZw.js b/dist/StreamMarkdown-BUAEdLZw.js
+index eb0af0b8ddb0dc15e07c91d425cf1beeb2fea34e..f488e32c0a21e733792ca67fda22e4a1a04dfe69 100644
+--- a/dist/StreamMarkdown-BUAEdLZw.js
++++ b/dist/StreamMarkdown-BUAEdLZw.js
+@@ -842,11 +842,21 @@ $$` : `${e}$$`;
+     a >= 3 && (t += Math.floor(a / 3));
+   }
+   return t;
+-}, It = (e) => U(e) || /^\*{4,}$/.test(e) ? e : e.match(ct) && At(e) % 2 === 1 ? `${e}***` : e, ie = (e) => {
++}, It = (e) => U(e) || /^\*{4,}$/.test(e) ? e : e.match(ct) && At(e) % 2 === 1 ? `${e}***` : e, or3MaskBalancedCodeSpans = (e) => {
++  const t = [];
++  return {
++    masked: e.replace(/(`+)([^\n]*?)\1/g, (n) => {
++      const r = t.push(n) - 1;
++      return `OR3STREAMDOWNCODE${r}X`;
++    }),
++    codeSpans: t
++  };
++}, or3RestoreBalancedCodeSpans = (e, t) => t.reduce((n, r, a) => n.replaceAll(`OR3STREAMDOWNCODE${a}X`, r), e), ie = (e) => {
+   if (!e || typeof e != "string")
+     return e;
+-  let t = e;
+-  return t.length, (t.match(/\$\$/g) || []).length, t = mt(t), t = It(t), t = gt(t), t = pt(t), t = yt(t), t = vt(t), t = St(t), t = Bt(t), t = Lt(t), t;
++  const { masked: t, codeSpans: n } = or3MaskBalancedCodeSpans(e);
++  let r = t;
++  return r.length, (r.match(/\$\$/g) || []).length, r = mt(r), r = It(r), r = gt(r), r = pt(r), r = yt(r), r = vt(r), r = St(r), r = Bt(r), r = Lt(r), or3RestoreBalancedCodeSpans(r, n);
+ }, Mt = /(\\begin\{(?:b|p|B|v|V)?matrix\})([\s\S]*?)(\\end\{(?:b|p|B|v|V)?matrix\})/g;
+ function jt(e) {
+   return e.replace(
+diff --git a/dist/StreamMarkdown-DN181-FT.cjs b/dist/StreamMarkdown-DN181-FT.cjs
+index bb2767c506504ef9ca636290ee4c087c5781a54c..723b9619cde1b44830048579899c98e29593166c 100644
+--- a/dist/StreamMarkdown-DN181-FT.cjs
++++ b/dist/StreamMarkdown-DN181-FT.cjs
+@@ -22,7 +22,7 @@
+ `)||(e.endsWith("```\n")||e.endsWith("```"))&&n%2===0?e:e.match(mt)&&!r&&Bt(e)%2===1?`${e}\``:e},Mt=e=>e.match(pt)&&(e.match(/~~/g)||[]).length%2===1?`${e}~~`:e,It=e=>{if((e.match(/\$\$/g)||[]).length%2===0)return e;const n=(e.match(/\\begin\{[^}]+\}/g)||[]).length,r=(e.match(/\\end\{[^}]+\}/g)||[]).length;if(n!==r)return e;const a=e.indexOf("$$");return a!==-1&&e.indexOf(`
+ `,a)!==-1&&!e.endsWith(`
+ `)?`${e}
+-$$`:`${e}$$`},jt=e=>{let t=0;const n=e.match(/\*+/g)||[];for(const r of n){const a=r.length;a>=3&&(t+=Math.floor(a/3))}return t},Nt=e=>H(e)||/^\*{4,}$/.test(e)?e:e.match(ht)&&jt(e)%2===1?`${e}***`:e,Z=e=>{if(!e||typeof e!="string")return e;let t=e;return t.length,(t.match(/\$\$/g)||[]).length,t=kt(t),t=Nt(t),t=yt(t),t=wt(t),t=vt(t),t=St(t),t=At(t),t=Mt(t),t=It(t),t},Pt=/(\\begin\{(?:b|p|B|v|V)?matrix\})([\s\S]*?)(\\end\{(?:b|p|B|v|V)?matrix\})/g;function Et(e){return e.replace(Pt,(t,n,r,a,d)=>{let c=r.split(/\n+/g).map(i=>i.trim()).filter(i=>i.length>0&&i!=="\\");if(c.some(i=>/\\\\/.test(i))){const i=[];for(const p of c)if(/\\\\/.test(p)){const A=p.split(/\\\\\s*/).map(l=>l.trim()).filter(l=>l.length>0&&l!=="\\");for(const l of A)i.push(l)}else i.push(p);c=i}if(c.length===0)return`${n}
++$$`:`${e}$$`},jt=e=>{let t=0;const n=e.match(/\*+/g)||[];for(const r of n){const a=r.length;a>=3&&(t+=Math.floor(a/3))}return t},Nt=e=>H(e)||/^\*{4,}$/.test(e)?e:e.match(ht)&&jt(e)%2===1?`${e}***`:e,or3MaskBalancedCodeSpans=e=>{const t=[];return{masked:e.replace(/(`+)([^\n]*?)\1/g,n=>{const r=t.push(n)-1;return`OR3STREAMDOWNCODE${r}X`}),codeSpans:t}},or3RestoreBalancedCodeSpans=(e,t)=>t.reduce((n,r,a)=>n.replaceAll(`OR3STREAMDOWNCODE${a}X`,r),e),Z=e=>{if(!e||typeof e!="string")return e;const{masked:t,codeSpans:n}=or3MaskBalancedCodeSpans(e);let r=t;return r.length,(r.match(/\$\$/g)||[]).length,r=kt(r),r=Nt(r),r=yt(r),r=wt(r),r=vt(r),r=St(r),r=At(r),r=Mt(r),r=It(r),or3RestoreBalancedCodeSpans(r,n)},Pt=/(\\begin\{(?:b|p|B|v|V)?matrix\})([\s\S]*?)(\\end\{(?:b|p|B|v|V)?matrix\})/g;function Et(e){return e.replace(Pt,(t,n,r,a,d)=>{let c=r.split(/\n+/g).map(i=>i.trim()).filter(i=>i.length>0&&i!=="\\");if(c.some(i=>/\\\\/.test(i))){const i=[];for(const p of c)if(/\\\\/.test(p)){const A=p.split(/\\\\\s*/).map(l=>l.trim()).filter(l=>l.length>0&&l!=="\\");for(const l of A)i.push(l)}else i.push(p);c=i}if(c.length===0)return`${n}
+ ${a}`;const m=c.map((i,p)=>p<c.length-1?/\\\\\s*$/.test(i)?i:/\\\s*$/.test(i)?i.replace(/\\\s*$/," \\\\"):i+" \\\\":i.replace(/\\\s*$/,"")).join(`
+ `);return`${n}
+ ${m}
