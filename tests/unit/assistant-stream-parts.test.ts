@@ -402,6 +402,89 @@ describe("assistant stream ordered parts", () => {
         ).toHaveLength(1);
     });
 
+    it("clears approval placeholder text before following an approved resume job", async () => {
+        useLocalCache().updateHost({
+            id: "test-host",
+            name: "Test Host",
+            baseUrl: "http://127.0.0.1:9100",
+            token: "secret",
+        });
+
+        const chat = useChatSessions();
+        const session = chat.ensureSession();
+        const assistantMessage = chat.addMessage({
+            sessionId: session.id,
+            role: "assistant",
+            content: "Approval is needed before OR3 can continue.",
+            status: "attention",
+            approvalRequestId: 42,
+            approvalState: "retrying",
+            errorCode: "approval_required",
+            retryPayload: {
+                text: "continue after approval",
+                transportText: "continue after approval",
+            },
+            parts: [
+                {
+                    id: "text:approval",
+                    type: "text",
+                    content: "Approval is needed before OR3 can continue.",
+                },
+            ],
+        });
+
+        streamEvents.push(
+            {
+                event: "output",
+                sequence: 1,
+                data: {
+                    stream: "stdout",
+                    content: "log line that must not become chat text\n",
+                    job_id: "job_parts",
+                },
+            },
+            {
+                event: "completion",
+                sequence: 2,
+                data: { status: "completed", final_text: "", job_id: "job_parts" },
+            },
+        );
+        snapshotResponse = {
+            job_id: "job_parts",
+            status: "completed",
+            final_text: "Approved work finished.",
+            events: [],
+        };
+
+        await useAssistantStream().send({
+            text: "",
+            transportText: "",
+            followJobId: "job_parts",
+            continueMessageId: assistantMessage.id,
+            suppressUserEcho: true,
+        });
+
+        const latest = chat.messages.value.find(
+            (message) => message.id === assistantMessage.id,
+        );
+        expect(latest?.status).toBe("complete");
+        expect(latest?.content).toBe("Approved work finished.");
+        expect(latest?.approvalRequestId).toBeUndefined();
+        expect(latest?.approvalState).toBeUndefined();
+        expect(latest?.content).not.toContain("Approval is needed");
+        expect(latest?.content).not.toContain("log line");
+        expect(
+            latest?.parts?.filter((part) => part.type === "text"),
+        ).toEqual([
+            expect.objectContaining({
+                content: "Approved work finished.",
+            }),
+        ]);
+        expect(
+            latest?.activityLog?.some((entry) => entry.type === "runner_output"),
+        ).toBe(true);
+    });
+
     it("surfaces empty completion without tool work as an attention state", async () => {
         useLocalCache().updateHost({
             id: "test-host",

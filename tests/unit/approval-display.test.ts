@@ -3,10 +3,12 @@ import { describe, expect, it } from 'vitest'
 import {
   approvalKindDescription,
   approvalKindLabel,
+  approvalRiskPresentation,
   approvalStatusLabel,
   approvalStatusTone,
   formatApprovalInlineCopy,
   formatApprovalSubjectPreview,
+  resolveApprovalRiskLevel,
 } from '../../app/utils/or3/approval-display'
 
 describe('approval display helpers', () => {
@@ -93,5 +95,14 @@ describe('approval display helpers', () => {
     expect(approvalStatusTone('expired')).toBe('danger')
     expect(approvalStatusLabel('failed')).toBe('Failed')
     expect(approvalStatusTone('completed')).toBe('green')
+  })
+
+  it('maps extreme moderator risk to an extreme risk pill', () => {
+    expect(resolveApprovalRiskLevel({ explicitRisk: 'extreme' })).toBe('extreme')
+    expect(approvalRiskPresentation('extreme')).toEqual({
+      label: 'Extreme risk',
+      tone: 'danger',
+      icon: 'i-pixelarticons-shield-off',
+    })
   })
 })

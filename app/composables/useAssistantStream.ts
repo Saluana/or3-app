@@ -160,9 +160,30 @@ export function useAssistantStream() {
                       item.role === 'assistant',
               ) || null
             : null;
+        const isApprovalContinuation = Boolean(
+            existingAssistant &&
+                (existingAssistant.approvalRequestId ||
+                    existingAssistant.approvalState === 'retrying' ||
+                    existingAssistant.errorCode === 'approval_required'),
+        );
         const assistant = existingAssistant
             ? (chat.updateMessage(existingAssistant.id, {
                   status: 'streaming',
+                  content: isApprovalContinuation
+                      ? ''
+                      : existingAssistant.content,
+                  parts: isApprovalContinuation
+                      ? []
+                      : existingAssistant.parts,
+                  reasoningText: isApprovalContinuation
+                      ? ''
+                      : existingAssistant.reasoningText,
+                  toolCalls: isApprovalContinuation
+                      ? []
+                      : existingAssistant.toolCalls,
+                  activityLog: isApprovalContinuation
+                      ? []
+                      : existingAssistant.activityLog,
                   error: undefined,
                   errorCode: undefined,
                   approvalRequestId: undefined,
@@ -175,8 +196,7 @@ export function useAssistantStream() {
                       payload.runnerChatSessionId ??
                       session.runnerChatSessionId,
                   sourceSessionKey: session.sessionKey,
-              }),
-              existingAssistant)
+              }) ?? existingAssistant)
             : chat.addMessage({
                   sessionId: session.id,
                   role: 'assistant',
@@ -200,7 +220,7 @@ export function useAssistantStream() {
         const messageState = useAssistantMessageState({
             assistantId: assistant.id,
             chat,
-            existingAssistant,
+            existingAssistant: assistant,
             runtimeLog,
         });
         const executionState = messageState.executionState;

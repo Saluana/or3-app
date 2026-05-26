@@ -121,6 +121,12 @@ const baseItems = computed<SidebarItem[]>(() => {
             to: '/settings/heartbeat',
         },
         {
+            label: 'Approval autopilot',
+            description: 'Choose what OR3 can approve by itself.',
+            icon: 'i-pixelarticons-shield',
+            to: '/settings/approval-autopilot',
+        },
+        {
             label: 'Passkeys',
             description: 'Manage device passkeys for security.',
             icon: 'i-pixelarticons-shield',

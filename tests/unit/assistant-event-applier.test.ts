@@ -263,6 +263,27 @@ describe('createAssistantEventApplier', () => {
         });
     });
 
+    it('keeps raw output events out of assistant prose', () => {
+        const { applyEvent, assistant } = createApplier();
+
+        applyEvent({
+            event: 'output',
+            json: {
+                type: 'output',
+                stream: 'stdout',
+                content: 'running lots of logs\n',
+            },
+        });
+
+        expect(assistant.value.content).toBe('');
+        expect(assistant.value.parts).toHaveLength(0);
+        expect(assistant.value.activityLog).toHaveLength(1);
+        expect(assistant.value.activityLog[0]).toMatchObject({
+            type: 'runner_output',
+            label: 'Runner output',
+        });
+    });
+
     it('removes the empty-final warning when a late final text event arrives', () => {
         const { applyEvent, assistant } = createApplier();
         const warning = EMPTY_FINAL_USER_MESSAGE;

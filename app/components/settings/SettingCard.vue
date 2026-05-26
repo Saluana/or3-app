@@ -440,9 +440,8 @@ function onToggle(value: boolean) {
         ]);
         return;
     }
-    emit('change', [
-        value ? props.control.toggle.on : props.control.toggle.off,
-    ]);
+    const changes = value ? props.control.toggle.on : props.control.toggle.off;
+    emit('change', Array.isArray(changes) ? changes : [changes]);
 }
 
 function onTextInput(value: string) {

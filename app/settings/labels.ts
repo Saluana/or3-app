@@ -74,6 +74,17 @@ export const FIELD_LABEL_MAP: Record<string, string> = {
     'security.secretStore.enabled': 'Protect saved secrets',
     'approvalModes.exec': 'Approval for terminal',
     'approvalModes.skill': 'Approval for skills',
+    'security.approvals.moderator.enabled': 'Approval autopilot',
+    'security.approvals.moderator.preset': 'Approval autopilot preset',
+    'security.approvals.moderator.provider': 'Approval reviewer provider',
+    'security.approvals.moderator.model': 'Approval reviewer model',
+    'security.approvals.moderator.timeoutSeconds': 'Approval review timeout',
+    'security.approvals.moderator.failureAction': 'Approval review failure action',
+    'security.approvals.moderator.userPolicy': 'Custom approval rules',
+    'security.approvals.moderator.actions.low': 'Low-risk approval action',
+    'security.approvals.moderator.actions.medium': 'Medium-risk approval action',
+    'security.approvals.moderator.actions.high': 'High-risk approval action',
+    'security.approvals.moderator.actions.extreme': 'Extreme-risk approval action',
 
     // External Agent CLI Delegation
     'agentCLI.enabled': 'External CLI agents',

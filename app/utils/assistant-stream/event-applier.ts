@@ -183,7 +183,11 @@ export function createAssistantEventApplier(
         });
 
         const delta = String(
-            payload?.delta ?? payload?.text ?? payload?.content ?? '',
+            payload?.delta ??
+                payload?.text ??
+                payload?.content ??
+                payload?.chunk ??
+                '',
         );
         if (type === 'queued' || type === 'started') {
             options.addActivity(
@@ -198,11 +202,20 @@ export function createAssistantEventApplier(
             options.appendTextPart(delta);
             markVisibleOutput(delta);
         }
-        if (type === 'output' && delta) {
-            const normalized = delta.endsWith('\n') ? delta : `${delta}\n`;
-            options.appendAssistantContent(normalized);
-            options.appendTextPart(normalized);
-            markVisibleOutput(delta);
+        if ((type === 'output' || type === 'output_truncated') && delta) {
+            options.closeActiveTextPart();
+            options.addActivity(
+                createActivity(
+                    payload?.stream === 'stderr'
+                        ? 'runner_stderr'
+                        : 'runner_output',
+                    payload?.stream === 'stderr'
+                        ? 'Runner warning'
+                        : 'Runner output',
+                    truncateLogDetail(delta),
+                    payload?.stream === 'stderr' ? 'error' : 'complete',
+                ),
+            );
         }
         if (type === 'runner_output' && delta) {
             if (isStructuredStdoutDiagnostic(payload)) {
