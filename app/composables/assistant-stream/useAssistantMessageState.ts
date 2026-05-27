@@ -24,6 +24,7 @@ interface UseAssistantMessageStateOptions {
     assistantId: string;
     chat: ChatStore;
     existingAssistant?: ChatMessage | null;
+    appendFinalTextToExistingContent?: boolean;
     runtimeLog: RuntimeLogStore;
 }
 
@@ -234,7 +235,9 @@ export function useAssistantMessageState(
         const normalized = sanitizeAssistantText(content);
         const nonText = (parts ?? []).filter((part) => part.type !== 'text');
         if (!normalized) return nonText.length ? nonText : undefined;
-        const firstTextPart = (parts ?? []).find((part) => part.type === 'text');
+        const firstTextPart = (parts ?? []).find(
+            (part) => part.type === 'text',
+        );
         return [
             {
                 id: firstTextPart?.id ?? 'text:1',
@@ -579,7 +582,7 @@ export function useAssistantMessageState(
         if (!match) return undefined;
         return { name: match.name, arguments: match.arguments };
     };
-    const { applyEvent } = createAssistantEventApplier({
+    const { applyEvent, applyFinalText } = createAssistantEventApplier({
         assistantId: options.assistantId,
         readAssistant,
         updateAssistant,
@@ -601,6 +604,8 @@ export function useAssistantMessageState(
         setSawVisibleOutput(value) {
             sawVisibleOutput = value;
         },
+        appendFinalTextToExistingContent:
+            options.appendFinalTextToExistingContent,
         rawAssistantContent: () => rawAssistantContent,
     });
 
@@ -612,6 +617,9 @@ export function useAssistantMessageState(
             completeRunningActivity,
             addActivity,
             applyEvent,
+            applyFinalText,
+            appendFinalTextToExistingContent:
+                options.appendFinalTextToExistingContent,
             replaceAssistantContent,
             appendCompleteTextPart,
             sawVisibleOutput: () => sawVisibleOutput,

@@ -208,26 +208,31 @@ export function useAssistantStream() {
             : null;
         const isApprovalContinuation = Boolean(
             existingAssistant &&
-                (existingAssistant.approvalRequestId ||
-                    existingAssistant.approvalState === 'retrying' ||
-                    existingAssistant.errorCode === 'approval_required'),
+            (existingAssistant.approvalRequestId ||
+                existingAssistant.approvalState === 'retrying' ||
+                existingAssistant.errorCode === 'approval_required'),
         );
+        const isApprovalResumeContinuation = Boolean(
+            isApprovalContinuation && followJobId,
+        );
+        const shouldResetApprovalContinuation =
+            isApprovalContinuation && !isApprovalResumeContinuation;
         const assistant = existingAssistant
             ? (chat.updateMessage(existingAssistant.id, {
                   status: 'streaming',
-                  content: isApprovalContinuation
+                  content: shouldResetApprovalContinuation
                       ? ''
                       : existingAssistant.content,
-                  parts: isApprovalContinuation
+                  parts: shouldResetApprovalContinuation
                       ? []
                       : existingAssistant.parts,
-                  reasoningText: isApprovalContinuation
+                  reasoningText: shouldResetApprovalContinuation
                       ? ''
                       : existingAssistant.reasoningText,
-                  toolCalls: isApprovalContinuation
+                  toolCalls: shouldResetApprovalContinuation
                       ? []
                       : existingAssistant.toolCalls,
-                  activityLog: isApprovalContinuation
+                  activityLog: shouldResetApprovalContinuation
                       ? []
                       : existingAssistant.activityLog,
                   error: undefined,
@@ -267,6 +272,7 @@ export function useAssistantStream() {
             assistantId: assistant.id,
             chat,
             existingAssistant: assistant,
+            appendFinalTextToExistingContent: isApprovalResumeContinuation,
             runtimeLog,
         });
         const executionState = messageState.executionState;

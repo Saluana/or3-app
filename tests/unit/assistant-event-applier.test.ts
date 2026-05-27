@@ -289,7 +289,8 @@ describe('createAssistantEventApplier', () => {
         const warning = EMPTY_FINAL_USER_MESSAGE;
         assistant.value.content = warning;
         assistant.value.status = 'attention';
-        assistant.value.error = 'or3-intern completed without a final assistant message.';
+        assistant.value.error =
+            'or3-intern completed without a final assistant message.';
         assistant.value.errorCode = 'empty_final_text';
         assistant.value.parts = [
             {
@@ -401,6 +402,39 @@ describe('createAssistantEventApplier', () => {
         expect(assistant.value.content).toContain('job failed');
     });
 
+    it('uses prior runtime error detail when terminal error is generic', () => {
+        const { applyEvent, assistant } = createApplier();
+
+        applyEvent(
+            {
+                event: 'runtime_error',
+                json: {
+                    type: 'runtime_error',
+                    message:
+                        'provider stream read error: context deadline exceeded',
+                    public_code: 'stream_error',
+                },
+            },
+            'stream',
+        );
+        applyEvent(
+            {
+                event: 'error',
+                json: {
+                    type: 'error',
+                    status: 'failed',
+                    message: 'job failed',
+                },
+            },
+            'stream',
+        );
+
+        expect(assistant.value.status).toBe('failed');
+        expect(assistant.value.content).toContain(
+            'provider stream read error: context deadline exceeded',
+        );
+    });
+
     it('marks tool_result failed lifecycle events as errors', () => {
         const { assistant, applyEvent } = createApplier();
 
@@ -424,7 +458,8 @@ describe('createAssistantEventApplier', () => {
                     status: 'failed',
                     result: JSON.stringify({
                         ok: false,
-                        summary: 'write_file failed: tool not available in this turn',
+                        summary:
+                            'write_file failed: tool not available in this turn',
                     }),
                 },
             },
