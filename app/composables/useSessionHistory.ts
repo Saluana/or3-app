@@ -8,7 +8,7 @@ import type {
     ChatSessionUpdateRequest,
     Or3SseEvent,
 } from '~/types/or3-api';
-import type { ChatMessage, ChatSession, Or3HostProfile } from '~/types/app-state';
+import type { ChatSession, Or3HostProfile } from '~/types/app-state';
 import { useActiveHost } from './useActiveHost';
 import { useChatSessions } from './useChatSessions';
 import { useElectronHostSetup } from './useElectronHostSetup';
@@ -19,6 +19,7 @@ import { useOr3Api } from './useOr3Api';
 const historyOpen = ref(false);
 const loading = ref(false);
 const error = ref<string | null>(null);
+const hydratingSessionKey = ref<string | null>(null);
 const backendSessions = ref<ChatSessionMeta[]>([]);
 let unlockRefreshWatchAttached = false;
 let refreshGeneration = 0;
@@ -83,17 +84,9 @@ function previewText(value?: string) {
     return (value || '').trim().replace(/\s+/g, ' ').slice(0, 160);
 }
 
-function localSessionToMeta(
-    session: ChatSession,
-    activeMessages: ChatMessage[],
-): ChatSessionMeta {
-    const latestMessage = [...activeMessages]
-        .reverse()
-        .find((message) => previewText(message.content));
-    const lastMessagePreview =
-        latestMessage?.content || session.lastMessagePreview || '';
-    const lastMessageAt =
-        isoToMS(latestMessage?.createdAt) || isoToMS(session.lastMessageAt);
+function localSessionToMeta(session: ChatSession): ChatSessionMeta {
+    const lastMessagePreview = session.lastMessagePreview || '';
+    const lastMessageAt = isoToMS(session.lastMessageAt);
     return {
         session_key: session.sessionKey,
         host_id: session.hostId,
@@ -106,8 +99,7 @@ function localSessionToMeta(
         runner_mode: session.runnerMode,
         runner_isolation: session.runnerIsolation,
         runner_cwd: session.runnerCwd,
-        message_count:
-            activeMessages.length || session.backendMessageCount || 0,
+        message_count: session.backendMessageCount || 0,
         last_message_preview: previewText(lastMessagePreview),
         last_message_at: lastMessageAt || isoToMS(session.updatedAt),
         parent_session_key: session.parentSessionKey,
@@ -182,16 +174,9 @@ export function useSessionHistory() {
         const localSessions =
             (chat as { sessions?: { value?: ChatSession[] } }).sessions
                 ?.value ?? [];
-        const activeMessages =
-            (chat as { messages?: { value?: ChatMessage[] } }).messages
-                ?.value ?? [];
-        const activeMessageSessionId = chat.activeSession.value?.id;
 
         for (const local of localSessions) {
-            const localMeta = localSessionToMeta(
-                local,
-                local.id === activeMessageSessionId ? activeMessages : [],
-            );
+            const localMeta = localSessionToMeta(local);
             const existing = merged.get(localMeta.session_key);
             merged.set(
                 localMeta.session_key,
@@ -221,7 +206,13 @@ export function useSessionHistory() {
         }
 
         const generation = ++refreshGeneration;
-        loading.value = true;
+        const localSessionsBeforeFetch =
+            (chat as { sessions?: { value?: ChatSession[] } }).sessions
+                ?.value ?? [];
+        const hasStaleSidebarData =
+            backendSessions.value.length > 0 ||
+            localSessionsBeforeFetch.length > 0;
+        if (!hasStaleSidebarData) loading.value = true;
         error.value = null;
         let lastError: unknown = null;
         try {
@@ -286,15 +277,22 @@ export function useSessionHistory() {
         if (!credentialsReadyForHost(activeHost.value)) return null;
         const local = chat.activateSessionByKey(sessionKey);
         if (!local) return null;
-        if (options.replaceLocal !== false) {
-            chat.clearSessionMessages(local.id);
+        hydratingSessionKey.value = sessionKey;
+        try {
+            const params = new URLSearchParams({ limit: String(limit) });
+            const response = await api.request<ChatMessagePageResponse>(
+                `/internal/v1/chat-sessions/${encodeURIComponent(sessionKey)}/messages?${params.toString()}`,
+            );
+            if (options.replaceLocal !== false) {
+                chat.clearSessionMessages(local.id, { persist: false });
+            }
+            chat.hydrateBackendMessages(local, response.messages ?? []);
+            return local;
+        } finally {
+            if (hydratingSessionKey.value === sessionKey) {
+                hydratingSessionKey.value = null;
+            }
         }
-        const params = new URLSearchParams({ limit: String(limit) });
-        const response = await api.request<ChatMessagePageResponse>(
-            `/internal/v1/chat-sessions/${encodeURIComponent(sessionKey)}/messages?${params.toString()}`,
-        );
-        chat.hydrateBackendMessages(local, response.messages ?? []);
-        return local;
     }
 
     async function followLiveMessages(sessionKey: string, signal?: AbortSignal) {
@@ -349,10 +347,7 @@ export function useSessionHistory() {
         );
         if (local && !backendKnown) {
             error.value = null;
-            return localSessionToMeta(
-                { ...local, archived },
-                local.id === chat.activeSession.value?.id ? chat.messages.value : [],
-            );
+            return localSessionToMeta({ ...local, archived });
         }
         try {
             const meta = await api.request<ChatSessionMeta>(
@@ -365,10 +360,7 @@ export function useSessionHistory() {
         } catch (err) {
             if (!local || !isChatSessionNotFound(err)) throw err;
             error.value = null;
-            return localSessionToMeta(
-                { ...local, archived },
-                local.id === chat.activeSession.value?.id ? chat.messages.value : [],
-            );
+            return localSessionToMeta({ ...local, archived });
         }
     }
 
@@ -403,6 +395,7 @@ export function useSessionHistory() {
     return {
         historyOpen,
         loading,
+        hydratingSessionKey,
         error,
         sessions,
         activeBackendSession,

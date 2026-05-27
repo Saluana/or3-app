@@ -338,6 +338,69 @@ describe('createAssistantEventApplier', () => {
         ]);
     });
 
+    it('does not fail the turn on runtime_error events', () => {
+        const { applyEvent, assistant } = createApplier();
+
+        applyEvent(
+            {
+                event: 'runtime_error',
+                json: {
+                    type: 'runtime_error',
+                    message: 'job failed',
+                    status: 'failed',
+                },
+            },
+            'stream',
+        );
+
+        expect(assistant.value.status).toBe('streaming');
+        expect(assistant.value.content).toBe('');
+        expect(assistant.value.activityLog).toHaveLength(1);
+        expect(assistant.value.activityLog[0]?.type).toBe('runtime_error');
+    });
+
+    it('does not fail the turn when an individual tool_result fails', () => {
+        const { applyEvent, assistant } = createApplier();
+
+        applyEvent(
+            {
+                event: 'tool_result',
+                json: {
+                    name: 'write_file',
+                    tool_call_id: 'call_write',
+                    status: 'failed',
+                    result: JSON.stringify({
+                        ok: false,
+                        summary: 'write_file failed',
+                    }),
+                },
+            },
+            'stream',
+        );
+
+        expect(assistant.value.status).toBe('streaming');
+        expect(assistant.value.content).not.toContain('job failed');
+    });
+
+    it('fails the turn on terminal job error events', () => {
+        const { applyEvent, assistant } = createApplier();
+
+        applyEvent(
+            {
+                event: 'error',
+                json: {
+                    type: 'error',
+                    status: 'failed',
+                    message: 'job failed',
+                },
+            },
+            'stream',
+        );
+
+        expect(assistant.value.status).toBe('failed');
+        expect(assistant.value.content).toContain('job failed');
+    });
+
     it('marks tool_result failed lifecycle events as errors', () => {
         const { assistant, applyEvent } = createApplier();
 

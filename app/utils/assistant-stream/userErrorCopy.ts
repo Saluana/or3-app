@@ -217,6 +217,16 @@ export function formatUserFacingErrorInline(
     );
 }
 
+const GENERIC_JOB_FAILURE_INLINE = new Set([
+    'job failed',
+    'job canceled',
+]);
+
+/** True when inline assistant content is only the backend's sanitized job failure stub. */
+export function isGenericJobFailureInline(text: string | undefined) {
+    return GENERIC_JOB_FAILURE_INLINE.has(String(text ?? '').trim().toLowerCase());
+}
+
 export function userFacingErrorToastDescription(
     error: unknown,
     errorCode?: Or3AppErrorCode,

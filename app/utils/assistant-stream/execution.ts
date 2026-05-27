@@ -31,6 +31,7 @@ import {
 } from "./errors";
 import {
     EMPTY_FINAL_USER_MESSAGE,
+    isGenericJobFailureInline,
     userFacingErrorCopy,
 } from "./userErrorCopy";
 import { eventJobId, normalizeRunnerChatEvent, responseJobId } from "./events";
@@ -163,6 +164,12 @@ const COMPLETION_ACTIVITY_TYPES = [
 ];
 
 const STREAM_IDLE_TIMEOUT_MS = 45_000;
+const SNAPSHOT_SETTLE_ATTEMPTS = 6;
+const SNAPSHOT_SETTLE_DELAY_MS = 350;
+
+function sleep(ms: number) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
 const EMPTY_FINAL_TEXT_WARNING = EMPTY_FINAL_USER_MESSAGE;
 
 function isLiveJobStatus(status: string) {
@@ -271,7 +278,15 @@ function applyRecoveredFinalText(
         context.sanitizeAssistantText,
     );
 
-    if (!recoveringEmptyFinal && context.sawVisibleOutput()) {
+    const failedWithGenericStub =
+        latest?.status === 'failed' &&
+        isGenericJobFailureInline(latest.content);
+
+    if (
+        !recoveringEmptyFinal &&
+        !failedWithGenericStub &&
+        context.sawVisibleOutput()
+    ) {
         return false;
     }
 
@@ -407,15 +422,17 @@ export function applyJobSnapshot(
     const nextStatus =
         snapshot.status === "approval_required"
             ? "attention"
-            : preserveEmptyFinalAttention
-              ? "attention"
-            : snapshot.error ||
-                snapshot.status === "failed" ||
-                snapshot.status === "aborted"
-              ? "failed"
-              : isLiveJobStatus(snapshot.status)
-                ? (latest?.status ?? "streaming")
-                : "complete";
+            : snapshotText
+              ? "complete"
+              : preserveEmptyFinalAttention
+                ? "attention"
+                : snapshot.error ||
+                    snapshot.status === "failed" ||
+                    snapshot.status === "aborted"
+                  ? "failed"
+                  : isLiveJobStatus(snapshot.status)
+                    ? (latest?.status ?? "streaming")
+                    : "complete";
     context.updateAssistant({
         status: nextStatus,
         error:
@@ -439,12 +456,35 @@ export function applyJobSnapshot(
 export async function fetchAndApplyJobSnapshot(
     jobId: string | null | undefined,
     context: BaseExecutionContext,
+    options: { settleAfterStreamFailure?: boolean } = {},
 ) {
     if (!jobId) return null;
-    const snapshot = await context.api.request<JobSnapshot>(
-        `/internal/v1/jobs/${encodeURIComponent(jobId)}`,
-        { signal: context.activeController.signal },
-    );
+
+    const attempts = options.settleAfterStreamFailure
+        ? SNAPSHOT_SETTLE_ATTEMPTS
+        : 1;
+    let snapshot: JobSnapshot | null = null;
+
+    for (let attempt = 0; attempt < attempts; attempt++) {
+        snapshot = await context.api.request<JobSnapshot>(
+            `/internal/v1/jobs/${encodeURIComponent(jobId)}`,
+            { signal: context.activeController.signal },
+        );
+        const hasFinalText = Boolean(snapshot.final_text?.trim());
+        const live = isLiveJobStatus(snapshot.status);
+        const hardFailedWithoutText =
+            (snapshot.status === "failed" || snapshot.status === "aborted") &&
+            !hasFinalText &&
+            !snapshot.error?.trim();
+
+        if ((live || hardFailedWithoutText) && attempt < attempts - 1) {
+            await sleep(SNAPSHOT_SETTLE_DELAY_MS);
+            continue;
+        }
+        break;
+    }
+
+    if (!snapshot) return null;
     applyJobSnapshot(snapshot, context);
     return snapshot;
 }

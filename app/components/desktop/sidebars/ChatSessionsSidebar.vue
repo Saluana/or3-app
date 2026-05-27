@@ -120,7 +120,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { ChatSessionMeta } from '~/types/or3-api';
 import EditNameModal from '~/components/app/EditNameModal.vue';
 
@@ -140,6 +140,29 @@ const emit = defineEmits<{
 }>();
 
 const query = ref('');
+const debouncedSearchQuery = ref('');
+let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+watch(
+    query,
+    (value) => {
+        if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+        searchDebounceTimer = setTimeout(() => {
+            debouncedSearchQuery.value = value.trim().toLowerCase();
+        }, 150);
+    },
+    { immediate: true },
+);
+onBeforeUnmount(() => {
+    if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+});
+
+function sessionSearchHaystack(session: ChatSessionMeta) {
+    return [session.title, session.last_message_preview, session.runner_label, session.runner_id]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+}
+
 const activeFilter = ref<'all' | 'recent' | 'archived'>('all');
 const renameOpen = ref(false);
 const renameTarget = ref<ChatSessionMeta | null>(null);
@@ -152,7 +175,7 @@ const filters = [
 ];
 
 const visibleSessions = computed(() => {
-    const q = query.value.trim().toLowerCase();
+    const q = debouncedSearchQuery.value;
     return props.sessions.filter((s) => {
         if (activeFilter.value === 'archived') {
             if (!s.archived) return false;
@@ -165,11 +188,7 @@ const visibleSessions = computed(() => {
             if (ts && Date.now() - ts > sevenDays) return false;
         }
         if (!q) return true;
-        return [s.title, s.last_message_preview, s.runner_label, s.runner_id]
-            .filter(Boolean)
-            .join(' ')
-            .toLowerCase()
-            .includes(q);
+        return sessionSearchHaystack(s).includes(q);
     });
 });
 

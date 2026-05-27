@@ -164,6 +164,9 @@ describe('useSessionHistory', () => {
             title: 'New conversation',
             createdAt: '2026-05-13T00:00:00.000Z',
             updatedAt: '2026-05-13T00:01:00.000Z',
+            lastMessagePreview: 'I need a friend right now',
+            lastMessageAt: '2026-05-13T00:01:00.000Z',
+            backendMessageCount: 1,
             runnerId: 'or3-intern',
             runnerLabel: 'OR3 Intern',
             runnerContinuationMode: 'replay',
@@ -238,8 +241,11 @@ describe('useSessionHistory', () => {
         );
     });
 
-    it('clears local messages before hydrating an opened session', async () => {
-        const clearSessionMessages = vi.fn();
+    it('replaces local messages after fetch when opening a session', async () => {
+        const callOrder: string[] = [];
+        const clearSessionMessages = vi.fn(() => {
+            callOrder.push('clear');
+        });
         const { sessionHistory, chat, request } = await loadComposable({
             chatOverrides: { clearSessionMessages },
             requestImpl: async (path: string) => {
@@ -247,6 +253,7 @@ describe('useSessionHistory', () => {
                     path ===
                     '/internal/v1/chat-sessions/svc%3Ahistory/messages?limit=100'
                 ) {
+                    callOrder.push('fetch');
                     return {
                         messages: [
                             {
@@ -269,7 +276,10 @@ describe('useSessionHistory', () => {
         });
 
         expect(chat.activateSessionByKey).toHaveBeenCalledWith('svc:history');
-        expect(clearSessionMessages).toHaveBeenCalledWith('local:svc:history');
+        expect(callOrder).toEqual(['fetch', 'clear']);
+        expect(clearSessionMessages).toHaveBeenCalledWith('local:svc:history', {
+            persist: false,
+        });
         expect(chat.hydrateBackendMessages).toHaveBeenCalled();
         expect(request).toHaveBeenCalledTimes(1);
     });

@@ -4,7 +4,7 @@ Neckbeard review of the or3-app chat pipeline. Focus: memory leaks, watcher issu
 
 ---
 
-## 1. Chat Switching Flashes Empty State (The Jank)
+## 1. Chat Switching Flashes Empty State (The Jank) ✅
 
 `app/composables/useSessionHistory.ts:322-329` — `openSession()`
 
@@ -27,7 +27,7 @@ async function openSession(meta, options) {
 
 ---
 
-## 2. Chat Switching Is Sequential and Blocking (The Slowness)
+## 2. Chat Switching Is Sequential and Blocking (The Slowness) ✅
 
 `app/composables/useSessionHistory.ts:280-298` — `hydrate()`
 
@@ -57,7 +57,7 @@ The entire switch path is: `ensureHostReady` → `activateSessionByKey` → `cle
 
 ---
 
-## 3. `messages` Computed Does a Full Linear Scan on Every Update
+## 3. `messages` Computed Does a Full Linear Scan on Every Update ✅
 
 `app/composables/useChatSessions.ts:320-323`
 
@@ -79,7 +79,7 @@ Every time ANY message in ANY session changes (streaming delta, status update, t
 
 ---
 
-## 4. `persist()` Runs `prunePersistedChatCache()` on Every Call
+## 4. `persist()` Runs `prunePersistedChatCache()` on Every Call ✅
 
 `app/composables/useLocalCache.ts:30-43` and `51-136`
 
@@ -106,7 +106,7 @@ function persist() {
 
 ---
 
-## 5. `hydrateBackendMessages` Is an O(n*m) Nightmare
+## 5. `hydrateBackendMessages` Is an O(n*m) Nightmare ✅
 
 `app/composables/useChatSessions.ts:864-1194`
 
@@ -125,7 +125,7 @@ For each backend message (up to 100), this function:
 
 ---
 
-## 6. `syncSessionMessageSummary` Is Called on Every Message Mutation
+## 6. `syncSessionMessageSummary` Is Called on Every Message Mutation ✅
 
 `app/composables/useChatSessions.ts:440-459`
 
@@ -152,7 +152,7 @@ This filters all messages, copies the array, reverses it, and searches for the l
 
 ---
 
-## 7. `findMessageById` Is a Linear Scan — No Index
+## 7. `findMessageById` Is a Linear Scan — No Index ✅
 
 `app/composables/useChatSessions.ts:494-498`
 
@@ -172,7 +172,7 @@ Called from `updateMessage`, `flushMessage`, `toggleMessagePin`, and critically 
 
 ---
 
-## 8. `ChatMessage.vue` Creates ~15 Computed Properties Per Instance
+## 8. `ChatMessage.vue` Creates ~15 Computed Properties Per Instance ✅ (v-memo on list items)
 
 `app/components/assistant/ChatMessage.vue:345-462`
 
@@ -186,7 +186,7 @@ Each `ChatMessage` instance creates: `shouldRepairIncompleteMarkdown`, `friendly
 
 ---
 
-## 9. `ChatMessage.vue` Has an `{ immediate: true }` Watcher on Every Instance
+## 9. `ChatMessage.vue` Has an `{ immediate: true }` Watcher on Every Instance ✅
 
 `app/components/assistant/ChatMessage.vue:766-793`
 
@@ -217,7 +217,7 @@ This watcher fires immediately for EVERY rendered message. For the vast majority
 
 ---
 
-## 10. `ChatMessage.vue` Calls Multiple Composables Per Instance
+## 10. `ChatMessage.vue` Calls Multiple Composables Per Instance ✅
 
 `app/components/assistant/ChatMessage.vue:301-335`
 
@@ -239,7 +239,7 @@ Each `ChatMessage` instance calls 5 composables. While Nuxt composables are typi
 
 ---
 
-## 11. `copiedTimer` in `ChatMessage.vue` Is Never Cleaned Up on Unmount
+## 11. `copiedTimer` in `ChatMessage.vue` Is Never Cleaned Up on Unmount ✅
 
 `app/components/assistant/ChatMessage.vue:339,496-499`
 
@@ -267,7 +267,7 @@ onBeforeUnmount(() => {
 
 ---
 
-## 12. Event Applier Creates Unbounded Sets During Streaming
+## 12. Event Applier Creates Unbounded Sets During Streaming ✅
 
 `app/utils/assistant-stream/event-applier.ts:79-80`
 
@@ -286,7 +286,7 @@ These sets grow for the entire duration of a streaming session. The `payloadKey`
 
 ---
 
-## 13. `scheduleJumpToBottom` Stacks Nested Animation Frames
+## 13. `scheduleJumpToBottom` Stacks Nested Animation Frames ✅
 
 `app/components/assistant/ChatMessageList.vue:99-114`
 
@@ -319,7 +319,7 @@ This schedules a `nextTick` → `rAF` → `rAF` chain. It's called from `onMount
 
 ---
 
-## 14. `index.vue` Has 8+ Watchers Evaluating on Every Reactive Change
+## 14. `index.vue` Has 8+ Watchers Evaluating on Every Reactive Change ✅
 
 `app/pages/index.vue:403-637`
 
@@ -342,7 +342,7 @@ The main page sets up watchers on:
 
 ---
 
-## 15. `startLiveChannelStream` Watcher Fires on Every Session Change
+## 15. `startLiveChannelStream` Watcher Fires on Every Session Change ✅
 
 `app/pages/index.vue:420-427`
 
@@ -366,7 +366,7 @@ watch(
 
 ---
 
-## 16. `useSessionHistory.sessions` Computed Merges and Sorts on Every Access
+## 16. `useSessionHistory.sessions` Computed Merges and Sorts on Every Access ✅
 
 `app/composables/useSessionHistory.ts:176-207`
 
@@ -397,7 +397,7 @@ const sessions = computed(() => {
 
 ---
 
-## 17. `sessions` Computed in `useChatSessions` Filters by Host on Every Access
+## 17. `sessions` Computed in `useChatSessions` Filters by Host on Every Access ✅
 
 `app/composables/useChatSessions.ts:272-276`
 
@@ -417,7 +417,7 @@ const sessions = computed(() =>
 
 ---
 
-## 18. `applyMessagePatch` Uses `Object.assign` on Reactive Objects
+## 18. `applyMessagePatch` Uses `Object.assign` on Reactive Objects ✅
 
 `app/composables/useChatSessions.ts:486`
 
@@ -433,7 +433,7 @@ Object.assign(message, patch);
 
 ---
 
-## 19. `ChatSessionsSidebar` Search Creates a New String Per Session Per Keystroke
+## 19. `ChatSessionsSidebar` Search Creates a New String Per Session Per Keystroke ✅
 
 `app/components/desktop/sidebars/ChatSessionsSidebar.vue:154-174`
 
@@ -460,7 +460,7 @@ const visibleSessions = computed(() => {
 
 ---
 
-## 20. `groupedSessions` Computed Sorts and Buckets on Every Change
+## 20. `groupedSessions` Computed Sorts and Buckets on Every Change ✅
 
 `app/components/desktop/sidebars/ChatSessionsSidebar.vue:181-210`
 
@@ -486,7 +486,7 @@ const groupedSessions = computed<SessionGroup[]>(() => {
 
 ---
 
-## 21. Module-Level `ref()` Singletons in `useAssistantStream`
+## 21. Module-Level `ref()` Singletons in `useAssistantStream` ✅
 
 `app/composables/useAssistantStream.ts:42-48`
 
@@ -507,7 +507,7 @@ let chatStreamInitialized = false;
 
 ---
 
-## 22. `recoveryAttempted` Set in `useStreamRecovery` Has Unbounded Growth Potential
+## 22. `recoveryAttempted` Set in `useStreamRecovery` Has Unbounded Growth Potential ✅
 
 `app/composables/assistant-stream/useStreamRecovery.ts:22`
 
@@ -525,7 +525,7 @@ Keys are added at line 111 and deleted in the `finally` block at line 133. Howev
 
 ---
 
-## 23. `useApprovalHydration` Watcher Has a Complex Multi-Source Dependency
+## 23. `useApprovalHydration` Watcher Has a Complex Multi-Source Dependency ✅
 
 `app/composables/assistant-stream/useApprovalHydration.ts:141-157`
 
@@ -550,7 +550,7 @@ stopApprovalHydrationWatch = watch(
 
 ---
 
-## 24. `useSessionHistory.refresh()` Has Retry Logic That Delays UI
+## 24. `useSessionHistory.refresh()` Has Retry Logic That Delays UI ✅
 
 `app/composables/useSessionHistory.ts:234-248`
 
@@ -575,7 +575,7 @@ for (let attempt = 0; attempt < 3; attempt++) {
 
 ---
 
-## 25. `Or3Scroll` Virtualization Estimate May Cause Layout Thrash
+## 25. `Or3Scroll` Virtualization Estimate May Cause Layout Thrash ✅ (estimate 160px)
 
 `app/components/assistant/ChatMessageList.vue:2-16`
 

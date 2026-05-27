@@ -297,14 +297,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, inject, ref, watch } from 'vue';
+import { computed, inject, onBeforeUnmount, ref, watch } from 'vue';
 import { useToast } from '@nuxt/ui/composables';
-import { useApprovals } from '../../composables/useApprovals';
-import { useAssistantStream } from '../../composables/useAssistantStream';
-import { useChatSessions } from '../../composables/useChatSessions';
-import { useSessionHistory } from '../../composables/useSessionHistory';
 import type { ChatAttachment, ChatMessage } from '../../types/app-state';
 import { mergeActivityWithToolParts } from '../../utils/assistant-stream/activity-merge';
+import { CHAT_MESSAGE_ACTIONS_KEY } from '../../utils/chat/chat-message-actions';
 import { COMPOSER_APPROVAL_MESSAGE_ID_KEY } from '../../utils/chat/pending-approval-message';
 import {
     buildApprovedResumePayload,
@@ -322,17 +319,25 @@ import { userFacingErrorCopy } from '../../utils/assistant-stream/userErrorCopy'
 
 const props = defineProps<{ message: ChatMessage }>();
 const toast = useToast();
+const actions = inject(CHAT_MESSAGE_ACTIONS_KEY);
+if (!actions) {
+    throw new Error('ChatMessage requires ChatMessageList context.');
+}
+
 const {
     activeSession,
+    findMessageById,
     markApprovalResolved,
-    messages,
     toggleMessagePin,
     updateMessage,
-} = useChatSessions();
-const { isStreaming, send } = useAssistantStream();
-const sessionHistory = useSessionHistory();
-const { approve, deny, fetchApproval, consumeIssuedApprovalToken } =
-    useApprovals();
+    isStreaming,
+    send,
+    approve,
+    deny,
+    fetchApproval,
+    consumeIssuedApprovalToken,
+} = actions;
+const sessionHistory = { forkSession: actions.forkSession };
 const copied = ref(false);
 const approvalBusy = ref(false);
 const forkBusy = ref(false);
@@ -375,10 +380,7 @@ const errorStripText = computed(
 );
 
 function currentMessage(): ChatMessage {
-    return (
-        messages.value.find((item) => item.id === props.message.id) ??
-        props.message
-    );
+    return findMessageById(props.message.id) ?? props.message;
 }
 
 const copyText = computed(() => props.message.content.trim());
@@ -764,13 +766,16 @@ async function approveApproval(remember = false) {
 }
 
 watch(
-    () => [
-        props.message.approvalRequestId,
-        props.message.approvalState,
-        props.message.retryPayload,
-        isStreaming.value,
-    ],
     () => {
+        if (!props.message.approvalRequestId) return null;
+        return [
+            props.message.approvalState,
+            props.message.retryPayload,
+            isStreaming.value,
+        ] as const;
+    },
+    (deps) => {
+        if (!deps) return;
         const message = currentMessage();
         if (
             message.approvalState !== 'pending' ||
@@ -791,6 +796,10 @@ watch(
     },
     { immediate: true },
 );
+
+onBeforeUnmount(() => {
+    if (copiedTimer) clearTimeout(copiedTimer);
+});
 
 async function denyApproval() {
     if (!props.message.approvalRequestId || approvalBusy.value) return;

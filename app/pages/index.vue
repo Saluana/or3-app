@@ -18,6 +18,7 @@
             ref="mobileChatThread"
             variant="mobile"
             :show-welcome="showWelcome"
+            :hydrating="sessionHydrating"
             :messages="messages"
             :message-list-key="activeSession?.id ?? 'active-thread'"
             v-model:draft="draft"
@@ -108,6 +109,7 @@
                 ref="desktopChatThread"
                 variant="desktop"
                 :show-welcome="showWelcome"
+                :hydrating="sessionHydrating"
                 :messages="messages"
                 :message-list-key="activeSession?.id ?? 'active-thread'"
                 v-model:draft="draft"
@@ -192,6 +194,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { ChatSessionMeta } from '~/types/or3-api';
+import { useManagedToast } from '~/composables/useManagedToast';
 
 const chat = useChatSessions();
 const {
@@ -285,6 +288,14 @@ const historyOpen = sessionHistory.historyOpen;
 const historySessions = sessionHistory.sessions;
 const historyLoading = sessionHistory.loading;
 const historyError = sessionHistory.error;
+const sessionHydrating = computed(
+    () =>
+        Boolean(
+            sessionHistory.hydratingSessionKey.value &&
+                sessionHistory.hydratingSessionKey.value ===
+                    activeSession.value?.sessionKey,
+        ),
+);
 
 function openHistory() {
     if (isStreaming.value) {
@@ -400,9 +411,16 @@ function continuationModeForRunner(runnerId?: string | null) {
     return caps?.chatNativeSession ? 'native' : 'replay';
 }
 
+const externalChannelKey = computed(() => {
+    if (!canUseHostApi(activeHost.value)) return '';
+    const sessionKey = activeSession.value?.sessionKey ?? '';
+    return isExternalChannelSession(sessionKey) ? sessionKey : '';
+});
+
 watch(
-    () => activeSession.value?.runnerId,
-    (runnerId) => {
+    () => activeSession.value?.runnerId ?? '',
+    (runnerId, previous) => {
+        if (runnerId === previous) return;
         selectedRunnerId.value =
             runnerId || defaultRunner.value?.id || 'or3-intern';
     },
@@ -410,19 +428,42 @@ watch(
 );
 
 watch(
-    () => activeSession.value?.id,
-    () => {
+    () => activeSession.value?.id ?? '',
+    (sessionId, previous) => {
+        if (sessionId === previous) return;
         distanceFromBottom.value = 0;
         isMessageListScrollable.value = false;
     },
 );
 
+watch(externalChannelKey, (channelKey, previous) => {
+    if (channelKey === previous) return;
+    startLiveChannelStream(channelKey || null);
+});
+
 watch(
-    () =>
-        canUseHostApi(activeHost.value)
-            ? activeSession.value?.sessionKey ?? ''
+    () => ({
+        hostReady: canUseHostApi(activeHost.value),
+        hostId: canUseHostApi(activeHost.value)
+            ? activeHost.value?.id ?? ''
             : '',
-    (sessionKey) => startLiveChannelStream(sessionKey || null),
+    }),
+    (next, previous) => {
+        if (!next.hostReady) {
+            if (previous?.hostReady) {
+                stopLiveChannelStream();
+                liveChannelPaused.value = false;
+                if (liveChannelToastId.value !== undefined) {
+                    toast.remove(liveChannelToastId.value);
+                    liveChannelToastId.value = undefined;
+                }
+            }
+            return;
+        }
+        if (!previous?.hostReady || next.hostId !== previous.hostId) {
+            void sessionHistory.refresh();
+        }
+    },
     { immediate: true },
 );
 
@@ -527,114 +568,85 @@ function sendWithMode(payload: Parameters<typeof send>[0]) {
     });
 }
 
-watch(
-    () =>
-        canUseHostApi(activeHost.value) ? activeHost.value?.id ?? '' : '',
-    (hostId) => {
-        if (hostId) void sessionHistory.refresh();
-    },
-    { immediate: true },
-);
-
-function toastNotificationId(
-    value: string | number | { id: string | number },
-): string | number {
-    return typeof value === 'object' ? value.id : value;
-}
-
 const runnersToastId = ref<string | number | undefined>();
 const liveChannelToastId = ref<string | number | undefined>();
 const historyToastId = ref<string | number | undefined>();
 
-watch(
-    () => canUseHostApi(activeHost.value),
-    (ready) => {
-        if (ready) return;
-        stopLiveChannelStream();
-        liveChannelPaused.value = false;
-        if (liveChannelToastId.value !== undefined) {
-            toast.remove(liveChannelToastId.value);
-            liveChannelToastId.value = undefined;
-        }
-    },
+function historyErrorToastAllowed(error: string) {
+    const lower = error.toLowerCase();
+    return (
+        !lower.includes('unauthorized') &&
+        !lower.includes('unlock') &&
+        !lower.includes('pin')
+    );
+}
+
+const showLiveChannelToast = computed(
+    () => liveChannelPaused.value && canUseHostApi(activeHost.value),
 );
 
-watch(liveChannelPaused, (paused) => {
-    if (liveChannelToastId.value !== undefined) {
-        toast.remove(liveChannelToastId.value);
-        liveChannelToastId.value = undefined;
-    }
-    if (!paused || !canUseHostApi(activeHost.value)) return;
-    liveChannelToastId.value = toastNotificationId(toast.add({
-        title: 'Live updates paused',
-        description:
-            'Refresh to load the latest messages for this channel.',
-        color: 'warning',
-        icon: 'i-pixelarticons-refresh',
-        actions: [
-            {
-                label: 'Refresh',
-                onClick: () => {
-                    refreshLiveChannel();
-                },
-            },
-        ],
-    }));
+const showHistoryErrorToast = computed(() => {
+    const error = historyError.value;
+    if (!error) return false;
+    return (
+        canUseHostApi(activeHost.value) &&
+        historySessions.value.length === 0 &&
+        !historyLoading.value &&
+        historyErrorToastAllowed(error)
+    );
 });
 
-watch(historyError, (message) => {
-    if (historyToastId.value !== undefined) {
-        toast.remove(historyToastId.value);
-        historyToastId.value = undefined;
-    }
-    if (!message || !canUseHostApi(activeHost.value)) return;
-    if (historySessions.value.length > 0 || historyLoading.value) return;
-    const lower = message.toLowerCase();
-    if (
-        lower.includes('unauthorized') ||
-        lower.includes('unlock') ||
-        lower.includes('pin')
-    ) {
-        return;
-    }
-    historyToastId.value = toastNotificationId(toast.add({
-        title: "Couldn't load conversations",
-        description: message,
-        color: 'warning',
-        icon: 'i-pixelarticons-alert',
-        actions: [
-            {
-                label: 'Retry',
-                onClick: () => {
-                    void sessionHistory.refresh();
-                },
-            },
-        ],
-    }));
-});
+const showRunnersErrorToast = computed(
+    () =>
+        Boolean(runnersError.value) &&
+        canUseHostApi(activeHost.value) &&
+        !defaultRunner.value,
+);
 
-watch(runnersError, (message) => {
-    if (runnersToastId.value !== undefined) {
-        toast.remove(runnersToastId.value);
-        runnersToastId.value = undefined;
-    }
-    if (!message || !canUseHostApi(activeHost.value)) return;
-    if (defaultRunner.value) return;
-    runnersToastId.value = toastNotificationId(toast.add({
-        title: "Couldn't load agents",
-        description: 'Using OR3 Intern for now.',
-        color: 'warning',
-        icon: 'i-pixelarticons-alert',
-        actions: [
-            {
-                label: 'Retry',
-                onClick: () => {
-                    void refreshRunners();
-                },
+useManagedToast(showLiveChannelToast, toast, liveChannelToastId, () => ({
+    title: 'Live updates paused',
+    description: 'Refresh to load the latest messages for this channel.',
+    color: 'warning',
+    icon: 'i-pixelarticons-refresh',
+    actions: [
+        {
+            label: 'Refresh',
+            onClick: () => {
+                refreshLiveChannel();
             },
-        ],
-    }));
-});
+        },
+    ],
+}));
+
+useManagedToast(showHistoryErrorToast, toast, historyToastId, () => ({
+    title: "Couldn't load conversations",
+    description: historyError.value ?? '',
+    color: 'warning',
+    icon: 'i-pixelarticons-alert',
+    actions: [
+        {
+            label: 'Retry',
+            onClick: () => {
+                void sessionHistory.refresh();
+            },
+        },
+    ],
+}));
+
+useManagedToast(showRunnersErrorToast, toast, runnersToastId, () => ({
+    title: "Couldn't load agents",
+    description: 'Using OR3 Intern for now.',
+    color: 'warning',
+    icon: 'i-pixelarticons-alert',
+    actions: [
+        {
+            label: 'Retry',
+            onClick: () => {
+                void refreshRunners();
+            },
+        },
+    ],
+}));
 
 onBeforeUnmount(() => {
     stopLiveChannelStream();

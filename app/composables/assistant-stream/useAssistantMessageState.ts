@@ -147,8 +147,15 @@ export function useAssistantMessageState(
     };
     const replaceAssistantContent = (value: string) => {
         rawAssistantContent = value;
+        const content = sanitizeAssistantText(rawAssistantContent);
+        const current = readAssistant();
+        if (!content) {
+            updateAssistant({ content });
+            return;
+        }
         updateAssistant({
-            content: sanitizeAssistantText(rawAssistantContent),
+            content,
+            parts: consolidateTextParts(current?.parts, content),
         });
     };
     const upsertPart = (part: ChatMessagePart) => {
@@ -192,16 +199,50 @@ export function useAssistantMessageState(
                 (part) => part.type === 'text' && part.content?.trim(),
             ),
         );
+    const textPartsContent = (assistant: ChatMessage | null | undefined) =>
+        sanitizeAssistantText(
+            (assistant?.parts ?? [])
+                .filter((part) => part.type === 'text')
+                .map((part) => part.content ?? '')
+                .join(''),
+        );
+
     const hasTextPartContent = (content: string) => {
         const normalized = sanitizeAssistantText(content);
         if (!normalized) return false;
+        const assistant = readAssistant();
+        if (!assistant) return false;
+        if (sanitizeAssistantText(assistant.content ?? '') === normalized) {
+            return true;
+        }
+        if (textPartsContent(assistant) === normalized) {
+            return true;
+        }
         return Boolean(
-            readAssistant()?.parts?.some(
+            assistant.parts?.some(
                 (part) =>
                     part.type === 'text' &&
                     sanitizeAssistantText(part.content ?? '') === normalized,
             ),
         );
+    };
+
+    const consolidateTextParts = (
+        parts: ChatMessagePart[] | undefined,
+        content: string,
+    ) => {
+        const normalized = sanitizeAssistantText(content);
+        const nonText = (parts ?? []).filter((part) => part.type !== 'text');
+        if (!normalized) return nonText.length ? nonText : undefined;
+        const firstTextPart = (parts ?? []).find((part) => part.type === 'text');
+        return [
+            {
+                id: firstTextPart?.id ?? 'text:1',
+                type: 'text' as const,
+                content: normalized,
+            },
+            ...nonText,
+        ];
     };
     const closeActiveTextPart = () => {
         activeTextPartId = null;
@@ -227,8 +268,13 @@ export function useAssistantMessageState(
     };
     const appendCompleteTextPart = (value: string) => {
         if (hasTextPartContent(value)) return;
+        const normalized = sanitizeAssistantText(value);
+        if (!normalized) return;
         closeActiveTextPart();
-        appendTextPart(value);
+        const current = readAssistant();
+        updateAssistant({
+            parts: consolidateTextParts(current?.parts, normalized),
+        });
         closeActiveTextPart();
     };
     const setToolCalls = (toolCalls: ChatToolCall[]) =>

@@ -27,14 +27,34 @@ interface UseApprovalHydrationOptions {
 
 let approvalHydrationWatcherInstalled = false;
 let stopApprovalHydrationWatch: (() => void) | null = null;
+let approvalHydrationTimer: ReturnType<typeof setTimeout> | null = null;
 const approvalHydrationInFlight = new Set<string>();
+const approvalHydratedAt = new Map<string, number>();
+const APPROVAL_HYDRATION_COOLDOWN_MS = 5_000;
+export const APPROVAL_HYDRATION_DEBOUNCE_MS = 300;
+const MAX_APPROVAL_HYDRATED_AT_ENTRIES = 200;
+
+function rememberApprovalHydratedAt(key: string, timestamp: number) {
+    if (approvalHydratedAt.has(key)) approvalHydratedAt.delete(key);
+    approvalHydratedAt.set(key, timestamp);
+    while (approvalHydratedAt.size > MAX_APPROVAL_HYDRATED_AT_ENTRIES) {
+        const oldest = approvalHydratedAt.keys().next().value as
+            | string
+            | undefined;
+        if (!oldest) break;
+        approvalHydratedAt.delete(oldest);
+    }
+}
 export const approvalHydrationError = ref<string | null>(null);
 
 export function resetApprovalHydrationForTests() {
     stopApprovalHydrationWatch?.();
     stopApprovalHydrationWatch = null;
     approvalHydrationWatcherInstalled = false;
+    if (approvalHydrationTimer) clearTimeout(approvalHydrationTimer);
+    approvalHydrationTimer = null;
     approvalHydrationInFlight.clear();
+    approvalHydratedAt.clear();
     approvalHydrationError.value = null;
 }
 
@@ -56,6 +76,21 @@ export function useApprovalHydration(options: UseApprovalHydrationOptions) {
 
         const hydrationKey = `${hostId}:${sessionKey}`;
         if (approvalHydrationInFlight.has(hydrationKey)) return;
+
+        const hasLocalPendingApproval = (
+            options.chat.messages?.value ?? []
+        ).some(
+            (message) =>
+                message.approvalState === 'pending' &&
+                Boolean(message.approvalRequestId),
+        );
+        const lastHydratedAt = approvalHydratedAt.get(hydrationKey) ?? 0;
+        if (
+            !hasLocalPendingApproval &&
+            Date.now() - lastHydratedAt < APPROVAL_HYDRATION_COOLDOWN_MS
+        ) {
+            return;
+        }
 
         approvalHydrationInFlight.add(hydrationKey);
         approvalHydrationError.value = null;
@@ -119,6 +154,7 @@ export function useApprovalHydration(options: UseApprovalHydrationOptions) {
                     },
                 );
             }
+            rememberApprovalHydratedAt(hydrationKey, Date.now());
         } catch (error) {
             approvalHydrationError.value =
                 describeRequestError(error) ||
@@ -151,7 +187,13 @@ export function useApprovalHydration(options: UseApprovalHydrationOptions) {
                 () => options.isStreaming.value,
             ],
             () => {
-                void hydratePendingApprovalsForActiveSession();
+                if (approvalHydrationTimer) {
+                    clearTimeout(approvalHydrationTimer);
+                }
+                approvalHydrationTimer = setTimeout(() => {
+                    approvalHydrationTimer = null;
+                    void hydratePendingApprovalsForActiveSession();
+                }, APPROVAL_HYDRATION_DEBOUNCE_MS);
             },
             { immediate: true },
         );

@@ -38,6 +38,57 @@ import {
 import { eventJobId, eventName, eventPayload, eventSequence } from './events';
 import { normalizeRunnerPermissionPayload } from './payload';
 
+function normalizeStreamEventType(type: string) {
+    return type.trim().toLowerCase().replace(/_/g, '.');
+}
+
+function isTurnTerminalFailureEvent(
+    type: string,
+    payload: Record<string, unknown> | undefined,
+    approvalRequired: boolean,
+) {
+    if (approvalRequired) return false;
+
+    const normalized = normalizeStreamEventType(type);
+    if (
+        normalized === 'runtime.error' ||
+        normalized === 'runtime.warning' ||
+        normalized === 'tool.result'
+    ) {
+        return false;
+    }
+
+    if (normalized === 'error' || normalized === 'failed') {
+        return true;
+    }
+
+    const streamStatus = String(payload?.status ?? '')
+        .trim()
+        .toLowerCase();
+    if (streamStatus === 'failed' || streamStatus === 'aborted') {
+        return (
+            normalized === 'completion' ||
+            normalized === 'completed' ||
+            normalized === 'complete' ||
+            normalized === 'done'
+        );
+    }
+
+    const streamError = String(payload?.error ?? '').trim();
+    return Boolean(streamError) && (normalized === 'error' || normalized === 'failed');
+}
+
+function turnTerminalFailureText(
+    type: string,
+    payload: Record<string, unknown> | undefined,
+) {
+    const normalized = normalizeStreamEventType(type);
+    if (normalized === 'error' || normalized === 'failed') {
+        return String(payload?.error ?? payload?.message ?? '').trim();
+    }
+    return String(payload?.error ?? '').trim();
+}
+
 interface AssistantEventApplierOptions {
     assistantId: string;
     readAssistant: () => ChatMessage | undefined;
@@ -78,6 +129,18 @@ export function createAssistantEventApplier(
     const logger = createLogger('stream');
     const appliedEventSequenceKeys = new Set<string>();
     const streamedEventPayloadKeys = new Set<string>();
+    const MAX_DEDUPE_KEYS = 512;
+
+    const rememberDedupeKey = (set: Set<string>, key: string) => {
+        if (!key) return;
+        if (set.size >= MAX_DEDUPE_KEYS) set.clear();
+        set.add(key);
+    };
+
+    const clearDedupeKeys = () => {
+        appliedEventSequenceKeys.clear();
+        streamedEventPayloadKeys.clear();
+    };
     const completionActivityId = 'activity:completion:final-response';
     const emptyFinalTextWarning = EMPTY_FINAL_USER_MESSAGE;
 
@@ -152,7 +215,21 @@ export function createAssistantEventApplier(
 
         const seq = eventSequence(event);
         const seqKey = seq !== undefined ? `seq:${seq}` : '';
-        const payloadKey = `${type}:${JSON.stringify(payload ?? {})}`;
+        const deltaFingerprint = String(
+            payload?.delta ??
+                payload?.text ??
+                payload?.content ??
+                payload?.chunk ??
+                '',
+        ).slice(0, 120);
+        const payloadKey = [
+            type,
+            seq ?? '',
+            explicitToolCallId(payload),
+            String(payload?.status ?? ''),
+            String(payload?.phase ?? ''),
+            seq === undefined ? deltaFingerprint : '',
+        ].join(':');
         if (seqKey && appliedEventSequenceKeys.has(seqKey)) {
             if (source !== 'snapshot') {
                 logger.debug(
@@ -173,8 +250,8 @@ export function createAssistantEventApplier(
             });
             return { failed: false, completed: false };
         }
-        if (seqKey) appliedEventSequenceKeys.add(seqKey);
-        if (source === 'stream') streamedEventPayloadKeys.add(payloadKey);
+        if (seqKey) rememberDedupeKey(appliedEventSequenceKeys, seqKey);
+        if (source === 'stream') rememberDedupeKey(streamedEventPayloadKeys, payloadKey);
         logger.debug('event:apply', 'Stream event applied', {
             type,
             source,
@@ -545,6 +622,7 @@ export function createAssistantEventApplier(
                     content,
                 });
             }
+            return { failed: false, completed: false };
         }
         if (
             type === 'reasoning_delta' &&
@@ -563,19 +641,13 @@ export function createAssistantEventApplier(
                     'error',
                 ),
             );
+            return { failed: false, completed: false };
         }
 
-        const streamError = String(
-            payload?.error ?? payload?.message ?? '',
-        ).trim();
         const streamStatus = String(payload?.status ?? '').trim();
         const approvalRequired = isApprovalRequiredPayload(payload);
-        if (
-            !approvalRequired &&
-            (streamError ||
-                streamStatus === 'failed' ||
-                streamStatus === 'aborted')
-        ) {
+        const streamError = turnTerminalFailureText(type, payload);
+        if (isTurnTerminalFailureEvent(type, payload, approvalRequired)) {
             const errorCode = extractErrorCode(payload);
             const failureCopy = userFacingErrorCopy(
                 streamError ? { message: streamError, code: errorCode } : payload,
@@ -755,7 +827,16 @@ export function createAssistantEventApplier(
         return { failed: false, completed: false };
     };
 
-    return { applyEvent };
+    const applyEventWithCleanup = (
+        event: JobEvent | { event?: string; json?: unknown },
+        source: 'stream' | 'snapshot' = 'stream',
+    ) => {
+        const result = applyEvent(event, source);
+        if (result.completed) clearDedupeKeys();
+        return result;
+    };
+
+    return { applyEvent: applyEventWithCleanup, clearDedupeKeys };
 }
 
 function toolResultError(payload: Record<string, unknown> | undefined): string | undefined {

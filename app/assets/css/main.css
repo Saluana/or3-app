@@ -559,6 +559,43 @@ html.or3-keyboard-open .or3-chat-shell__composer {
   overflow-x: visible !important;
 }
 
+.or3-chat-empty--loading {
+  padding-top: 3rem;
+}
+
+.or3-chat-empty__skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  width: min(100%, 22rem);
+}
+
+.or3-chat-empty__skeleton-line {
+  height: 0.85rem;
+  border-radius: 0.5rem;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--or3-border) 70%, transparent) 0%,
+    color-mix(in srgb, var(--or3-border) 35%, transparent) 50%,
+    color-mix(in srgb, var(--or3-border) 70%, transparent) 100%
+  );
+  background-size: 200% 100%;
+  animation: or3-chat-skeleton-shimmer 1.2s ease-in-out infinite;
+}
+
+.or3-chat-empty__skeleton-line--short {
+  width: 62%;
+}
+
+@keyframes or3-chat-skeleton-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
 /* Thread ---------------------------------------------------------------- */
 
  .or3-desktop-main-wrap {

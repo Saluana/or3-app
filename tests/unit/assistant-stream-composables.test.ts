@@ -30,6 +30,7 @@ vi.mock('../../app/utils/assistant-stream/execution', () => ({
 }));
 
 import {
+    APPROVAL_HYDRATION_DEBOUNCE_MS,
     resetApprovalHydrationForTests,
     useApprovalHydration,
 } from '../../app/composables/assistant-stream/useApprovalHydration';
@@ -194,6 +195,7 @@ describe('assistant-stream helper composables', () => {
         const ensureApprovalMessage = vi.fn();
         const chat = {
             activeSession: ref(createSession()),
+            messages: ref([]),
             isApprovalResolved: vi.fn().mockReturnValue(false),
             findAssistantMessageForApproval: vi.fn().mockReturnValue(null),
             ensureApprovalMessage,
@@ -247,9 +249,11 @@ describe('assistant-stream helper composables', () => {
     });
 
     it('does not rehydrate when the active session ref churns without a key change', async () => {
+        vi.useFakeTimers();
         const activeSession = ref(createSession());
         const chat = {
             activeSession,
+            messages: ref([]),
             isApprovalResolved: vi.fn().mockReturnValue(false),
             findAssistantMessageForApproval: vi.fn().mockReturnValue(null),
             ensureApprovalMessage: vi.fn(),
@@ -271,8 +275,7 @@ describe('assistant-stream helper composables', () => {
         }).installApprovalHydrationWatcher();
 
         await nextTick();
-        await Promise.resolve();
-        await Promise.resolve();
+        await vi.advanceTimersByTimeAsync(APPROVAL_HYDRATION_DEBOUNCE_MS);
 
         expect(api.request).toHaveBeenCalledTimes(1);
 
@@ -282,10 +285,10 @@ describe('assistant-stream helper composables', () => {
         };
 
         await nextTick();
-        await Promise.resolve();
-        await Promise.resolve();
+        await vi.advanceTimersByTimeAsync(APPROVAL_HYDRATION_DEBOUNCE_MS);
 
         expect(api.request).toHaveBeenCalledTimes(1);
+        vi.useRealTimers();
     });
 
     it('routes follow-ups before starting a fresh direct turn', async () => {

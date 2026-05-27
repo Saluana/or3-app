@@ -91,4 +91,55 @@ describe('stream recovery for approved resume jobs', () => {
             }),
         );
     });
+
+    it('recovers assistant messages stuck on generic job failed stubs', async () => {
+        const isStreaming = ref(false);
+        const send = vi.fn<
+            (message: string | AssistantSendPayload) => Promise<void>
+        >(async () => {
+            isStreaming.value = true;
+        });
+        const state: Or3AppState = {
+            activeHostId: 'test-host',
+            hosts: [createHost()],
+            sessions: [createSession()],
+            messages: [
+                {
+                    id: 'msg_failed',
+                    sessionId: 'session_1',
+                    role: 'assistant',
+                    content: 'job failed',
+                    status: 'failed',
+                    createdAt: '2026-05-24T00:00:00.000Z',
+                    jobId: 'job_failed',
+                    retryPayload: {
+                        text: 'make a two liner',
+                        transportText: 'make a two liner',
+                    },
+                },
+            ],
+            drafts: {},
+            recentJobs: {},
+            lastKnownStatus: {},
+            preferences: {},
+        };
+
+        const { recoverPendingMessages } = useStreamRecovery({
+            activeHost: ref(createHost()),
+            cacheState: ref(state),
+            isStreaming,
+            isClient: true,
+            send,
+        });
+
+        await recoverPendingMessages();
+
+        expect(send).toHaveBeenCalledWith(
+            expect.objectContaining({
+                followJobId: 'job_failed',
+                continueMessageId: 'msg_failed',
+                suppressUserEcho: true,
+            }),
+        );
+    });
 });
