@@ -11,6 +11,7 @@ import type {
 import type { ChatMessage, ChatSession, Or3HostProfile } from '~/types/app-state';
 import { useActiveHost } from './useActiveHost';
 import { useChatSessions } from './useChatSessions';
+import { useElectronHostSetup } from './useElectronHostSetup';
 import { usePinLockState } from './usePinLock';
 import { canUseHostApi } from './useSecureHostTokens';
 import { useOr3Api } from './useOr3Api';
@@ -166,6 +167,11 @@ export function useSessionHistory() {
     const api = useOr3Api();
     const chat = useChatSessions();
     const { activeHost } = useActiveHost();
+    const electronHost = useElectronHostSetup();
+
+    async function ensureHostReady() {
+        await electronHost.ensureLoaded?.().catch(() => undefined);
+    }
 
     const sessions = computed(() => {
         const merged = new Map<string, ChatSessionMeta>();
@@ -208,6 +214,7 @@ export function useSessionHistory() {
 
     async function refresh(options: { includeArchived?: boolean; runnerId?: string; q?: string } = {}) {
         attachUnlockRefreshWatch(() => refresh(options));
+        await ensureHostReady();
         if (!credentialsReadyForHost(activeHost.value)) {
             error.value = null;
             return sessions.value;
@@ -275,6 +282,7 @@ export function useSessionHistory() {
         limit = 100,
         options: { replaceLocal?: boolean } = {},
     ) {
+        await ensureHostReady();
         if (!credentialsReadyForHost(activeHost.value)) return null;
         const local = chat.activateSessionByKey(sessionKey);
         if (!local) return null;
@@ -290,6 +298,8 @@ export function useSessionHistory() {
     }
 
     async function followLiveMessages(sessionKey: string, signal?: AbortSignal) {
+        await ensureHostReady();
+        if (!credentialsReadyForHost(activeHost.value)) return;
         const local = chat.findSessionByKey(sessionKey) ?? chat.activateSessionByKey(sessionKey);
         if (!local) return;
         const afterID = chat.latestBackendMessageId(local.id);

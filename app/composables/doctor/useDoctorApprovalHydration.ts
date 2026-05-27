@@ -105,13 +105,16 @@ export function ensureDoctorApprovalMessage(
     return message;
 }
 
-export function useDoctorApprovalHydration() {
+export function useDoctorApprovalHydration(
+    options: { isClient?: boolean } = {},
+) {
     const store = useDoctorChatStore();
     const { activeHost } = useActiveHost();
     const api = useOr3Api();
+    const isClient = options.isClient ?? import.meta.client;
 
     const hydratePendingDoctorApprovals = async () => {
-        if (!import.meta.client || store.loading.value) return;
+        if (!isClient || store.loading.value) return;
 
         const hostId = activeHost.value?.id?.trim();
         const hasAuth = Boolean(
@@ -171,22 +174,22 @@ export function useDoctorApprovalHydration() {
     };
 
     const installDoctorApprovalHydrationWatcher = () => {
-        if (!import.meta.client) return () => undefined;
+        if (!isClient) return () => undefined;
         doctorApprovalHydrationConsumerCount += 1;
         if (!stopDoctorApprovalHydrationWatch) {
             doctorApprovalHydrationScope = effectScope(true);
             doctorApprovalHydrationScope.run(() => {
                 stopDoctorApprovalHydrationWatch = watch(
-                    () => ({
-                        hostId: activeHost.value?.id ?? '',
-                        token:
+                    [
+                        () => activeHost.value?.id ?? '',
+                        () =>
                             activeHost.value?.token ||
                             activeHost.value?.authMode === 'secure-session'
                                 ? 'ready'
                                 : 'none',
-                        sessionKey: store.sessionKey.value ?? '',
-                        streaming: store.loading.value,
-                    }),
+                        () => store.sessionKey.value ?? '',
+                        () => store.loading.value,
+                    ],
                     () => {
                         void hydratePendingDoctorApprovals();
                     },

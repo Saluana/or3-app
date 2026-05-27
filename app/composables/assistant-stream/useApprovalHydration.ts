@@ -26,8 +26,17 @@ interface UseApprovalHydrationOptions {
 }
 
 let approvalHydrationWatcherInstalled = false;
+let stopApprovalHydrationWatch: (() => void) | null = null;
 const approvalHydrationInFlight = new Set<string>();
 export const approvalHydrationError = ref<string | null>(null);
+
+export function resetApprovalHydrationForTests() {
+    stopApprovalHydrationWatch?.();
+    stopApprovalHydrationWatch = null;
+    approvalHydrationWatcherInstalled = false;
+    approvalHydrationInFlight.clear();
+    approvalHydrationError.value = null;
+}
 
 export function useApprovalHydration(options: UseApprovalHydrationOptions) {
     const isClient = options.isClient ?? import.meta.client;
@@ -129,18 +138,18 @@ export function useApprovalHydration(options: UseApprovalHydrationOptions) {
         if (!isClient || approvalHydrationWatcherInstalled) return;
 
         approvalHydrationWatcherInstalled = true;
-        watch(
-            () => ({
-                hostId: options.activeHost.value?.id ?? '',
-                token:
+        stopApprovalHydrationWatch = watch(
+            [
+                () => options.activeHost.value?.id ?? '',
+                () =>
                     options.activeHost.value?.pairedToken ||
                     options.activeHost.value?.token ||
                     options.activeHost.value?.authMode === 'secure-session'
                         ? 'ready'
                         : 'none',
-                sessionKey: options.chat.activeSession.value?.sessionKey ?? '',
-                streaming: options.isStreaming.value,
-            }),
+                () => options.chat.activeSession.value?.sessionKey ?? '',
+                () => options.isStreaming.value,
+            ],
             () => {
                 void hydratePendingApprovalsForActiveSession();
             },

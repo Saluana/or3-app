@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ref } from 'vue';
+import { nextTick, ref } from 'vue';
 import type {
     AssistantSendPayload,
     ChatSession,
@@ -29,7 +29,10 @@ vi.mock('../../app/utils/assistant-stream/execution', () => ({
     streamRunnerChat,
 }));
 
-import { useApprovalHydration } from '../../app/composables/assistant-stream/useApprovalHydration';
+import {
+    resetApprovalHydrationForTests,
+    useApprovalHydration,
+} from '../../app/composables/assistant-stream/useApprovalHydration';
 import { useExecutionRouter } from '../../app/composables/assistant-stream/useExecutionRouter';
 import {
     resetStreamRecoveryForTests,
@@ -73,6 +76,7 @@ function createState(): Or3AppState {
 }
 
 afterEach(() => {
+    resetApprovalHydrationForTests();
     resetStreamRecoveryForTests();
     vi.clearAllMocks();
 });
@@ -240,6 +244,48 @@ describe('assistant-stream helper composables', () => {
                 approvalState: 'pending',
             }),
         );
+    });
+
+    it('does not rehydrate when the active session ref churns without a key change', async () => {
+        const activeSession = ref(createSession());
+        const chat = {
+            activeSession,
+            isApprovalResolved: vi.fn().mockReturnValue(false),
+            findAssistantMessageForApproval: vi.fn().mockReturnValue(null),
+            ensureApprovalMessage: vi.fn(),
+        } as unknown as ReturnType<typeof useChatSessions>;
+        const api = {
+            request: vi.fn().mockResolvedValue({ items: [] }),
+        } as unknown as ReturnType<typeof useOr3Api>;
+        const runtimeLog = {
+            add: vi.fn(),
+        } as unknown as ReturnType<typeof useChatRuntimeLog>;
+
+        useApprovalHydration({
+            activeHost: ref(createHost()),
+            api,
+            chat,
+            runtimeLog,
+            isStreaming: ref(false),
+            isClient: true,
+        }).installApprovalHydrationWatcher();
+
+        await nextTick();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(api.request).toHaveBeenCalledTimes(1);
+
+        activeSession.value = {
+            ...activeSession.value,
+            updatedAt: '2026-05-13T00:05:00.000Z',
+        };
+
+        await nextTick();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(api.request).toHaveBeenCalledTimes(1);
     });
 
     it('routes follow-ups before starting a fresh direct turn', async () => {

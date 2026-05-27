@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { useSecureHostTokens, resolveHostAuthTokens, resolvePreferredHostToken, withResolvedHostTokens } from '../../app/composables/useSecureHostTokens'
+import { useSecureHostTokens, hostHasUsableCredentials, resolveHostAuthTokens, resolvePreferredHostToken, withResolvedHostTokens } from '../../app/composables/useSecureHostTokens'
 
 describe('useSecureHostTokens', () => {
   afterEach(() => {
@@ -31,6 +31,14 @@ describe('useSecureHostTokens', () => {
       sessionToken: 'session',
       token: 'session',
     })
+  })
+
+  it('treats legacy and Electron sentinel tokens as usable host credentials', () => {
+    expect(resolveHostAuthTokens({ baseUrl: 'http://127.0.0.1:9100', token: 'legacy-token' })).toEqual({
+      authToken: 'legacy-token',
+      sessionToken: undefined,
+    })
+    expect(hostHasUsableCredentials({ id: 'electron-local-host', baseUrl: 'http://127.0.0.1:9100', token: 'electron-local-service-token' })).toBe(true)
   })
 
   it('binds tokens to the paired host origin', () => {

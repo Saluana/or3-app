@@ -4,6 +4,9 @@ import { ref } from 'vue';
 async function loadComposable(options?: {
     requestImpl?: (...args: any[]) => Promise<any>;
     chatOverrides?: Record<string, any>;
+    activeHostInitial?: any;
+    activeHostRef?: ReturnType<typeof ref<any>>;
+    ensureLoadedImpl?: () => Promise<void>;
 }) {
     vi.resetModules();
 
@@ -38,12 +41,15 @@ async function loadComposable(options?: {
             })),
     );
 
-    const activeHost = ref({
+    const activeHost = options?.activeHostRef ?? ref(options?.activeHostInitial ?? {
         id: 'test-host',
         baseUrl: 'http://127.0.0.1:9100',
         pairedToken: 'paired-token',
         status: 'online',
     });
+    const ensureLoaded = vi.fn(
+        options?.ensureLoadedImpl || (() => Promise.resolve()),
+    );
 
     vi.doMock('../../app/composables/useChatSessions', () => ({
         useChatSessions: () => chat,
@@ -54,8 +60,18 @@ async function loadComposable(options?: {
     vi.doMock('../../app/composables/useActiveHost', () => ({
         useActiveHost: () => ({ activeHost }),
     }));
+    vi.doMock('../../app/composables/useElectronHostSetup', () => ({
+        useElectronHostSetup: () => ({ ensureLoaded }),
+    }));
     vi.doMock('../../app/composables/useSecureHostTokens', () => ({
-        canUseHostApi: () => true,
+        canUseHostApi: (host: any) =>
+            Boolean(
+                host?.baseUrl &&
+                    (host?.pairedToken ||
+                        host?.sessionToken ||
+                        host?.token ||
+                        host?.authMode === 'secure-session'),
+            ),
     }));
     vi.doMock('../../app/composables/useCredentialsSync', () => ({
         syncCredentialsAfterUnlock: vi.fn().mockResolvedValue(undefined),
@@ -69,6 +85,8 @@ async function loadComposable(options?: {
         sessionHistory: mod.useSessionHistory(),
         chat,
         request,
+        activeHost,
+        ensureLoaded,
     };
 }
 
@@ -107,6 +125,35 @@ describe('useSessionHistory', () => {
         expect(sessionHistory.sessions.value).toEqual([meta]);
         expect(chat.syncBackendSessionMeta).toHaveBeenCalledWith(meta);
         expect(sessionHistory.activeBackendSession.value).toEqual(meta);
+    });
+
+    it('loads Electron host setup before deciding whether history can refresh', async () => {
+        const meta = {
+            session_key: 'doctor-app-electron',
+            title: 'Doctor Session',
+            archived: false,
+            message_count: 1,
+        };
+        const activeHost = ref<any>(null);
+        const loadedHost = {
+            id: 'electron-local-host',
+            baseUrl: 'http://127.0.0.1:9100',
+            token: 'electron-local-service-token',
+            status: 'online',
+        };
+        const { sessionHistory, request, ensureLoaded } = await loadComposable({
+            activeHostRef: activeHost,
+            ensureLoadedImpl: async () => {
+                activeHost.value = loadedHost;
+            },
+            requestImpl: async () => ({ sessions: [meta] }),
+        });
+
+        const sessions = await sessionHistory.refresh();
+
+        expect(ensureLoaded).toHaveBeenCalledTimes(1);
+        expect(request).toHaveBeenCalledWith('/internal/v1/chat-sessions');
+        expect(sessions).toEqual([meta]);
     });
 
     it('includes local active sessions before backend history refresh catches up', async () => {

@@ -121,7 +121,7 @@ function writeHostTokenMap(tokens: Record<string, HostTokenRecord>) {
 export function resolveHostAuthTokens(host?: Partial<Or3HostProfile> | null) {
   if (!hostTokenOriginMatches(host)) return { authToken: undefined, sessionToken: undefined }
   const sessionToken = host?.sessionToken?.trim() || undefined
-  const pairedToken = host?.pairedToken?.trim() || undefined
+  const pairedToken = host?.pairedToken?.trim() || host?.token?.trim() || undefined
   return {
     authToken: pairedToken || sessionToken,
     sessionToken,
