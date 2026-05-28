@@ -197,6 +197,43 @@ describe('useSessionHistory', () => {
         ]);
     });
 
+    it('prefers backend titles when local cache still has the placeholder', async () => {
+        const localSession = {
+            id: 'local-session',
+            hostId: 'test-host',
+            sessionKey: 'svc:history',
+            title: 'New conversation',
+            createdAt: '2026-05-13T00:00:00.000Z',
+            updatedAt: '2026-05-13T00:01:00.000Z',
+            runnerId: 'or3-intern',
+            runnerLabel: 'OR3 Intern',
+            runnerContinuationMode: 'replay',
+        };
+        const backendMeta = {
+            session_key: 'svc:history',
+            title: 'Can you create a file in .prompts',
+            archived: false,
+            message_count: 2,
+            updated_at: 1_717_171_718_000,
+            last_message_at: 1_717_171_718_000,
+        };
+        const { sessionHistory } = await loadComposable({
+            chatOverrides: {
+                sessions: ref([localSession]),
+            },
+            requestImpl: async () => ({ sessions: [backendMeta] }),
+        });
+
+        await sessionHistory.refresh();
+
+        expect(sessionHistory.sessions.value).toEqual([
+            expect.objectContaining({
+                session_key: 'svc:history',
+                title: 'Can you create a file in .prompts',
+            }),
+        ]);
+    });
+
     it('archives local-only sessions without requiring backend metadata', async () => {
         const localSession = {
             id: 'local-session',

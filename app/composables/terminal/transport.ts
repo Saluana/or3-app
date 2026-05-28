@@ -106,9 +106,6 @@ export function createTerminalTransport(deps: TerminalTransportDeps) {
         closeTerminalSocket();
         terminalStreaming.value = false;
         terminalTransportDisconnected.value = false;
-        // #region agent log
-        fetch('http://127.0.0.1:7845/ingest/f9918b6c-53f1-4b7a-a810-8a4b7fbf8eb8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8186a8'},body:JSON.stringify({sessionId:'8186a8',location:'transport.ts:detach',message:'transport detached',data:{sessionId:deps.session.value?.session_id??null,attachGeneration},timestamp:Date.now(),hypothesisId:'H1-H3'})}).catch(()=>{});
-        // #endregion
     }
 
     function resetWebSocketCapability() {
@@ -233,9 +230,6 @@ export function createTerminalTransport(deps: TerminalTransportDeps) {
                 terminalStreaming.value = true;
                 terminalTransportDisconnected.value = false;
                 reconnectAttempt = 0;
-                // #region agent log
-                fetch('http://127.0.0.1:7845/ingest/f9918b6c-53f1-4b7a-a810-8a4b7fbf8eb8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8186a8'},body:JSON.stringify({sessionId:'8186a8',location:'transport.ts:ws-open',message:'websocket streaming enabled',data:{sessionId,generation},timestamp:Date.now(),hypothesisId:'H1-H3'})}).catch(()=>{});
-                // #endregion
                 settle(true);
             };
             socket.onmessage = (message) => {

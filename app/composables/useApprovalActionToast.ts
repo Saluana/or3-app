@@ -2,7 +2,7 @@ import { useToast } from '@nuxt/ui/composables';
 import { useApprovals } from './useApprovals';
 import { approvalIdFromError } from '~/utils/approval-errors';
 
-const activeApprovalToastIds = new Map<string, string | number>();
+const activeApprovalToastIds = new Map<string, string>();
 
 function approvalToastKey(approvalId: number | string) {
     return String(approvalId);
@@ -61,8 +61,9 @@ export function useApprovalActionToast() {
             // Fall back to generic copy when the detail request fails.
         }
 
-        const toastId = toast.add({
-            id: `approval-${key}`,
+        const toastId = `approval-${key}`;
+        toast.add({
+            id: toastId,
             title,
             description,
             color: 'neutral',
@@ -176,9 +177,6 @@ export function useApprovalActionToast() {
         });
 
         activeApprovalToastIds.set(key, toastId);
-        // #region agent log
-        fetch('http://127.0.0.1:7845/ingest/f9918b6c-53f1-4b7a-a810-8a4b7fbf8eb8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8186a8'},body:JSON.stringify({sessionId:'8186a8',location:'useApprovalActionToast.ts:prompt',message:'approval toast shown',data:{approvalId:options.approvalId,title},timestamp:Date.now(),hypothesisId:'H-toast',runId:'post-fix'})}).catch(()=>{});
-        // #endregion
     }
 
     async function promptApprovalForError(

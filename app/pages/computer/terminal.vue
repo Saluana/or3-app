@@ -472,9 +472,6 @@ watch(
         await nextTick();
         surfaceRef.value?.fit();
         surfaceRef.value?.focus();
-        // #region agent log
-        fetch('http://127.0.0.1:7845/ingest/f9918b6c-53f1-4b7a-a810-8a4b7fbf8eb8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8186a8'},body:JSON.stringify({sessionId:'8186a8',location:'terminal.vue:session-ready',message:'terminal interactive',data:{sessionId,chunkCount:terminalChunks.value.length,lastChunkId:terminalChunks.value.at(-1)?.id??null,cwd:session.value?.cwd??null},timestamp:Date.now(),hypothesisId:'H-chunks',runId:'post-fix-2'})}).catch(()=>{});
-        // #endregion
     },
 );
 
@@ -531,9 +528,6 @@ async function launchFromRouteTarget() {
 }
 
 async function handleStart() {
-    // #region agent log
-    fetch('http://127.0.0.1:7845/ingest/f9918b6c-53f1-4b7a-a810-8a4b7fbf8eb8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8186a8'},body:JSON.stringify({sessionId:'8186a8',location:'terminal.vue:handleStart',message:'handleStart clicked',data:{selectedRootId:selectedRootId.value,selectedPath:selectedPath.value,existingSessionId:session.value?.session_id??null,pendingApprovalId:pendingApprovalId.value},timestamp:Date.now(),hypothesisId:'H5'})}).catch(()=>{});
-    // #endregion
     await start({
         root_id: selectedRootId.value,
         path: selectedPath.value,
@@ -600,9 +594,6 @@ onMounted(async () => {
         logTerminalActionError('restore session', error);
         return null;
     });
-    // #region agent log
-    fetch('http://127.0.0.1:7845/ingest/f9918b6c-53f1-4b7a-a810-8a4b7fbf8eb8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8186a8'},body:JSON.stringify({sessionId:'8186a8',location:'terminal.vue:onMounted',message:'terminal page mounted',data:{restored:Boolean(restored),restoredSessionId:restored?.session_id??null,restoredStatus:restored?.status??null,wantsFreshLaunch:wantsFreshLaunch.value},timestamp:Date.now(),hypothesisId:'H5'})}).catch(()=>{});
-    // #endregion
     if (restored) {
         selectedRootId.value = restored.root_id || selectedRootId.value;
         selectedPath.value = restored.path || selectedPath.value;

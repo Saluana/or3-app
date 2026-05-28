@@ -435,7 +435,6 @@ export function useChatSessions() {
         );
         if (session) {
             session.updatedAt = now();
-            session.title = 'New conversation';
             session.backendMessageCount = 0;
             session.lastMessagePreview = undefined;
             session.lastMessageAt = undefined;

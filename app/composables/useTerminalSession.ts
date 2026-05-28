@@ -146,7 +146,7 @@ function applyTerminalEvent(
 ) {
     switch (eventType) {
         case 'snapshot':
-            if (payload) applySession(payload as TerminalSessionSnapshot);
+            if (payload) applySession(payload as unknown as TerminalSessionSnapshot);
             break;
         case 'output': {
             const chunk = String(payload?.chunk ?? '');
@@ -339,9 +339,6 @@ export function useTerminalSession() {
         pendingApprovalId.value = null;
         rememberLaunchPayload(launchPayload);
         const previousSessionId = session.value?.session_id ?? null;
-        // #region agent log
-        fetch('http://127.0.0.1:7845/ingest/f9918b6c-53f1-4b7a-a810-8a4b7fbf8eb8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8186a8'},body:JSON.stringify({sessionId:'8186a8',location:'useTerminalSession.ts:start:pre-request',message:'terminal start requested',data:{previousSessionId,rootId:launchPayload.root_id,path:launchPayload.path,hasApprovalToken:Boolean(launchPayload.approval_token)},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
-        // #endregion
 
         try {
             const created = await api.request<TerminalSessionSnapshot>(
@@ -357,9 +354,6 @@ export function useTerminalSession() {
             terminalLines.value = [`$ Connected to ${created.cwd}\n`];
             await listSessions().catch(() => {});
             void transport.attach(created.session_id);
-            // #region agent log
-            fetch('http://127.0.0.1:7845/ingest/f9918b6c-53f1-4b7a-a810-8a4b7fbf8eb8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8186a8'},body:JSON.stringify({sessionId:'8186a8',location:'useTerminalSession.ts:start:success',message:'terminal start succeeded',data:{sessionId:created.session_id,status:created.status,cwd:created.cwd},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
-            // #endregion
         } catch (error: unknown) {
             const err = error as {
                 status?: number;
@@ -381,9 +375,6 @@ export function useTerminalSession() {
                     err?.message ?? 'Unable to start a terminal session.';
             }
             terminalUnavailable.value = err?.status === 503;
-            // #region agent log
-            fetch('http://127.0.0.1:7845/ingest/f9918b6c-53f1-4b7a-a810-8a4b7fbf8eb8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8186a8'},body:JSON.stringify({sessionId:'8186a8',location:'useTerminalSession.ts:start:error',message:'terminal start failed',data:{status:err?.status,message:err?.message,pendingApprovalId:pendingApprovalId.value,previousSessionId,currentSessionId:session.value?.session_id??null,sessionStatus:session.value?.status??null,streaming:terminalStreaming.value,transportDisconnected:terminalTransportDisconnected.value,approvalRequired:isApprovalRequiredError(error)},timestamp:Date.now(),hypothesisId:'H1-H2-H5'})}).catch(()=>{});
-            // #endregion
             throw error;
         } finally {
             terminalBusy.value = false;
@@ -459,9 +450,6 @@ export function useTerminalSession() {
 
     async function writeToTerminal(input: string) {
         if (!session.value || !input || !canInteract.value) {
-            // #region agent log
-            fetch('http://127.0.0.1:7845/ingest/f9918b6c-53f1-4b7a-a810-8a4b7fbf8eb8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8186a8'},body:JSON.stringify({sessionId:'8186a8',location:'useTerminalSession.ts:writeToTerminal:blocked',message:'input blocked',data:{hasSession:Boolean(session.value),inputLength:input.length,canInteract:canInteract.value,sessionStatus:session.value?.status??null,streaming:terminalStreaming.value,pendingApprovalId:pendingApprovalId.value},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
-            // #endregion
             return;
         }
 
@@ -471,9 +459,6 @@ export function useTerminalSession() {
                 input,
             })
         ) {
-            // #region agent log
-            fetch('http://127.0.0.1:7845/ingest/f9918b6c-53f1-4b7a-a810-8a4b7fbf8eb8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8186a8'},body:JSON.stringify({sessionId:'8186a8',location:'useTerminalSession.ts:writeToTerminal:ws',message:'input sent via websocket',data:{inputLength:input.length,sessionId:session.value.session_id},timestamp:Date.now(),hypothesisId:'H-input',runId:'post-fix-2'})}).catch(()=>{});
-            // #endregion
             return;
         }
 

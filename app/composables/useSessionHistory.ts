@@ -84,6 +84,22 @@ function previewText(value?: string) {
     return (value || '').trim().replace(/\s+/g, ' ').slice(0, 160);
 }
 
+function isPlaceholderSessionTitle(title?: string) {
+    const normalized = title?.trim() || '';
+    return !normalized || normalized === 'New conversation';
+}
+
+function pickMergedSessionTitle(
+    backend: ChatSessionMeta,
+    local: ChatSessionMeta,
+) {
+    const localTitle = local.title?.trim() || '';
+    const backendTitle = backend.title?.trim() || '';
+    if (!isPlaceholderSessionTitle(localTitle)) return localTitle;
+    if (!isPlaceholderSessionTitle(backendTitle)) return backendTitle;
+    return localTitle || backendTitle || 'New conversation';
+}
+
 function localSessionToMeta(session: ChatSession): ChatSessionMeta {
     const lastMessagePreview = session.lastMessagePreview || '';
     const lastMessageAt = isoToMS(session.lastMessageAt);
@@ -123,6 +139,7 @@ function mergeSessionMeta(
     return {
         ...backend,
         ...local,
+        title: pickMergedSessionTitle(backend, local),
         message_count: local.message_count || backend.message_count,
         last_message_preview:
             localFresh && local.last_message_preview

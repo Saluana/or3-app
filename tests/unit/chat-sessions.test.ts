@@ -276,6 +276,29 @@ describe('useChatSessions', () => {
         expect(session.lastMessagePreview).toBe('partial');
     });
 
+    it('clearSessionMessages keeps the session title', () => {
+        useLocalCache().updateHost({
+            id: 'test-host',
+            name: 'Test Host',
+            baseUrl: 'http://127.0.0.1:9100',
+            token: 'secret',
+        });
+
+        const chat = useChatSessions();
+        const session = chat.newSession('Funniest joke');
+        chat.addMessage({
+            sessionId: session.id,
+            role: 'user',
+            content: 'hey bro tell me the funniest joke in ur arsenol',
+            status: 'complete',
+        });
+
+        chat.clearSessionMessages(session.id);
+
+        expect(session.title).toBe('Funniest joke');
+        expect(chat.messageCount(session.id)).toBe(0);
+    });
+
     it('hydrates backend tool rows into the assistant activity instead of raw chat bubbles', () => {
         useLocalCache().updateHost({
             id: 'test-host',
