@@ -747,6 +747,18 @@ export interface AppActionResponse {
     log_path?: string;
 }
 
+export interface ApprovalModeratorMetadata {
+    status?: string;
+    risk?: string;
+    action?: string;
+    reason?: string;
+    alternative?: string;
+    model?: string;
+    policy_hash?: string;
+    reviewed_at?: number;
+    latency_ms?: number;
+}
+
 export interface ApprovalRequest {
     id: number | string;
     status: string;
@@ -765,6 +777,7 @@ export interface ApprovalRequest {
         reply_meta?: Record<string, unknown>;
         source_message_id?: string;
     };
+    moderator?: ApprovalModeratorMetadata;
 }
 
 export interface ApprovalActionResponse {

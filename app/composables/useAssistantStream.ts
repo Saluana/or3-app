@@ -1,4 +1,5 @@
-import { ref, watch } from 'vue';
+import { useState } from '#app';
+import { computed, ref, watch, type Ref } from 'vue';
 import type { ToolPolicy } from '~/types/or3-api';
 import type { AssistantSendPayload } from '~/types/app-state';
 import { describeApprovalRequest } from '~/utils/assistant-stream/approval';
@@ -39,13 +40,38 @@ import { useChatRuntimeLog } from './useChatRuntimeLog';
 import { useLocalCache } from './useLocalCache';
 import { useOr3Api } from './useOr3Api';
 
-const isStreaming = ref(false);
-const activeJobId = ref<string | null>(null);
-const chatMode = ref<'ask' | 'work' | 'admin'>('work');
+interface AssistantStreamRuntime {
+    isStreaming: boolean;
+    activeJobId: string | null;
+    chatMode: 'ask' | 'work' | 'admin';
+    controller: AbortController | null;
+    initialized: boolean;
+}
+
+function createAssistantStreamRuntimeState(): AssistantStreamRuntime {
+    return {
+        isStreaming: false,
+        activeJobId: null,
+        chatMode: 'work',
+        controller: null,
+        initialized: false,
+    };
+}
+
+function useAssistantStreamRuntime(): Ref<AssistantStreamRuntime> {
+    return useState<AssistantStreamRuntime>(
+        'or3-assistant-stream-runtime',
+        createAssistantStreamRuntimeState,
+    );
+}
+
+/** Test-only reset for assistant stream runtime state. */
+export function resetAssistantStreamRuntimeForTests() {
+    useAssistantStreamRuntime().value = createAssistantStreamRuntimeState();
+}
+
 const serviceCapabilityCeilingHosts =
     loadPersistedServiceCapabilityCeilingHosts();
-let controller: AbortController | null = null;
-let chatStreamInitialized = false;
 
 function createTraceId() {
     return `turn_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
@@ -68,7 +94,8 @@ export function forgetServiceCapabilityCeilingHost(hostId?: string | null) {
 export function modeToolPolicy(
     mode?: AssistantSendPayload['mode'],
 ): ToolPolicy {
-    return { mode: mode || chatMode.value || 'work' };
+    const runtime = useAssistantStreamRuntime();
+    return { mode: mode || runtime.value.chatMode || 'work' };
 }
 export { describeApprovalRequest };
 export { normalizeTurnEvent };
@@ -82,6 +109,25 @@ export function useAssistantStream() {
     const logger = createLogger('turn');
     const { activeHost } = useActiveHost();
     const toast = useToast();
+    const runtime = useAssistantStreamRuntime();
+    const isStreaming = computed({
+        get: () => runtime.value.isStreaming,
+        set: (value: boolean) => {
+            runtime.value.isStreaming = value;
+        },
+    });
+    const activeJobId = computed({
+        get: () => runtime.value.activeJobId,
+        set: (value: string | null) => {
+            runtime.value.activeJobId = value;
+        },
+    });
+    const chatMode = computed({
+        get: () => runtime.value.chatMode,
+        set: (value: 'ask' | 'work' | 'admin') => {
+            runtime.value.chatMode = value;
+        },
+    });
     const { resolveExecutionRoute, routeExecution } = useExecutionRouter({
         chat,
     });
@@ -160,9 +206,35 @@ export function useAssistantStream() {
                       item.role === 'assistant',
               ) || null
             : null;
+        const isApprovalContinuation = Boolean(
+            existingAssistant &&
+            (existingAssistant.approvalRequestId ||
+                existingAssistant.approvalState === 'retrying' ||
+                existingAssistant.errorCode === 'approval_required'),
+        );
+        const isApprovalResumeContinuation = Boolean(
+            isApprovalContinuation && followJobId,
+        );
+        const shouldResetApprovalContinuation =
+            isApprovalContinuation && !isApprovalResumeContinuation;
         const assistant = existingAssistant
             ? (chat.updateMessage(existingAssistant.id, {
                   status: 'streaming',
+                  content: shouldResetApprovalContinuation
+                      ? ''
+                      : existingAssistant.content,
+                  parts: shouldResetApprovalContinuation
+                      ? []
+                      : existingAssistant.parts,
+                  reasoningText: shouldResetApprovalContinuation
+                      ? ''
+                      : existingAssistant.reasoningText,
+                  toolCalls: shouldResetApprovalContinuation
+                      ? []
+                      : existingAssistant.toolCalls,
+                  activityLog: shouldResetApprovalContinuation
+                      ? []
+                      : existingAssistant.activityLog,
                   error: undefined,
                   errorCode: undefined,
                   approvalRequestId: undefined,
@@ -175,8 +247,7 @@ export function useAssistantStream() {
                       payload.runnerChatSessionId ??
                       session.runnerChatSessionId,
                   sourceSessionKey: session.sessionKey,
-              }),
-              existingAssistant)
+              }) ?? existingAssistant)
             : chat.addMessage({
                   sessionId: session.id,
                   role: 'assistant',
@@ -196,11 +267,12 @@ export function useAssistantStream() {
               });
         isStreaming.value = true;
         const activeController = new AbortController();
-        controller = activeController;
+        runtime.value.controller = activeController;
         const messageState = useAssistantMessageState({
             assistantId: assistant.id,
             chat,
-            existingAssistant,
+            existingAssistant: assistant,
+            appendFinalTextToExistingContent: isApprovalResumeContinuation,
             runtimeLog,
         });
         const executionState = messageState.executionState;
@@ -253,8 +325,15 @@ export function useAssistantStream() {
             activeJobId,
             ...executionState,
         });
-        const runFetchAndApplyJobSnapshot = (jobId?: string | null) =>
-            fetchAndApplyJobSnapshot(jobId, buildExecutionContext());
+        const runFetchAndApplyJobSnapshot = (
+            jobId?: string | null,
+            snapshotOptions?: { settleAfterStreamFailure?: boolean },
+        ) =>
+            fetchAndApplyJobSnapshot(
+                jobId,
+                buildExecutionContext(),
+                snapshotOptions,
+            );
         const { selectedRunnerId, useRunnerChat } = resolveExecutionRoute(
             payload,
             session,
@@ -285,18 +364,29 @@ export function useAssistantStream() {
             } = execution;
             runnerChatTurnForRecovery = executionRecoveryRef;
 
+            let snapshotRecovered = false;
             if (streamedJobId && !useRunnerChat) {
                 try {
-                    await runFetchAndApplyJobSnapshot(streamedJobId);
+                    await runFetchAndApplyJobSnapshot(streamedJobId, {
+                        settleAfterStreamFailure: streamEndedWithFailure,
+                    });
+                    snapshotRecovered = true;
                 } catch {
                     // Streaming already gave us the best available live state.
                 }
             }
 
-            if (streamEndedWithFailure) return;
-
             flushAssistantUpdates();
             const messageAfterSnapshot = readAssistant();
+            if (
+                streamEndedWithFailure &&
+                !(
+                    snapshotRecovered &&
+                    messageAfterSnapshot?.status !== 'failed'
+                )
+            ) {
+                return;
+            }
             if (
                 !executionState.sawVisibleOutput() &&
                 messageAfterSnapshot?.status !== 'streaming' &&
@@ -397,7 +487,9 @@ export function useAssistantStream() {
             flushAssistantUpdates();
             chat.flushMessage(assistant.id);
             isStreaming.value = false;
-            if (controller === activeController) controller = null;
+            if (runtime.value.controller === activeController) {
+                runtime.value.controller = null;
+            }
             clearActiveTraceId();
         }
     }
@@ -440,7 +532,7 @@ export function useAssistantStream() {
                 remoteAbortFailed = true;
             }
         }
-        controller?.abort();
+        runtime.value.controller?.abort();
         isStreaming.value = false;
         if (remoteAbortFailed) {
             toast.add({
@@ -459,14 +551,16 @@ export function useAssistantStream() {
 export function installChatStreamSideEffects(
     send: (message: string | AssistantSendPayload) => Promise<void>,
 ) {
-    if (!import.meta.client || chatStreamInitialized) return;
-    chatStreamInitialized = true;
+    const runtime = useAssistantStreamRuntime();
+    if (!import.meta.client || runtime.value.initialized) return;
+    runtime.value.initialized = true;
 
     const api = useOr3Api();
     const chat = useChatSessions();
     const cache = useLocalCache();
     const runtimeLog = useChatRuntimeLog();
     const { activeHost } = useActiveHost();
+    const { isStreaming, chatMode } = useAssistantStream();
 
     useStreamRecovery({
         activeHost,

@@ -12,8 +12,19 @@ export function usePasskeys() {
   const api = useOr3Api()
   const authSession = useAuthSession()
 
+  async function passkeyManagementAvailable(force = false) {
+    const capabilities = await authSession.loadCapabilities(force).catch(() => null)
+    if (!capabilities) return true
+    return Boolean(capabilities.passkeysEnabled) && capabilities.passkeyMode !== 'off'
+  }
+
   async function listPasskeys(force = false) {
     if (passkeys.value.length && !force) return passkeys.value
+    if (!(await passkeyManagementAvailable(force))) {
+      passkeys.value = []
+      errorMessage.value = null
+      return passkeys.value
+    }
     const response = await authSession.retryWithAuth((onAuthChallenge) => api.request<{ items?: AuthPasskey[] }>('/internal/v1/auth/passkeys', {
       onAuthChallenge,
     }), 'manage-passkeys')
@@ -25,6 +36,9 @@ export function usePasskeys() {
     pending.value = true
     errorMessage.value = null
     try {
+      if (!(await passkeyManagementAvailable())) {
+        throw new Error('Passkeys are not enabled on this OR3 host.')
+      }
       const begin = await authSession.retryWithAuth((onAuthChallenge) => api.request<WebAuthnCeremonyResponse>('/internal/v1/auth/passkeys/registration/begin', {
         method: 'POST',
         body: { displayName: input.displayName, reason: input.reason || 'register-passkey' },

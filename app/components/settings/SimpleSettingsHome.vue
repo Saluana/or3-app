@@ -143,6 +143,18 @@
                         Turn on heartbeat and edit its background checklist.
                     </p>
                 </NuxtLink>
+                <NuxtLink
+                    v-if="moderatorAvailable"
+                    to="/settings/approval-autopilot"
+                    class="or3-focus-ring rounded-xl border border-(--or3-border) bg-white/70 p-3 text-sm hover:bg-(--or3-green-soft)"
+                >
+                    <p class="font-mono font-semibold text-(--or3-text)">
+                        Approval autopilot
+                    </p>
+                    <p class="mt-0.5 text-xs text-(--or3-text-muted)">
+                        Choose what OR3 can approve by itself.
+                    </p>
+                </NuxtLink>
             </div>
         </SurfaceCard>
 
@@ -207,6 +219,8 @@ const summaries = computed(() => {
     for (const s of allSections.value) out[s.key] = simple.summaryFor(s);
     return out;
 });
+
+const moderatorAvailable = computed(() => simple.hasModeratorSettings());
 
 async function loadIfConnected() {
     if (!isConnected.value || !canUseHostApi(activeHost.value)) return;

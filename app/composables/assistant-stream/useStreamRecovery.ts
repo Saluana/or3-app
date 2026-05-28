@@ -5,6 +5,7 @@ import type {
     Or3AppState,
     Or3HostProfile,
 } from '~/types/app-state';
+import { isGenericJobFailureInline } from '~/utils/assistant-stream/userErrorCopy';
 
 type AssistantRecoverySend = (
     message: string | AssistantSendPayload,
@@ -38,7 +39,13 @@ function sessionsForHost(state: Or3AppState, hostId: string) {
 function isRecoverableAssistantMessage(message: ChatMessage) {
     if (message.role !== 'assistant') return false;
     if (!message.jobId && !message.runnerChatTurnId) return false;
-    if (message.status === 'failed') return false;
+    const genericJobFailureStub =
+        message.status === 'failed' &&
+        Boolean(message.jobId) &&
+        isGenericJobFailureInline(message.content);
+    if (message.status === 'failed' && !genericJobFailureStub) {
+        return false;
+    }
     if (message.approvalState === 'pending' && message.approvalRequestId) {
         return false;
     }
@@ -46,7 +53,8 @@ function isRecoverableAssistantMessage(message: ChatMessage) {
     return (
         message.status === 'streaming' ||
         message.status === 'attention' ||
-        message.approvalState === 'retrying'
+        message.approvalState === 'retrying' ||
+        genericJobFailureStub
     );
 }
 
@@ -131,11 +139,6 @@ export function useStreamRecovery(options: UseStreamRecoveryOptions) {
             });
         } finally {
             recoveryAttempted.delete(recoveryKey);
-            if (!options.isStreaming.value) {
-                queueMicrotask(() => {
-                    void recoverPendingMessages();
-                });
-            }
         }
     };
 

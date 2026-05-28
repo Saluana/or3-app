@@ -243,3 +243,50 @@ export function formatApprovalSubjectPreview(
         stringValue(obj.summary)
     );
 }
+
+export type ApprovalRiskLevel = 'low' | 'medium' | 'high' | 'extreme';
+
+export function resolveApprovalRiskLevel(input: {
+    explicitRisk?: string;
+    fallbackMedium?: boolean;
+}): ApprovalRiskLevel {
+    const explicit = String(input.explicitRisk ?? '').trim().toLowerCase();
+    if (explicit === 'extreme') return 'extreme';
+    if (explicit === 'high' || explicit === 'critical') return 'high';
+    if (explicit === 'medium' || explicit === 'moderate') return 'medium';
+    if (input.fallbackMedium) return 'medium';
+    return 'low';
+}
+
+export function approvalRiskPresentation(level: ApprovalRiskLevel): {
+    label: string;
+    tone: 'green' | 'amber' | 'danger';
+    icon: string;
+} {
+    if (level === 'extreme') {
+        return {
+            label: 'Extreme risk',
+            tone: 'danger',
+            icon: 'i-pixelarticons-shield-off',
+        };
+    }
+    if (level === 'high') {
+        return {
+            label: 'High risk',
+            tone: 'danger',
+            icon: 'i-pixelarticons-shield-off',
+        };
+    }
+    if (level === 'medium') {
+        return {
+            label: 'Medium risk',
+            tone: 'amber',
+            icon: 'i-pixelarticons-shield-off',
+        };
+    }
+    return {
+        label: 'Low risk',
+        tone: 'green',
+        icon: 'i-pixelarticons-shield',
+    };
+}

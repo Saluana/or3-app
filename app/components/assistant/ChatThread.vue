@@ -11,6 +11,19 @@
                     @learn-more="emit('learn-more')"
                 />
             </div>
+            <div
+                v-else-if="hydrating && !messages.length"
+                :class="contentClass"
+            >
+                <section class="or3-chat-empty or3-chat-empty--loading">
+                    <div class="or3-chat-empty__skeleton" aria-hidden="true">
+                        <div class="or3-chat-empty__skeleton-line" />
+                        <div class="or3-chat-empty__skeleton-line or3-chat-empty__skeleton-line--short" />
+                        <div class="or3-chat-empty__skeleton-line" />
+                    </div>
+                    <p class="or3-chat-empty__subtitle">Loading conversation…</p>
+                </section>
+            </div>
             <div v-else-if="!messages.length" :class="contentClass">
                 <section class="or3-chat-empty">
                     <div class="or3-chat-empty__avatar">
@@ -152,6 +165,7 @@ const props = withDefaults(
     defineProps<{
         variant: 'mobile' | 'desktop';
         showWelcome: boolean;
+        hydrating?: boolean;
         messages: ChatMessage[];
         messageListKey?: string;
         isStreaming: boolean;
@@ -163,6 +177,7 @@ const props = withDefaults(
     }>(),
     {
         messageListKey: 'active-thread',
+        hydrating: false,
         keyboardOpen: false,
     },
 );

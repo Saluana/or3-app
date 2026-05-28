@@ -1,7 +1,39 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { nextTick } from 'vue';
+import { nextTick, ref } from 'vue';
+
+vi.mock('../../app/composables/useChatSessions', () => ({
+    useChatSessions: () => ({
+        activeSession: ref(null),
+        findMessageById: vi.fn(),
+        markApprovalResolved: vi.fn(),
+        updateMessage: vi.fn(),
+        toggleMessagePin: vi.fn(),
+    }),
+}));
+
+vi.mock('../../app/composables/useAssistantStream', () => ({
+    useAssistantStream: () => ({
+        isStreaming: ref(false),
+        send: vi.fn(),
+    }),
+}));
+
+vi.mock('../../app/composables/useSessionHistory', () => ({
+    useSessionHistory: () => ({
+        forkSession: vi.fn(),
+    }),
+}));
+
+vi.mock('../../app/composables/useApprovals', () => ({
+    useApprovals: () => ({
+        approve: vi.fn(),
+        deny: vi.fn(),
+        fetchApproval: vi.fn(),
+        consumeIssuedApprovalToken: vi.fn(),
+    }),
+}));
 
 import ChatMessageList from '../../app/components/assistant/ChatMessageList.vue';
 import type { ChatMessage } from '../../app/types/app-state';

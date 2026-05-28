@@ -12,6 +12,7 @@ vi.mock('../../app/utils/assistant-stream/execution', () => ({
 
 vi.stubGlobal('useToast', () => ({ add: vi.fn() }));
 
+import { resetChatSessionIndexesForTests } from '../../app/composables/useChatSessions';
 import { useAssistantStream } from '../../app/composables/useAssistantStream';
 import { useChatSessions } from '../../app/composables/useChatSessions';
 import { useLocalCache } from '../../app/composables/useLocalCache';
@@ -19,6 +20,7 @@ import { useLocalCache } from '../../app/composables/useLocalCache';
 describe('useAssistantStream send recovery', () => {
     afterEach(() => {
         useLocalCache().clearAll();
+        resetChatSessionIndexesForTests();
         vi.clearAllMocks();
     });
 

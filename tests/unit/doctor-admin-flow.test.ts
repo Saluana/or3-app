@@ -8,6 +8,7 @@ import {
     buildDoctorChatDisplayMessages,
     compareDoctorMessageOrder,
     DOCTOR_EMPTY_FINAL_TEXT_WARNING,
+    DOCTOR_INCOMPLETE_FINAL_TEXT_WARNING,
     doctorCardsForMessage,
     doctorSynthesizeFinalSummary,
     doctorToolResultText,
@@ -2400,6 +2401,44 @@ describe('Doctor admin chat message ordering', () => {
             display[1]?.parts.filter((part) => part.type === 'text').length,
         ).toBeGreaterThan(0);
         expect(display[1]?.text).toBe('');
+    });
+
+    it('does not render duplicated assistant prefaces as a completed answer', () => {
+        const preface =
+            "I'll check the documentation to give you the clearest answer on what triggers an approval prompt. One moment.";
+        const display = buildDoctorChatDisplayMessages([
+            { id: 1, role: 'user', content: 'what triggers approval?' },
+            { id: 2, role: 'assistant', content: preface },
+            {
+                id: 3,
+                role: 'assistant',
+                content: preface,
+                parts: [{ id: 'text:preface', type: 'text', content: preface }],
+            },
+        ]);
+
+        expect(display).toHaveLength(2);
+        expect(display[1]?.parts).toHaveLength(0);
+        expect(display[1]?.text).toBe(DOCTOR_INCOMPLETE_FINAL_TEXT_WARNING);
+        expect(display[1]?.status).toBe('attention');
+    });
+
+    it('dedupes exact repeated assistant text parts in a collapsed turn', () => {
+        const text = 'Use approval settings to test an approval prompt.';
+        const display = buildDoctorChatDisplayMessages([
+            { id: 1, role: 'user', content: 'what triggers approval?' },
+            { id: 2, role: 'assistant', content: text },
+            {
+                id: 3,
+                role: 'assistant',
+                content: text,
+                parts: [{ id: 'text:duplicate', type: 'text', content: text }],
+            },
+        ]);
+
+        expect(
+            display[1]?.parts.filter((part) => part.type === 'text'),
+        ).toHaveLength(1);
     });
 
     it('does not merge assistant messages separated by a user turn', () => {

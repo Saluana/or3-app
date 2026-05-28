@@ -358,10 +358,6 @@ const FIELD_ALIASES: Record<string, BackendFieldRef> = {
         section: 'hardening',
         field: 'hardening_exec_allowed_programs',
     },
-    [refKey('hardening', 'enableNetwork')]: {
-        section: 'hardening',
-        field: 'hardening_sandbox_allow_network',
-    },
     [refKey('security', 'approvals.execMode')]: {
         section: 'security',
         field: 'security_approval_exec_mode',
@@ -385,6 +381,50 @@ const FIELD_ALIASES: Record<string, BackendFieldRef> = {
     [refKey('security', 'secretStore.keyFile')]: {
         section: 'security',
         field: 'security_secret_store_key_file',
+    },
+    [refKey('security', 'approvals.moderator.enabled')]: {
+        section: 'security',
+        field: 'security_approval_moderator_enabled',
+    },
+    [refKey('security', 'approvals.moderator.preset')]: {
+        section: 'security',
+        field: 'security_approval_moderator_preset',
+    },
+    [refKey('security', 'approvals.moderator.provider')]: {
+        section: 'security',
+        field: 'security_approval_moderator_provider',
+    },
+    [refKey('security', 'approvals.moderator.model')]: {
+        section: 'security',
+        field: 'security_approval_moderator_model',
+    },
+    [refKey('security', 'approvals.moderator.timeoutSeconds')]: {
+        section: 'security',
+        field: 'security_approval_moderator_timeout',
+    },
+    [refKey('security', 'approvals.moderator.failureAction')]: {
+        section: 'security',
+        field: 'security_approval_moderator_failure_action',
+    },
+    [refKey('security', 'approvals.moderator.userPolicy')]: {
+        section: 'security',
+        field: 'security_approval_moderator_user_policy',
+    },
+    [refKey('security', 'approvals.moderator.actions.low')]: {
+        section: 'security',
+        field: 'security_approval_moderator_action_low',
+    },
+    [refKey('security', 'approvals.moderator.actions.medium')]: {
+        section: 'security',
+        field: 'security_approval_moderator_action_medium',
+    },
+    [refKey('security', 'approvals.moderator.actions.high')]: {
+        section: 'security',
+        field: 'security_approval_moderator_action_high',
+    },
+    [refKey('security', 'approvals.moderator.actions.extreme')]: {
+        section: 'security',
+        field: 'security_approval_moderator_action_extreme',
     },
 
     [refKey('agentCLI', 'enabled')]: {
@@ -749,6 +789,9 @@ export function useSimpleSettings() {
         readFieldValue,
         findField,
         isControlAvailable,
+        hasModeratorSettings: () =>
+            !!findField('security', 'security_approval_moderator_enabled') ||
+            !!findField('security', 'security_approval_moderator_preset'),
         lastError,
         applyChanges: async (changes: SimpleSettingChange[]) => {
             const plannedChanges = changes.map((change) => {

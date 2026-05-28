@@ -39,7 +39,7 @@
         <SettingsLogViewer
             title="App Events"
             subtitle="Recent stream, approval, and tool reducer events."
-            :entries="latestChatRuntimeEntries"
+            :entries="chatRuntimeEntries"
             empty-text="No app events recorded yet."
             @clear="clearChatRuntimeLog"
         />
@@ -47,7 +47,7 @@
         <SettingsLogViewer
             title="Server Events"
             subtitle="Live or3-intern service logs from the paired computer."
-            :entries="latestServerLogEntries"
+            :entries="serverLogEntries"
             empty-text="No server events received yet."
             :streaming="serverLogsStreaming"
             :error="serverLogsError"
@@ -70,15 +70,11 @@ import {
 } from '../../utils/logger';
 
 const debugLogging = ref(false);
-const { activeHost, isPaired } = useActiveHost();
+const { isPaired } = useActiveHost();
+const { entries: chatRuntimeEntries, clear: clearChatRuntimeLog } =
+    useChatRuntimeLog();
 const {
-    latestEntries: latestChatRuntimeEntries,
-    exportText: chatRuntimeExportText,
-    clear: clearChatRuntimeLog,
-} = useChatRuntimeLog();
-const {
-    latestEntries: latestServerLogEntries,
-    exportText: serverLogExportText,
+    entries: serverLogEntries,
     isStreaming: serverLogsStreaming,
     error: serverLogsError,
     connect: connectServerLogs,
@@ -104,8 +100,8 @@ async function copyAllLogs() {
     await navigator.clipboard?.writeText(
         JSON.stringify(
             {
-                app: JSON.parse(chatRuntimeExportText.value),
-                server: JSON.parse(serverLogExportText.value),
+                app: chatRuntimeEntries.value,
+                server: serverLogEntries.value,
             },
             null,
             2,

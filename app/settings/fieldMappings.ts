@@ -1099,27 +1099,6 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 },
             },
             {
-                key: 'safety-network',
-                label: 'Allow network access',
-                description: 'Let OR3 reach the internet for web tools.',
-                kind: 'toggle',
-                fieldRefs: [{ section: 'hardening', field: 'enableNetwork' }],
-                impacts: ['higher-risk'],
-                advancedKeys: ['hardening.enableNetwork'],
-                toggle: {
-                    on: {
-                        section: 'hardening',
-                        field: 'enableNetwork',
-                        value: true,
-                    },
-                    off: {
-                        section: 'hardening',
-                        field: 'enableNetwork',
-                        value: false,
-                    },
-                },
-            },
-            {
                 key: 'safety-audit',
                 label: 'Keep safety log',
                 description: 'Record approvals, runs, and key events.',
@@ -1140,6 +1119,41 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                     off: {
                         section: 'security',
                         field: 'audit.enabled',
+                        value: false,
+                    },
+                },
+            },
+            {
+                key: 'approval-autopilot-enabled',
+                label: 'Approval autopilot',
+                description:
+                    'Let OR3 review routine approvals automatically. Open the full setup page for presets and custom rules.',
+                kind: 'toggle',
+                fieldRefs: [
+                    { section: 'security', field: 'approvals.moderator.enabled' },
+                ],
+                impacts: ['safer'],
+                advancedKeys: [
+                    'security.approvals.moderator.enabled',
+                    'security.approvals.moderator.preset',
+                    'security.approvals.moderator.userPolicy',
+                ],
+                toggle: {
+                    on: [
+                        {
+                            section: 'security',
+                            field: 'security_approvals_enabled',
+                            value: true,
+                        },
+                        {
+                            section: 'security',
+                            field: 'approvals.moderator.enabled',
+                            value: true,
+                        },
+                    ],
+                    off: {
+                        section: 'security',
+                        field: 'approvals.moderator.enabled',
                         value: false,
                     },
                 },

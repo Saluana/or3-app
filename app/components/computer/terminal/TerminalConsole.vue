@@ -45,6 +45,7 @@ const showWarning = ref(false)
 let term: Terminal | null = null
 let fit: FitAddon | null = null
 let resizeObserver: ResizeObserver | null = null
+let disposed = false
 let lastWrittenId = 0
 let lastReportedRows = 0
 let lastReportedCols = 0
@@ -60,15 +61,26 @@ function dismissWarning() {
   window.localStorage.setItem(terminalWarningDismissedKey, '1')
 }
 
+function disposeTerminal() {
+  if (fitTimer != null) window.clearTimeout(fitTimer)
+  fitTimer = null
+  resizeObserver?.disconnect()
+  resizeObserver = null
+  term?.dispose()
+  term = null
+  fit = null
+}
+
 async function setup() {
   await nextTick()
-  if (!mountRef.value?.isConnected || !mountRef.value.parentElement) return
+  if (disposed || !mountRef.value?.isConnected || !mountRef.value.parentElement) return
   // xterm + addons are dynamically imported to keep them out of SSR/static bundles.
   const [{ Terminal: TerminalCtor }, { FitAddon: FitCtor }, { WebLinksAddon }] = await Promise.all([
     import('@xterm/xterm'),
     import('@xterm/addon-fit'),
     import('@xterm/addon-web-links'),
   ])
+  if (disposed || !mountRef.value?.isConnected || !mountRef.value.parentElement) return
   // Inject xterm CSS once. We do this manually so build pipelines that strip
   // CSS imports from .vue files don't lose it.
   if (!document.getElementById('or3-xterm-css')) {
@@ -78,7 +90,7 @@ async function setup() {
     link.href = new URL('@xterm/xterm/css/xterm.css', import.meta.url).href
     document.head.appendChild(link)
   }
-  term = new TerminalCtor({
+  const nextTerm = new TerminalCtor({
     cursorBlink: true,
     fontFamily: '"JetBrains Mono", "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
     fontSize: props.fontSize,
@@ -109,10 +121,15 @@ async function setup() {
       brightWhite: '#f0f6e6',
     },
   })
-  fit = new FitCtor()
-  term.loadAddon(fit)
-  term.loadAddon(new WebLinksAddon())
-  if (!mountRef.value?.isConnected || !mountRef.value.parentElement) return
+  const nextFit = new FitCtor()
+  nextTerm.loadAddon(nextFit)
+  nextTerm.loadAddon(new WebLinksAddon())
+  if (disposed || !mountRef.value?.isConnected || !mountRef.value.parentElement) {
+    nextTerm.dispose()
+    return
+  }
+  term = nextTerm
+  fit = nextFit
   term.open(mountRef.value)
   term.onData((data) => emit('data', data))
 
@@ -148,17 +165,20 @@ function scheduleFit() {
   }, 60)
 }
 
+function writeChunksFromProps() {
+  if (!term) return
+  for (const chunk of props.chunks) {
+    if (chunk.id <= lastWrittenId) continue
+    term.write(chunk.data)
+    lastWrittenId = chunk.id
+  }
+}
+
 watch(
   () => props.chunks,
-  (next) => {
-    if (!term) return
-    for (const chunk of next) {
-      if (chunk.id <= lastWrittenId) continue
-      term.write(chunk.data)
-      lastWrittenId = chunk.id
-    }
+  () => {
+    writeChunksFromProps()
   },
-  { deep: false },
 )
 
 watch(
@@ -179,6 +199,7 @@ watch(
       lastWrittenId = 0
       lastReportedRows = 0
       lastReportedCols = 0
+      writeChunksFromProps()
     }
     showWarning.value = Boolean(id) && loadWarningState()
   },
@@ -190,11 +211,8 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
-  if (fitTimer != null) window.clearTimeout(fitTimer)
-  resizeObserver?.disconnect()
-  term?.dispose()
-  term = null
-  fit = null
+  disposed = true
+  disposeTerminal()
 })
 
 defineExpose({

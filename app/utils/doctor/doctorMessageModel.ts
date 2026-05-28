@@ -21,6 +21,9 @@ export type {
 export const DOCTOR_EMPTY_FINAL_TEXT_WARNING =
     'Tool work completed, but or3-intern did not return a final assistant message. The last tool result is shown above; retry the turn if it still matters.';
 
+export const DOCTOR_INCOMPLETE_FINAL_TEXT_WARNING =
+    'Admin Assistant started a response but did not return a final answer. Please try again.';
+
 export function isDoctorEmptyFinalTextWarning(value: string | undefined) {
     return String(value ?? '').trim() === DOCTOR_EMPTY_FINAL_TEXT_WARNING;
 }
@@ -1036,12 +1039,19 @@ function buildOrderedPartsFromTurnMessages(
 ) {
     const parts: ChatMessagePart[] = [];
     const seenPartIds = new Set<string>();
+    const seenTextParts = new Set<string>();
     const filterInterimPreface =
         isStreamingTurn &&
         messages.filter((message) => message.role === 'assistant').length === 1;
 
     const pushPart = (part: ChatMessagePart) => {
         if (seenPartIds.has(part.id)) return;
+        if (part.type === 'text') {
+            const normalized = String(part.content ?? '').trim();
+            if (!normalized) return;
+            if (seenTextParts.has(normalized)) return;
+            seenTextParts.add(normalized);
+        }
         seenPartIds.add(part.id);
         parts.push(part);
     };
@@ -1106,6 +1116,27 @@ function dedupeDoctorTextParts(
         seen.add(content);
         return true;
     });
+}
+
+function dedupeExactDoctorTextParts(parts: ChatMessagePart[]) {
+    const seen = new Set<string>();
+    return parts.filter((part) => {
+        if (part.type !== 'text') return true;
+        const content = String(part.content ?? '').trim();
+        if (!content) return false;
+        if (seen.has(content)) return false;
+        seen.add(content);
+        return true;
+    });
+}
+
+function isOnlyDoctorInterimText(text: string | undefined) {
+    const value = String(text ?? '').trim();
+    return Boolean(
+        value &&
+            stripDoctorInterimPreface(value) === value &&
+            isDoctorInterimStreamingText(value),
+    );
 }
 
 function collapseDoctorAssistantTurn(
@@ -1203,11 +1234,34 @@ function collapseDoctorAssistantTurn(
     }
 
     if (parts.length > 0) {
+        parts = dedupeExactDoctorTextParts(parts);
+    }
+
+    const hasToolParts = parts.some((part) => part.type === 'tool');
+    const hasOnlyInterimTextParts =
+        parts.length > 0 &&
+        !hasToolParts &&
+        parts.every(
+            (part) =>
+                part.type === 'text' &&
+                isOnlyDoctorInterimText(part.content),
+        );
+    const textIsOnlyInterim =
+        Boolean(text.trim()) && isOnlyDoctorInterimText(text);
+    if (!isStreamingTurn && (hasOnlyInterimTextParts || textIsOnlyInterim)) {
+        parts = [];
+        text = DOCTOR_INCOMPLETE_FINAL_TEXT_WARNING;
+        isEmptyFinalSummary = true;
+        if (status === 'complete') status = 'attention';
+        error = error ?? DOCTOR_INCOMPLETE_FINAL_TEXT_WARNING;
+        errorCode = errorCode ?? 'empty_final_text';
+    }
+
+    if (parts.length > 0) {
         if (isStreamingTurn) {
             text = '';
         } else if (doctorSummaryInParts(text, parts)) {
             const textParts = parts.filter((part) => part.type === 'text');
-            const hasToolParts = parts.some((part) => part.type === 'tool');
             if (hasToolParts) {
                 text = '';
             } else if (textParts.length === 1) {

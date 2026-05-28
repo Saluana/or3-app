@@ -11,10 +11,8 @@ import {
 import { useApprovals } from './useApprovals';
 import { useAuthSession } from './useAuthSession';
 import { useComputerFiles } from './useComputerFiles';
-import {
-    suppressOr3ApiNetworkErrorLogsFor,
-    useOr3Api,
-} from './useOr3Api';
+import { useOr3Api } from './useOr3Api';
+import { useRestartNetworkLogSuppression } from './useRestartNetworkLogSuppression';
 
 const restartingService = ref(false);
 const restartError = ref<string | null>(null);
@@ -64,6 +62,8 @@ function shouldFallbackToTerminalRestart(error: any) {
 
 export function useServiceRestart() {
     const api = useOr3Api();
+    const suppressNetworkErrorsForActiveHost =
+        useRestartNetworkLogSuppression();
     const authSession = useAuthSession();
     const { consumeIssuedApprovalToken } = useApprovals();
     const { loadRoots } = useComputerFiles();
@@ -151,7 +151,7 @@ export function useServiceRestart() {
                 if (response.operation_id)
                     result.operationId = response.operation_id;
                 if (response.log_path) result.logPath = response.log_path;
-                suppressOr3ApiNetworkErrorLogsFor(65000);
+                suppressNetworkErrorsForActiveHost();
                 return result;
             } catch (error: any) {
                 if (!shouldFallbackToTerminalRestart(error)) throw error;
@@ -167,7 +167,7 @@ export function useServiceRestart() {
 
             const session = await createTerminalSession(root);
             await sendRestartCommand(session.session_id);
-            suppressOr3ApiNetworkErrorLogsFor(65000);
+            suppressNetworkErrorsForActiveHost();
             return {
                 mode: 'terminal' as const,
                 root,

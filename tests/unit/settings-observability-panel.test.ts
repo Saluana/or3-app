@@ -11,20 +11,12 @@ const mockState = vi.hoisted(() => ({
         value: true,
         __v_isRef: true,
     },
-    latestChatRuntimeEntries: {
+    chatRuntimeEntries: {
         value: [{ id: 'app-1' }],
         __v_isRef: true,
     },
-    latestServerLogEntries: {
+    serverLogEntries: {
         value: [{ id: 'server-1' }],
-        __v_isRef: true,
-    },
-    chatRuntimeExportText: {
-        value: '[{"id":"app-1"}]',
-        __v_isRef: true,
-    },
-    serverLogExportText: {
-        value: '[{"id":"server-1"}]',
         __v_isRef: true,
     },
     serverLogsStreaming: {
@@ -53,16 +45,14 @@ vi.mock('../../app/composables/useActiveHost', () => ({
 
 vi.mock('../../app/composables/useChatRuntimeLog', () => ({
     useChatRuntimeLog: () => ({
-        latestEntries: mockState.latestChatRuntimeEntries,
-        exportText: mockState.chatRuntimeExportText,
+        entries: mockState.chatRuntimeEntries,
         clear: mockState.clearChatRuntimeLog,
     }),
 }));
 
 vi.mock('../../app/composables/useServerLogs', () => ({
     useServerLogs: () => ({
-        latestEntries: mockState.latestServerLogEntries,
-        exportText: mockState.serverLogExportText,
+        entries: mockState.serverLogEntries,
         isStreaming: mockState.serverLogsStreaming,
         error: mockState.serverLogsError,
         connect: mockState.connectServerLogs,
@@ -107,8 +97,8 @@ describe('SettingsObservabilityPanel', () => {
         mockState.isPaired.value = true;
         mockState.serverLogsStreaming.value = false;
         mockState.serverLogsError.value = null;
-        mockState.chatRuntimeExportText.value = '[{"id":"app-1"}]';
-        mockState.serverLogExportText.value = '[{"id":"server-1"}]';
+        mockState.chatRuntimeEntries.value = [{ id: 'app-1' }];
+        mockState.serverLogEntries.value = [{ id: 'server-1' }];
         mockState.isDebugLoggingEnabled.mockReturnValue(false);
         Object.defineProperty(globalThis.navigator, 'clipboard', {
             value: { writeText: mockState.writeText },

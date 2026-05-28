@@ -1,11 +1,15 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { useChatSessions } from '../../app/composables/useChatSessions';
+import {
+    resetChatSessionIndexesForTests,
+    useChatSessions,
+} from '../../app/composables/useChatSessions';
 import { useLocalCache } from '../../app/composables/useLocalCache';
 
 describe('useChatSessions', () => {
     afterEach(() => {
         useLocalCache().clearAll();
+        resetChatSessionIndexesForTests();
     });
 
     it('finds the active assistant message tied to an approval request', () => {
@@ -200,6 +204,47 @@ describe('useChatSessions', () => {
         expect(chat.messages.value[0]?.approvalState).toBeUndefined();
     });
 
+    it('keeps the user message before a streaming assistant after persist prune', () => {
+        useLocalCache().updateHost({
+            id: 'test-host',
+            name: 'Test Host',
+            baseUrl: 'http://127.0.0.1:9100',
+            token: 'secret',
+        });
+
+        const cache = useLocalCache();
+        const chat = useChatSessions();
+        const session = chat.ensureSession();
+        const sharedCreatedAt = '2026-05-26T20:34:00.000Z';
+
+        chat.addMessage({
+            sessionId: session.id,
+            role: 'user',
+            content: 'How are you fam',
+            status: 'complete',
+            createdAt: sharedCreatedAt,
+        });
+        chat.addMessage({
+            sessionId: session.id,
+            role: 'assistant',
+            content: '',
+            status: 'streaming',
+            createdAt: sharedCreatedAt,
+        });
+
+        expect(chat.messages.value.map((message) => message.role)).toEqual([
+            'user',
+            'assistant',
+        ]);
+
+        cache.persistNow();
+
+        expect(chat.messages.value.map((message) => message.role)).toEqual([
+            'user',
+            'assistant',
+        ]);
+    });
+
     it('updates live streaming messages without forcing a localStorage write', () => {
         useLocalCache().updateHost({
             id: 'test-host',
@@ -229,6 +274,29 @@ describe('useChatSessions', () => {
         chat.flushMessage(assistant.id);
 
         expect(session.lastMessagePreview).toBe('partial');
+    });
+
+    it('clearSessionMessages keeps the session title', () => {
+        useLocalCache().updateHost({
+            id: 'test-host',
+            name: 'Test Host',
+            baseUrl: 'http://127.0.0.1:9100',
+            token: 'secret',
+        });
+
+        const chat = useChatSessions();
+        const session = chat.newSession('Funniest joke');
+        chat.addMessage({
+            sessionId: session.id,
+            role: 'user',
+            content: 'hey bro tell me the funniest joke in ur arsenol',
+            status: 'complete',
+        });
+
+        chat.clearSessionMessages(session.id);
+
+        expect(session.title).toBe('Funniest joke');
+        expect(chat.messageCount(session.id)).toBe(0);
     });
 
     it('hydrates backend tool rows into the assistant activity instead of raw chat bubbles', () => {

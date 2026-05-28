@@ -263,12 +263,34 @@ describe('createAssistantEventApplier', () => {
         });
     });
 
+    it('keeps raw output events out of assistant prose', () => {
+        const { applyEvent, assistant } = createApplier();
+
+        applyEvent({
+            event: 'output',
+            json: {
+                type: 'output',
+                stream: 'stdout',
+                content: 'running lots of logs\n',
+            },
+        });
+
+        expect(assistant.value.content).toBe('');
+        expect(assistant.value.parts).toHaveLength(0);
+        expect(assistant.value.activityLog).toHaveLength(1);
+        expect(assistant.value.activityLog[0]).toMatchObject({
+            type: 'runner_output',
+            label: 'Runner output',
+        });
+    });
+
     it('removes the empty-final warning when a late final text event arrives', () => {
         const { applyEvent, assistant } = createApplier();
         const warning = EMPTY_FINAL_USER_MESSAGE;
         assistant.value.content = warning;
         assistant.value.status = 'attention';
-        assistant.value.error = 'or3-intern completed without a final assistant message.';
+        assistant.value.error =
+            'or3-intern completed without a final assistant message.';
         assistant.value.errorCode = 'empty_final_text';
         assistant.value.parts = [
             {
@@ -317,6 +339,102 @@ describe('createAssistantEventApplier', () => {
         ]);
     });
 
+    it('does not fail the turn on runtime_error events', () => {
+        const { applyEvent, assistant } = createApplier();
+
+        applyEvent(
+            {
+                event: 'runtime_error',
+                json: {
+                    type: 'runtime_error',
+                    message: 'job failed',
+                    status: 'failed',
+                },
+            },
+            'stream',
+        );
+
+        expect(assistant.value.status).toBe('streaming');
+        expect(assistant.value.content).toBe('');
+        expect(assistant.value.activityLog).toHaveLength(1);
+        expect(assistant.value.activityLog[0]?.type).toBe('runtime_error');
+    });
+
+    it('does not fail the turn when an individual tool_result fails', () => {
+        const { applyEvent, assistant } = createApplier();
+
+        applyEvent(
+            {
+                event: 'tool_result',
+                json: {
+                    name: 'write_file',
+                    tool_call_id: 'call_write',
+                    status: 'failed',
+                    result: JSON.stringify({
+                        ok: false,
+                        summary: 'write_file failed',
+                    }),
+                },
+            },
+            'stream',
+        );
+
+        expect(assistant.value.status).toBe('streaming');
+        expect(assistant.value.content).not.toContain('job failed');
+    });
+
+    it('fails the turn on terminal job error events', () => {
+        const { applyEvent, assistant } = createApplier();
+
+        applyEvent(
+            {
+                event: 'error',
+                json: {
+                    type: 'error',
+                    status: 'failed',
+                    message: 'job failed',
+                },
+            },
+            'stream',
+        );
+
+        expect(assistant.value.status).toBe('failed');
+        expect(assistant.value.content).toContain('job failed');
+    });
+
+    it('uses prior runtime error detail when terminal error is generic', () => {
+        const { applyEvent, assistant } = createApplier();
+
+        applyEvent(
+            {
+                event: 'runtime_error',
+                json: {
+                    type: 'runtime_error',
+                    message:
+                        'provider stream read error: context deadline exceeded',
+                    public_code: 'stream_error',
+                },
+            },
+            'stream',
+        );
+        applyEvent(
+            {
+                event: 'error',
+                json: {
+                    type: 'error',
+                    status: 'failed',
+                    message: 'job failed',
+                },
+            },
+            'stream',
+        );
+
+        expect(assistant.value.status).toBe('failed');
+        expect(assistant.value.content).toContain(
+            'provider stream read error: context deadline exceeded',
+        );
+    });
+
     it('marks tool_result failed lifecycle events as errors', () => {
         const { assistant, applyEvent } = createApplier();
 
@@ -340,7 +458,8 @@ describe('createAssistantEventApplier', () => {
                     status: 'failed',
                     result: JSON.stringify({
                         ok: false,
-                        summary: 'write_file failed: tool not available in this turn',
+                        summary:
+                            'write_file failed: tool not available in this turn',
                     }),
                 },
             },

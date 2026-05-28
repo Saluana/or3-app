@@ -6,7 +6,27 @@
     >
         <div class="or3-composer-approval__notice">
             <Icon name="i-pixelarticons-shield" class="size-4 shrink-0" />
-            <span>Review the request below, then approve or deny it.</span>
+            <span>{{ approvalNotice }}</span>
+        </div>
+        <div
+            v-if="moderatorReview"
+            class="or3-composer-approval__moderator"
+        >
+            <span class="or3-composer-approval__moderator-pill">
+                Autopilot · {{ moderatorReview.summary }}
+            </span>
+            <p
+                v-if="moderatorReview.reason"
+                class="or3-composer-approval__moderator-reason"
+            >
+                {{ moderatorReview.reason }}
+            </p>
+            <p
+                v-if="moderatorReview.alternative"
+                class="or3-composer-approval__moderator-reason"
+            >
+                Try: {{ moderatorReview.alternative }}
+            </p>
         </div>
         <div class="or3-composer-approval__card">
             <div class="or3-composer-approval__head">
@@ -80,6 +100,8 @@ const {
     approvalBusy,
     approvalDetailLoading,
     approvalDisplay,
+    approvalNotice,
+    moderatorReview,
     showApprovalActions,
     approveApproval,
     denyApproval,
@@ -98,6 +120,36 @@ const {
     font-weight: 600;
     line-height: 1.35;
     color: color-mix(in srgb, #92400e 88%, var(--or3-text) 12%);
+}
+
+.or3-composer-approval__moderator {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 0.55rem 0.65rem;
+    border-radius: 0.75rem;
+    border: 1px solid color-mix(in srgb, var(--or3-green) 28%, var(--or3-border) 72%);
+    background: color-mix(in srgb, var(--or3-green-soft) 72%, white 28%);
+}
+
+.or3-composer-approval__moderator-pill {
+    display: inline-flex;
+    width: fit-content;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--or3-green) 35%, var(--or3-border) 65%);
+    background: white/75;
+    padding: 0.15rem 0.55rem;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    color: var(--or3-green-dark);
+}
+
+.or3-composer-approval__moderator-reason {
+    font-size: 0.74rem;
+    line-height: 1.45;
+    color: var(--or3-text-muted);
 }
 
 .or3-composer-approval {

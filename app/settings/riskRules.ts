@@ -27,12 +27,6 @@ export function evaluateRisk(change: SimpleSettingChange): RiskFinding | null {
             message: 'You are disabling workspace limits.',
         }
     }
-    if (path === 'hardening.enableNetwork' && change.value === true) {
-        return {
-            level: 'medium',
-            message: 'You are allowing network access.',
-        }
-    }
     if (path === 'security.audit.enabled' && change.value === false) {
         return {
             level: 'high',

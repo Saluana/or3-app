@@ -24,6 +24,7 @@ interface UseAssistantMessageStateOptions {
     assistantId: string;
     chat: ChatStore;
     existingAssistant?: ChatMessage | null;
+    appendFinalTextToExistingContent?: boolean;
     runtimeLog: RuntimeLogStore;
 }
 
@@ -147,8 +148,19 @@ export function useAssistantMessageState(
     };
     const replaceAssistantContent = (value: string) => {
         rawAssistantContent = value;
+        const content = sanitizeAssistantText(rawAssistantContent);
+        const current = readAssistant();
+        if (!content) {
+            updateAssistant({ content });
+            return;
+        }
         updateAssistant({
-            content: sanitizeAssistantText(rawAssistantContent),
+            content,
+            parts: mergeReplacementTextIntoParts(
+                current?.parts,
+                content,
+                current?.content,
+            ),
         });
     };
     const upsertPart = (part: ChatMessagePart) => {
@@ -192,16 +204,94 @@ export function useAssistantMessageState(
                 (part) => part.type === 'text' && part.content?.trim(),
             ),
         );
+    const textPartsContentFromParts = (parts: ChatMessagePart[] | undefined) =>
+        sanitizeAssistantText(
+            (parts ?? [])
+                .filter((part) => part.type === 'text')
+                .map((part) => part.content ?? '')
+                .join(''),
+        );
+    const textPartsContent = (assistant: ChatMessage | null | undefined) =>
+        textPartsContentFromParts(assistant?.parts);
+
     const hasTextPartContent = (content: string) => {
         const normalized = sanitizeAssistantText(content);
         if (!normalized) return false;
+        const assistant = readAssistant();
+        if (!assistant) return false;
+        if (sanitizeAssistantText(assistant.content ?? '') === normalized) {
+            return true;
+        }
+        if (textPartsContent(assistant) === normalized) {
+            return true;
+        }
         return Boolean(
-            readAssistant()?.parts?.some(
+            assistant.parts?.some(
                 (part) =>
                     part.type === 'text' &&
                     sanitizeAssistantText(part.content ?? '') === normalized,
             ),
         );
+    };
+
+    const nextTextPartId = () => {
+        textPartIndex += 1;
+        return `text:${textPartIndex}`;
+    };
+    const replacementTextPart = (
+        content: string,
+        existingId?: string,
+    ): ChatMessagePart => ({
+        id: existingId ?? nextTextPartId(),
+        type: 'text',
+        content,
+    });
+    const mergeReplacementTextIntoParts = (
+        parts: ChatMessagePart[] | undefined,
+        content: string,
+        existingContent?: string,
+    ) => {
+        const normalized = sanitizeAssistantText(content);
+        const existingParts = parts ?? [];
+        const toolParts = existingParts.filter((part) => part.type === 'tool');
+        if (!normalized) return toolParts.length ? toolParts : undefined;
+
+        const firstTextPart = existingParts.find(
+            (part) => part.type === 'text',
+        );
+        if (!toolParts.length) {
+            return [replacementTextPart(normalized, firstTextPart?.id)];
+        }
+        if (
+            sanitizeAssistantText(existingContent ?? '') === normalized &&
+            existingParts.some((part) => part.type === 'text')
+        ) {
+            return existingParts;
+        }
+
+        const existingText = textPartsContentFromParts(existingParts);
+        if (existingText === normalized) return existingParts;
+        if (existingText && normalized.startsWith(existingText)) {
+            const suffix = normalized.slice(existingText.length);
+            if (!suffix) return existingParts;
+            const reversedTextIndex = [...existingParts]
+                .reverse()
+                .findIndex((part) => part.type === 'text');
+            if (reversedTextIndex === -1) {
+                return [...existingParts, replacementTextPart(normalized)];
+            }
+            const index = existingParts.length - 1 - reversedTextIndex;
+            return existingParts.map((part, itemIndex) =>
+                itemIndex === index && part.type === 'text'
+                    ? { ...part, content: `${part.content ?? ''}${suffix}` }
+                    : part,
+            );
+        }
+
+        return [
+            ...existingParts.filter((part) => part.type !== 'text'),
+            replacementTextPart(normalized, firstTextPart?.id),
+        ];
     };
     const closeActiveTextPart = () => {
         activeTextPartId = null;
@@ -209,8 +299,7 @@ export function useAssistantMessageState(
     };
     const ensureActiveTextPart = () => {
         if (activeTextPartId) return activeTextPartId;
-        textPartIndex += 1;
-        activeTextPartId = `text:${textPartIndex}`;
+        activeTextPartId = nextTextPartId();
         activeTextPartRaw = '';
         return activeTextPartId;
     };
@@ -227,8 +316,13 @@ export function useAssistantMessageState(
     };
     const appendCompleteTextPart = (value: string) => {
         if (hasTextPartContent(value)) return;
+        const normalized = sanitizeAssistantText(value);
+        if (!normalized) return;
         closeActiveTextPart();
-        appendTextPart(value);
+        const current = readAssistant();
+        updateAssistant({
+            parts: mergeReplacementTextIntoParts(current?.parts, normalized),
+        });
         closeActiveTextPart();
     };
     const setToolCalls = (toolCalls: ChatToolCall[]) =>
@@ -533,7 +627,7 @@ export function useAssistantMessageState(
         if (!match) return undefined;
         return { name: match.name, arguments: match.arguments };
     };
-    const { applyEvent } = createAssistantEventApplier({
+    const { applyEvent, applyFinalText } = createAssistantEventApplier({
         assistantId: options.assistantId,
         readAssistant,
         updateAssistant,
@@ -555,6 +649,8 @@ export function useAssistantMessageState(
         setSawVisibleOutput(value) {
             sawVisibleOutput = value;
         },
+        appendFinalTextToExistingContent:
+            options.appendFinalTextToExistingContent,
         rawAssistantContent: () => rawAssistantContent,
     });
 
@@ -566,6 +662,9 @@ export function useAssistantMessageState(
             completeRunningActivity,
             addActivity,
             applyEvent,
+            applyFinalText,
+            appendFinalTextToExistingContent:
+                options.appendFinalTextToExistingContent,
             replaceAssistantContent,
             appendCompleteTextPart,
             sawVisibleOutput: () => sawVisibleOutput,

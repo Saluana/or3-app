@@ -20,6 +20,10 @@ import {
     formatApprovalInlineCopy,
     formatApprovalSubjectPreview,
 } from '~/utils/or3/approval-display';
+import {
+    formatModeratorCardSummary,
+    parseModeratorAlternative,
+} from '~/utils/or3/moderator-display';
 
 export function useMessageApproval(
     message: Ref<ChatMessage> | ComputedRef<ChatMessage>,
@@ -99,6 +103,34 @@ export function useMessageApproval(
             return formatApprovalInlineCopy({ type: 'tool_quota' });
         }
         return formatApprovalInlineCopy(undefined);
+    });
+
+    const approvalRecord = computed(
+        () => approvalDetail.value ?? storedApprovalForMessage(),
+    );
+
+    const moderatorReview = computed(() => {
+        const meta = approvalRecord.value?.moderator;
+        if (!meta) return null;
+        const summary = formatModeratorCardSummary(meta);
+        if (!summary) return null;
+        const parsed = parseModeratorAlternative(meta.reason);
+        return {
+            summary,
+            reason: parsed.reason,
+            alternative: parsed.alternative,
+            reviewed: Boolean(
+                String(meta.status ?? '').trim() ||
+                    String(meta.action ?? '').trim(),
+            ),
+        };
+    });
+
+    const approvalNotice = computed(() => {
+        if (moderatorReview.value?.reviewed) {
+            return 'OR3 reviewed this and sent it to you for approval.';
+        }
+        return 'Review the request below, then approve or deny it.';
     });
 
     function currentMessage() {
@@ -410,6 +442,8 @@ export function useMessageApproval(
         approvalDetailLoading,
         approvalDisplay,
         approvalIsPending,
+        approvalNotice,
+        moderatorReview,
         showApprovalActions,
         approveApproval,
         denyApproval,

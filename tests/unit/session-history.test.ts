@@ -4,6 +4,9 @@ import { ref } from 'vue';
 async function loadComposable(options?: {
     requestImpl?: (...args: any[]) => Promise<any>;
     chatOverrides?: Record<string, any>;
+    activeHostInitial?: any;
+    activeHostRef?: ReturnType<typeof ref<any>>;
+    ensureLoadedImpl?: () => Promise<void>;
 }) {
     vi.resetModules();
 
@@ -38,12 +41,15 @@ async function loadComposable(options?: {
             })),
     );
 
-    const activeHost = ref({
+    const activeHost = options?.activeHostRef ?? ref(options?.activeHostInitial ?? {
         id: 'test-host',
         baseUrl: 'http://127.0.0.1:9100',
         pairedToken: 'paired-token',
         status: 'online',
     });
+    const ensureLoaded = vi.fn(
+        options?.ensureLoadedImpl || (() => Promise.resolve()),
+    );
 
     vi.doMock('../../app/composables/useChatSessions', () => ({
         useChatSessions: () => chat,
@@ -54,8 +60,18 @@ async function loadComposable(options?: {
     vi.doMock('../../app/composables/useActiveHost', () => ({
         useActiveHost: () => ({ activeHost }),
     }));
+    vi.doMock('../../app/composables/useElectronHostSetup', () => ({
+        useElectronHostSetup: () => ({ ensureLoaded }),
+    }));
     vi.doMock('../../app/composables/useSecureHostTokens', () => ({
-        canUseHostApi: () => true,
+        canUseHostApi: (host: any) =>
+            Boolean(
+                host?.baseUrl &&
+                    (host?.pairedToken ||
+                        host?.sessionToken ||
+                        host?.token ||
+                        host?.authMode === 'secure-session'),
+            ),
     }));
     vi.doMock('../../app/composables/useCredentialsSync', () => ({
         syncCredentialsAfterUnlock: vi.fn().mockResolvedValue(undefined),
@@ -69,6 +85,8 @@ async function loadComposable(options?: {
         sessionHistory: mod.useSessionHistory(),
         chat,
         request,
+        activeHost,
+        ensureLoaded,
     };
 }
 
@@ -109,6 +127,35 @@ describe('useSessionHistory', () => {
         expect(sessionHistory.activeBackendSession.value).toEqual(meta);
     });
 
+    it('loads Electron host setup before deciding whether history can refresh', async () => {
+        const meta = {
+            session_key: 'doctor-app-electron',
+            title: 'Doctor Session',
+            archived: false,
+            message_count: 1,
+        };
+        const activeHost = ref<any>(null);
+        const loadedHost = {
+            id: 'electron-local-host',
+            baseUrl: 'http://127.0.0.1:9100',
+            token: 'electron-local-service-token',
+            status: 'online',
+        };
+        const { sessionHistory, request, ensureLoaded } = await loadComposable({
+            activeHostRef: activeHost,
+            ensureLoadedImpl: async () => {
+                activeHost.value = loadedHost;
+            },
+            requestImpl: async () => ({ sessions: [meta] }),
+        });
+
+        const sessions = await sessionHistory.refresh();
+
+        expect(ensureLoaded).toHaveBeenCalledTimes(1);
+        expect(request).toHaveBeenCalledWith('/internal/v1/chat-sessions');
+        expect(sessions).toEqual([meta]);
+    });
+
     it('includes local active sessions before backend history refresh catches up', async () => {
         const localSession = {
             id: 'local-session',
@@ -117,6 +164,9 @@ describe('useSessionHistory', () => {
             title: 'New conversation',
             createdAt: '2026-05-13T00:00:00.000Z',
             updatedAt: '2026-05-13T00:01:00.000Z',
+            lastMessagePreview: 'I need a friend right now',
+            lastMessageAt: '2026-05-13T00:01:00.000Z',
+            backendMessageCount: 1,
             runnerId: 'or3-intern',
             runnerLabel: 'OR3 Intern',
             runnerContinuationMode: 'replay',
@@ -143,6 +193,43 @@ describe('useSessionHistory', () => {
                 title: 'New conversation',
                 message_count: 1,
                 last_message_preview: 'I need a friend right now',
+            }),
+        ]);
+    });
+
+    it('prefers backend titles when local cache still has the placeholder', async () => {
+        const localSession = {
+            id: 'local-session',
+            hostId: 'test-host',
+            sessionKey: 'svc:history',
+            title: 'New conversation',
+            createdAt: '2026-05-13T00:00:00.000Z',
+            updatedAt: '2026-05-13T00:01:00.000Z',
+            runnerId: 'or3-intern',
+            runnerLabel: 'OR3 Intern',
+            runnerContinuationMode: 'replay',
+        };
+        const backendMeta = {
+            session_key: 'svc:history',
+            title: 'Can you create a file in .prompts',
+            archived: false,
+            message_count: 2,
+            updated_at: 1_717_171_718_000,
+            last_message_at: 1_717_171_718_000,
+        };
+        const { sessionHistory } = await loadComposable({
+            chatOverrides: {
+                sessions: ref([localSession]),
+            },
+            requestImpl: async () => ({ sessions: [backendMeta] }),
+        });
+
+        await sessionHistory.refresh();
+
+        expect(sessionHistory.sessions.value).toEqual([
+            expect.objectContaining({
+                session_key: 'svc:history',
+                title: 'Can you create a file in .prompts',
             }),
         ]);
     });
@@ -191,8 +278,11 @@ describe('useSessionHistory', () => {
         );
     });
 
-    it('clears local messages before hydrating an opened session', async () => {
-        const clearSessionMessages = vi.fn();
+    it('replaces local messages after fetch when opening a session', async () => {
+        const callOrder: string[] = [];
+        const clearSessionMessages = vi.fn(() => {
+            callOrder.push('clear');
+        });
         const { sessionHistory, chat, request } = await loadComposable({
             chatOverrides: { clearSessionMessages },
             requestImpl: async (path: string) => {
@@ -200,6 +290,7 @@ describe('useSessionHistory', () => {
                     path ===
                     '/internal/v1/chat-sessions/svc%3Ahistory/messages?limit=100'
                 ) {
+                    callOrder.push('fetch');
                     return {
                         messages: [
                             {
@@ -222,7 +313,10 @@ describe('useSessionHistory', () => {
         });
 
         expect(chat.activateSessionByKey).toHaveBeenCalledWith('svc:history');
-        expect(clearSessionMessages).toHaveBeenCalledWith('local:svc:history');
+        expect(callOrder).toEqual(['fetch', 'clear']);
+        expect(clearSessionMessages).toHaveBeenCalledWith('local:svc:history', {
+            persist: false,
+        });
         expect(chat.hydrateBackendMessages).toHaveBeenCalled();
         expect(request).toHaveBeenCalledTimes(1);
     });

@@ -19,14 +19,33 @@
                     {{ description }}
                 </p>
             </div>
-            <span
-                class="or3-risk-pill"
-                :data-tone="risk.tone"
-            >
-                <Icon :name="risk.icon" class="size-3.5" />
-                <span>{{ risk.label }}</span>
-            </span>
+            <div class="flex flex-col items-end gap-2">
+                <span
+                    class="or3-risk-pill"
+                    :data-tone="risk.tone"
+                >
+                    <Icon :name="risk.icon" class="size-3.5" />
+                    <span>{{ risk.label }}</span>
+                </span>
+                <span
+                    v-if="moderatorBadge"
+                    class="or3-moderator-pill"
+                    :data-tone="moderatorBadge.tone"
+                >
+                    {{ moderatorBadge.label }}
+                </span>
+            </div>
         </header>
+
+        <div
+            v-if="moderatorDetail"
+            class="mt-3 rounded-2xl border border-(--or3-border) bg-white/70 px-3 py-2 text-sm leading-6 text-(--or3-text-muted)"
+        >
+            <p>{{ moderatorDetail }}</p>
+            <p v-if="moderatorAlternative" class="mt-1 text-(--or3-text)">
+                Try: {{ moderatorAlternative }}
+            </p>
+        </div>
 
         <!-- Subject preview -->
         <div v-if="subjectPreview" class="or3-approval-card__preview">
@@ -111,10 +130,18 @@ import {
     approvalKindIcon,
     approvalKindLabel,
     approvalKindType,
+    approvalRiskPresentation,
     approvalStatusLabel,
     approvalStatusTone,
     formatApprovalSubjectPreview,
+    resolveApprovalRiskLevel,
 } from '~/utils/or3/approval-display';
+import {
+    formatModeratorBadgeTone,
+    formatModeratorRiskLabel,
+    formatModeratorStatusLabel,
+    parseModeratorAlternative,
+} from '~/utils/or3/moderator-display';
 
 const props = defineProps<{
     approval: ApprovalRequest;
@@ -139,31 +166,48 @@ const subjectPreview = computed(() => {
     return formatApprovalSubjectPreview(props.approval);
 });
 
-const risk = computed(() => {
-    const subj = (props.approval.subject ?? {}) as Record<string, unknown>;
-    const explicit = String(subj.risk ?? subj.severity ?? '').toLowerCase();
-    let level: 'low' | 'medium' | 'high' = 'low';
-    if (explicit === 'high' || explicit === 'critical') level = 'high';
-    else if (explicit === 'medium' || explicit === 'moderate') level = 'medium';
-    else if (kind.value === 'exec' || kind.value === 'network') level = 'medium';
+const moderatorMeta = computed(() => props.approval.moderator);
 
-    if (level === 'high')
-        return {
-            label: 'High risk',
-            tone: 'danger' as const,
-            icon: 'i-pixelarticons-shield-off',
-        };
-    if (level === 'medium')
-        return {
-            label: 'Medium risk',
-            tone: 'amber' as const,
-            icon: 'i-pixelarticons-shield-off',
-        };
+const moderatorBadge = computed(() => {
+    const meta = moderatorMeta.value;
+    if (!meta?.risk && !meta?.action && !meta?.status) return null;
+    const risk = formatModeratorRiskLabel(meta.risk);
+    const status = formatModeratorStatusLabel(meta);
+    const label = [risk, status].filter(Boolean).join(' · ');
+    if (!label) return null;
     return {
-        label: 'Low risk',
-        tone: 'green' as const,
-        icon: 'i-pixelarticons-shield',
+        label,
+        tone: formatModeratorBadgeTone(meta),
     };
+});
+
+const moderatorDetail = computed(() => {
+    const meta = moderatorMeta.value;
+    if (!meta?.reason) return '';
+    const action = String(meta.action ?? '').trim().toLowerCase();
+    if (action !== 'deny' && props.approval.status === 'pending') {
+        return '';
+    }
+    return meta.reason;
+});
+
+const moderatorAlternative = computed(() => {
+    const meta = moderatorMeta.value;
+    if (meta?.alternative) return meta.alternative;
+    return parseModeratorAlternative(meta?.reason).alternative;
+});
+
+const risk = computed(() => {
+    const meta = moderatorMeta.value;
+    const subj = (props.approval.subject ?? {}) as Record<string, unknown>;
+    const explicit =
+        String(meta?.risk ?? '').trim() ||
+        String(subj.risk ?? subj.severity ?? '').trim();
+    const level = resolveApprovalRiskLevel({
+        explicitRisk: explicit,
+        fallbackMedium: kind.value === 'exec' || kind.value === 'network',
+    });
+    return approvalRiskPresentation(level);
 });
 
 const sourceLabel = computed(() => {
@@ -286,6 +330,32 @@ function relativeTime(value?: string): string {
 .or3-risk-pill[data-tone='danger'] {
     background: var(--or3-danger-soft);
     border-color: color-mix(in srgb, var(--or3-danger) 30%, white 70%);
+    color: #8a2e2e;
+}
+
+.or3-moderator-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.25rem 0.55rem;
+    border-radius: 9999px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    border: 1px solid var(--or3-border);
+    background: white;
+    color: var(--or3-text-muted);
+    white-space: nowrap;
+}
+.or3-moderator-pill[data-tone='green'] {
+    background: var(--or3-green-soft);
+    color: var(--or3-green-dark);
+}
+.or3-moderator-pill[data-tone='amber'] {
+    background: var(--or3-amber-soft);
+    color: #8a5a14;
+}
+.or3-moderator-pill[data-tone='danger'] {
+    background: var(--or3-danger-soft);
     color: #8a2e2e;
 }
 

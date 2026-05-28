@@ -31,12 +31,63 @@ import {
     extractErrorCode,
     formatUserFacingErrorInline,
 } from './errors';
-import {
-    EMPTY_FINAL_USER_MESSAGE,
-    userFacingErrorCopy,
-} from './userErrorCopy';
+import { EMPTY_FINAL_USER_MESSAGE, userFacingErrorCopy } from './userErrorCopy';
 import { eventJobId, eventName, eventPayload, eventSequence } from './events';
 import { normalizeRunnerPermissionPayload } from './payload';
+
+function normalizeStreamEventType(type: string) {
+    return type.trim().toLowerCase().replace(/_/g, '.');
+}
+
+function isTurnTerminalFailureEvent(
+    type: string,
+    payload: Record<string, unknown> | undefined,
+    approvalRequired: boolean,
+) {
+    if (approvalRequired) return false;
+
+    const normalized = normalizeStreamEventType(type);
+    if (
+        normalized === 'runtime.error' ||
+        normalized === 'runtime.warning' ||
+        normalized === 'tool.result'
+    ) {
+        return false;
+    }
+
+    if (normalized === 'error' || normalized === 'failed') {
+        return true;
+    }
+
+    const streamStatus = String(payload?.status ?? '')
+        .trim()
+        .toLowerCase();
+    if (streamStatus === 'failed' || streamStatus === 'aborted') {
+        return (
+            normalized === 'completion' ||
+            normalized === 'completed' ||
+            normalized === 'complete' ||
+            normalized === 'done'
+        );
+    }
+
+    const streamError = String(payload?.error ?? '').trim();
+    return (
+        Boolean(streamError) &&
+        (normalized === 'error' || normalized === 'failed')
+    );
+}
+
+function turnTerminalFailureText(
+    type: string,
+    payload: Record<string, unknown> | undefined,
+) {
+    const normalized = normalizeStreamEventType(type);
+    if (normalized === 'error' || normalized === 'failed') {
+        return String(payload?.error ?? payload?.message ?? '').trim();
+    }
+    return String(payload?.error ?? '').trim();
+}
 
 interface AssistantEventApplierOptions {
     assistantId: string;
@@ -69,6 +120,7 @@ interface AssistantEventApplierOptions {
         name: string,
     ) => AssistantReplayToolCall | undefined;
     setSawVisibleOutput: (value: boolean) => void;
+    appendFinalTextToExistingContent?: boolean;
     rawAssistantContent: () => string;
 }
 
@@ -78,6 +130,18 @@ export function createAssistantEventApplier(
     const logger = createLogger('stream');
     const appliedEventSequenceKeys = new Set<string>();
     const streamedEventPayloadKeys = new Set<string>();
+    const MAX_DEDUPE_KEYS = 512;
+
+    const rememberDedupeKey = (set: Set<string>, key: string) => {
+        if (!key) return;
+        if (set.size >= MAX_DEDUPE_KEYS) set.clear();
+        set.add(key);
+    };
+
+    const clearDedupeKeys = () => {
+        appliedEventSequenceKeys.clear();
+        streamedEventPayloadKeys.clear();
+    };
     const completionActivityId = 'activity:completion:final-response';
     const emptyFinalTextWarning = EMPTY_FINAL_USER_MESSAGE;
 
@@ -91,7 +155,38 @@ export function createAssistantEventApplier(
         part.type === 'text' ? sanitizeAssistantText(part.content ?? '') : '';
 
     const isEmptyFinalWarningText = (value: string) =>
-        sanitizeAssistantText(value) === sanitizeAssistantText(emptyFinalTextWarning);
+        sanitizeAssistantText(value) ===
+        sanitizeAssistantText(emptyFinalTextWarning);
+
+    const isApprovalPlaceholderText = (value: string) => {
+        const normalized = sanitizeAssistantText(value).toLowerCase();
+        if (!normalized) return false;
+        return (
+            normalized.includes(
+                'approval is needed before or3-intern can continue',
+            ) ||
+            normalized.includes('approval is needed before or3 can continue') ||
+            normalized.includes('approve to let or3-intern continue') ||
+            normalized.includes(
+                'approve if this is the command you expected',
+            ) ||
+            normalized.includes('approve if this matches what you asked for') ||
+            normalized.includes('deny to stop here')
+        );
+    };
+
+    const hasPriorResumeContext = (assistant: ChatMessage | undefined) =>
+        Boolean(
+            assistant?.parts?.some((part) => {
+                if (part.type === 'tool') return true;
+                const text = textPartContent(part);
+                return Boolean(
+                    text &&
+                    !isApprovalPlaceholderText(text) &&
+                    !isEmptyFinalWarningText(text),
+                );
+            }),
+        );
 
     const removeEmptyFinalWarningParts = () => {
         const current = options.readAssistant();
@@ -115,6 +210,7 @@ export function createAssistantEventApplier(
                     isEmptyFinalWarningText(textPartContent(part)),
                 ),
             );
+        markVisibleOutput(assistantText);
         options.replaceAssistantContent(assistantText);
         if (wasEmptyFinal) {
             removeEmptyFinalWarningParts();
@@ -132,10 +228,87 @@ export function createAssistantEventApplier(
         }
     };
 
+    const appendFinalTextToExistingContent = (assistantText: string) => {
+        const normalized = sanitizeAssistantText(assistantText);
+        if (!normalized) return;
+
+        const current = options.readAssistant();
+        const currentText = sanitizeAssistantText(current?.content || '');
+        const wasEmptyFinal =
+            current?.errorCode === 'empty_final_text' ||
+            isEmptyFinalWarningText(current?.content || '') ||
+            Boolean(
+                current?.parts?.some((part) =>
+                    isEmptyFinalWarningText(textPartContent(part)),
+                ),
+            );
+        const shouldReplace =
+            wasEmptyFinal ||
+            !currentText ||
+            (isApprovalPlaceholderText(currentText) &&
+                !hasPriorResumeContext(current));
+
+        markVisibleOutput(normalized);
+
+        if (shouldReplace) {
+            options.replaceAssistantContent(normalized);
+            if (wasEmptyFinal) removeEmptyFinalWarningParts();
+            if (!options.hasTextPartContent(normalized)) {
+                options.appendCompleteTextPart(normalized);
+            }
+            options.updateAssistant({
+                error: undefined,
+                errorCode: undefined,
+            });
+            return;
+        }
+
+        if (currentText === normalized || currentText.endsWith(normalized)) {
+            if (!options.hasVisibleTextPart()) {
+                options.appendCompleteTextPart(normalized);
+            }
+            options.updateAssistant({
+                error: undefined,
+                errorCode: undefined,
+            });
+            return;
+        }
+
+        options.closeActiveTextPart();
+        options.appendAssistantContent(`\n\n${normalized}`);
+        if (!options.hasTextPartContent(normalized)) {
+            options.appendTextPart(normalized);
+        }
+        options.closeActiveTextPart();
+        options.updateAssistant({
+            error: undefined,
+            errorCode: undefined,
+        });
+    };
+
+    const applyFinalText = (assistantText: string) => {
+        if (options.appendFinalTextToExistingContent) {
+            appendFinalTextToExistingContent(assistantText);
+            return;
+        }
+        recoverEmptyFinalWithText(assistantText);
+    };
+
     const explicitToolCallId = (payload?: Record<string, unknown>) =>
         String(
             payload?.tool_call_id || payload?.call_id || payload?.id || '',
         ).trim();
+
+    const lastRuntimeErrorDetail = () => {
+        const activity = options.readAssistant()?.activityLog ?? [];
+        for (let index = activity.length - 1; index >= 0; index--) {
+            const entry = activity[index];
+            if (entry?.type !== 'runtime_error') continue;
+            const detail = String(entry.detail ?? '').trim();
+            if (detail) return detail;
+        }
+        return '';
+    };
 
     const toolCallIdentity = (
         payload: Record<string, unknown> | undefined,
@@ -152,7 +325,21 @@ export function createAssistantEventApplier(
 
         const seq = eventSequence(event);
         const seqKey = seq !== undefined ? `seq:${seq}` : '';
-        const payloadKey = `${type}:${JSON.stringify(payload ?? {})}`;
+        const deltaFingerprint = String(
+            payload?.delta ??
+                payload?.text ??
+                payload?.content ??
+                payload?.chunk ??
+                '',
+        ).slice(0, 120);
+        const payloadKey = [
+            type,
+            seq ?? '',
+            explicitToolCallId(payload),
+            String(payload?.status ?? ''),
+            String(payload?.phase ?? ''),
+            seq === undefined ? deltaFingerprint : '',
+        ].join(':');
         if (seqKey && appliedEventSequenceKeys.has(seqKey)) {
             if (source !== 'snapshot') {
                 logger.debug(
@@ -173,8 +360,9 @@ export function createAssistantEventApplier(
             });
             return { failed: false, completed: false };
         }
-        if (seqKey) appliedEventSequenceKeys.add(seqKey);
-        if (source === 'stream') streamedEventPayloadKeys.add(payloadKey);
+        if (seqKey) rememberDedupeKey(appliedEventSequenceKeys, seqKey);
+        if (source === 'stream')
+            rememberDedupeKey(streamedEventPayloadKeys, payloadKey);
         logger.debug('event:apply', 'Stream event applied', {
             type,
             source,
@@ -183,7 +371,11 @@ export function createAssistantEventApplier(
         });
 
         const delta = String(
-            payload?.delta ?? payload?.text ?? payload?.content ?? '',
+            payload?.delta ??
+                payload?.text ??
+                payload?.content ??
+                payload?.chunk ??
+                '',
         );
         if (type === 'queued' || type === 'started') {
             options.addActivity(
@@ -198,11 +390,20 @@ export function createAssistantEventApplier(
             options.appendTextPart(delta);
             markVisibleOutput(delta);
         }
-        if (type === 'output' && delta) {
-            const normalized = delta.endsWith('\n') ? delta : `${delta}\n`;
-            options.appendAssistantContent(normalized);
-            options.appendTextPart(normalized);
-            markVisibleOutput(delta);
+        if ((type === 'output' || type === 'output_truncated') && delta) {
+            options.closeActiveTextPart();
+            options.addActivity(
+                createActivity(
+                    payload?.stream === 'stderr'
+                        ? 'runner_stderr'
+                        : 'runner_output',
+                    payload?.stream === 'stderr'
+                        ? 'Runner warning'
+                        : 'Runner output',
+                    truncateLogDetail(delta),
+                    payload?.stream === 'stderr' ? 'error' : 'complete',
+                ),
+            );
         }
         if (type === 'runner_output' && delta) {
             if (isStructuredStdoutDiagnostic(payload)) {
@@ -408,7 +609,7 @@ export function createAssistantEventApplier(
                   ? assistantContent
                   : '';
         if (assistantText.trim()) {
-            recoverEmptyFinalWithText(assistantText);
+            applyFinalText(assistantText);
             markVisibleOutput(assistantText);
         }
         if (type === 'tool_call') {
@@ -532,6 +733,7 @@ export function createAssistantEventApplier(
                     content,
                 });
             }
+            return { failed: false, completed: false };
         }
         if (
             type === 'reasoning_delta' &&
@@ -550,26 +752,28 @@ export function createAssistantEventApplier(
                     'error',
                 ),
             );
+            return { failed: false, completed: false };
         }
 
-        const streamError = String(
-            payload?.error ?? payload?.message ?? '',
-        ).trim();
         const streamStatus = String(payload?.status ?? '').trim();
         const approvalRequired = isApprovalRequiredPayload(payload);
-        if (
-            !approvalRequired &&
-            (streamError ||
-                streamStatus === 'failed' ||
-                streamStatus === 'aborted')
-        ) {
+        const streamError = turnTerminalFailureText(type, payload);
+        if (isTurnTerminalFailureEvent(type, payload, approvalRequired)) {
             const errorCode = extractErrorCode(payload);
+            const effectiveStreamError =
+                streamError === 'job failed'
+                    ? lastRuntimeErrorDetail() || streamError
+                    : streamError;
             const failureCopy = userFacingErrorCopy(
-                streamError ? { message: streamError, code: errorCode } : payload,
+                effectiveStreamError
+                    ? { message: effectiveStreamError, code: errorCode }
+                    : payload,
                 errorCode,
             );
             const failureText = formatUserFacingErrorInline(
-                streamError ? { message: streamError, code: errorCode } : payload,
+                effectiveStreamError
+                    ? { message: effectiveStreamError, code: errorCode }
+                    : payload,
                 errorCode,
             );
             options.updateAssistant({
@@ -595,7 +799,10 @@ export function createAssistantEventApplier(
             const runnerPermission = normalizeRunnerPermissionPayload(
                 payload?.runner_permission,
             );
-            const inferredApproval = inferApprovalMetadataFromToolPayload('', payload);
+            const inferredApproval = inferApprovalMetadataFromToolPayload(
+                '',
+                payload,
+            );
             const approvalMetadata = {
                 ...extractApprovalMetadata(payload),
                 ...inferredApproval,
@@ -641,6 +848,9 @@ export function createAssistantEventApplier(
                 typeof payload?.final_text === 'string'
                     ? payload.final_text.trim()
                     : '';
+            if (finalText) {
+                applyFinalText(finalText);
+            }
             const currentAssistant = options.readAssistant();
             const hasToolWork = Boolean(
                 currentAssistant?.toolCalls?.length ||
@@ -742,10 +952,25 @@ export function createAssistantEventApplier(
         return { failed: false, completed: false };
     };
 
-    return { applyEvent };
+    const applyEventWithCleanup = (
+        event: JobEvent | { event?: string; json?: unknown },
+        source: 'stream' | 'snapshot' = 'stream',
+    ) => {
+        const result = applyEvent(event, source);
+        if (result.completed) clearDedupeKeys();
+        return result;
+    };
+
+    return {
+        applyEvent: applyEventWithCleanup,
+        applyFinalText,
+        clearDedupeKeys,
+    };
 }
 
-function toolResultError(payload: Record<string, unknown> | undefined): string | undefined {
+function toolResultError(
+    payload: Record<string, unknown> | undefined,
+): string | undefined {
     const explicit =
         typeof payload?.error === 'string' ? payload.error.trim() : '';
     if (explicit) return explicit;

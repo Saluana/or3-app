@@ -1,5 +1,6 @@
 import { ref } from 'vue';
 import type { Or3AppState, Or3HostProfile } from '~/types/app-state';
+import { compareSessionMessages } from './chat/useChatMessageIndex';
 import { compactAssistantRunMessages } from '~/utils/chat/merge-assistant-run';
 import { needsUnlock } from './usePinLock';
 import {
@@ -26,6 +27,8 @@ const defaultState = (): Or3AppState => ({
 const state = ref<Or3AppState>(defaultState());
 let loaded = false;
 let listeningForExternalChanges = false;
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+const PERSIST_DEBOUNCE_MS = 200;
 
 function serializableState() {
     prunePersistedChatCache();
@@ -46,6 +49,12 @@ function timestampValue(value?: string) {
     if (!value) return 0;
     const timestamp = Date.parse(value);
     return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function sortSessionMessagesForPersist(
+    messages: Or3AppState['messages'],
+) {
+    return [...messages].sort(compareSessionMessages);
 }
 
 function prunePersistedChatCache() {
@@ -118,11 +127,7 @@ function prunePersistedChatCache() {
             )
             .slice(0, MAX_PERSISTED_MESSAGES_PER_SESSION);
         nextMessages.push(
-            ...[...pinnedOrLive, ...recent].sort(
-                (left, right) =>
-                    timestampValue(left.createdAt) -
-                    timestampValue(right.createdAt),
-            ),
+            ...sortSessionMessagesForPersist([...pinnedOrLive, ...recent]),
         );
     }
     state.value.messages = nextMessages;
@@ -275,7 +280,7 @@ function load() {
     loaded = true;
 
     refreshFromStorage();
-    persist();
+    persistNow();
     void useSecureHostTokens()
         .hydrateTokens()
         .then((nativeTokens) => {
@@ -300,10 +305,29 @@ function load() {
         });
 }
 
-function persist() {
+function flushPersist() {
     if (!import.meta.client) return;
+    persistTimer = null;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(serializableState()));
     persistSessionTokens();
+}
+
+function persist() {
+    if (!import.meta.client) return;
+    if (persistTimer) clearTimeout(persistTimer);
+    persistTimer = setTimeout(flushPersist, PERSIST_DEBOUNCE_MS);
+}
+
+function persistNow() {
+    if (!import.meta.client) return;
+    if (persistTimer) clearTimeout(persistTimer);
+    flushPersist();
+}
+
+if (import.meta.client) {
+    window.addEventListener('beforeunload', () => {
+        if (persistTimer) flushPersist();
+    });
 }
 
 export function useLocalCache() {
@@ -366,6 +390,7 @@ export function useLocalCache() {
     return {
         state,
         persist,
+        persistNow,
         updateHost,
         setActiveHost,
         removeHost,

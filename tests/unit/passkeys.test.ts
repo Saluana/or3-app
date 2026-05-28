@@ -17,6 +17,7 @@ vi.mock('../../app/composables/useOr3Api', () => ({
 vi.mock('../../app/composables/useAuthSession', () => ({
   useAuthSession: () => ({
     retryWithAuth,
+    loadCapabilities: vi.fn(async () => ({ passkeysEnabled: true, passkeyMode: 'on' })),
   }),
 }))
 

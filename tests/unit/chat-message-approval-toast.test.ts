@@ -1,9 +1,11 @@
 // @vitest-environment happy-dom
 import { shallowMount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ref } from 'vue';
 
 import ChatMessage from '../../app/components/assistant/ChatMessage.vue';
 import type { ChatMessage as ChatMessageModel } from '../../app/types/app-state';
+import { CHAT_MESSAGE_ACTIONS_KEY } from '../../app/utils/chat/chat-message-actions';
 
 function deferred<T>() {
     let resolve!: (value: T | PromiseLike<T>) => void;
@@ -37,41 +39,29 @@ vi.mock('@nuxt/ui/composables', () => ({
     useToast: () => ({ add: toastAdd }),
 }));
 
-vi.mock('../../app/composables/useApprovals', () => ({
-    useApprovals: () => ({
+function buildMessageActions(initialMessage: ChatMessageModel) {
+    const messages = ref([initialMessage]);
+    return {
+        activeSession: activeSessionState,
+        isStreaming: streamingState,
+        findMessageById: (id: string) =>
+            messages.value.find((item) => item.id === id) ?? null,
+        markApprovalResolved: markApprovalResolvedMock,
+        updateMessage(id: string, patch: Partial<ChatMessageModel>) {
+            const message = messages.value.find((item) => item.id === id);
+            if (!message) return;
+            Object.assign(message, patch);
+            messages.value = [...messages.value];
+        },
+        toggleMessagePin: toggleMessagePinMock,
+        send: sendMock,
+        forkSession: sessionHistoryForkMock,
         approve: approveMock,
         deny: denyMock,
         fetchApproval: fetchApprovalMock,
         consumeIssuedApprovalToken: consumeIssuedApprovalTokenMock,
-    }),
-}));
-
-vi.mock('../../app/composables/useAssistantStream', () => ({
-    useAssistantStream: () => ({
-        isStreaming: streamingState,
-        send: sendMock,
-    }),
-}));
-
-vi.mock('../../app/composables/useChatSessions', () => ({
-    useChatSessions: () => ({
-        activeSession: activeSessionState,
-        markApprovalResolved: markApprovalResolvedMock,
-        messages: messagesState,
-        toggleMessagePin: toggleMessagePinMock,
-        updateMessage(id: string, patch: Partial<ChatMessageModel>) {
-            const message = messagesState.value.find((item) => item.id === id);
-            if (!message) return;
-            Object.assign(message, patch);
-        },
-    }),
-}));
-
-vi.mock('../../app/composables/useSessionHistory', () => ({
-    useSessionHistory: () => ({
-        forkSession: sessionHistoryForkMock,
-    }),
-}));
+    };
+}
 
 function buildApprovalMessage(): ChatMessageModel {
     return {
@@ -126,6 +116,9 @@ describe('ChatMessage approval toast timing', () => {
         const wrapper = shallowMount(ChatMessage, {
             props: { message },
             global: {
+                provide: {
+                    [CHAT_MESSAGE_ACTIONS_KEY]: buildMessageActions(message),
+                },
                 stubs: {
                     Icon: true,
                     AssistantReasoningPanel: true,

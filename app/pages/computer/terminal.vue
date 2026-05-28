@@ -83,6 +83,15 @@
                     {{ bannerMessage }}
                 </p>
                 <UButton
+                    v-if="pendingApprovalId"
+                    label="Review approval"
+                    icon="i-pixelarticons-shield"
+                    size="xs"
+                    color="primary"
+                    variant="soft"
+                    @click="openPendingApprovalToast"
+                />
+                <UButton
                     v-if="showReconnectAction"
                     label="Reconnect"
                     icon="i-pixelarticons-reload"
@@ -102,7 +111,7 @@
                 :busy="starting"
                 :streaming="terminalStreaming"
                 :error="terminalError"
-                :interactive="isInteractive"
+                :interactive="canInteract"
                 :font-size="fontSize"
                 :font-size-min="fontSizeMin"
                 :font-size-max="fontSizeMax"
@@ -112,7 +121,39 @@
                 @zoom="handleZoom"
             >
                 <template v-if="!session" #screen-overlay>
-                    <div class="or3-terminal-page__setup">
+                    <div
+                        v-if="pendingApprovalId"
+                        class="or3-terminal-page__setup or3-terminal-page__setup--waiting"
+                    >
+                        <div class="or3-terminal-page__setup-card">
+                            <div class="or3-terminal-page__setup-head">
+                                <RetroIcon
+                                    name="i-pixelarticons-shield"
+                                    class="text-(--or3-green)"
+                                />
+                                <div>
+                                    <p class="or3-terminal-page__setup-title">
+                                        Waiting for approval
+                                    </p>
+                                    <p class="or3-terminal-page__setup-sub">
+                                        Use the toast to approve, deny, or
+                                        remember. The shell will open
+                                        automatically.
+                                    </p>
+                                </div>
+                            </div>
+                            <UButton
+                                label="Review approval"
+                                icon="i-pixelarticons-shield"
+                                color="primary"
+                                variant="soft"
+                                size="sm"
+                                block
+                                @click="openPendingApprovalToast"
+                            />
+                        </div>
+                    </div>
+                    <div v-else class="or3-terminal-page__setup">
                         <div class="or3-terminal-page__setup-card">
                             <div class="or3-terminal-page__setup-head">
                                 <RetroIcon
@@ -217,11 +258,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from '#app';
+import { useApprovalActionToast } from '~/composables/useApprovalActionToast';
 import { useComputerFiles } from '~/composables/useComputerFiles';
 import { useTerminalPrefs } from '~/composables/useTerminalPrefs';
 import { useTerminalSession } from '~/composables/useTerminalSession';
+import { isApprovalRequiredError } from '~/utils/approval-errors';
 import { serializeErrorForLog } from '~/utils/assistant-stream/errors';
 import { createLogger } from '~/utils/logger';
 import TerminalSurface from '~/components/computer/terminal/TerminalSurface.vue';
@@ -247,6 +290,8 @@ const {
     terminalError,
     terminalBusy,
     terminalStreaming,
+    canInteract,
+    reconnectMode,
     terminalUnavailable,
     pendingApprovalId,
     isInteractive,
@@ -260,7 +305,12 @@ const {
     reset,
     restoreSession,
     reconnect,
+    reattachTransport,
+    resumePendingApproval,
 } = useTerminalSession();
+
+const { promptApprovalAction } = useApprovalActionToast();
+const lastApprovalToastId = ref<number | null>(null);
 
 const { fontSize, fontSizeMin, fontSizeMax, bumpFontSize } = useTerminalPrefs();
 
@@ -313,23 +363,23 @@ const headlineSub = computed(() => {
 
 const bannerTone = computed(() => {
     if (session.value?.status === 'failed') return 'danger';
-    if (session.value && session.value.status !== 'running') return 'amber';
+    if (reconnectMode.value != null) return 'amber';
     if (terminalUnavailable.value) return 'amber';
     if (pendingApprovalId.value) return 'info';
     return null;
 });
-const showReconnectAction = computed(() =>
-    Boolean(session.value && session.value.status !== 'running'),
-);
+const showReconnectAction = computed(() => reconnectMode.value != null);
 const bannerMessage = computed(() => {
     if (session.value?.status === 'failed')
         return 'This shell stopped unexpectedly. Reconnect to start a fresh session.';
-    if (session.value && session.value.status !== 'running')
-        return `This session is ${session.value.status}. Reconnect to open a new shell.`;
+    if (reconnectMode.value === 'transport')
+        return 'Connection lost — reconnecting to your shell…';
+    if (reconnectMode.value === 'session')
+        return `This session is ${session.value?.status ?? 'closed'}. Reconnect to open a new shell.`;
     if (terminalUnavailable.value)
         return 'Terminal is off — enable guarded shell access in or3-intern preferences.';
     if (pendingApprovalId.value)
-        return `Waiting on approval #${pendingApprovalId.value}. Open the Approvals screen to allow this terminal.`;
+        return `Waiting on approval #${pendingApprovalId.value}. Use the toast to approve, deny, or remember.`;
     return '';
 });
 const bannerIcon = computed(() => {
@@ -374,6 +424,56 @@ function logTerminalActionError(action: string, error: unknown) {
         ...serializeErrorForLog(error),
     });
 }
+
+function handleTerminalActionError(action: string, error: unknown) {
+    if (isApprovalRequiredError(error)) {
+        logger.info('action:approval_required', `${action} needs approval`, {
+            action,
+            approvalId: pendingApprovalId.value,
+        });
+        return;
+    }
+    logTerminalActionError(action, error);
+}
+
+async function resumeAfterApproval(approvalId: number | string) {
+    terminalError.value = null;
+    await resumePendingApproval(approvalId);
+}
+
+function openPendingApprovalToast() {
+    const approvalId = pendingApprovalId.value;
+    if (!approvalId) return;
+    lastApprovalToastId.value = approvalId;
+    void promptApprovalAction({
+        approvalId,
+        onApproved: () => resumeAfterApproval(approvalId),
+        onDenied: () => {
+            pendingApprovalId.value = null;
+            terminalError.value = null;
+            lastApprovalToastId.value = null;
+        },
+    });
+}
+
+watch(pendingApprovalId, (approvalId) => {
+    if (!approvalId) {
+        lastApprovalToastId.value = null;
+        return;
+    }
+    if (approvalId === lastApprovalToastId.value) return;
+    openPendingApprovalToast();
+});
+
+watch(
+    () => [session.value?.session_id, canInteract.value] as const,
+    async ([sessionId, interactive]) => {
+        if (!sessionId || !interactive) return;
+        await nextTick();
+        surfaceRef.value?.fit();
+        surfaceRef.value?.focus();
+    },
+);
 
 async function refreshRoots() {
     await loadRoots();
@@ -420,7 +520,9 @@ async function launchFromRouteTarget() {
         path,
         rows: 28,
         cols: 100,
-    }).catch((error) => logTerminalActionError('start target session', error));
+    }).catch((error) =>
+        handleTerminalActionError('start target session', error),
+    );
     await clearFreshLaunchFlag();
     return session.value;
 }
@@ -431,7 +533,7 @@ async function handleStart() {
         path: selectedPath.value,
         rows: 28,
         cols: 100,
-    }).catch((error) => logTerminalActionError('start', error));
+    }).catch((error) => handleTerminalActionError('start', error));
 }
 
 async function handleResume(sessionId: string) {
@@ -445,6 +547,12 @@ async function handleResume(sessionId: string) {
 }
 
 async function handleReconnect() {
+    if (reconnectMode.value === 'transport') {
+        await reattachTransport().catch((error) =>
+            logTerminalActionError('reattach', error),
+        );
+        return;
+    }
     await reconnect().catch((error) =>
         logTerminalActionError('reconnect', error),
     );
@@ -452,7 +560,7 @@ async function handleReconnect() {
 
 async function handleKeys(bytes: string) {
     await sendKeys(bytes).catch((error) =>
-        logTerminalActionError('send', error),
+        handleTerminalActionError('send', error),
     );
 }
 

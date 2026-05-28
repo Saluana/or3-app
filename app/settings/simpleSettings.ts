@@ -126,8 +126,8 @@ export interface SimpleSettingControl {
     presets?: SimpleSettingPreset[]
     /** Used by toggles and other simple controls that target one field. */
     toggle?: {
-        on: SimpleSettingChange
-        off: SimpleSettingChange
+        on: SimpleSettingChange | SimpleSettingChange[]
+        off: SimpleSettingChange | SimpleSettingChange[]
     }
     /** Optional connection metadata for kind: 'connection-card'. */
     connection?: {

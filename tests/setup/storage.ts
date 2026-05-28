@@ -1,4 +1,6 @@
-import { beforeEach, vi } from 'vitest'
+import { afterEach, beforeEach, vi } from 'vitest';
+import { resetChatSessionIndexesForTests } from '../../app/composables/useChatSessions';
+import { clearNuxtAppStateForTests } from '../stubs/nuxt-app';
 
 function makeStorage(): Storage {
   const store = new Map<string, string>()
@@ -28,3 +30,8 @@ beforeEach(() => {
   vi.stubGlobal('localStorage', makeStorage())
   vi.stubGlobal('sessionStorage', makeStorage())
 })
+
+afterEach(() => {
+  resetChatSessionIndexesForTests();
+  clearNuxtAppStateForTests();
+});

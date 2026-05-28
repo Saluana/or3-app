@@ -461,3 +461,7 @@ export function useApprovals() {
         stopPolling,
     };
 }
+
+if (import.meta.hot) {
+    import.meta.hot.dispose(() => stopApprovalsPolling());
+}
