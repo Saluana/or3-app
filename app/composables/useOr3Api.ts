@@ -4,6 +4,12 @@ import type { AuthChallengeCode, AuthChallengeError } from '~/types/auth';
 import type { Or3SseEvent } from '~/types/or3-api';
 import { createLogger } from '~/utils/logger';
 import { getActiveTraceId } from '~/utils/logTrace';
+import {
+    logHostNetworkError,
+    suppressOr3ApiNetworkErrorLogsFor,
+} from '~/utils/or3ApiNetworkLogs';
+
+export { suppressOr3ApiNetworkErrorLogsFor };
 import { readSseStream } from '~/utils/or3/sse';
 import {
     buildSecureSessionStartPayload,
@@ -21,7 +27,6 @@ import {
     withResolvedHostTokens,
 } from './useSecureHostTokens';
 
-let suppressNetworkErrorLogsUntil = 0;
 let hostAuthCooldownUntil = 0;
 let hostAuthCooldownMessage = '';
 const inflightGetRequests = new Map<string, Promise<unknown>>();
@@ -99,18 +104,6 @@ function destinationMatchesTokenOrigin(
     const activeOrigin = normalizedHostOrigin(activeBaseUrl);
     if (!destinationOrigin || !activeOrigin) return false;
     return destinationOrigin === activeOrigin;
-}
-
-export function suppressOr3ApiNetworkErrorLogsFor(ms: number) {
-    const duration = Math.max(0, Number(ms) || 0);
-    suppressNetworkErrorLogsUntil = Math.max(
-        suppressNetworkErrorLogsUntil,
-        Date.now() + duration,
-    );
-}
-
-function shouldLogNetworkError() {
-    return Date.now() > suppressNetworkErrorLogsUntil;
 }
 
 function isAbortError(value: unknown) {
@@ -617,24 +610,16 @@ export function useOr3Api() {
             if (trackHostStatus && shouldUpdateHostStatusFromRequest()) {
                 updateActiveHostStatus('offline', options.baseUrl);
             }
-            const payload = {
-                path,
-                method,
-                ...serializeErrorForLog(error),
-            };
-            if (shouldLogNetworkError()) {
-                logger.error(
-                    'request:network_error',
-                    'Could not reach host',
-                    payload,
-                );
-            } else {
-                logger.debug(
-                    'request:network_error_suppressed',
-                    'Host is restarting',
-                    payload,
-                );
-            }
+            logHostNetworkError(
+                logger,
+                'request',
+                options.baseUrl || activeHost.value?.baseUrl,
+                {
+                    path,
+                    method,
+                    ...serializeErrorForLog(error),
+                },
+            );
             throw {
                 code: 'host_unreachable',
                 message: 'Could not reach the selected computer.',
@@ -670,10 +655,19 @@ export function useOr3Api() {
                         ? payload.trace_id
                         : undefined),
             };
+            const requiresApproval =
+                typeof payload === 'object' &&
+                payload.requires_approval === true;
             if (response.status === 401 || response.status === 403) {
                 logger.debug(
                     'request:auth_error',
                     'Request returned an auth error response',
+                    errorMeta,
+                );
+            } else if (requiresApproval) {
+                logger.info(
+                    'request:approval_required',
+                    'Action is waiting for operator approval',
                     errorMeta,
                 );
             } else {
@@ -811,9 +805,10 @@ export function useOr3Api() {
                     cause: error,
                 } satisfies Or3AppError;
             }
-            logger.error(
-                'stream:network_error',
-                'Could not reach host stream',
+            logHostNetworkError(
+                logger,
+                'stream:network',
+                options.baseUrl || activeHost.value?.baseUrl,
                 {
                     path,
                     method,
@@ -888,10 +883,15 @@ export function useOr3Api() {
                     cause: error,
                 } satisfies Or3AppError;
             }
-            logger.error('stream:error', 'SSE stream failed while reading', {
-                path,
-                ...serializeErrorForLog(error),
-            });
+            logHostNetworkError(
+                logger,
+                'stream:read',
+                options.baseUrl || activeHost.value?.baseUrl,
+                {
+                    path,
+                    ...serializeErrorForLog(error),
+                },
+            );
             throw error;
         } finally {
             logger.info('stream:close', 'SSE stream closed', { path });

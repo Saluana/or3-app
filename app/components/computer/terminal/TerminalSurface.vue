@@ -201,11 +201,11 @@ defineExpose({
 }
 
 @media (hover: hover) and (pointer: fine) {
-    .or3-terminal-stage {
-        gap: 0;
+    .or3-terminal-stage__foot {
+        padding-top: 4px;
     }
 
-    .or3-terminal-stage__foot {
+    .or3-terminal-stage__keys-wrap {
         display: none;
     }
 }

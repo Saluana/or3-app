@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue';
+import { ref } from 'vue';
 import { getActiveTraceId } from '~/utils/logTrace';
 
 export type ChatRuntimeLogLevel = 'debug' | 'info' | 'warn' | 'error';
@@ -60,7 +60,6 @@ export function useChatRuntimeLog() {
             (typeof data?.trace_id === 'string' ? data.trace_id.trim() : '') ||
             undefined;
         entries.value = [
-            ...entries.value,
             {
                 id: createId(),
                 createdAt: new Date().toISOString(),
@@ -71,19 +70,16 @@ export function useChatRuntimeLog() {
                 data: redactValue(data) as Record<string, unknown> | undefined,
                 traceId: normalizedTraceId,
             },
-        ].slice(-MAX_ENTRIES);
+            ...entries.value,
+        ].slice(0, MAX_ENTRIES);
     }
 
     function clear() {
         entries.value = [];
     }
 
-    const exportText = computed(() => JSON.stringify(entries.value, null, 2));
-
     return {
         entries,
-        latestEntries: computed(() => [...entries.value].reverse()),
-        exportText,
         add,
         clear,
     };

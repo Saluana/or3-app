@@ -120,7 +120,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
+import { useDebouncedRef } from '~/composables/useDebouncedRef';
 import type { ChatSessionMeta } from '~/types/or3-api';
 import EditNameModal from '~/components/app/EditNameModal.vue';
 
@@ -140,21 +141,9 @@ const emit = defineEmits<{
 }>();
 
 const query = ref('');
-const debouncedSearchQuery = ref('');
-let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-watch(
-    query,
-    (value) => {
-        if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
-        searchDebounceTimer = setTimeout(() => {
-            debouncedSearchQuery.value = value.trim().toLowerCase();
-        }, 150);
-    },
-    { immediate: true },
+const debouncedSearchQuery = useDebouncedRef(query, 150, (value) =>
+    value.trim().toLowerCase(),
 );
-onBeforeUnmount(() => {
-    if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
-});
 
 function sessionSearchHaystack(session: ChatSessionMeta) {
     return [session.title, session.last_message_preview, session.runner_label, session.runner_id]

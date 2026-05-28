@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue';
+import { ref } from 'vue';
 import { describeRequestError } from '~/utils/assistant-stream/errors';
 import { createLogger } from '~/utils/logger';
 import { useOr3Api } from './useOr3Api';
@@ -33,6 +33,7 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectAttempt = 0;
 let manualDisconnect = false;
 let localCollisionId = 0;
+const seenEntryIds = new Set<string>();
 
 function normalizeLevel(value: unknown): ServerLogLevel {
     if (value === 'debug' || value === 'warn' || value === 'error')
@@ -75,12 +76,16 @@ function buildQuery(filters: ServerLogFilters) {
 }
 
 function pushEntry(entry: ServerLogEntry) {
-    const nextEntry = entries.value.some((existing) => existing.id === entry.id)
-        ? { ...entry, id: `${entry.id}_${++localCollisionId}` }
-        : entry;
-    entries.value = [...entries.value, nextEntry].slice(
-        -MAX_SERVER_LOG_ENTRIES,
-    );
+    let nextEntry = entry;
+    if (seenEntryIds.has(entry.id)) {
+        nextEntry = { ...entry, id: `${entry.id}_${++localCollisionId}` };
+    }
+    seenEntryIds.add(nextEntry.id);
+    entries.value.unshift(nextEntry);
+    if (entries.value.length > MAX_SERVER_LOG_ENTRIES) {
+        const removed = entries.value.pop();
+        if (removed) seenEntryIds.delete(removed.id);
+    }
 }
 
 function clearReconnectTimer() {
@@ -163,20 +168,28 @@ export function useServerLogs() {
 
     function clear() {
         entries.value = [];
+        seenEntryIds.clear();
     }
-
-    const latestEntries = computed(() => [...entries.value].reverse());
-    const exportText = computed(() => JSON.stringify(entries.value, null, 2));
 
     return {
         entries,
-        latestEntries,
         isStreaming,
         error,
         activeFilters,
-        exportText,
         connect,
         disconnect,
         clear,
     };
+}
+
+function teardownServerLogs() {
+    manualDisconnect = true;
+    clearReconnectTimer();
+    controller?.abort();
+    controller = null;
+    isStreaming.value = false;
+}
+
+if (import.meta.hot) {
+    import.meta.hot.dispose(teardownServerLogs);
 }

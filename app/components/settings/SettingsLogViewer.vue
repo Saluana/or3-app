@@ -93,6 +93,7 @@
                 v-for="entry in paginatedEntries"
                 :key="entry.id"
                 class="group border-b border-(--or3-border) px-4 py-2 last:border-b-0"
+                @toggle="onEntryToggle(entry, $event)"
             >
                 <summary
                     class="or3-focus-ring flex cursor-pointer list-none flex-wrap items-center gap-2 rounded-md py-1"
@@ -130,9 +131,9 @@
                     trace={{ entryTrace(entry) }}
                 </div>
                 <pre
-                    v-if="entryPayload(entry)"
+                    v-if="openEntryPayloads[entry.id]"
                     class="mt-2 whitespace-pre-wrap break-all rounded-lg bg-(--or3-surface-muted) p-2 font-mono text-[10px] leading-4 text-(--or3-text-muted)"
-                    >{{ entryPayload(entry) }}</pre
+                    >{{ openEntryPayloads[entry.id] }}</pre
                 >
             </details>
         </div>
@@ -184,7 +185,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, reactive, ref, watch } from 'vue';
+import { useDebouncedRef } from '~/composables/useDebouncedRef';
 
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 type LevelFilter = LogLevel | 'all';
@@ -234,8 +236,11 @@ const emit = defineEmits<{
 const selectedLevel = ref<LevelFilter>('all');
 const componentQuery = ref('');
 const traceQuery = ref('');
+const debouncedComponentQuery = useDebouncedRef(componentQuery, 200);
+const debouncedTraceQuery = useDebouncedRef(traceQuery, 200);
 const currentPage = ref(1);
 const listViewport = ref<HTMLElement | null>(null);
+const openEntryPayloads = reactive<Record<string, string>>({});
 const levelOptions: Array<{ value: LevelFilter; label: string }> = [
     { value: 'all', label: 'All' },
     { value: 'debug', label: 'Debug' },
@@ -268,14 +273,38 @@ function entryTrace(entry: SettingsLogViewerEntry) {
     return entry.traceId || '';
 }
 
-function entryPayload(entry: SettingsLogViewerEntry) {
+function formatEntryPayload(entry: SettingsLogViewerEntry) {
     const payload = entry.data || entry.fields;
     return payload ? JSON.stringify(payload, null, 2) : '';
 }
 
+function onEntryToggle(entry: SettingsLogViewerEntry, event: Event) {
+    const details = event.target as HTMLDetailsElement | null;
+    if (!details?.open) {
+        delete openEntryPayloads[entry.id];
+        return;
+    }
+    const formatted = formatEntryPayload(entry);
+    if (formatted) openEntryPayloads[entry.id] = formatted;
+}
+
+function clearOpenEntryPayloads() {
+    for (const key of Object.keys(openEntryPayloads)) {
+        delete openEntryPayloads[key];
+    }
+}
+
+watch(
+    () => props.entries,
+    (next, prev) => {
+        // In-place prepends keep the same array reference during streaming.
+        if (next !== prev) clearOpenEntryPayloads();
+    },
+);
+
 const filteredEntries = computed(() => {
-    const component = componentQuery.value.trim().toLowerCase();
-    const trace = traceQuery.value.trim().toLowerCase();
+    const component = debouncedComponentQuery.value.trim().toLowerCase();
+    const trace = debouncedTraceQuery.value.trim().toLowerCase();
     return props.entries.filter((entry) => {
         if (
             selectedLevel.value !== 'all' &&
@@ -313,9 +342,12 @@ const visibleEnd = computed(() => {
     );
 });
 
-watch([selectedLevel, componentQuery, traceQuery, pageSize], () => {
-    currentPage.value = 1;
-});
+watch(
+    [selectedLevel, debouncedComponentQuery, debouncedTraceQuery, pageSize],
+    () => {
+        currentPage.value = 1;
+    },
+);
 
 watch(
     pageCount,

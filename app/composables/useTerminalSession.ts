@@ -3,9 +3,14 @@ import type {
     CreateTerminalSessionRequest,
     TerminalSessionSnapshot,
 } from '~/types/or3-api';
+import {
+    approvalIdFromError,
+    isApprovalRequiredError,
+} from '~/utils/approval-errors';
 import { createLogger } from '~/utils/logger';
 import { useApprovals } from './useApprovals';
 import { useOr3Api } from './useOr3Api';
+import { createTerminalTransport } from './terminal/transport';
 
 const logger = createLogger('terminal');
 
@@ -17,30 +22,14 @@ const terminalChunks = ref<{ id: number; data: string }[]>([]);
 let chunkSeq = 0;
 const terminalError = ref<string | null>(null);
 const terminalBusy = ref(false);
-const terminalStreaming = ref(false);
 const terminalUnavailable = ref(false);
 const pendingApprovalId = ref<number | null>(null);
 const lastLaunchPayload = ref<CreateTerminalSessionRequest | null>(null);
 const activeSessions = ref<TerminalSessionSnapshot[]>([]);
 const sessionListingUnsupported = ref(false);
-let streamAbortController: AbortController | null = null;
-let terminalSocket: WebSocket | null = null;
-let terminalSocketSessionId: string | null = null;
-let terminalSocketConnecting: Promise<boolean> | null = null;
-let terminalWebSocketUnsupported = false;
 
-const terminalWebSocketProtocol = 'or3.terminal.v1';
-const terminalWebSocketTicketPrefix = 'or3.ticket.';
-
-type TerminalWebSocketTicketResponse = {
-    ticket: string;
-    expires_at?: string;
-};
-
-type TerminalWebSocketEvent = {
-    type?: string;
-    data?: Record<string, any>;
-};
+const terminalLineLimit = 600;
+const terminalChunkLimit = 2000;
 
 type PersistedTerminalSession = {
     sessionId: string;
@@ -48,40 +37,37 @@ type PersistedTerminalSession = {
 };
 
 function appendTerminalLine(line: string) {
-    terminalLines.value = [...terminalLines.value, line].slice(-600);
+    const lines = terminalLines.value;
+    lines.push(line);
+    if (lines.length > terminalLineLimit) {
+        lines.splice(0, lines.length - terminalLineLimit);
+    }
 }
 
 function appendTerminalChunk(chunk: string) {
     if (!chunk) return;
     chunkSeq += 1;
-    terminalChunks.value = [
+    const next = [
         ...terminalChunks.value,
         { id: chunkSeq, data: chunk },
-    ].slice(-2000);
+    ];
+    if (next.length > terminalChunkLimit) {
+        terminalChunks.value = next.slice(next.length - terminalChunkLimit);
+        return;
+    }
+    terminalChunks.value = next;
 }
 
-function approvalIdFromError(error: any) {
-    const id =
-        error?.request_id ??
-        error?.approval_id ??
-        error?.cause?.request_id ??
-        error?.cause?.approval_id;
-    if (typeof id === 'number') return id;
-    if (typeof id !== 'string' || !id.trim()) return null;
-    const numericId = Number(id);
-    return Number.isFinite(numericId) ? numericId : null;
+function isTerminalSessionMissing(error: unknown) {
+    return (error as { status?: number })?.status === 404;
 }
 
-function isTerminalSessionMissing(error: any) {
-    return error?.status === 404;
+function isTerminalSessionConflict(error: unknown) {
+    return (error as { status?: number })?.status === 409;
 }
 
-function isTerminalSessionConflict(error: any) {
-    return error?.status === 409;
-}
-
-function isMethodNotAllowed(error: any) {
-    return error?.status === 405;
+function isMethodNotAllowed(error: unknown) {
+    return (error as { status?: number })?.status === 405;
 }
 
 function storageAvailable() {
@@ -137,7 +123,7 @@ function applySession(nextSession: TerminalSessionSnapshot | null) {
     writePersistedTerminalSession(nextSession);
 }
 
-function handleMissingSession(error: any, fallbackMessage: string) {
+function handleMissingSession(error: unknown, fallbackMessage: string) {
     if (!isTerminalSessionMissing(error)) return false;
     resetTerminalState();
     terminalError.value = fallbackMessage;
@@ -145,56 +131,97 @@ function handleMissingSession(error: any, fallbackMessage: string) {
 }
 
 function resetTerminalState() {
-    detachTerminalStream();
+    getTransport().detach();
     chunkSeq = 0;
     session.value = null;
     terminalLines.value = [];
     terminalChunks.value = [];
     terminalBusy.value = false;
-    terminalStreaming.value = false;
     writePersistedTerminalSession(null);
 }
 
-function detachTerminalStream() {
-    streamAbortController?.abort();
-    streamAbortController = null;
-    closeTerminalSocket();
-    terminalStreaming.value = false;
-}
-
-function closeTerminalSocket() {
-    const socket = terminalSocket;
-    terminalSocket = null;
-    terminalSocketSessionId = null;
-    terminalSocketConnecting = null;
-    if (!socket) return;
-    try {
-        socket.onopen = null;
-        socket.onmessage = null;
-        socket.onerror = null;
-        socket.onclose = null;
-        socket.close();
-    } catch {
-        // Best effort cleanup only.
+function applyTerminalEvent(
+    eventType?: string,
+    payload?: Record<string, unknown>,
+) {
+    switch (eventType) {
+        case 'snapshot':
+            if (payload) applySession(payload as TerminalSessionSnapshot);
+            break;
+        case 'output': {
+            const chunk = String(payload?.chunk ?? '');
+            appendTerminalChunk(chunk);
+            const stripped = chunk.replace(/\x1b\[[0-9;?]*[ -\/]*[@-~]/g, '');
+            if (stripped) appendTerminalLine(stripped);
+            break;
+        }
+        case 'input':
+            break;
+        case 'error':
+            if (payload?.error) {
+                appendTerminalLine(`\n[error] ${String(payload.error)}\n`);
+            }
+            break;
+        case 'status':
+            if (session.value && payload?.status) {
+                applySession({
+                    ...session.value,
+                    status: String(payload.status),
+                });
+            }
+            break;
+        case 'resize':
+            if (session.value) {
+                applySession({
+                    ...session.value,
+                    rows: Number(payload?.rows ?? session.value.rows),
+                    cols: Number(payload?.cols ?? session.value.cols),
+                });
+            }
+            break;
     }
 }
 
-function terminalSocketReady(sessionId = session.value?.session_id) {
-    return Boolean(
-        sessionId &&
-        terminalSocket &&
-        terminalSocketSessionId === sessionId &&
-        terminalSocket.readyState === WebSocket.OPEN,
-    );
+let transport: ReturnType<typeof createTerminalTransport> | null = null;
+
+/** Lazily creates transport; requires Nuxt composable context (or mocked useOr3Api in tests). */
+function getTransport() {
+    if (!transport) {
+        transport = createTerminalTransport({
+            api: useOr3Api(),
+            session,
+            onStreamEvent: applyTerminalEvent,
+            onMissingSession: handleMissingSession,
+            setTerminalError: (message) => {
+                terminalError.value = message;
+            },
+        });
+    }
+    return transport;
 }
 
 export function useTerminalSession() {
     const api = useOr3Api();
+    const transport = getTransport();
     const { consumeIssuedApprovalToken } = useApprovals();
 
     const transcript = computed(() => terminalLines.value.join(''));
     const status = computed(() => session.value?.status ?? 'idle');
     const isInteractive = computed(() => session.value?.status === 'running');
+    const terminalStreaming = transport.terminalStreaming;
+    const terminalTransportDisconnected = transport.terminalTransportDisconnected;
+    const canInteract = computed(
+        () => isInteractive.value && terminalStreaming.value,
+    );
+    const reconnectMode = computed<'transport' | 'session' | null>(() => {
+        if (terminalTransportDisconnected.value && isInteractive.value) {
+            return 'transport';
+        }
+        if (session.value && session.value.status !== 'running') {
+            return 'session';
+        }
+        return null;
+    });
 
     async function listSessions() {
         if (sessionListingUnsupported.value) {
@@ -209,7 +236,7 @@ export function useTerminalSession() {
             activeSessions.value = (response.items ?? []).filter(
                 (item) => item.status === 'running',
             );
-        } catch (error: any) {
+        } catch (error: unknown) {
             if (isMethodNotAllowed(error)) {
                 sessionListingUnsupported.value = true;
                 activeSessions.value = [];
@@ -240,9 +267,9 @@ export function useTerminalSession() {
             terminalLines.value = [`$ Reconnected to ${existing.cwd}\n`];
             terminalChunks.value = [];
             chunkSeq = 0;
-            void attach(existing.session_id);
+            void transport.attach(existing.session_id);
             return existing;
-        } catch (error: any) {
+        } catch (error: unknown) {
             if (
                 handleMissingSession(
                     error,
@@ -258,11 +285,11 @@ export function useTerminalSession() {
         }
     }
 
-    async function handleSessionConflict(error: any, fallbackMessage: string) {
+    async function handleSessionConflict(error: unknown, fallbackMessage: string) {
         if (!isTerminalSessionConflict(error)) return false;
         try {
             await refresh();
-        } catch (refreshError: any) {
+        } catch (refreshError: unknown) {
             if (
                 handleMissingSession(
                     refreshError,
@@ -311,7 +338,10 @@ export function useTerminalSession() {
         }
         pendingApprovalId.value = null;
         rememberLaunchPayload(launchPayload);
-        streamAbortController?.abort();
+        const previousSessionId = session.value?.session_id ?? null;
+        // #region agent log
+        fetch('http://127.0.0.1:7845/ingest/f9918b6c-53f1-4b7a-a810-8a4b7fbf8eb8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8186a8'},body:JSON.stringify({sessionId:'8186a8',location:'useTerminalSession.ts:start:pre-request',message:'terminal start requested',data:{previousSessionId,rootId:launchPayload.root_id,path:launchPayload.path,hasApprovalToken:Boolean(launchPayload.approval_token)},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+        // #endregion
 
         try {
             const created = await api.request<TerminalSessionSnapshot>(
@@ -326,12 +356,34 @@ export function useTerminalSession() {
             applySession(created);
             terminalLines.value = [`$ Connected to ${created.cwd}\n`];
             await listSessions().catch(() => {});
-            void attach(created.session_id);
-        } catch (error: any) {
-            terminalError.value =
-                error?.message ?? 'Unable to start a terminal session.';
-            terminalUnavailable.value = error?.status === 503;
+            void transport.attach(created.session_id);
+            // #region agent log
+            fetch('http://127.0.0.1:7845/ingest/f9918b6c-53f1-4b7a-a810-8a4b7fbf8eb8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8186a8'},body:JSON.stringify({sessionId:'8186a8',location:'useTerminalSession.ts:start:success',message:'terminal start succeeded',data:{sessionId:created.session_id,status:created.status,cwd:created.cwd},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+            // #endregion
+        } catch (error: unknown) {
+            const err = error as {
+                status?: number;
+                message?: string;
+                request_id?: number | string;
+                requires_approval?: boolean;
+            };
             pendingApprovalId.value = approvalIdFromError(error);
+            if (isApprovalRequiredError(error)) {
+                terminalError.value = null;
+                if (
+                    previousSessionId &&
+                    session.value?.session_id === previousSessionId
+                ) {
+                    void transport.attach(previousSessionId);
+                }
+            } else {
+                terminalError.value =
+                    err?.message ?? 'Unable to start a terminal session.';
+            }
+            terminalUnavailable.value = err?.status === 503;
+            // #region agent log
+            fetch('http://127.0.0.1:7845/ingest/f9918b6c-53f1-4b7a-a810-8a4b7fbf8eb8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8186a8'},body:JSON.stringify({sessionId:'8186a8',location:'useTerminalSession.ts:start:error',message:'terminal start failed',data:{status:err?.status,message:err?.message,pendingApprovalId:pendingApprovalId.value,previousSessionId,currentSessionId:session.value?.session_id??null,sessionStatus:session.value?.status??null,streaming:terminalStreaming.value,transportDisconnected:terminalTransportDisconnected.value,approvalRequired:isApprovalRequiredError(error)},timestamp:Date.now(),hypothesisId:'H1-H2-H5'})}).catch(()=>{});
+            // #endregion
             throw error;
         } finally {
             terminalBusy.value = false;
@@ -356,9 +408,9 @@ export function useTerminalSession() {
             const restored = await refresh(persisted.sessionId);
             if (!restored) return null;
             await listSessions().catch(() => {});
-            void attach(restored.session_id);
+            void transport.attach(restored.session_id);
             return restored;
-        } catch (error: any) {
+        } catch (error: unknown) {
             if (
                 handleMissingSession(
                     error,
@@ -389,204 +441,42 @@ export function useTerminalSession() {
         if (!id) return false;
         const payload = buildReconnectPayload();
         if (!payload?.root_id) return false;
-        resetTerminalState();
+        if (!session.value?.session_id) {
+            resetTerminalState();
+        }
         terminalError.value = null;
+        pendingApprovalId.value = null;
         await start(payload, id);
         return true;
     }
 
-    async function attach(sessionId = session.value?.session_id) {
-        if (!sessionId) return;
-        streamAbortController?.abort();
-        closeTerminalSocket();
-        const activeStreamController = new AbortController();
-        streamAbortController = activeStreamController;
-        terminalStreaming.value = true;
+    async function reattachTransport() {
+        const sessionId = session.value?.session_id;
+        if (!sessionId || session.value?.status !== 'running') return;
+        terminalError.value = null;
+        await transport.attach(sessionId);
+    }
 
-        if (await attachWebSocket(sessionId)) {
-            if (streamAbortController === activeStreamController) {
-                streamAbortController = null;
-            }
+    async function writeToTerminal(input: string) {
+        if (!session.value || !input || !canInteract.value) {
+            // #region agent log
+            fetch('http://127.0.0.1:7845/ingest/f9918b6c-53f1-4b7a-a810-8a4b7fbf8eb8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8186a8'},body:JSON.stringify({sessionId:'8186a8',location:'useTerminalSession.ts:writeToTerminal:blocked',message:'input blocked',data:{hasSession:Boolean(session.value),inputLength:input.length,canInteract:canInteract.value,sessionStatus:session.value?.status??null,streaming:terminalStreaming.value,pendingApprovalId:pendingApprovalId.value},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+            // #endregion
             return;
         }
 
-        try {
-            for await (const event of api.stream(
-                `/internal/v1/terminal/sessions/${sessionId}/stream`,
-                {
-                    method: 'GET',
-                    signal: activeStreamController.signal,
-                },
-            )) {
-                applyTerminalEvent(
-                    event.event,
-                    event.json as Record<string, any> | undefined,
-                );
-            }
-        } catch (error: any) {
-            if (activeStreamController.signal.aborted) return;
-            if (
-                handleMissingSession(
-                    error,
-                    'Terminal session expired or was cleared. Start a new session.',
-                )
-            )
-                return;
-            terminalError.value =
-                error?.message ?? 'Terminal stream ended unexpectedly.';
-        } finally {
-            if (streamAbortController === activeStreamController) {
-                streamAbortController = null;
-                terminalStreaming.value = false;
-            }
-        }
-    }
-
-    function applyTerminalEvent(
-        eventType?: string,
-        payload?: Record<string, any>,
-    ) {
-        switch (eventType) {
-            case 'snapshot':
-                if (payload) applySession(payload as TerminalSessionSnapshot);
-                break;
-            case 'output':
-                {
-                    const chunk = String(payload?.chunk ?? '');
-                    appendTerminalChunk(chunk);
-                    // Keep a stripped, ANSI-free preview for legacy consumers (no xterm).
-                    const stripped = chunk.replace(
-                        /\x1b\[[0-9;?]*[ -\/]*[@-~]/g,
-                        '',
-                    );
-                    if (stripped) appendTerminalLine(stripped);
-                }
-                break;
-            case 'input':
-                break;
-            case 'error':
-                if (payload?.error)
-                    appendTerminalLine(`\n[error] ${String(payload.error)}\n`);
-                break;
-            case 'status':
-                if (session.value && payload?.status) {
-                    applySession({
-                        ...session.value,
-                        status: String(payload.status),
-                    });
-                }
-                break;
-            case 'resize':
-                if (session.value) {
-                    applySession({
-                        ...session.value,
-                        rows: Number(payload?.rows ?? session.value.rows),
-                        cols: Number(payload?.cols ?? session.value.cols),
-                    });
-                }
-                break;
-        }
-    }
-
-    async function attachWebSocket(sessionId: string) {
-        if (terminalWebSocketUnsupported) return false;
-        if (!process.client || typeof WebSocket === 'undefined') return false;
-        terminalSocketConnecting = connectTerminalWebSocket(sessionId);
-        return await terminalSocketConnecting;
-    }
-
-    async function connectTerminalWebSocket(sessionId: string) {
-        let ticketResponse: TerminalWebSocketTicketResponse;
-        try {
-            ticketResponse = await api.request<TerminalWebSocketTicketResponse>(
-                `/internal/v1/terminal/sessions/${sessionId}/ws-ticket`,
-                {
-                    method: 'POST',
-                },
-            );
-        } catch (error: any) {
-            if (
-                isTerminalSessionMissing(error) ||
-                isMethodNotAllowed(error) ||
-                error?.status === 400
-            ) {
-                terminalWebSocketUnsupported = true;
-                return false;
-            }
-            if (
-                handleMissingSession(
-                    error,
-                    'Terminal session expired or was cleared. Start a new session.',
-                )
-            )
-                return true;
-            terminalError.value =
-                error?.message ?? 'Terminal WebSocket ticket request failed.';
-            return false;
-        }
-        const ticket = ticketResponse?.ticket?.trim();
-        if (!ticket) return false;
-
-        return await new Promise<boolean>((resolve) => {
-            let settled = false;
-            const wsUrl = api
-                .buildUrl(`/internal/v1/terminal/sessions/${sessionId}/ws`)
-                .replace(/^http:/i, 'ws:')
-                .replace(/^https:/i, 'wss:');
-            const socket = new WebSocket(wsUrl, [
-                terminalWebSocketProtocol,
-                `${terminalWebSocketTicketPrefix}${ticket}`,
-            ]);
-            terminalSocket = socket;
-            terminalSocketSessionId = sessionId;
-
-            const settle = (value: boolean) => {
-                if (settled) return;
-                settled = true;
-                resolve(value);
-            };
-
-            socket.onopen = () => {
-                streamAbortController?.abort();
-                terminalStreaming.value = true;
-                settle(true);
-            };
-            socket.onmessage = (message) => {
-                try {
-                    const event = JSON.parse(
-                        String(message.data),
-                    ) as TerminalWebSocketEvent;
-                    applyTerminalEvent(event.type, event.data);
-                } catch {
-                    appendTerminalLine(
-                        '\n[error] Invalid terminal WebSocket event.\n',
-                    );
-                }
-            };
-            socket.onerror = () => {
-                if (!settled) {
-                    closeTerminalSocket();
-                    settle(false);
-                }
-            };
-            socket.onclose = () => {
-                if (terminalSocket === socket) {
-                    terminalSocket = null;
-                    terminalSocketSessionId = null;
-                }
-                terminalStreaming.value = false;
-                settle(false);
-            };
-        });
-    }
-
-    async function sendInput(input: string) {
-        if (!session.value || !input || session.value.status !== 'running')
-            return;
-        if (terminalSocketReady()) {
-            terminalSocket?.send(JSON.stringify({ type: 'input', input }));
+        if (
+            transport.sendSocketPayload({
+                type: 'input',
+                input,
+            })
+        ) {
+            // #region agent log
+            fetch('http://127.0.0.1:7845/ingest/f9918b6c-53f1-4b7a-a810-8a4b7fbf8eb8',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8186a8'},body:JSON.stringify({sessionId:'8186a8',location:'useTerminalSession.ts:writeToTerminal:ws',message:'input sent via websocket',data:{inputLength:input.length,sessionId:session.value.session_id},timestamp:Date.now(),hypothesisId:'H-input',runId:'post-fix-2'})}).catch(()=>{});
+            // #endregion
             return;
         }
+
         try {
             await api.request(
                 `/internal/v1/terminal/sessions/${session.value.session_id}/input`,
@@ -595,7 +485,7 @@ export function useTerminalSession() {
                     body: { input },
                 },
             );
-        } catch (error: any) {
+        } catch (error: unknown) {
             if (
                 handleMissingSession(
                     error,
@@ -611,61 +501,28 @@ export function useTerminalSession() {
             )
                 return;
             terminalError.value =
-                error?.message ?? 'Could not send input to the terminal.';
+                (error as { message?: string })?.message ??
+                'Could not send input to the terminal.';
             appendTerminalLine(`\n[error] ${terminalError.value}\n`);
             throw error;
         }
     }
 
-    // sendKeys writes raw bytes (no implicit newline) and is used by the on-screen
-    // key row + Ctrl chord palette + xterm.onData. We deliberately reuse the same
-    // /input endpoint: server-side it already proxies to PTY stdin verbatim.
+    /** Sends raw terminal input; HTTP fallback handles 409 session conflicts. */
     async function sendKeys(bytes: string) {
-        if (!session.value || !bytes || session.value.status !== 'running')
-            return;
-        if (terminalSocketReady()) {
-            terminalSocket?.send(
-                JSON.stringify({ type: 'input', input: bytes }),
-            );
-            return;
-        }
-        try {
-            await api.request(
-                `/internal/v1/terminal/sessions/${session.value.session_id}/input`,
-                {
-                    method: 'POST',
-                    body: { input: bytes },
-                },
-            );
-        } catch (error: any) {
-            if (
-                handleMissingSession(
-                    error,
-                    'Terminal session expired or was closed. Open a new terminal to continue.',
-                )
-            )
-                return;
-            if (
-                await handleSessionConflict(
-                    error,
-                    'This terminal is no longer writable. Reconnect to start a fresh shell.',
-                )
-            )
-                return;
-            terminalError.value =
-                error?.message ?? 'Could not send input to the terminal.';
-            appendTerminalLine(`\n[error] ${terminalError.value}\n`);
-            throw error;
-        }
+        await writeToTerminal(bytes);
     }
 
     async function resize(rows: number, cols: number) {
         if (!session.value || session.value.status !== 'running') return;
-        if (terminalSocketReady()) {
-            terminalSocket?.send(
-                JSON.stringify({ type: 'resize', rows, cols }),
-            );
-            if (session.value) applySession({ ...session.value, rows, cols });
+        if (
+            transport.sendSocketPayload({
+                type: 'resize',
+                rows,
+                cols,
+            })
+        ) {
+            applySession({ ...session.value, rows, cols });
             return;
         }
         try {
@@ -676,7 +533,7 @@ export function useTerminalSession() {
                     body: { rows, cols },
                 },
             );
-        } catch (error: any) {
+        } catch (error: unknown) {
             if (
                 handleMissingSession(
                     error,
@@ -692,21 +549,21 @@ export function useTerminalSession() {
             )
                 return;
             terminalError.value =
-                error?.message ?? 'Could not resize the terminal.';
+                (error as { message?: string })?.message ??
+                'Could not resize the terminal.';
             throw error;
         }
-        if (session.value) applySession({ ...session.value, rows, cols });
+        applySession({ ...session.value, rows, cols });
     }
 
     async function close() {
         if (!session.value) return;
         const sessionId = session.value.session_id;
-        streamAbortController?.abort();
-        streamAbortController = null;
-        if (terminalSocketReady(sessionId)) {
-            terminalSocket?.send(JSON.stringify({ type: 'close' }));
-            closeTerminalSocket();
+        if (transport.terminalSocketReady(sessionId)) {
+            transport.sendSocketPayload({ type: 'close' });
+            transport.closeTerminalSocket();
         } else {
+            transport.detach();
             await api.request(
                 `/internal/v1/terminal/sessions/${sessionId}/close`,
                 { method: 'POST' },
@@ -723,7 +580,7 @@ export function useTerminalSession() {
         terminalUnavailable.value = false;
         pendingApprovalId.value = null;
         sessionListingUnsupported.value = false;
-        terminalWebSocketUnsupported = false;
+        transport.resetWebSocketCapability();
     }
 
     return {
@@ -735,24 +592,48 @@ export function useTerminalSession() {
         terminalError,
         terminalBusy,
         terminalStreaming,
+        terminalTransportDisconnected,
         terminalUnavailable,
         pendingApprovalId,
         status,
         isInteractive,
+        canInteract,
+        reconnectMode,
         sessionListingUnsupported,
         listSessions,
         attachExistingSession,
         start,
         refresh,
-        attach,
-        detach: detachTerminalStream,
+        attach: transport.attach,
+        reattachTransport,
+        detach: transport.detach,
         restoreSession,
         reconnect,
         resumePendingApproval,
-        sendInput,
         sendKeys,
         resize,
         close,
         reset,
     };
+}
+
+/** Resets module-scoped terminal state between unit tests. Mock useOr3Api before calling. */
+export function resetTerminalSessionModuleForTests() {
+    getTransport().resetTransportForTests();
+    chunkSeq = 0;
+    session.value = null;
+    terminalLines.value = [];
+    terminalChunks.value = [];
+    terminalBusy.value = false;
+    terminalError.value = null;
+    terminalUnavailable.value = false;
+    pendingApprovalId.value = null;
+    lastLaunchPayload.value = null;
+    activeSessions.value = [];
+    sessionListingUnsupported.value = false;
+}
+
+/** @internal Used by unit tests to assert transport invalidation. */
+export function getTerminalAttachGenerationForTests() {
+    return getTransport().getAttachGenerationForTests();
 }

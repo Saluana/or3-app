@@ -22,7 +22,8 @@ import type {
 } from '~/types/or3-api';
 import { createAssistantEventApplier } from '~/utils/assistant-stream/event-applier';
 import { isEmptyFinalUserMessage } from '~/utils/assistant-stream/userErrorCopy';
-import { suppressOr3ApiNetworkErrorLogsFor, useOr3Api } from './useOr3Api';
+import { useOr3Api } from './useOr3Api';
+import { useRestartNetworkLogSuppression } from './useRestartNetworkLogSuppression';
 import { useAuthSession } from './useAuthSession';
 import { useApprovals } from './useApprovals';
 import {
@@ -1056,6 +1057,8 @@ export function useDoctorAdminChat() {
     const authSession = useAuthSession();
     const approvals = useApprovals();
     const { activeHost } = useActiveHost();
+    const suppressNetworkErrorsForActiveHost =
+        useRestartNetworkLogSuppression();
 
     async function hydratePersistedSession() {
         const persisted = readPersistedSessionKey();
@@ -1450,7 +1453,7 @@ export function useDoctorAdminChat() {
                 'doctor-plan-apply',
             );
             if (store().applyResult.value?.restart_required) {
-                suppressOr3ApiNetworkErrorLogsFor(65000);
+                suppressNetworkErrorsForActiveHost();
             }
             return store().applyResult.value;
         } catch (err) {
@@ -1484,8 +1487,9 @@ export function useDoctorAdminChat() {
                     ),
                 'doctor-plan-rollback',
             );
-            if (result.restart_required)
-                suppressOr3ApiNetworkErrorLogsFor(65000);
+            if (result.restart_required) {
+                suppressNetworkErrorsForActiveHost();
+            }
             return result;
         } catch (err) {
             store().error.value = errorMessage(err);

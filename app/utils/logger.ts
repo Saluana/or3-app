@@ -24,7 +24,7 @@ const logLevelOrder: Record<ChatRuntimeLogLevel, number> = {
     error: 40,
 };
 
-function storageLogLevel(): ChatRuntimeLogLevel {
+function readStorageLogLevel(): ChatRuntimeLogLevel {
     if (typeof window === 'undefined' || !window.localStorage) return 'info';
     try {
         const value = window.localStorage.getItem('or3.logLevel')?.trim();
@@ -42,8 +42,17 @@ function storageLogLevel(): ChatRuntimeLogLevel {
     return 'info';
 }
 
+let cachedLogLevel: ChatRuntimeLogLevel | null = null;
+
+function getCachedLogLevel(): ChatRuntimeLogLevel {
+    if (cachedLogLevel === null) {
+        cachedLogLevel = readStorageLogLevel();
+    }
+    return cachedLogLevel;
+}
+
 function shouldLog(level: ChatRuntimeLogLevel) {
-    return logLevelOrder[level] >= logLevelOrder[storageLogLevel()];
+    return logLevelOrder[level] >= logLevelOrder[getCachedLogLevel()];
 }
 
 function consoleMethod(level: ChatRuntimeLogLevel) {
@@ -54,6 +63,7 @@ function consoleMethod(level: ChatRuntimeLogLevel) {
 }
 
 export function setDebugLoggingEnabled(enabled: boolean) {
+    cachedLogLevel = enabled ? 'debug' : 'info';
     if (typeof window === 'undefined' || !window.localStorage) return;
     try {
         if (enabled) {
@@ -67,7 +77,15 @@ export function setDebugLoggingEnabled(enabled: boolean) {
 }
 
 export function isDebugLoggingEnabled() {
-    return storageLogLevel() === 'debug';
+    return getCachedLogLevel() === 'debug';
+}
+
+if (typeof window !== 'undefined') {
+    window.addEventListener('storage', (event) => {
+        if (event.key === 'or3.logLevel') {
+            cachedLogLevel = null;
+        }
+    });
 }
 
 export function createLogger(component: string): AppLogger {
