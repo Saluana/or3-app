@@ -117,6 +117,122 @@ describe('assistant stream ordered parts', () => {
         });
     });
 
+    it('keeps streamed tool calls inline when completion includes final text', async () => {
+        useLocalCache().updateHost({
+            id: 'test-host',
+            name: 'Test Host',
+            baseUrl: 'http://127.0.0.1:9100',
+            token: 'secret',
+        });
+
+        streamEvents.push(
+            {
+                event: 'text_delta',
+                sequence: 1,
+                data: { content: 'First text.', job_id: 'job_parts' },
+            },
+            {
+                event: 'tool_call',
+                sequence: 2,
+                data: {
+                    name: 'web_fetch',
+                    arguments: '{"url":"https://example.com"}',
+                    tool_call_id: 'call_fetch',
+                    job_id: 'job_parts',
+                },
+            },
+            {
+                event: 'tool_result',
+                sequence: 3,
+                data: {
+                    name: 'web_fetch',
+                    result: 'page contents',
+                    tool_call_id: 'call_fetch',
+                    job_id: 'job_parts',
+                },
+            },
+            {
+                event: 'text_delta',
+                sequence: 4,
+                data: { content: ' Final text.', job_id: 'job_parts' },
+            },
+            {
+                event: 'completion',
+                sequence: 5,
+                data: {
+                    status: 'completed',
+                    final_text: 'First text. Final text.',
+                    job_id: 'job_parts',
+                },
+            },
+        );
+
+        await useAssistantStream().send('fetch and summarize');
+
+        const assistant = useChatSessions().messages.value.find(
+            (message) => message.role === 'assistant',
+        );
+        expect(assistant?.content).toBe('First text. Final text.');
+        expect(
+            assistant?.parts?.map((part) =>
+                part.type === 'text' ? part.content : part.name,
+            ),
+        ).toEqual(['First text.', 'web_fetch', 'Final text.']);
+    });
+
+    it('appends recovered final text after tool-only work', async () => {
+        useLocalCache().updateHost({
+            id: 'test-host',
+            name: 'Test Host',
+            baseUrl: 'http://127.0.0.1:9100',
+            token: 'secret',
+        });
+
+        streamEvents.push(
+            {
+                event: 'tool_call',
+                sequence: 1,
+                data: {
+                    name: 'web_search',
+                    arguments: '{"query":"Vancouver 2026 World Cup"}',
+                    tool_call_id: 'call_search',
+                    job_id: 'job_parts',
+                },
+            },
+            {
+                event: 'tool_result',
+                sequence: 2,
+                data: {
+                    name: 'web_search',
+                    result: 'search results',
+                    tool_call_id: 'call_search',
+                    job_id: 'job_parts',
+                },
+            },
+            {
+                event: 'completion',
+                sequence: 3,
+                data: {
+                    status: 'completed',
+                    final_text: 'Vancouver hosts seven matches.',
+                    job_id: 'job_parts',
+                },
+            },
+        );
+
+        await useAssistantStream().send('world cup schedule');
+
+        const assistant = useChatSessions().messages.value.find(
+            (message) => message.role === 'assistant',
+        );
+        expect(assistant?.content).toBe('Vancouver hosts seven matches.');
+        expect(
+            assistant?.parts?.map((part) =>
+                part.type === 'text' ? part.content : part.name,
+            ),
+        ).toEqual(['web_search', 'Vancouver hosts seven matches.']);
+    });
+
     it('dedupes replayed lifecycle and legacy tool events for one call', async () => {
         useLocalCache().updateHost({
             id: 'test-host',

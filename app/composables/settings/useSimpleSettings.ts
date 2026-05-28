@@ -358,10 +358,6 @@ const FIELD_ALIASES: Record<string, BackendFieldRef> = {
         section: 'hardening',
         field: 'hardening_exec_allowed_programs',
     },
-    [refKey('hardening', 'enableNetwork')]: {
-        section: 'hardening',
-        field: 'hardening_sandbox_allow_network',
-    },
     [refKey('security', 'approvals.execMode')]: {
         section: 'security',
         field: 'security_approval_exec_mode',

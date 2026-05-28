@@ -69,7 +69,6 @@ export const FIELD_LABEL_MAP: Record<string, string> = {
     // Safety & Privacy
     runtimeProfile: 'Safety mode',
     'hardening.enableExecShell': 'Allow terminal commands',
-    'hardening.enableNetwork': 'Allow network access',
     'security.audit.enabled': 'Keep safety log',
     'security.secretStore.enabled': 'Protect saved secrets',
     'approvalModes.exec': 'Approval for terminal',

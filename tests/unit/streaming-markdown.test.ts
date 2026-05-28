@@ -5,13 +5,11 @@ import { shouldRepairIncompleteMarkdownForStatus } from '../../app/utils/streami
 
 describe('StreamingMarkdown', () => {
     it('lets streamdown-vue repair incomplete markdown without corrupting inline code', () => {
-        // streamdown-vue 1.0.29 has a known bug where it appends '_' to complete markdown.
-        // This test documents the actual behavior to ensure we're aware of changes.
         expect(
             parseIncompleteMarkdown(
                 'The `invalid_grant` error we have seen before.',
             ),
-        ).toBe('The `invalid_grant` error we have seen before._');
+        ).toBe('The `invalid_grant` error we have seen before.');
     });
 
     it('keeps streamdown-vue incomplete emphasis repair working', () => {

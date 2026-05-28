@@ -57,12 +57,6 @@ const items = computed<Item[]>(() => {
             : 'OR3 may access files outside the workspace.',
     })
 
-    const network = Boolean(v['hardening.enableNetwork'])
-    list.push({
-        allowed: network,
-        text: network ? 'OR3 can use the network and web tools.' : 'OR3 cannot reach the network.',
-    })
-
     const exec = Boolean(v['hardening.enableExecShell'])
     list.push({
         allowed: exec,

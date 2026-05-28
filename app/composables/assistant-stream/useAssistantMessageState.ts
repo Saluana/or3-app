@@ -156,7 +156,11 @@ export function useAssistantMessageState(
         }
         updateAssistant({
             content,
-            parts: consolidateTextParts(current?.parts, content),
+            parts: mergeReplacementTextIntoParts(
+                current?.parts,
+                content,
+                current?.content,
+            ),
         });
     };
     const upsertPart = (part: ChatMessagePart) => {
@@ -200,13 +204,15 @@ export function useAssistantMessageState(
                 (part) => part.type === 'text' && part.content?.trim(),
             ),
         );
-    const textPartsContent = (assistant: ChatMessage | null | undefined) =>
+    const textPartsContentFromParts = (parts: ChatMessagePart[] | undefined) =>
         sanitizeAssistantText(
-            (assistant?.parts ?? [])
+            (parts ?? [])
                 .filter((part) => part.type === 'text')
                 .map((part) => part.content ?? '')
                 .join(''),
         );
+    const textPartsContent = (assistant: ChatMessage | null | undefined) =>
+        textPartsContentFromParts(assistant?.parts);
 
     const hasTextPartContent = (content: string) => {
         const normalized = sanitizeAssistantText(content);
@@ -228,23 +234,63 @@ export function useAssistantMessageState(
         );
     };
 
-    const consolidateTextParts = (
+    const nextTextPartId = () => {
+        textPartIndex += 1;
+        return `text:${textPartIndex}`;
+    };
+    const replacementTextPart = (
+        content: string,
+        existingId?: string,
+    ): ChatMessagePart => ({
+        id: existingId ?? nextTextPartId(),
+        type: 'text',
+        content,
+    });
+    const mergeReplacementTextIntoParts = (
         parts: ChatMessagePart[] | undefined,
         content: string,
+        existingContent?: string,
     ) => {
         const normalized = sanitizeAssistantText(content);
-        const nonText = (parts ?? []).filter((part) => part.type !== 'text');
-        if (!normalized) return nonText.length ? nonText : undefined;
-        const firstTextPart = (parts ?? []).find(
+        const existingParts = parts ?? [];
+        const toolParts = existingParts.filter((part) => part.type === 'tool');
+        if (!normalized) return toolParts.length ? toolParts : undefined;
+
+        const firstTextPart = existingParts.find(
             (part) => part.type === 'text',
         );
+        if (!toolParts.length) {
+            return [replacementTextPart(normalized, firstTextPart?.id)];
+        }
+        if (
+            sanitizeAssistantText(existingContent ?? '') === normalized &&
+            existingParts.some((part) => part.type === 'text')
+        ) {
+            return existingParts;
+        }
+
+        const existingText = textPartsContentFromParts(existingParts);
+        if (existingText === normalized) return existingParts;
+        if (existingText && normalized.startsWith(existingText)) {
+            const suffix = normalized.slice(existingText.length);
+            if (!suffix) return existingParts;
+            const reversedTextIndex = [...existingParts]
+                .reverse()
+                .findIndex((part) => part.type === 'text');
+            if (reversedTextIndex === -1) {
+                return [...existingParts, replacementTextPart(normalized)];
+            }
+            const index = existingParts.length - 1 - reversedTextIndex;
+            return existingParts.map((part, itemIndex) =>
+                itemIndex === index && part.type === 'text'
+                    ? { ...part, content: `${part.content ?? ''}${suffix}` }
+                    : part,
+            );
+        }
+
         return [
-            {
-                id: firstTextPart?.id ?? 'text:1',
-                type: 'text' as const,
-                content: normalized,
-            },
-            ...nonText,
+            ...existingParts.filter((part) => part.type !== 'text'),
+            replacementTextPart(normalized, firstTextPart?.id),
         ];
     };
     const closeActiveTextPart = () => {
@@ -253,8 +299,7 @@ export function useAssistantMessageState(
     };
     const ensureActiveTextPart = () => {
         if (activeTextPartId) return activeTextPartId;
-        textPartIndex += 1;
-        activeTextPartId = `text:${textPartIndex}`;
+        activeTextPartId = nextTextPartId();
         activeTextPartRaw = '';
         return activeTextPartId;
     };
@@ -276,7 +321,7 @@ export function useAssistantMessageState(
         closeActiveTextPart();
         const current = readAssistant();
         updateAssistant({
-            parts: consolidateTextParts(current?.parts, normalized),
+            parts: mergeReplacementTextIntoParts(current?.parts, normalized),
         });
         closeActiveTextPart();
     };
