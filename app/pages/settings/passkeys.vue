@@ -31,11 +31,23 @@
           If you see a passkey you do not recognize, remove it right away. Keep at least one working passkey and one paired admin device so you do not lock yourself out.
         </DangerCallout>
 
-        <div class="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
-          <UFormField label="New passkey label" name="nickname" description="Helpful names make it easier to spot the right laptop, phone, or security key later.">
-            <UInput v-model="registerForm.nickname" placeholder="Brendon's iPhone passkey" class="w-full" />
+        <div class="space-y-3">
+          <UButton
+            label="Create passkey"
+            icon="i-pixelarticons-plus"
+            color="primary"
+            size="lg"
+            class="min-h-12 w-full justify-center sm:w-auto"
+            :loading="loading"
+            @click="register"
+          />
+          <UFormField
+            label="Label (optional)"
+            name="nickname"
+            description="We will suggest a name from this device if you leave this blank."
+          >
+            <UInput v-model="registerForm.nickname" :placeholder="defaultNickname" class="w-full" />
           </UFormField>
-          <UButton label="Add passkey" icon="i-pixelarticons-plus" color="primary" :loading="loading" @click="register" />
         </div>
       </SurfaceCard>
 
@@ -102,12 +114,14 @@ import type { AuthPasskey } from '~/types/auth'
 import StepUpSheet from '~/components/settings/StepUpSheet.vue'
 import { useAuthSession } from '~/composables/useAuthSession'
 import { usePasskeys } from '~/composables/usePasskeys'
+import { defaultPasskeyNickname } from '~/utils/auth/passkeyDefaults'
 
 const router = useRouter()
 const authSession = useAuthSession()
 const passkeys = usePasskeys()
 const loading = ref(false)
 const registerForm = reactive({ nickname: '' })
+const defaultNickname = defaultPasskeyNickname()
 const nicknameDrafts = reactive<Record<string, string>>({})
 const stepUpOpen = ref(false)
 const revokeConfirmOpen = ref(false)
@@ -157,7 +171,8 @@ async function refresh() {
 async function register() {
   loading.value = true
   try {
-    await passkeys.registerPasskey({ nickname: registerForm.nickname || undefined, reason: 'settings-passkeys-register' })
+    const nickname = registerForm.nickname.trim() || defaultNickname
+    await passkeys.registerPasskey({ nickname, reason: 'settings-passkeys-register' })
     registerForm.nickname = ''
     await refresh()
   } finally {

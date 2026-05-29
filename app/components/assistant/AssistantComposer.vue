@@ -130,7 +130,8 @@
 
                         <template v-if="selectedRunnerId !== 'or3-intern'">
                             <div class="or3-composer-menu__divider" />
-                            <p class="or3-composer-menu__eyebrow">Model</p>
+                            <!-- Per-run agent model override; sent as runnerModel on send, not global configure roles. -->
+                            <p class="or3-composer-menu__eyebrow">Agent model</p>
                             <div class="or3-composer-menu__picker">
                                 <button
                                     type="button"
