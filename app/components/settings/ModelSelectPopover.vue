@@ -198,9 +198,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue';
-import type { ModelCatalogItem } from '~/composables/settings/useProviderSettings';
-import { useProviderSettings } from '~/composables/settings/useProviderSettings';
+import { computed, nextTick } from 'vue';
+import { useModelCatalogPicker } from '~/composables/settings/useModelCatalogPicker';
 
 const props = withDefaults(
     defineProps<{
@@ -223,27 +222,31 @@ const emit = defineEmits<{
     'update:modelValue': [value: string];
 }>();
 
-const settings = useProviderSettings();
-const query = ref('');
-const models = ref<ModelCatalogItem[]>([]);
-const loading = ref(false);
-const error = ref('');
-const hasLoaded = ref(false);
+const picker = useModelCatalogPicker({
+    provider: () => props.provider,
+    modelKind: () => props.modelKind,
+    listLimit: 80,
+});
+
+const {
+    query,
+    models,
+    loading,
+    error,
+    hasLoaded,
+    favoriteModels,
+    favoriteSet,
+    filteredModels,
+    load,
+    toggleFavorite,
+    toggleCurrentFavorite: applyCurrentFavorite,
+} = picker;
 
 const isTouchDevice = computed(() => {
     if (!import.meta.client) return false;
     return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 });
 
-const providerStatus = computed(() =>
-    settings.providerStatus.value?.providers.find(
-        (item) => item.key === props.provider,
-    ),
-);
-const favoriteModels = computed(() => providerStatus.value?.favorites ?? []);
-const favoriteSet = computed(
-    () => new Set(favoriteModels.value.map((item) => item.model)),
-);
 const isFavorite = computed(() =>
     favoriteSet.value.has(String(props.modelValue ?? '').trim()),
 );
@@ -256,25 +259,6 @@ const currentLabel = computed(() => {
     const known = models.value.find((item) => item.id === id);
     if (known?.name && known.name !== id) return `${known.name} · ${id}`;
     return id;
-});
-
-const filteredModels = computed(() => {
-    const q = query.value.trim().toLowerCase();
-    const favs = favoriteSet.value;
-    return [...models.value]
-        .sort(
-            (a, b) =>
-                Number(favs.has(b.id)) - Number(favs.has(a.id)) ||
-                a.id.localeCompare(b.id),
-        )
-        .filter((model) => {
-            if (!q) return true;
-            return (
-                model.id.toLowerCase().includes(q) ||
-                (model.name ?? '').toLowerCase().includes(q)
-            );
-        })
-        .slice(0, 80);
 });
 
 function choose(model: string) {
@@ -302,76 +286,7 @@ function onOpenChange(open: boolean) {
     }
 }
 
-async function load(refresh = false) {
-    const current = props.provider.trim();
-    if (!current) return;
-    loading.value = true;
-    error.value = '';
-    try {
-        if (!settings.providerStatus.value) {
-            await settings.loadProviders();
-        }
-        models.value = await settings.loadModels(current, props.modelKind, {
-            refresh,
-            user: current === 'openrouter',
-        });
-        hasLoaded.value = true;
-    } catch (err: any) {
-        error.value = friendlyError(err);
-        models.value = [];
-    } finally {
-        loading.value = false;
-    }
+function toggleCurrentFavorite() {
+    void applyCurrentFavorite(String(props.modelValue ?? '').trim());
 }
-
-function friendlyError(err: any): string {
-    const message = err?.message || err?.error || 'Could not load models for this provider.';
-    const text = String(message);
-    if (/missing api base|provider missing api/i.test(text)) {
-        return 'This provider has no API base URL configured yet.';
-    }
-    if (/401|unauthor/i.test(text)) {
-        return 'Provider rejected the saved API key. Check it in Providers.';
-    }
-    if (/not configured/i.test(text)) {
-        return 'Set this provider up first (API key + base URL).';
-    }
-    return text;
-}
-
-async function toggleFavorite(model: ModelCatalogItem) {
-    if (!props.provider) return;
-    try {
-        await settings.setFavorite(
-            props.provider,
-            model.id,
-            !favoriteSet.value.has(model.id),
-            model.name,
-        );
-    } catch (err: any) {
-        error.value = friendlyError(err);
-    }
-}
-
-async function toggleCurrentFavorite() {
-    const model = String(props.modelValue ?? '').trim();
-    if (!props.provider || !model) return;
-    try {
-        await settings.setFavorite(
-            props.provider,
-            model,
-            !favoriteSet.value.has(model),
-        );
-    } catch (err: any) {
-        error.value = friendlyError(err);
-    }
-}
-
-watch(
-    () => props.provider,
-    () => {
-        hasLoaded.value = false;
-        models.value = [];
-    },
-);
 </script>

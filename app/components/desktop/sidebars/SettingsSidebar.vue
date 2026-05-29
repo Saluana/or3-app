@@ -44,14 +44,15 @@
 import { computed, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { useSimpleSettings } from '~/composables/settings/useSimpleSettings';
-import { useActiveHost } from '~/composables/useActiveHost';
 import { useElectronHostSetup } from '~/composables/useElectronHostSetup';
-import { canUseHostApi } from '~/composables/useSecureHostTokens';
 import { useWhenHostApiReady } from '~/composables/useWhenHostApiReady';
+import {
+    desktopSidebarFixedDestinations,
+    type SettingsDestination,
+} from '~/settings/settingsNavigation';
 
 const route = useRoute();
 const simple = useSimpleSettings();
-const { activeHost } = useActiveHost();
 const { isElectronHostMode, ensureLoaded } = useElectronHostSetup();
 const query = ref('');
 
@@ -64,6 +65,15 @@ interface SidebarItem {
     to: string;
 }
 
+function toSidebarItem(dest: SettingsDestination): SidebarItem {
+    return {
+        label: dest.label,
+        description: dest.description,
+        icon: dest.icon,
+        to: dest.to,
+    };
+}
+
 const baseItems = computed<SidebarItem[]>(() => {
     const sections = simple.availableSections.value || [];
     const dynamic: SidebarItem[] = sections.map((s) => ({
@@ -73,78 +83,10 @@ const baseItems = computed<SidebarItem[]>(() => {
         to: `/settings/section/${s.key}`,
     }));
 
-    const fixed: SidebarItem[] = [
-        {
-            label: isElectronHostMode.value ? 'Connect devices' : 'Pair computer',
-            description: isElectronHostMode.value
-                ? 'Add phones, browsers, and trusted devices to this computer.'
-                : 'Connect or re-pair this app to or3-intern.',
-            icon: 'i-pixelarticons-link',
-            to: isElectronHostMode.value ? '/computer/connect-device' : '/settings/pair',
-        },
-        {
-            label: isElectronHostMode.value ? 'Trusted devices' : 'Connected devices',
-            description: isElectronHostMode.value
-                ? 'Review and revoke devices trusted by this computer.'
-                : 'Review secure and legacy devices on the paired computer.',
-            icon: 'i-pixelarticons-shield',
-            to: isElectronHostMode.value ? '/computer/trusted-devices' : '/settings/pair',
-        },
-        {
-            label: 'Health check',
-            description: 'See what needs attention right now.',
-            icon: 'i-pixelarticons-heart',
-            to: '/settings/health',
-        },
-        {
-            label: 'Permissions',
-            description: 'What OR3 can access on this device.',
-            icon: 'i-pixelarticons-lock',
-            to: '/settings/permissions',
-        },
-        {
-            label: 'Skills',
-            description: 'Toggle and configure agent skills.',
-            icon: 'i-pixelarticons-tool-case',
-            to: '/settings/skills',
-        },
-        {
-            label: 'Add-ons',
-            description: 'Manage external tools and advanced add-ons.',
-            icon: 'i-lucide-plug',
-            to: '/settings/addons',
-        },
-        {
-            label: 'Automatic check-ins',
-            description: 'Turn on heartbeat and edit its background checklist.',
-            icon: 'tabler:activity-heartbeat',
-            to: '/settings/heartbeat',
-        },
-        {
-            label: 'Approval autopilot',
-            description: 'Choose what OR3 can approve by itself.',
-            icon: 'i-pixelarticons-shield',
-            to: '/settings/approval-autopilot',
-        },
-        {
-            label: 'Passkeys',
-            description: 'Manage device passkeys for security.',
-            icon: 'i-pixelarticons-shield',
-            to: '/settings/passkeys',
-        },
-        {
-            label: 'Observability',
-            description: 'Logs, telemetry, and diagnostics.',
-            icon: 'i-pixelarticons-chart',
-            to: '/settings/observability',
-        },
-        {
-            label: 'Advanced',
-            description: 'Raw config keys for power users.',
-            icon: 'i-pixelarticons-warning-box',
-            to: '/settings/advanced',
-        },
-    ];
+    const fixed = desktopSidebarFixedDestinations(isElectronHostMode.value).map(
+        toSidebarItem,
+    );
+
     return [...dynamic, ...fixed];
 });
 

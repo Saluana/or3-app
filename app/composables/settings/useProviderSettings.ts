@@ -31,9 +31,19 @@ export interface ModelCatalogItem {
     pricing?: Record<string, unknown>
 }
 
+export interface ModelRoutingRoleStatus {
+    primary?: {
+        provider?: string
+        model?: string
+    }
+    fallbacks?: unknown[]
+    embedDimensions?: number
+    warnings?: string[]
+}
+
 export interface ProviderStatusResponse {
     providers: ProviderProfileStatus[]
-    roles: Record<string, unknown>
+    roles: Record<string, ModelRoutingRoleStatus>
 }
 
 const providerStatus = ref<ProviderStatusResponse | null>(null)

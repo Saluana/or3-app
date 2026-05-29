@@ -925,6 +925,21 @@ describe('Doctor admin flow app integration', () => {
         );
     });
 
+    it('strips tool-call markup from doctor assistant text', () => {
+        const markup = [
+            'Let me look that up.',
+            '',
+            '<|DSML|tool_calls>',
+            '<|DSML|invoke name="doctor_config_search">',
+            '<|DSML|parameter name="query" string="true">shell command mode</|DSML|parameter>',
+            '</|DSML|invoke>',
+            '</|DSML|tool_calls>',
+        ].join('\n');
+        expect(doctorVisibleTextForMessage({ role: 'assistant', content: markup })).toBe(
+            'Let me look that up.',
+        );
+    });
+
     it('repairs assistant-before-user ordering in the transcript', () => {
         const display = buildDoctorChatDisplayMessages([
             {

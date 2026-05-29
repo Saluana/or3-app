@@ -2,6 +2,7 @@ import { ref } from 'vue';
 import type { Or3AppState, Or3HostProfile } from '~/types/app-state';
 import { compareSessionMessages } from './chat/useChatMessageIndex';
 import { compactAssistantRunMessages } from '~/utils/chat/merge-assistant-run';
+import { markOrphanClientStreamingFailed } from '~/utils/assistant-stream/orphanStreamingMessage';
 import { needsUnlock } from './usePinLock';
 import {
     useSecureHostTokens,
@@ -193,14 +194,16 @@ function normalizePersistedSessions(
 function normalizePersistedMessages(
     messages: Or3AppState['messages'] = [],
 ): Or3AppState['messages'] {
-    const normalized = messages.map((message) => ({
-        ...message,
-        attachments: message.attachments ?? [],
-        backendMessageIds: message.backendMessageIds ?? [],
-        toolCalls: message.toolCalls ?? [],
-        parts: message.parts ?? [],
-        activityLog: message.activityLog ?? [],
-    }));
+    const normalized = messages.map((message) =>
+        markOrphanClientStreamingFailed({
+            ...message,
+            attachments: message.attachments ?? [],
+            backendMessageIds: message.backendMessageIds ?? [],
+            toolCalls: message.toolCalls ?? [],
+            parts: message.parts ?? [],
+            activityLog: message.activityLog ?? [],
+        }),
+    );
     const bySession = new Map<string, typeof normalized>();
     for (const message of normalized) {
         const bucket = bySession.get(message.sessionId) ?? [];

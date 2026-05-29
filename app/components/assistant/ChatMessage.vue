@@ -30,20 +30,21 @@
                         v-if="!hasOrderedParts && message.toolCalls?.length"
                         :tool-calls="message.toolCalls"
                     />
-                    <div v-if="hasOrderedParts" class="or3-msg__parts">
-                        <template v-for="part in orderedParts">
+                    <div v-if="renderBlocks.length" class="or3-msg__parts">
+                        <template
+                            v-for="block in renderBlocks"
+                            :key="block.key"
+                        >
                             <StreamingMarkdown
-                                v-if="part.type === 'text' && part.content"
-                                :key="part.id"
-                                :content="part.content"
+                                v-if="block.kind === 'markdown'"
+                                :content="block.content"
                                 :repair-incomplete-markdown="
                                     shouldRepairIncompleteMarkdown
                                 "
                             />
                             <AssistantInlineToolCall
-                                v-else-if="part.type === 'tool'"
-                                :key="part.id"
-                                :part="part"
+                                v-else-if="block.kind === 'tool'"
+                                :part="block.part"
                             />
                         </template>
                     </div>
@@ -314,7 +315,10 @@ import {
     resolvedApprovalMessage,
     resolvedApprovalState,
 } from '../../utils/assistantApproval';
-import { shouldRepairIncompleteMarkdownForStatus } from '../../utils/streamingMarkdown';
+import {
+    buildAssistantRenderBlocks,
+    shouldRepairIncompleteMarkdownForStatus,
+} from '../../utils/streamingMarkdown';
 import { userFacingErrorCopy } from '../../utils/assistant-stream/userErrorCopy';
 
 const props = defineProps<{ message: ChatMessage }>();
@@ -385,13 +389,8 @@ function currentMessage(): ChatMessage {
 
 const copyText = computed(() => props.message.content.trim());
 const canCopy = computed(() => Boolean(copyText.value));
-const orderedParts = computed(() =>
-    (props.message.parts ?? []).filter((part) => {
-        if (part.type === 'text') return Boolean(part.content?.trim());
-        return Boolean(part.name || part.toolCallId);
-    }),
-);
-const hasOrderedParts = computed(() => orderedParts.value.length > 0);
+const renderBlocks = computed(() => buildAssistantRenderBlocks(props.message));
+const hasOrderedParts = computed(() => renderBlocks.value.length > 0);
 const activityItems = computed(() =>
     mergeActivityWithToolParts(
         props.message.activityLog,

@@ -159,7 +159,7 @@
         </SurfaceCard>
 
         <NuxtLink
-            to="/settings/advanced"
+            to="/settings/super-advanced"
             class="or3-focus-ring flex w-full items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50/70 p-4 text-left transition hover:bg-amber-100/80"
         >
             <Icon
@@ -168,16 +168,15 @@
             />
             <div class="min-w-0 flex-1">
                 <p class="font-mono text-sm font-semibold text-amber-900">
-                    Advanced Settings
+                    Super Advanced Settings
                 </p>
                 <p class="mt-0.5 text-xs leading-5 text-amber-800/80">
                     <template v-if="hiddenSections.length">
                         {{ hiddenSections.map(s => s.label).join(', ') }} and raw config editing.
                     </template>
                     <template v-else>
-                        Raw config editing for debugging, hosting, and custom setups.
+                        Raw config editing for people who know what they are changing.
                     </template>
-                    Most people should use Simple Settings.
                 </p>
             </div>
             <Icon

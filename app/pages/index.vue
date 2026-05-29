@@ -195,6 +195,13 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { ChatSessionMeta } from '~/types/or3-api';
 import { useManagedToast } from '~/composables/useManagedToast';
+import {
+    defaultRunnerModelForSelection,
+    INTERN_RUNNER_ID,
+    resolveRunnerModelForSend,
+    resolveSessionRunnerModel,
+    shouldApplyRunnerDefaultModel,
+} from '~/utils/runnerModelPolicy';
 
 const chat = useChatSessions();
 const {
@@ -226,7 +233,7 @@ const showWelcome = computed(
     () => !isPaired.value && messages.value.length === 0,
 );
 
-const selectedRunnerId = ref('or3-intern');
+const selectedRunnerId = ref(INTERN_RUNNER_ID);
 const selectedRunnerModel = ref('');
 const selectedRunnerThinkingLevel = ref('');
 const approvalsOpen = ref(false);
@@ -328,7 +335,8 @@ function openHistorySession(session: ChatSessionMeta) {
         return;
     }
     void sessionHistory.openSession(session).then(() => {
-        selectedRunnerId.value = session.runner_id || 'or3-intern';
+        selectedRunnerId.value = session.runner_id || INTERN_RUNNER_ID;
+        selectedRunnerModel.value = session.runner_model || '';
         liveChannelPaused.value = false;
     });
 }
@@ -399,7 +407,11 @@ function onNewSession() {
         setSessionRunnerMetadata(session.id, {
             runnerId: runner.id,
             runnerLabel: runner.display_name || runner.id,
-            runnerModel: selectedRunnerModel.value || runner.default_model,
+            runnerModel: resolveSessionRunnerModel({
+                runnerId: runner.id,
+                selected: selectedRunnerModel.value,
+                runnerDefault: runner.default_model,
+            }),
             runnerContinuationMode: continuationModeForRunner(runner.id),
         });
     }
@@ -422,7 +434,8 @@ watch(
     (runnerId, previous) => {
         if (runnerId === previous) return;
         selectedRunnerId.value =
-            runnerId || defaultRunner.value?.id || 'or3-intern';
+            runnerId || defaultRunner.value?.id || INTERN_RUNNER_ID;
+        selectedRunnerModel.value = activeSession.value?.runnerModel || '';
     },
     { immediate: true },
 );
@@ -467,6 +480,13 @@ watch(
     { immediate: true },
 );
 
+watch(selectedRunnerModel, (runnerModel) => {
+    if (!activeSession.value) return;
+    setSessionRunnerMetadata(activeSession.value.id, {
+        runnerModel: runnerModel || undefined,
+    });
+});
+
 watch(selectedRunnerId, (runnerId, previous) => {
     if (!activeSession.value) return;
     if (!previous || runnerId === activeSession.value.runnerId) return;
@@ -490,14 +510,22 @@ function applyRunnerToActiveSession(
     runnerId: string,
     runner: NonNullable<ReturnType<typeof getRunner>>,
 ) {
-    selectedRunnerModel.value =
-        runner.default_model || runner.runtime?.default_model || '';
+    if (shouldApplyRunnerDefaultModel(runnerId)) {
+        selectedRunnerModel.value = defaultRunnerModelForSelection(
+            runnerId,
+            runner.default_model || runner.runtime?.default_model,
+        );
+    }
     selectedRunnerThinkingLevel.value = '';
     if (!activeSession.value) return;
     setSessionRunnerMetadata(activeSession.value.id, {
         runnerId,
         runnerLabel: runner.display_name || runner.id,
-        runnerModel: selectedRunnerModel.value || undefined,
+        runnerModel: resolveSessionRunnerModel({
+            runnerId,
+            selected: selectedRunnerModel.value,
+            runnerDefault: runner.default_model || runner.runtime?.default_model,
+        }),
         runnerContinuationMode: continuationModeForRunner(runnerId),
     });
 }
@@ -511,13 +539,21 @@ function confirmRunnerSwitch() {
     if (!runner) return;
     const session = newSession('New conversation');
     selectedRunnerId.value = runnerId;
-    selectedRunnerModel.value =
-        runner.default_model || runner.runtime?.default_model || '';
+    if (shouldApplyRunnerDefaultModel(runnerId)) {
+        selectedRunnerModel.value = defaultRunnerModelForSelection(
+            runnerId,
+            runner.default_model || runner.runtime?.default_model,
+        );
+    }
     selectedRunnerThinkingLevel.value = '';
     setSessionRunnerMetadata(session.id, {
         runnerId,
         runnerLabel: runner.display_name || runner.id,
-        runnerModel: selectedRunnerModel.value || undefined,
+        runnerModel: resolveSessionRunnerModel({
+            runnerId,
+            selected: selectedRunnerModel.value,
+            runnerDefault: runner.default_model || runner.runtime?.default_model,
+        }),
         runnerContinuationMode: continuationModeForRunner(runnerId),
     });
 }
@@ -526,7 +562,9 @@ function cancelRunnerSwitch() {
     runnerSwitchOpen.value = false;
     pendingRunnerSwitchId.value = null;
     selectedRunnerId.value =
-        activeSession.value?.runnerId || defaultRunner.value?.id || 'or3-intern';
+        activeSession.value?.runnerId ||
+        defaultRunner.value?.id ||
+        INTERN_RUNNER_ID;
 }
 
 function sendWithMode(payload: Parameters<typeof send>[0]) {
@@ -534,13 +572,18 @@ function sendWithMode(payload: Parameters<typeof send>[0]) {
     const sessionContinuationMode =
         activeSession.value?.runnerContinuationMode ||
         continuationModeForRunner(selectedRunnerId.value);
+    const resolvedRunnerModel = resolveRunnerModelForSend({
+        runnerId: selectedRunnerId.value,
+        selected: selectedRunnerModel.value,
+        runnerDefault: runner?.default_model,
+    });
     if (typeof payload === 'string') {
         void send({
             text: payload,
             transportText: payload,
             mode: chatMode.value,
             runnerId: selectedRunnerId.value,
-            runnerModel: selectedRunnerModel.value || runner?.default_model,
+            runnerModel: resolvedRunnerModel,
             runnerThinkingLevel: selectedRunnerThinkingLevel.value || undefined,
             runnerLabel: runner?.display_name || selectedRunnerId.value,
             runnerContinuationMode: sessionContinuationMode,
@@ -551,10 +594,7 @@ function sendWithMode(payload: Parameters<typeof send>[0]) {
         ...payload,
         mode: payload.mode ?? chatMode.value,
         runnerId: payload.runnerId || selectedRunnerId.value,
-        runnerModel:
-            payload.runnerModel ||
-            selectedRunnerModel.value ||
-            runner?.default_model,
+        runnerModel: payload.runnerModel || resolvedRunnerModel,
         runnerThinkingLevel:
             payload.runnerThinkingLevel ||
             selectedRunnerThinkingLevel.value ||

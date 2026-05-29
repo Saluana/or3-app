@@ -64,13 +64,13 @@ const selectedSectionExists = computed(() => !!selectedSectionRecord.value)
 
 function goBack() {
   // Prefer real browser history so users return to wherever they came from
-  // (e.g. /settings/advanced). Fall back to the advanced index when this page
+  // (e.g. /settings/super-advanced). Fall back to the super-advanced index when this page
   // is opened directly with no history entry.
   if (typeof window !== 'undefined' && window.history.length > 1) {
     router.back()
     return
   }
-  router.push('/settings/advanced')
+  router.push('/settings/super-advanced')
 }
 
 async function saveSection(values: Record<string, unknown>) {

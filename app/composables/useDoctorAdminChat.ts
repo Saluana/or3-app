@@ -21,6 +21,7 @@ import type {
     DoctorStatusResponse,
 } from '~/types/or3-api';
 import { createAssistantEventApplier } from '~/utils/assistant-stream/event-applier';
+import { sanitizeAssistantText } from '~/utils/assistant-stream/activity';
 import { isEmptyFinalUserMessage } from '~/utils/assistant-stream/userErrorCopy';
 import { useOr3Api } from './useOr3Api';
 import { useRestartNetworkLogSuppression } from './useRestartNetworkLogSuppression';
@@ -306,6 +307,7 @@ function upsertById<T extends { id: string }>(items: T[] | undefined, item: T) {
 
 function createDoctorStreamApplier(placeholderID: PlaceholderID) {
     let activeTextPartID = '';
+    let activeTextPartRaw = '';
     const now = () => new Date().toISOString();
     const readDoctorMessage = () => readStreamingAssistant(placeholderID);
     const updateAssistant = (patch: Partial<ChatMessage>) => {
@@ -335,28 +337,33 @@ function createDoctorStreamApplier(placeholderID: PlaceholderID) {
         if (!value) return;
         mutateStreamingAssistant(placeholderID, (message) => {
             const parts = message.parts ?? [];
-            const activeIndex = activeTextPartID
-                ? parts.findIndex((part) => part.id === activeTextPartID)
-                : -1;
+            if (!activeTextPartID) {
+                activeTextPartID = `text:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+                activeTextPartRaw = '';
+            }
+            activeTextPartRaw += value;
+            const content = sanitizeAssistantText(activeTextPartRaw);
+            if (!content) {
+                return message;
+            }
+            const activeIndex = parts.findIndex(
+                (part) => part.id === activeTextPartID,
+            );
             if (activeIndex >= 0 && parts[activeIndex]?.type === 'text') {
                 return {
                     ...message,
                     parts: parts.map((part, index) =>
                         index === activeIndex
-                            ? {
-                                  ...part,
-                                  content: `${part.content ?? ''}${value}`,
-                              }
+                            ? { ...part, content }
                             : part,
                     ),
                 };
             }
-            activeTextPartID = `text:${Date.now()}:${Math.random().toString(36).slice(2)}`;
             return {
                 ...message,
                 parts: [
                     ...parts,
-                    { id: activeTextPartID, type: 'text', content: value },
+                    { id: activeTextPartID, type: 'text', content },
                 ],
             };
         });
@@ -433,19 +440,26 @@ function createDoctorStreamApplier(placeholderID: PlaceholderID) {
         appendAssistantContent: (value) =>
             mutateStreamingAssistant(placeholderID, (message) => ({
                 ...message,
-                content: `${message.content ?? ''}${value}`,
+                content: sanitizeAssistantText(
+                    `${message.content ?? ''}${value}`,
+                ),
             })),
         replaceAssistantContent: (value) =>
-            patchStreamingAssistant(placeholderID, { content: value }),
+            patchStreamingAssistant(placeholderID, {
+                content: sanitizeAssistantText(value),
+            }),
         upsertPart,
         appendTextPart,
         appendCompleteTextPart: (value) => {
             activeTextPartID = '';
+            activeTextPartRaw = '';
             appendTextPart(value);
             activeTextPartID = '';
+            activeTextPartRaw = '';
         },
         closeActiveTextPart: () => {
             activeTextPartID = '';
+            activeTextPartRaw = '';
         },
         hasVisibleTextPart: () =>
             Boolean(

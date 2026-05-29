@@ -8,7 +8,7 @@ import type {
     DoctorPostCheckResponse,
     DoctorSettingsChangePlan,
 } from '~/types/or3-api';
-import { previewValue } from '~/utils/assistant-stream/activity';
+import { previewValue, sanitizeAssistantText } from '~/utils/assistant-stream/activity';
 import { scrubDoctorUserMessageContent } from './doctorContent';
 import type { DoctorChatMessage } from './doctorTypes';
 import { parseFindingCard, parsePlan } from './doctorValidate';
@@ -621,11 +621,11 @@ export function doctorVisibleTextForMessage(message: DoctorChatMessage) {
         return '';
     }
     if (!results.length) {
-        const trimmed = content.trim();
+        const trimmed = sanitizeAssistantText(content).trim();
         if (trimmed) return trimmed;
         return doctorEmptyFinalSummary(message);
     }
-    const stripped = stripDoctorJSONBlocks(content).trim();
+    const stripped = sanitizeAssistantText(stripDoctorJSONBlocks(content)).trim();
     if (stripped && !parseDoctorToolResult(stripped)) return stripped;
     if (results.every(isTelemetryOnlyResult)) {
         return doctorEmptyFinalSummary(message);
@@ -987,9 +987,9 @@ function doctorTelemetrySummaryFromPart(part: ChatMessagePart) {
 }
 
 function isValidDoctorDisplayPart(part: ChatMessagePart) {
-    if (part.type === 'text') {
-        return Boolean(String(part.content ?? '').trim());
-    }
+        if (part.type === 'text') {
+            return Boolean(sanitizeAssistantText(String(part.content ?? '')).trim());
+        }
     return Boolean(part.name || part.toolCallId);
 }
 
@@ -1047,10 +1047,13 @@ function buildOrderedPartsFromTurnMessages(
     const pushPart = (part: ChatMessagePart) => {
         if (seenPartIds.has(part.id)) return;
         if (part.type === 'text') {
-            const normalized = String(part.content ?? '').trim();
+            const normalized = sanitizeAssistantText(String(part.content ?? '')).trim();
             if (!normalized) return;
             if (seenTextParts.has(normalized)) return;
             seenTextParts.add(normalized);
+            seenPartIds.add(part.id);
+            parts.push({ ...part, content: normalized });
+            return;
         }
         seenPartIds.add(part.id);
         parts.push(part);
