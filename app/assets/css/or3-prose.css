@@ -313,6 +313,14 @@
     min-width: min-content;
 }
 
+/* streamdown-vue adds Tailwind `border` on cells (currentColor = dark text). */
+.or3-prose th,
+.or3-prose td,
+.or3-prose [data-streamdown="th"],
+.or3-prose [data-streamdown="td"] {
+    border-color: var(--or3-prose-border-color);
+}
+
 .or3-prose [data-streamdown="th"] {
     padding-top: 8px;
     padding-bottom: 8px;
@@ -322,6 +330,10 @@
     white-space: nowrap;
     background: var(--or3-prose-table-header-bg);
     color: var(--or3-prose-table-header-fg);
+}
+
+.or3-prose [data-streamdown="td"] {
+    border-bottom: var(--or3-prose-border-width) solid var(--or3-prose-border-color);
 }
 
 .or3-prose [data-streamdown="table"] [data-streamdown="tr"] > [data-streamdown="th"]:first-child,

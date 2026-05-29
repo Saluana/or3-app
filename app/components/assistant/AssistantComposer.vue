@@ -128,7 +128,20 @@
                             </button>
                         </div>
 
-                        <template v-if="selectedRunnerId !== 'or3-intern'">
+                        <template v-if="isInternChatModelRunner(selectedRunnerId)">
+                            <div class="or3-composer-menu__divider" />
+                            <p class="or3-composer-menu__eyebrow">Chat model</p>
+                            <ComposerInternModelPicker
+                                v-model="internModelSelection"
+                            />
+                            <small class="or3-composer-menu__hint">
+                                Overrides the default chat model for this
+                                conversation. Favorites come from your provider
+                                settings.
+                            </small>
+                        </template>
+
+                        <template v-else>
                             <div class="or3-composer-menu__divider" />
                             <!-- Per-run agent model override; sent as runnerModel on send, not global configure roles. -->
                             <p class="or3-composer-menu__eyebrow">Agent model</p>
@@ -425,6 +438,14 @@ import type {
     ChatAttachment,
 } from '../../types/app-state';
 import type { ChatRunnerInfo } from '../../types/or3-api';
+import ComposerInternModelPicker from './ComposerInternModelPicker.vue';
+import { useChatModelRouting } from '../../composables/settings/useChatModelRouting';
+import {
+    INTERN_RUNNER_ID,
+    isInternChatModelRunner,
+    shouldApplyRunnerDefaultModel,
+    defaultRunnerModelForSelection,
+} from '../../utils/runnerModelPolicy';
 
 const props = withDefaults(
     defineProps<{
@@ -442,7 +463,7 @@ const props = withDefaults(
         streaming: false,
         paneId: 'main',
         mode: 'work',
-        selectedRunnerId: 'or3-intern',
+        selectedRunnerId: INTERN_RUNNER_ID,
         selectedRunnerModel: '',
         selectedRunnerThinkingLevel: '',
         runners: () => [],
@@ -531,6 +552,7 @@ const { fetchRoots, ensureDirectoryPath, uploadFilesToPath } =
 const api = useOr3Api();
 const chat = useChatSessions();
 const toast = useToast();
+const { ensureLoaded: ensureChatRoutingLoaded } = useChatModelRouting();
 
 const displayedAttachments = computed(() => [
     ...workspaceMentionAttachments.value,
@@ -566,13 +588,22 @@ const modeOptions = computed(() => {
 });
 
 const selectedMode = computed(() => props.mode ?? 'work');
-const selectedRunnerId = computed(() => props.selectedRunnerId || 'or3-intern');
+const selectedRunnerId = computed(
+    () => props.selectedRunnerId || INTERN_RUNNER_ID,
+);
 const selectedRunnerModel = computed(() => props.selectedRunnerModel || '');
 const selectedRunnerThinkingLevel = computed(
     () => props.selectedRunnerThinkingLevel || '',
 );
 const modelPickerOpen = ref(false);
 const modelSearch = ref('');
+
+const internModelSelection = computed({
+    get: () => selectedRunnerModel.value,
+    set: (value: string) => {
+        emit('update:selectedRunnerModel', value.trim());
+    },
+});
 
 const runnerOptions = computed(() => {
     const runners = props.runners.length
@@ -780,12 +811,17 @@ function selectRunner(runnerId: string) {
     emit('update:selectedRunnerId', runnerId);
     modelPickerOpen.value = false;
     modelSearch.value = '';
-    const runner = props.runners.find((item) => item.id === runnerId);
-    emit(
-        'update:selectedRunnerModel',
-        runner?.default_model || runner?.runtime?.default_model || '',
-    );
-    emit('update:selectedRunnerThinkingLevel', '');
+    if (shouldApplyRunnerDefaultModel(runnerId)) {
+        const runner = props.runners.find((item) => item.id === runnerId);
+        emit(
+            'update:selectedRunnerModel',
+            defaultRunnerModelForSelection(
+                runnerId,
+                runner?.default_model || runner?.runtime?.default_model,
+            ),
+        );
+        emit('update:selectedRunnerThinkingLevel', '');
+    }
 }
 
 function selectRunnerModel(model: string) {
@@ -830,6 +866,11 @@ function runnerModelProviderLabel(model: {
     }
     return model.provider_name || model.provider || model.id;
 }
+
+watch(actionMenuOpen, (open) => {
+    if (!open || !isInternChatModelRunner(selectedRunnerId.value)) return;
+    void ensureChatRoutingLoaded();
+});
 
 watch(activeModelReasoningOptions, (options) => {
     if (!options.length && selectedRunnerThinkingLevel.value) {
@@ -1264,10 +1305,7 @@ async function submit() {
                 : buildTransportTextForAttachments(stagedWorkspaceAttachments),
         attachments,
         runnerId: selectedRunnerId.value,
-        runnerModel:
-            selectedRunnerId.value !== 'or3-intern' && selectedRunnerModel.value
-                ? selectedRunnerModel.value
-                : undefined,
+        runnerModel: selectedRunnerModel.value || undefined,
         runnerThinkingLevel:
             selectedRunnerId.value !== 'or3-intern' &&
             activeModelReasoningOptions.value.includes(

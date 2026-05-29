@@ -1,6 +1,6 @@
 <template>
     <StreamMarkdown
-        :content="content"
+        :content="displayContent"
         class-name="or3-prose"
         shiki-theme="or3-light"
         :parse-incomplete-markdown="repairIncompleteMarkdown"
@@ -9,9 +9,11 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import { StreamMarkdown } from 'streamdown-vue';
+import { normalizeMarkdownForDisplay } from '~/utils/streamingMarkdown';
 
-withDefaults(
+const props = withDefaults(
     defineProps<{
         content: string;
         repairIncompleteMarkdown?: boolean;
@@ -19,5 +21,9 @@ withDefaults(
     {
         repairIncompleteMarkdown: true,
     },
+);
+
+const displayContent = computed(() =>
+    normalizeMarkdownForDisplay(props.content),
 );
 </script>

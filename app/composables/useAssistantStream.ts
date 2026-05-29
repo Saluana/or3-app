@@ -13,10 +13,12 @@ import {
     loadPersistedServiceCapabilityCeilingHosts,
     persistServiceCapabilityCeilingHost,
 } from '~/utils/assistant-stream/tool-policy-host';
+import { markOrphanClientStreamingFailed } from '~/utils/assistant-stream/orphanStreamingMessage';
 import {
     EMPTY_FINAL_USER_MESSAGE,
     EMPTY_STREAM_USER_MESSAGE,
 } from '~/utils/assistant-stream/userErrorCopy';
+import { internTurnModelRequestField } from '~/utils/runnerModelPolicy';
 import {
     fetchAndApplyJobSnapshot,
     handleRunnerExecutionError,
@@ -295,10 +297,19 @@ export function useAssistantStream() {
                   policy: requestedToolPolicy,
               });
         const serviceAttachments = toServiceAttachments(payload.attachments);
+        const { selectedRunnerId, useRunnerChat } = resolveExecutionRoute(
+            payload,
+            session,
+        );
         const buildTurnRequest = (toolPolicy = requestedToolPolicy) => ({
             session_key: session.sessionKey,
             message: text,
             meta: { trace_id: traceId },
+            ...internTurnModelRequestField({
+                runnerId: selectedRunnerId,
+                payloadModel: payload.runnerModel,
+                sessionModel: session.runnerModel,
+            }),
             ...(serviceAttachments.length
                 ? { attachments: serviceAttachments }
                 : {}),
@@ -316,9 +327,6 @@ export function useAssistantStream() {
                   }
                 : {}),
         });
-        const turnRequest = followJobId
-            ? null
-            : buildTurnRequest(effectiveRequestedToolPolicy);
         const buildExecutionContext = () => ({
             api,
             activeController,
@@ -334,16 +342,16 @@ export function useAssistantStream() {
                 buildExecutionContext(),
                 snapshotOptions,
             );
-        const { selectedRunnerId, useRunnerChat } = resolveExecutionRoute(
-            payload,
-            session,
-        );
         let runnerChatTurnForRecovery: {
             sessionId: string;
             turnId: string;
         } | null = null;
+        let turnRequest: Record<string, unknown> | null = null;
 
         try {
+            turnRequest = followJobId
+                ? null
+                : buildTurnRequest(effectiveRequestedToolPolicy);
             const execution = await routeExecution({
                 executionContext: buildExecutionContext(),
                 followJobId,
@@ -484,6 +492,20 @@ export function useAssistantStream() {
                 fetchAndApplyJobSnapshot: runFetchAndApplyJobSnapshot,
             });
         } finally {
+            const pendingAssistant = readAssistant();
+            if (pendingAssistant) {
+                const reconciled =
+                    markOrphanClientStreamingFailed(pendingAssistant);
+                if (reconciled !== pendingAssistant) {
+                    updateAssistant({
+                        content: reconciled.content,
+                        status: reconciled.status,
+                        error: reconciled.error,
+                        errorCode: reconciled.errorCode,
+                        activityLog: reconciled.activityLog,
+                    });
+                }
+            }
             flushAssistantUpdates();
             chat.flushMessage(assistant.id);
             isStreaming.value = false;
