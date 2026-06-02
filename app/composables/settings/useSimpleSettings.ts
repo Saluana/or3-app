@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import type {
     SimpleSettingChange,
     SimpleSettingControl,
@@ -10,6 +10,8 @@ import { toConfigureChange } from '~/settings/simpleSettings';
 import { SIMPLE_SETTING_SECTIONS } from '~/settings/fieldMappings';
 import type { ConfigureChange, ConfigureField } from '~/types/or3-api';
 import { useConfigure } from '~/composables/useConfigure';
+import { useActiveHost } from '~/composables/useActiveHost';
+import { coerceConfigBoolean } from '~/utils/or3/config-boolean';
 
 interface BackendFieldEntry {
     section: string;
@@ -27,6 +29,14 @@ const fieldCache = ref<BackendFieldEntry[]>([]);
 const loadedSections = ref<Set<string>>(new Set());
 const loadingSections = ref<Set<string>>(new Set());
 const lastError = ref<string | null>(null);
+let lastHostKey = '';
+
+function resetForHostChange() {
+    fieldCache.value = [];
+    loadedSections.value = new Set();
+    loadingSections.value = new Set();
+    lastError.value = null;
+}
 
 /**
  * Stable cache key for a (section, channel?, field) tuple.
@@ -550,7 +560,7 @@ function valuesEqual(a: unknown, b: unknown): boolean {
         return Number(a) === Number(b);
     }
     if (typeof a === 'boolean' || typeof b === 'boolean') {
-        return Boolean(a) === Boolean(b);
+        return coerceConfigBoolean(a) === coerceConfigBoolean(b);
     }
     return String(a) === String(b);
 }
@@ -647,6 +657,20 @@ function isHostUnreachableError(err: unknown): boolean {
 
 export function useSimpleSettings() {
     const configure = useConfigure();
+    const { activeHost } = useActiveHost();
+
+    // Invalidate caches on host change.
+    watch(
+        () => activeHost.value?.id ?? 'local',
+        (hostKey) => {
+            if (hostKey !== lastHostKey) {
+                lastHostKey = hostKey;
+                resetForHostChange();
+                configure.reset();
+            }
+        },
+        { immediate: true },
+    );
 
     /**
      * Ensure the field cache contains every backend section that this

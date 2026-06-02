@@ -558,7 +558,7 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 key: 'tools-service-capability',
                 label: 'Service tool power',
                 description:
-                    'The highest tool capability the app may request. Local command tools need at least guarded.',
+                    'The highest tool capability the app may request. Advanced: changing this affects all connected clients. For terminal access, use the terminal setup flow instead.',
                 kind: 'choice',
                 fieldRefs: [{ section: 'service', field: 'maxCapability' }],
                 impacts: ['higher-risk', 'requires-restart'],
@@ -1188,15 +1188,3 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
         ],
     },
 ];
-
-const providerSection = SIMPLE_SETTING_SECTIONS.find(
-    (section) => section.key === 'providers',
-);
-const modelRolesSection = SIMPLE_SETTING_SECTIONS.find(
-    (section) => section.key === 'ai',
-);
-
-if (providerSection && modelRolesSection) {
-    providerSection.controls.push(...modelRolesSection.controls);
-    modelRolesSection.controls = [];
-}

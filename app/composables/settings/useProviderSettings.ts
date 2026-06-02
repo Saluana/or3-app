@@ -1,6 +1,7 @@
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { useAuthSession } from '~/composables/useAuthSession'
 import { useOr3Api } from '~/composables/useOr3Api'
+import { useActiveHost } from '~/composables/useActiveHost'
 
 export interface ProviderFavoriteModel {
     model: string
@@ -60,6 +61,17 @@ function cacheKey(provider: string, kind: 'chat' | 'embeddings', user: boolean) 
 export function useProviderSettings() {
     const api = useOr3Api()
     const authSession = useAuthSession()
+    const { activeHost } = useActiveHost()
+
+    // Invalidate provider caches on host change.
+    watch(
+        () => activeHost.value?.id ?? 'local',
+        () => {
+            providerStatus.value = null
+            providerError.value = null
+            modelCache.clear()
+        },
+    )
 
     async function loadProviders(force = false) {
         if (providerStatus.value && !force) return providerStatus.value
@@ -93,6 +105,7 @@ export function useProviderSettings() {
                 ),
             'settings-change',
         )
+        modelCache.clear()
         await loadProviders(true)
         return result
     }
@@ -106,6 +119,7 @@ export function useProviderSettings() {
                 ),
             'settings-change',
         )
+        modelCache.clear()
         await loadProviders(true)
         return result
     }

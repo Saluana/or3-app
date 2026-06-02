@@ -73,6 +73,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { SimpleSettingChange, SimpleSettingControl } from '~/settings/simpleSettings'
+import { coerceConfigBoolean } from '~/utils/or3/config-boolean'
 
 const props = defineProps<{
     control: SimpleSettingControl
@@ -82,7 +83,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{ change: [change: SimpleSettingChange] }>()
 
-const enabled = computed(() => Boolean(props.currentValue))
+const enabled = computed(() => coerceConfigBoolean(props.currentValue))
 
 interface ChannelCardMeta {
     icon: string

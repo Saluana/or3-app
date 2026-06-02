@@ -268,5 +268,15 @@ export function useConfigure() {
     allFieldsLoading,
     allFieldsLoaded,
     loadAllFields,
+    reset() {
+      sections.value = []
+      fields.value = []
+      fieldsBySection.value = {}
+      allFieldsLoaded.value = false
+      allFieldsLoading.value = false
+      metadata.value = []
+      metadataLoaded.value = false
+      configureError.value = null
+    },
   }
 }

@@ -40,7 +40,7 @@ export function evaluateRisk(change: SimpleSettingChange): RiskFinding | null {
         }
     }
     if (
-        path === 'runtimeProfile' &&
+        path === 'runtimeProfile.value' &&
         typeof change.value === 'string' &&
         change.value.startsWith('local-dev')
     ) {
@@ -55,13 +55,13 @@ export function evaluateRisk(change: SimpleSettingChange): RiskFinding | null {
             message: 'You are allowing external messages.',
         }
     }
-    if (path === 'approvalModes.exec' && change.value === 'auto') {
+    if (path === 'security.approvals.execMode' && change.value === 'auto') {
         return {
             level: 'high',
             message: 'You are removing approval prompts for terminal commands.',
         }
     }
-    if (path === 'approvalModes.skill' && change.value === 'auto') {
+    if (path === 'security.approvals.skillMode' && change.value === 'auto') {
         return {
             level: 'medium',
             message: 'You are removing approval prompts for skill execution.',

@@ -1,5 +1,6 @@
 import type { SimpleSettingChange } from '~/settings/simpleSettings';
 import type { ConfigureChange, ConfigureField } from '~/types/or3-api';
+import { coerceConfigBoolean } from '~/utils/or3/config-boolean';
 
 export type ModeratorBackendPreset =
     | 'balanced'
@@ -396,7 +397,7 @@ function valuesDiffer(current: unknown, next: unknown): boolean {
         return Number(current) !== Number(next);
     }
     if (typeof current === 'boolean' || typeof next === 'boolean') {
-        return Boolean(current) !== Boolean(next);
+        return coerceConfigBoolean(current) !== coerceConfigBoolean(next);
     }
     return String(current ?? '') !== String(next ?? '');
 }

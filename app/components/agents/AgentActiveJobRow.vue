@@ -91,7 +91,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, ref } from 'vue';
 import type { JobSnapshot } from '~/types/or3-api';
 import {
     activeStatusLabel,
@@ -104,6 +104,7 @@ import {
     minutesSinceUpdate,
 } from '~/utils/or3/agent-jobs';
 import { isActiveStatus, isCliJob } from '~/utils/or3/jobs';
+import { useSharedNow } from '~/composables/useSharedNow';
 
 const props = defineProps<{ job: JobSnapshot; cancelling?: boolean }>();
 const emit = defineEmits<{
@@ -111,16 +112,11 @@ const emit = defineEmits<{
     cancel: [job: JobSnapshot];
 }>();
 
-const now = ref(Date.now());
-let timer: ReturnType<typeof setInterval> | null = null;
+const now = useSharedNow(1000);
 const confirming = ref(false);
 let confirmTimer: ReturnType<typeof setTimeout> | null = null;
 
-onMounted(() => {
-    timer = setInterval(() => (now.value = Date.now()), 1000);
-});
 onBeforeUnmount(() => {
-    if (timer) clearInterval(timer);
     if (confirmTimer) clearTimeout(confirmTimer);
 });
 

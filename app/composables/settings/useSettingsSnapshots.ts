@@ -8,6 +8,7 @@
 
 import { ref, watchEffect } from 'vue'
 import type { SimpleSettingChange } from '~/settings/simpleSettings'
+import { useActiveHost } from '~/composables/useActiveHost'
 
 const STORAGE_KEY = 'or3-app:settings-snapshots:v1'
 const MAX_SNAPSHOTS = 8
@@ -16,6 +17,7 @@ export interface SettingsSnapshot {
     id: string
     label: string
     createdAt: string
+    hostId: string
     /** The forward changes that were applied. */
     applied: SimpleSettingChange[]
     /** Inverse changes that would undo the apply. */
@@ -48,12 +50,14 @@ if (typeof window !== 'undefined') {
 
 export function useSettingsSnapshots() {
     hydrate()
+    const { activeHost } = useActiveHost()
 
     function record(label: string, applied: SimpleSettingChange[], inverse: SimpleSettingChange[]) {
         const snapshot: SettingsSnapshot = {
             id: `snap_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
             label,
             createdAt: new Date().toISOString(),
+            hostId: activeHost.value?.id ?? 'local',
             applied,
             inverse,
         }
@@ -62,7 +66,8 @@ export function useSettingsSnapshots() {
     }
 
     function latest(): SettingsSnapshot | null {
-        return snapshots.value[0] ?? null
+        const hostId = activeHost.value?.id ?? 'local'
+        return snapshots.value.find((s) => s.hostId === hostId) ?? null
     }
 
     function remove(id: string) {

@@ -172,6 +172,7 @@ function pruneJobs(jobs: RecentJobSummary[]) {
 function upsertHostJob(
     cache: ReturnType<typeof useLocalCache>,
     summary: RecentJobSummary,
+    options?: { persist?: boolean },
 ) {
     const jobs = hostJobSummaries(cache);
     const index = jobs.findIndex((job) => job.job_id === summary.job_id);
@@ -180,6 +181,27 @@ function upsertHostJob(
         jobs.splice(index, 1, merged);
     } else {
         jobs.unshift(summary);
+    }
+    cache.state.value.recentJobs[activeHostId(cache)] = pruneJobs(jobs);
+    if (options?.persist !== false) {
+        cache.persist();
+    }
+}
+
+function batchUpsertHostJobs(
+    cache: ReturnType<typeof useLocalCache>,
+    summaries: RecentJobSummary[],
+) {
+    if (summaries.length === 0) return;
+    const jobs = hostJobSummaries(cache);
+    for (const summary of summaries) {
+        const index = jobs.findIndex((job) => job.job_id === summary.job_id);
+        if (index >= 0) {
+            const merged = mergeJobSummary(jobs[index], summary);
+            jobs.splice(index, 1, merged);
+        } else {
+            jobs.unshift(summary);
+        }
     }
     cache.state.value.recentJobs[activeHostId(cache)] = pruneJobs(jobs);
     cache.persist();
@@ -356,7 +378,7 @@ export function applySseEventToCache(
         output_truncated: outputTruncated,
         updated_at: new Date().toISOString(),
         source: 'live',
-    });
+    }, { persist: terminal });
     return terminal;
 }
 
@@ -425,8 +447,8 @@ export function useJobs() {
             const items: PersistedSubagentJob[] = Array.isArray(response?.items)
                 ? response.items
                 : [];
-            for (const item of items) {
-                upsertHostJob(cache, persistedJobToSummary(item));
+            if (items.length > 0) {
+                batchUpsertHostJobs(cache, items.map(persistedJobToSummary));
             }
             // Best-effort CLI history loading
             if (runnerListSupported.value) {
@@ -469,8 +491,8 @@ export function useJobs() {
             const items: PersistedAgentCliJob[] = Array.isArray(response?.items)
                 ? response.items
                 : [];
-            for (const item of items) {
-                upsertHostJob(cache, persistedAgentCliJobToSummary(item));
+            if (items.length > 0) {
+                batchUpsertHostJobs(cache, items.map(persistedAgentCliJobToSummary));
             }
         } catch (_err) {
             const err = _err as Or3AppError;

@@ -311,7 +311,7 @@ export function useSettingsHealth() {
                     status: 'error',
                     detail: 'No provider key. The AI cannot reply.',
                     fixHref:
-                        '/settings/section/providers?focus=provider-openai-key',
+                        '/settings/section/providers?focus=provider-manager',
                     fixLabel: 'Add key',
                 });
             } else {
@@ -348,7 +348,7 @@ export function useSettingsHealth() {
                     label: 'Chat model selected',
                     status: 'warning',
                     detail: 'No chat model picked.',
-                    fixHref: '/settings/section/ai?focus=ai-model',
+                    fixHref: '/settings/section/providers?focus=ai-model',
                     fixLabel: 'Pick a model',
                 });
             }
