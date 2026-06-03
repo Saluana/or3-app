@@ -322,6 +322,9 @@ export function createAssistantEventApplier(
         const payload = eventPayload(event);
         const type = eventName(event);
         if (!type) return { failed: false, completed: false };
+        if (type === 'keepalive') {
+            return { failed: false, completed: false };
+        }
 
         const seq = eventSequence(event);
         const seqKey = seq !== undefined ? `seq:${seq}` : '';

@@ -31,7 +31,10 @@ import {
     resetApprovalHydrationForTests,
     useApprovalHydration,
 } from '../../app/composables/assistant-stream/useApprovalHydration';
-import { useExecutionRouter } from '../../app/composables/assistant-stream/useExecutionRouter';
+import {
+    resolveExecutionPath,
+    useExecutionRouter,
+} from '../../app/composables/assistant-stream/useExecutionRouter';
 import {
     resetStreamRecoveryForTests,
     useStreamRecovery,
@@ -80,6 +83,17 @@ afterEach(() => {
 });
 
 describe('assistant-stream helper composables', () => {
+    it('resolveExecutionPath prefers job follow over runner chat flag', () => {
+        expect(
+            resolveExecutionPath({
+                followJobId: 'job_1',
+                followRunnerTurnId: '',
+                runnerChatSessionId: 'rcs_1',
+                useRunnerChat: true,
+            }),
+        ).toBe('job-follow');
+    });
+
     it('recovers the oldest pending streaming assistant message', async () => {
         const isStreaming = ref(false);
         const send = vi.fn<

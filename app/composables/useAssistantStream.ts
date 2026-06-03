@@ -3,12 +3,11 @@ import { computed, ref, watch, type Ref } from 'vue';
 import type { ToolPolicy } from '~/types/or3-api';
 import type { AssistantSendPayload } from '~/types/app-state';
 import { describeApprovalRequest } from '~/utils/assistant-stream/approval';
-import { serializeErrorForLog } from '~/utils/assistant-stream/errors';
 import {
-    clearServiceCapabilityCeilingHost,
-    loadPersistedServiceCapabilityCeilingHosts,
-    persistServiceCapabilityCeilingHost,
-} from '~/utils/assistant-stream/tool-policy-host';
+    extractErrorCode,
+    serializeErrorForLog,
+} from '~/utils/assistant-stream/errors';
+import { clearServiceCapabilityCeilingHost } from '~/utils/assistant-stream/tool-policy-host';
 import { markOrphanClientStreamingFailed } from '~/utils/assistant-stream/orphanStreamingMessage';
 import {
     EMPTY_FINAL_USER_MESSAGE,
@@ -28,7 +27,10 @@ import {
 } from '~/utils/assistant-stream/payload';
 import { useApprovalHydration } from './assistant-stream/useApprovalHydration';
 import { useAssistantMessageState } from './assistant-stream/useAssistantMessageState';
-import { useExecutionRouter } from './assistant-stream/useExecutionRouter';
+import {
+    resolveExecutionPath,
+    useExecutionRouter,
+} from './assistant-stream/useExecutionRouter';
 import { useStreamRecovery } from './assistant-stream/useStreamRecovery';
 import { useChatSessions } from './useChatSessions';
 import { useActiveHost } from './useActiveHost';
@@ -66,24 +68,13 @@ export function resetAssistantStreamRuntimeForTests() {
     useAssistantStreamRuntime().value = createAssistantStreamRuntimeState();
 }
 
-const serviceCapabilityCeilingHosts =
-    loadPersistedServiceCapabilityCeilingHosts();
-
 function createTraceId() {
     return `turn_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
-}
-
-function rememberServiceCapabilityCeilingHost(hostId?: string | null) {
-    const normalized = hostId?.trim();
-    if (!normalized) return;
-    serviceCapabilityCeilingHosts.add(normalized);
-    persistServiceCapabilityCeilingHost(normalized);
 }
 
 export function forgetServiceCapabilityCeilingHost(hostId?: string | null) {
     const normalized = hostId?.trim();
     if (!normalized) return;
-    serviceCapabilityCeilingHosts.delete(normalized);
     clearServiceCapabilityCeilingHost(normalized);
 }
 
@@ -283,6 +274,12 @@ export function useAssistantStream() {
             payload,
             session,
         );
+        const executionPath = resolveExecutionPath({
+            followJobId,
+            followRunnerTurnId,
+            runnerChatSessionId: payload.runnerChatSessionId,
+            useRunnerChat,
+        });
         const buildExecutionContext = () => ({
             api,
             activeController,
@@ -323,7 +320,7 @@ export function useAssistantStream() {
             runnerChatTurnForRecovery = executionRecoveryRef;
 
             let snapshotRecovered = false;
-            if (streamedJobId && !useRunnerChat) {
+            if (streamedJobId && executionPath === 'job-follow') {
                 try {
                     await runFetchAndApplyJobSnapshot(streamedJobId, {
                         settleAfterStreamFailure: streamEndedWithFailure,
@@ -390,31 +387,52 @@ export function useAssistantStream() {
                 return;
             }
 
-            if (useRunnerChat) {
+            const executionContext = buildExecutionContext();
+            if (
+                executionPath === 'runner-chat' ||
+                executionPath === 'runner-follow'
+            ) {
+                const assistantForRecovery = readAssistant();
+                const streamErrorCode = extractErrorCode(streamError);
+                const effectiveRunnerChatTurnForRecovery =
+                    runnerChatTurnForRecovery ||
+                    (streamErrorCode === 'stream_idle_timeout' &&
+                    assistantForRecovery?.runnerChatSessionId &&
+                    assistantForRecovery.runnerChatTurnId
+                        ? {
+                              sessionId:
+                                  assistantForRecovery.runnerChatSessionId,
+                              turnId: assistantForRecovery.runnerChatTurnId,
+                          }
+                        : null);
                 logger.error(
                     'send:runner_error',
                     'Runner chat execution failed',
                     {
                         sessionKey: session.sessionKey,
+                        executionPath,
+                        runnerChatTurnForRecovery:
+                            effectiveRunnerChatTurnForRecovery ?? undefined,
                         ...serializeErrorForLog(streamError),
                     },
                 );
-                const executionContext = buildExecutionContext();
                 await handleRunnerExecutionError({
                     ...executionContext,
                     toast,
                     streamError,
-                    runnerChatTurnForRecovery,
+                    runnerChatTurnForRecovery:
+                        effectiveRunnerChatTurnForRecovery,
                 });
                 return;
             }
 
             logger.error('send:error', 'Assistant send failed', {
                 sessionKey: session.sessionKey,
+                executionPath,
                 ...serializeErrorForLog(streamError),
             });
             await handleAssistantSendError({
-                ...buildExecutionContext(),
+                ...executionContext,
                 toast,
                 streamError,
                 runnerChatTurnForRecovery: null,

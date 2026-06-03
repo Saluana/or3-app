@@ -121,7 +121,7 @@ interface RunnerChatStreamContext extends BaseExecutionContext {
     selectedRunnerId: string;
 }
 
-interface RunnerErrorContext extends BaseExecutionContext {
+export interface AssistantSendErrorContext extends BaseExecutionContext {
     toast: ToastLike;
     streamError: unknown;
     runnerChatTurnForRecovery: RunnerChatTurnRef | null;
@@ -141,7 +141,8 @@ const COMPLETION_ACTIVITY_TYPES = [
     'unknown',
 ];
 
-const STREAM_IDLE_TIMEOUT_MS = 45_000;
+// Long OpenCode tool runs (writes, shell) may emit no runner_chat_events for minutes.
+const STREAM_IDLE_TIMEOUT_MS = 120_000;
 const SNAPSHOT_SETTLE_ATTEMPTS = 6;
 const SNAPSHOT_SETTLE_DELAY_MS = 350;
 
@@ -500,8 +501,9 @@ export async function fetchAndApplyRunnerTurn(
     const displayText = normalizeResultDisplayText(turn.final_text, runnerId);
     applyRecoveredFinalText(displayText, context);
     const latest = context.readAssistant();
+    const live = isLiveRunnerTurnStatus(turn.status);
     const emptyAfterToolWork =
-        !displayText.trim() && assistantHasToolWork(latest);
+        !live && !displayText.trim() && assistantHasToolWork(latest);
     if (emptyAfterToolWork) {
         context.updateActivity(
             (entry) =>
@@ -540,6 +542,8 @@ export async function fetchAndApplyRunnerTurn(
         status:
             turn.status === 'approval_required'
                 ? 'attention'
+                : live
+                  ? 'streaming'
                 : turn.status === 'failed' ||
                     turn.status === 'aborted' ||
                     turn.status === 'timed_out'
@@ -790,27 +794,66 @@ export async function streamRunnerChat(
     };
 }
 
-export async function handleRunnerExecutionError(context: RunnerErrorContext) {
-    if (context.runnerChatTurnForRecovery) {
+function isLiveRunnerTurnStatus(status: string | undefined) {
+    const normalized = String(status || '')
+        .trim()
+        .toLowerCase();
+    return normalized === 'queued' || normalized === 'running';
+}
+
+export async function handleRunnerExecutionError(
+    context: AssistantSendErrorContext,
+) {
+    const errorCode = extractErrorCode(context.streamError);
+    if (
+        context.runnerChatTurnForRecovery &&
+        errorCode === 'stream_idle_timeout'
+    ) {
+        try {
+            const turn = await context.api.request<RunnerChatTurn>(
+                `/internal/v1/runner-chat/sessions/${encodeURIComponent(context.runnerChatTurnForRecovery.sessionId)}/turns/${encodeURIComponent(context.runnerChatTurnForRecovery.turnId)}`,
+                { signal: context.activeController.signal },
+            );
+            if (isLiveRunnerTurnStatus(turn.status)) {
+                await fetchAndApplyRunnerTurn(
+                    context.runnerChatTurnForRecovery.sessionId,
+                    context.runnerChatTurnForRecovery.turnId,
+                    context,
+                );
+                return;
+            } else {
+                await fetchAndApplyRunnerTurn(
+                    context.runnerChatTurnForRecovery.sessionId,
+                    context.runnerChatTurnForRecovery.turnId,
+                    context,
+                );
+                const latest = context.readAssistant();
+                if (latest?.status !== 'failed') {
+                    return;
+                }
+            }
+        } catch {
+            // Surface the original streaming failure below.
+        }
+    } else if (context.runnerChatTurnForRecovery) {
         try {
             await fetchAndApplyRunnerTurn(
                 context.runnerChatTurnForRecovery.sessionId,
                 context.runnerChatTurnForRecovery.turnId,
                 context,
             );
-            context.updateActivity((entry) => entry.status === 'running', {
-                status: 'error',
-            });
             const latest = context.readAssistant();
-            if (latest?.status === 'failed') return;
+            if (latest?.status !== 'failed') {
+                return;
+            }
         } catch {
             // Surface the original streaming failure below.
         }
     }
-    const errorCode = extractErrorCode(context.streamError);
+    const friendlyErrorCode = extractErrorCode(context.streamError);
     const friendly = formatUserFacingErrorInline(
         context.streamError,
-        errorCode,
+        friendlyErrorCode,
     );
     context.updateActivity((entry) => entry.status === 'running', {
         status: 'error',
@@ -818,8 +861,9 @@ export async function handleRunnerExecutionError(context: RunnerErrorContext) {
     context.updateAssistant({
         content: friendly,
         status: 'failed',
-        error: userFacingErrorCopy(context.streamError, errorCode).message,
-        errorCode,
+        error: userFacingErrorCopy(context.streamError, friendlyErrorCode)
+            .message,
+        errorCode: friendlyErrorCode,
         runnerChatSessionId:
             context.runnerChatTurnForRecovery?.sessionId ||
             context.readAssistant()?.runnerChatSessionId,
@@ -834,7 +878,25 @@ export async function handleRunnerExecutionError(context: RunnerErrorContext) {
     );
 }
 
-export async function handleAssistantSendError(context: RunnerErrorContext) {
+export async function handleAssistantSendError(
+    context: AssistantSendErrorContext,
+) {
+    const jobId =
+        context.activeJobId.value?.trim() ||
+        context.readAssistant()?.jobId?.trim() ||
+        '';
+    if (jobId) {
+        try {
+            await fetchAndApplyJobSnapshot(jobId, context, {
+                settleAfterStreamFailure: true,
+            });
+            if (context.readAssistant()?.status !== 'failed') {
+                return;
+            }
+        } catch {
+            // Fall through to user-facing error handling.
+        }
+    }
     const errorCode = extractErrorCode(context.streamError);
     const friendly = formatUserFacingErrorInline(
         context.streamError,

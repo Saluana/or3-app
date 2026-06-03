@@ -18,6 +18,32 @@ interface ResolveExecutionRouteResult {
     useRunnerChat: boolean;
 }
 
+export type AssistantExecutionPath =
+    | 'job-follow'
+    | 'runner-follow'
+    | 'runner-chat';
+
+export function resolveExecutionPath(options: {
+    followJobId: string;
+    followRunnerTurnId: string;
+    runnerChatSessionId?: string;
+    useRunnerChat: boolean;
+}): AssistantExecutionPath {
+    if (
+        options.followRunnerTurnId.trim() &&
+        options.runnerChatSessionId?.trim()
+    ) {
+        return 'runner-follow';
+    }
+    if (options.followJobId.trim()) {
+        return 'job-follow';
+    }
+    if (options.useRunnerChat) {
+        return 'runner-chat';
+    }
+    return 'runner-chat';
+}
+
 interface RouteExecutionOptions extends ResolveExecutionRouteResult {
     executionContext: ExecutionContext;
     followJobId: string;

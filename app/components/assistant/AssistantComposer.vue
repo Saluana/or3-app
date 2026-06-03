@@ -182,7 +182,7 @@
                                     >
                                         <button
                                             v-for="model in filteredRunnerModels"
-                                            :key="runnerModelValue(model)"
+                                            :key="runnerModelKey(model)"
                                             type="button"
                                             class="or3-composer-menu__model-option"
                                             :class="{
@@ -662,9 +662,11 @@ watch(composerPlaceholder, (text) => {
     editor.value?.view.dom.setAttribute('data-placeholder', text);
 });
 const activeRunnerModels = computed(() =>
-    activeRunner.value?.models?.length
-        ? activeRunner.value.models
-        : activeRunner.value?.runtime?.models || [],
+    dedupeRunnerModelsForPicker(
+        activeRunner.value?.models?.length
+            ? activeRunner.value.models
+            : activeRunner.value?.runtime?.models || [],
+    ),
 );
 const activeRunnerDefaultModel = computed(
     () =>
@@ -843,15 +845,47 @@ function selectRunnerThinkingLevel(level: string) {
     emit('update:selectedRunnerThinkingLevel', level.trim());
 }
 
+function runnerModelKey(model: { id: string; provider?: string }) {
+    const id = model.id.trim();
+    const provider = (model.provider || '').trim();
+    return provider ? `${provider}/${id}` : id;
+}
+
 function runnerModelValue(model: { id: string; provider?: string }) {
-    if (
-        selectedRunnerId.value === 'opencode' &&
-        model.provider &&
-        !model.id.includes('/')
-    ) {
-        return `${model.provider}/${model.id}`;
-    }
+    // OpenCode catalog IDs are authoritative. Prefixing provider/id here produced
+    // invalid requests such as xiaomi/mimo-v2.5 when the catalog entry is
+    // providerID=openrouter, modelID=mimo-v2.5.
     return model.id;
+}
+
+type RunnerPickerModel = {
+    id: string;
+    provider?: string;
+    default?: boolean;
+    display_name?: string;
+    provider_name?: string;
+};
+
+/** One row per model id; backend may list the same id under multiple providers. */
+function dedupeRunnerModelsForPicker(models: RunnerPickerModel[]) {
+    const byID = new Map<string, RunnerPickerModel>();
+    for (const model of models) {
+        const id = model.id?.trim();
+        if (!id) continue;
+        const existing = byID.get(id);
+        if (!existing) {
+            byID.set(id, model);
+            continue;
+        }
+        if (model.default && !existing.default) {
+            byID.set(id, model);
+            continue;
+        }
+        if (!existing.provider?.trim() && model.provider?.trim()) {
+            byID.set(id, model);
+        }
+    }
+    return Array.from(byID.values());
 }
 
 function runnerModelProviderLabel(model: {

@@ -472,7 +472,7 @@ describe('assistant stream ordered parts', () => {
         expect(assistant?.content).not.toContain(EMPTY_FINAL_USER_MESSAGE);
     });
 
-    it.skip('replaces an empty-final warning with recovered final text without duplicating it', async () => {
+    it('replaces an empty-final warning with recovered final text without duplicating it', async () => {
         useLocalCache().updateHost({
             id: 'test-host',
             name: 'Test Host',
@@ -574,7 +574,7 @@ describe('assistant stream ordered parts', () => {
         ).toHaveLength(1);
     });
 
-    it.skip('clears approval placeholder text before following an approved resume job', async () => {
+    it('clears approval placeholder text before following an approved resume job', async () => {
         useLocalCache().updateHost({
             id: 'test-host',
             name: 'Test Host',
@@ -662,7 +662,7 @@ describe('assistant stream ordered parts', () => {
         ).toBe(true);
     });
 
-    it.skip('preserves prior assistant work when following an approved quota resume job', async () => {
+    it('preserves prior assistant work when following an approved quota resume job', async () => {
         useLocalCache().updateHost({
             id: 'test-host',
             name: 'Test Host',

@@ -91,6 +91,17 @@ export function shouldRenderResultAsMarkdown(
     return !looksLikeJsonDocument(trimmed);
 }
 
+function extractOpenCodeErrorMessage(obj: ParsedPayload): string | null {
+    const err = asObject(obj.error);
+    const data = asObject(err?.data);
+    return (
+        asText(data?.message) ||
+        asText(err?.message) ||
+        asText(obj.message) ||
+        null
+    );
+}
+
 function extractCandidate(
     payload: unknown,
     runnerId?: string,
@@ -103,6 +114,18 @@ function extractCandidate(
         return { score: 0, text: '' };
     }
     const obj = payload as ParsedPayload;
+
+    const wrappedFinalText = asText(obj.final_text);
+    if (wrappedFinalText) {
+        const nested = extractDisplayText(wrappedFinalText, runnerId, depth + 1);
+        if (nested) {
+            return { score: 97, text: nested };
+        }
+    }
+    const wrappedError = asText(obj.error_message);
+    if (wrappedError) {
+        return { score: 98, text: wrappedError };
+    }
 
     switch (runnerId) {
         case 'gemini':
@@ -141,6 +164,12 @@ function extractCandidate(
             break;
         }
         case 'opencode':
+            if (obj.type === 'error') {
+                const message = extractOpenCodeErrorMessage(obj);
+                if (message) {
+                    return { score: 100, text: message };
+                }
+            }
             if (obj.type === 'text') {
                 const partText = extractPartText(obj.part);
                 if (partText) {
@@ -155,6 +184,13 @@ function extractCandidate(
                 return { score: 100, text: asText(obj.message)! };
             }
             break;
+    }
+
+    if (obj.type === 'error') {
+        const message = extractOpenCodeErrorMessage(obj);
+        if (message) {
+            return { score: 96, text: message };
+        }
     }
 
     if (obj.type === 'result' && extractDisplayText(obj.response, runnerId, depth + 1)) {

@@ -55,6 +55,42 @@ describe('result display helpers', () => {
         );
     });
 
+    it('extracts readable text from runner-chat done wrapper payloads', () => {
+        const raw = JSON.stringify({
+            assistant_message_id: 2440,
+            error_message: '',
+            final_text: JSON.stringify({
+                type: 'error',
+                error: {
+                    name: 'UnknownError',
+                    data: {
+                        message:
+                            'Model not found: xiaomi/mimo-v2.5. Did you mean: mimo-v2.5?',
+                    },
+                },
+            }),
+        });
+        expect(normalizeResultDisplayText(raw, 'opencode')).toBe(
+            'Model not found: xiaomi/mimo-v2.5. Did you mean: mimo-v2.5?',
+        );
+    });
+
+    it('extracts readable text from OpenCode error events', () => {
+        const raw = JSON.stringify({
+            type: 'error',
+            error: {
+                name: 'UnknownError',
+                data: {
+                    message:
+                        'Model not found: xiaomi/mimo-v2.5. Did you mean: mimo-v2.5?',
+                },
+            },
+        });
+        expect(normalizeResultDisplayText(raw, 'opencode')).toBe(
+            'Model not found: xiaomi/mimo-v2.5. Did you mean: mimo-v2.5?',
+        );
+    });
+
     it('extracts readable text from OpenCode text events', () => {
         const raw = [
             '{"type":"step_start","timestamp":1777866965731}',
