@@ -20,8 +20,8 @@
                     <span class="or3-cc-title__accent">confidence.</span>
                 </h2>
                 <p class="or3-cc-sub">
-                    or3-intern handles the heavy lifting—research, summarize,
-                    draft, and plan—so you can stay in your flow.
+                    Hand off research, summaries, drafts, and plans to an
+                    external runner on your computer while you stay in flow.
                 </p>
             </div>
             <div class="or3-cc-stage" aria-hidden="true">
@@ -177,7 +177,7 @@
                         v-if="editor"
                         :editor="editor"
                         class="or3-cc-editor text-base leading-6 text-(--or3-text) sm:text-sm"
-                        aria-label="Task for or3-intern"
+                        aria-label="Task description"
                     />
                     <span
                         v-if="!formState.task.trim()"
@@ -186,7 +186,7 @@
                         {{
                             disabled
                                 ? 'Connect a computer to delegate work'
-                                : 'What should or3-intern do?'
+                                : 'What should the runner do?'
                         }}
                     </span>
                 </div>
@@ -205,9 +205,7 @@
                     class="or3-focus-ring absolute bottom-2.5 right-2.5 grid size-10 place-items-center rounded-full bg-(--or3-green-soft) text-(--or3-green-dark) shadow-sm transition hover:bg-(--or3-green)/20 disabled:cursor-not-allowed disabled:opacity-50"
                     :disabled="!canSubmit"
                     :aria-label="
-                        submitting
-                            ? 'Handing off to or3-intern'
-                            : 'Send task to or3-intern'
+                        submitting ? 'Handing off task' : 'Send task to runner'
                     "
                 >
                     <Icon
@@ -295,7 +293,7 @@
                     </div>
                     <!-- Mode selector (external runners only) -->
                     <div
-                        v-if="selectedRunner !== 'or3-intern'"
+                        v-if="usesExternalRunner"
                         class="col-span-2 sm:col-span-1"
                     >
                         <label
@@ -358,8 +356,7 @@
                 <!-- Model and max-turns (external runners only, compact row) -->
                 <div
                     v-if="
-                        selectedRunner !== 'or3-intern' &&
-                        activeRunnerSupports?.modelFlag
+                        usesExternalRunner && activeRunnerSupports?.modelFlag
                     "
                     class="grid grid-cols-2 gap-2"
                 >
@@ -408,7 +405,7 @@
                 </div>
 
                 <!-- Working directory (external runners only) -->
-                <div v-if="selectedRunner !== 'or3-intern'">
+                <div v-if="usesExternalRunner">
                     <label
                         class="block font-mono text-[11px] font-semibold tracking-[0.18em] text-(--or3-text-muted) mb-1.5"
                     >
@@ -430,7 +427,7 @@
 
                 <!-- Safety copy for external runners -->
                 <p
-                    v-if="selectedRunner !== 'or3-intern'"
+                    v-if="usesExternalRunner"
                     class="font-mono text-[10px] text-(--or3-text-muted) leading-relaxed"
                 >
                     Runs in the background using non-interactive safe mode. It
@@ -638,6 +635,7 @@ import type { ChatAttachment } from '~/types/app-state';
 import type { AgentRunnerInfo } from '~/types/or3-api';
 import { runnerLabel } from '~/utils/or3/jobs';
 import type { AgentCommandDraft } from '~/utils/or3/agent-jobs';
+import { isLegacyRunnerId } from '~/utils/runnerIds';
 import CwdPickerSheet from '~/components/agents/CwdPickerSheet.vue';
 
 export type { AgentCommandDraft };
@@ -710,7 +708,11 @@ const formState = reactive({
     autoApprove: true,
 });
 
-const selectedRunner = ref(props.selectedRunnerId ?? 'or3-intern');
+const selectedRunner = ref(
+    props.selectedRunnerId && !isLegacyRunnerId(props.selectedRunnerId)
+        ? props.selectedRunnerId
+        : '',
+);
 const selectedMode = ref<AgentCommandMode>('safe_edit');
 const selectedModel = ref('');
 const selectedMaxTurns = ref<number | undefined>(undefined);
@@ -775,13 +777,27 @@ const displayedAttachments = computed(() => [
     ...manualAttachments.value,
 ]);
 
-const canSubmit = computed(
+const usesExternalRunner = computed(
     () =>
-        !props.disabled &&
-        !props.submitting &&
-        (formState.task.trim().length > 0 ||
-            displayedAttachments.value.length > 0),
+        Boolean(selectedRunner.value) &&
+        !isLegacyRunnerId(selectedRunner.value),
 );
+
+const canSubmit = computed(() => {
+    if (props.disabled || props.submitting) return false;
+    const hasTask =
+        formState.task.trim().length > 0 ||
+        displayedAttachments.value.length > 0;
+    if (!hasTask) return false;
+    if (
+        props.runnerListSupported !== false &&
+        availableRunners.value.length > 0 &&
+        !usesExternalRunner.value
+    ) {
+        return false;
+    }
+    return true;
+});
 
 const categories: Array<{
     id: AgentCategory;
@@ -856,9 +872,9 @@ const notifyMenuItems = computed(() =>
 // ── Runner dropdown helpers ──
 
 const runnerList = computed<RunnerOption[]>(() => {
-    const runners = props.runnerOptions ?? [];
-    if (!runners.length)
-        return [{ id: 'or3-intern', label: 'or3-intern', status: 'available' }];
+    const runners = (props.runnerOptions ?? []).filter(
+        (r) => !isLegacyRunnerId(r.id),
+    );
     return runners.map((r) => ({
         id: r.id,
         label: r.display_name || r.id,
@@ -1040,7 +1056,7 @@ function setDraft(draft: AgentCommandDraft) {
     if (draft.autoApprove !== undefined) {
         formState.autoApprove = draft.autoApprove;
     }
-    if (draft.runnerId) {
+    if (draft.runnerId && !isLegacyRunnerId(draft.runnerId)) {
         selectedRunner.value = draft.runnerId;
     }
     if (draft.mode) {
@@ -1467,21 +1483,20 @@ function submit() {
         attachments: attachmentPayload(),
         runnerId: selectedRunner.value,
         runnerLabel: runnerLabel(selectedRunner.value),
-        mode: selectedRunner.value !== 'or3-intern' ? selectedMode.value : undefined,
-        isolation:
-            selectedRunner.value !== 'or3-intern'
-                ? modeToIsolation(selectedMode.value)
-                : undefined,
+        mode: usesExternalRunner.value ? selectedMode.value : undefined,
+        isolation: usesExternalRunner.value
+            ? modeToIsolation(selectedMode.value)
+            : undefined,
         model:
-            selectedRunner.value !== 'or3-intern' && selectedModel.value
+            usesExternalRunner.value && selectedModel.value
                 ? selectedModel.value
                 : undefined,
         maxTurns:
-            selectedRunner.value !== 'or3-intern' && selectedMaxTurns.value
+            usesExternalRunner.value && selectedMaxTurns.value
                 ? selectedMaxTurns.value
                 : undefined,
         cwd:
-            selectedRunner.value !== 'or3-intern' && cwdText.value
+            usesExternalRunner.value && cwdText.value
                 ? cwdText.value
                 : undefined,
     });
@@ -1517,8 +1532,12 @@ watch(
 watch(
     availableRunners,
     (runners) => {
+        if (!runners.length) {
+            selectedRunner.value = '';
+            return;
+        }
         if (!runners.some((runner) => runner.id === selectedRunner.value)) {
-            selectedRunner.value = runners[0]?.id ?? 'or3-intern';
+            selectedRunner.value = runners[0]?.id ?? '';
         }
     },
     { immediate: true },

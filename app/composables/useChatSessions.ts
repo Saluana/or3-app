@@ -35,6 +35,8 @@ import {
 import { createId, msToIso, now } from './chat/chat-session-utils';
 import { useActiveHost } from './useActiveHost';
 import { useLocalCache } from './useLocalCache';
+import { useChatRunners } from './useChatRunners';
+import { isLegacyRunnerId, legacyRunnerDisplayLabel } from '~/utils/runnerIds';
 
 let chatSyncInstalled = false;
 
@@ -46,10 +48,12 @@ export function resetChatSessionIndexesForTests() {
     chatSyncInstalled = false;
 }
 
-function defaultRunnerFields() {
+function runnerFieldsFromDefault(
+    runner: { id: string; display_name?: string } | null,
+) {
     return {
-        runnerId: 'or3-intern',
-        runnerLabel: 'OR3 Intern',
+        runnerId: runner?.id ?? '',
+        runnerLabel: runner?.display_name ?? '',
         runnerContinuationMode: 'replay',
         archived: false,
     } satisfies Partial<ChatSession>;
@@ -61,8 +65,12 @@ function patchFromBackendSessionMeta(
 ): Partial<ChatSession> {
     return {
         title: meta.title || session.title,
-        runnerId: meta.runner_id || session.runnerId || 'or3-intern',
-        runnerLabel: meta.runner_label || session.runnerLabel,
+        runnerId: meta.runner_id || session.runnerId || '',
+        runnerLabel:
+            meta.runner_label ||
+            (isLegacyRunnerId(meta.runner_id)
+                ? legacyRunnerDisplayLabel(meta.runner_id)
+                : session.runnerLabel),
         runnerChatSessionId:
             meta.runner_chat_session_id || session.runnerChatSessionId,
         runnerContinuationMode:
@@ -100,9 +108,14 @@ function messagePreview(value?: string) {
 
 export function useChatSessions() {
     const cache = useLocalCache();
+    const { defaultRunner } = useChatRunners();
     const { activeHost } = useActiveHost();
     const hostSessions = useHostSessionsRef();
     const { activeSessionMessages } = useChatMessageIndex();
+
+    function defaultRunnerFields() {
+        return runnerFieldsFromDefault(defaultRunner.value);
+    }
 
     function syncSessionsFromCache(options: { force?: boolean } = {}) {
         syncHostSessions(

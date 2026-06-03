@@ -27,6 +27,11 @@ import {
     runnerLabel,
     summaryToSnapshot,
 } from '~/utils/or3/jobs';
+import {
+    isLegacyRunnerId,
+    isSelectableRunnerId,
+    legacyRunnerDisplayLabel,
+} from '~/utils/runnerIds';
 import { useActiveHost } from './useActiveHost';
 import { useLocalCache } from './useLocalCache';
 import { useOr3Api } from './useOr3Api';
@@ -84,34 +89,23 @@ function activeHostId(cache: ReturnType<typeof useLocalCache>) {
     return cache.state.value.activeHostId ?? 'local';
 }
 
-function builtinInternRunner(): AgentRunnerInfo {
-    return {
-        id: 'or3-intern',
-        display_name: 'or3-intern',
-        status: 'available',
-        auth_status: 'ready',
-        supports: {
-            structuredOutput: false,
-            streamingJson: false,
-            modelFlag: false,
-            permissionsMode: false,
-            safeSandboxFlag: false,
-            dangerousBypassFlag: false,
-            stdinPrompt: false,
-        },
-    };
+function normalizeRunnerList(runners: AgentRunnerInfo[]): AgentRunnerInfo[] {
+    return runners
+        .map((runner) => ({
+            ...runner,
+            display_name: isLegacyRunnerId(runner.id)
+                ? legacyRunnerDisplayLabel(runner.id)
+                : runner.display_name,
+            auth_status:
+                runner.status === 'available' && runner.auth_status === 'unknown'
+                    ? 'ready'
+                    : runner.auth_status,
+        }))
+        .filter((runner) => isSelectableRunnerId(runner.id) || isLegacyRunnerId(runner.id));
 }
 
-function normalizeRunnerList(runners: AgentRunnerInfo[]): AgentRunnerInfo[] {
-    const normalized = runners.map((runner) => ({
-        ...runner,
-        auth_status:
-            runner.status === 'available' && runner.auth_status === 'unknown'
-                ? 'ready'
-                : runner.auth_status,
-    }));
-    const hasIntern = normalized.some((r) => r.id === 'or3-intern');
-    return hasIntern ? normalized : [builtinInternRunner(), ...normalized];
+function selectableAgentRunners(runners: AgentRunnerInfo[]): AgentRunnerInfo[] {
+    return runners.filter((runner) => isSelectableRunnerId(runner.id));
 }
 
 function hostJobSummaries(cache: ReturnType<typeof useLocalCache>) {
@@ -517,8 +511,10 @@ export function useJobs() {
                 '/internal/v1/agent-runners',
             );
             runnerListSupported.value = true;
-            agentRunners.value = normalizeRunnerList(
-                Array.isArray(response?.runners) ? response.runners : [],
+            agentRunners.value = selectableAgentRunners(
+                normalizeRunnerList(
+                    Array.isArray(response?.runners) ? response.runners : [],
+                ),
             );
         } catch (error) {
             const err = error as Or3AppError;
@@ -529,11 +525,11 @@ export function useJobs() {
                 err?.code === 'capability_unavailable'
             ) {
                 runnerListSupported.value = false;
-                agentRunners.value = [builtinInternRunner()];
+                agentRunners.value = [];
                 return;
             }
             lastRunnerError.value = err;
-            agentRunners.value = [builtinInternRunner()];
+            agentRunners.value = [];
         } finally {
             loadingRunners.value = false;
         }

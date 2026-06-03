@@ -356,6 +356,35 @@ describe('assistant-stream helper composables', () => {
         );
     });
 
+    it('rejects fresh sends with no selected runner', async () => {
+        const chat = {} as ReturnType<typeof useChatSessions>;
+        const { resolveExecutionRoute, routeExecution } = useExecutionRouter({
+            chat,
+        });
+        const session = { ...createSession(), runnerId: '' };
+        const payload: AssistantSendPayload = {
+            text: 'hello',
+            transportText: 'hello',
+            runnerId: '',
+        };
+        const resolved = resolveExecutionRoute(payload, session);
+
+        await expect(
+            routeExecution({
+                executionContext: {} as never,
+                followJobId: '',
+                followRunnerTurnId: '',
+                payload,
+                session,
+                selectedRunnerId: resolved.selectedRunnerId,
+                text: 'hello',
+                turnRequest: { message: 'hello' },
+                useRunnerChat: resolved.useRunnerChat,
+            }),
+        ).rejects.toThrow('Choose an available runner');
+        expect(streamDirectTurn).not.toHaveBeenCalled();
+    });
+
     it('routes fresh non-default runners through runner chat', async () => {
         streamRunnerChat.mockResolvedValue({ route: 'runner_chat' });
 

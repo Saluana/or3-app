@@ -351,7 +351,7 @@
                     v-if="editor"
                     :editor="editor"
                     class="assistant-composer-editor min-h-6 max-h-40 overflow-y-auto text-base leading-6 text-(--or3-text) sm:text-[0.9375rem]"
-                    aria-label="Message or3-intern"
+                    aria-label="Message"
                 />
             </div>
 
@@ -441,11 +441,11 @@ import type { ChatRunnerInfo } from '../../types/or3-api';
 import ComposerInternModelPicker from './ComposerInternModelPicker.vue';
 import { useChatModelRouting } from '../../composables/settings/useChatModelRouting';
 import {
-    INTERN_RUNNER_ID,
     isInternChatModelRunner,
     shouldApplyRunnerDefaultModel,
     defaultRunnerModelForSelection,
 } from '../../utils/runnerModelPolicy';
+import { isLegacyRunnerId } from '../../utils/runnerIds';
 
 const props = withDefaults(
     defineProps<{
@@ -463,7 +463,7 @@ const props = withDefaults(
         streaming: false,
         paneId: 'main',
         mode: 'work',
-        selectedRunnerId: INTERN_RUNNER_ID,
+        selectedRunnerId: '',
         selectedRunnerModel: '',
         selectedRunnerThinkingLevel: '',
         runners: () => [],
@@ -588,9 +588,7 @@ const modeOptions = computed(() => {
 });
 
 const selectedMode = computed(() => props.mode ?? 'work');
-const selectedRunnerId = computed(
-    () => props.selectedRunnerId || INTERN_RUNNER_ID,
-);
+const selectedRunnerId = computed(() => props.selectedRunnerId || '');
 const selectedRunnerModel = computed(() => props.selectedRunnerModel || '');
 const selectedRunnerThinkingLevel = computed(
     () => props.selectedRunnerThinkingLevel || '',
@@ -606,67 +604,63 @@ const internModelSelection = computed({
 });
 
 const runnerOptions = computed(() => {
-    const runners = props.runners.length
-        ? props.runners
-        : [
-              {
-                  id: 'or3-intern',
-                  display_name: 'OR3 Intern',
-                  status: 'available',
-                  auth_status: 'ready',
-                  supports: {
-                      structuredOutput: false,
-                      streamingJson: false,
-                      modelFlag: true,
-                      permissionsMode: false,
-                      safeSandboxFlag: false,
-                      dangerousBypassFlag: false,
-                      stdinPrompt: false,
-                      chat: { chatSelectable: true, chatReplay: true },
-                  },
-                  chat_capabilities: { chatSelectable: true, chatReplay: true },
-              } satisfies ChatRunnerInfo,
-          ];
-    return runners.map((runner) => {
+    return props.runners.map((runner) => {
         const caps = runner.chat_capabilities || runner.supports.chat;
+        const legacy = isLegacyRunnerId(runner.id);
         const selectable =
-            runner.id === 'or3-intern' ||
-            (runner.status === 'available' &&
-                (!runner.auth_status ||
-                    runner.auth_status === 'ready' ||
-                    runner.auth_status === 'unknown') &&
-                caps?.chatSelectable !== false &&
-                caps?.chatReplay !== false);
-        const reason =
-            runner.status === 'missing'
-                ? 'Binary missing'
-                : runner.status === 'disabled_by_config'
-                  ? 'Disabled in config'
-                  : runner.auth_status === 'missing'
-                    ? 'Auth required'
-                    : !selectable
-                      ? runner.disabled_reason || 'Unavailable'
-                      : runner.id === 'or3-intern'
-                        ? 'Default OR3 tools and approvals.'
-                        : caps?.chatNativeSession
-                          ? 'Replay and native session capable.'
-                          : 'Replay-mode external runner.';
+            !legacy &&
+            runner.status === 'available' &&
+            (!runner.auth_status ||
+                runner.auth_status === 'ready' ||
+                runner.auth_status === 'unknown') &&
+            caps?.chatSelectable !== false &&
+            caps?.chatReplay !== false;
+        const reason = legacy
+            ? 'Legacy built-in session (read-only).'
+            : runner.status === 'missing'
+              ? 'Binary missing'
+              : runner.status === 'disabled_by_config'
+                ? 'Disabled in config'
+                : runner.auth_status === 'missing'
+                  ? 'Auth required'
+                  : !selectable
+                    ? runner.disabled_reason || 'Unavailable'
+                    : caps?.chatNativeSession
+                      ? 'Replay and native session capable.'
+                      : 'External runner (replay mode).';
         return {
             id: runner.id,
             label: runner.display_name || runner.id,
             description: reason,
             selectable,
-            icon:
-                runner.id === 'or3-intern'
-                    ? 'i-pixelarticons-robot'
-                    : 'i-pixelarticons-terminal',
+            icon: legacy
+                ? 'i-pixelarticons-robot'
+                : 'i-pixelarticons-terminal',
         };
     });
 });
 
+const hasSelectableRunner = computed(() =>
+    runnerOptions.value.some((runner) => runner.selectable),
+);
+const selectedRunnerIsSelectable = computed(() =>
+    runnerOptions.value.some(
+        (runner) => runner.id === selectedRunnerId.value && runner.selectable,
+    ),
+);
 const activeRunner = computed(() =>
     props.runners.find((runner) => runner.id === selectedRunnerId.value),
 );
+const composerPlaceholder = computed(() => {
+    const label =
+        activeRunner.value?.display_name?.trim() ||
+        activeRunner.value?.id?.trim();
+    if (label) return `Ask ${label} for help…`;
+    return 'Ask your runner for help…';
+});
+watch(composerPlaceholder, (text) => {
+    editor.value?.view.dom.setAttribute('data-placeholder', text);
+});
 const activeRunnerModels = computed(() =>
     activeRunner.value?.models?.length
         ? activeRunner.value.models
@@ -737,7 +731,11 @@ const hasSendableContent = computed(
     () => !!formState.text.trim() || displayedAttachments.value.length > 0,
 );
 const canSend = computed(
-    () => !props.streaming && !submitLocked.value && hasSendableContent.value,
+    () =>
+        !props.streaming &&
+        !submitLocked.value &&
+        hasSendableContent.value &&
+        selectedRunnerIsSelectable.value,
 );
 
 function editorPlainText() {
@@ -1184,7 +1182,7 @@ async function stageLocalFilesForExternalRunner() {
         (attachment): attachment is DraftAttachment & { file: File } =>
             attachment.file instanceof File,
     );
-    if (!attachments.length || selectedRunnerId.value === 'or3-intern') {
+    if (!attachments.length || isLegacyRunnerId(selectedRunnerId.value)) {
         return [] as DraftAttachment[];
     }
 
@@ -1255,6 +1253,20 @@ async function submit() {
         submitLocked.value = false;
         return;
     }
+    if (!selectedRunnerIsSelectable.value) {
+        toast.add({
+            title: hasSelectableRunner.value
+                ? 'Choose an available runner'
+                : 'No runner available',
+            description: hasSelectableRunner.value
+                ? 'Select an authenticated runner before sending.'
+                : 'Install or authenticate a runner, then retry.',
+            color: 'warning',
+            icon: 'i-pixelarticons-warning-box',
+        });
+        submitLocked.value = false;
+        return;
+    }
 
     let stagedWorkspaceAttachments: DraftAttachment[] = [];
     try {
@@ -1276,7 +1288,7 @@ async function submit() {
     const sessionKey = chat.activeSession.value?.sessionKey?.trim() || '';
     let attachments: ChatAttachment[];
     try {
-        if (selectedRunnerId.value === 'or3-intern' && sessionKey) {
+        if (isLegacyRunnerId(selectedRunnerId.value) && sessionKey) {
             attachments = await stageNativeInternDraftAttachments(
                 draftAttachments,
                 sessionKey,
@@ -1300,14 +1312,14 @@ async function submit() {
     const payload: AssistantSendPayload = {
         text: visiblePayloadText(),
         transportText:
-            selectedRunnerId.value === 'or3-intern'
+            isLegacyRunnerId(selectedRunnerId.value)
                 ? formState.text.trim()
                 : buildTransportTextForAttachments(stagedWorkspaceAttachments),
         attachments,
         runnerId: selectedRunnerId.value,
         runnerModel: selectedRunnerModel.value || undefined,
         runnerThinkingLevel:
-            selectedRunnerId.value !== 'or3-intern' &&
+            !isLegacyRunnerId(selectedRunnerId.value) &&
             activeModelReasoningOptions.value.includes(
                 selectedRunnerThinkingLevel.value,
             )
@@ -1725,7 +1737,7 @@ onMounted(() => {
             Text,
             HardBreak,
             Placeholder.configure({
-                placeholder: 'Ask or3-intern for help…',
+                placeholder: () => composerPlaceholder.value,
             }),
             FileMention as any,
             SlashCommand as any,
@@ -1734,6 +1746,7 @@ onMounted(() => {
         editorProps: {
             attributes: {
                 class: 'min-h-6 outline-none',
+                'data-placeholder': composerPlaceholder.value,
             },
             handleKeyDown(_view, event) {
                 if (

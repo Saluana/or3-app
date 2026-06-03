@@ -197,11 +197,11 @@ import type { ChatSessionMeta } from '~/types/or3-api';
 import { useManagedToast } from '~/composables/useManagedToast';
 import {
     defaultRunnerModelForSelection,
-    INTERN_RUNNER_ID,
     resolveRunnerModelForSend,
     resolveSessionRunnerModel,
     shouldApplyRunnerDefaultModel,
 } from '~/utils/runnerModelPolicy';
+import { useChatRunnerSelection } from '~/composables/useChatRunnerSelection';
 
 const chat = useChatSessions();
 const {
@@ -219,6 +219,7 @@ const {
     getRunner,
     refresh: refreshRunners,
     error: runnersError,
+    ensureSelectable,
 } = useChatRunners();
 const sessionHistory = useSessionHistory();
 const router = useRouter();
@@ -233,9 +234,21 @@ const showWelcome = computed(
     () => !isPaired.value && messages.value.length === 0,
 );
 
-const selectedRunnerId = ref(INTERN_RUNNER_ID);
-const selectedRunnerModel = ref('');
-const selectedRunnerThinkingLevel = ref('');
+const {
+    selectedRunnerId,
+    selectedRunnerModel,
+    selectedRunnerThinkingLevel,
+    resyncFromSession,
+    applyRunnerToActiveSession,
+    continuationModeForRunner,
+    resetModelFields: resetRunnerModelFields,
+} = useChatRunnerSelection({
+    activeSession,
+    messageCount,
+    setSessionRunnerMetadata,
+    ensureSelectable,
+    getRunner,
+});
 const approvalsOpen = ref(false);
 const pairingOpen = ref(false);
 const mobileChatThread = ref<{ scrollToBottom?: () => void } | null>(null);
@@ -246,8 +259,8 @@ const liveChannelController = ref<AbortController | null>(null);
 const liveChannelPaused = ref(false);
 const runnerSwitchOpen = ref(false);
 const pendingRunnerSwitchId = ref<string | null>(null);
-const runnerSwitchCurrentLabel = ref('OR3 Intern');
-const runnerSwitchNextLabel = ref('OR3 Intern');
+const runnerSwitchCurrentLabel = ref('Current runner');
+const runnerSwitchNextLabel = ref('New runner');
 
 async function startLocalHostSetup() {
     await electronHost.ensureLoaded();
@@ -335,8 +348,7 @@ function openHistorySession(session: ChatSessionMeta) {
         return;
     }
     void sessionHistory.openSession(session).then(() => {
-        selectedRunnerId.value = session.runner_id || INTERN_RUNNER_ID;
-        selectedRunnerModel.value = session.runner_model || '';
+        resyncFromSession();
         liveChannelPaused.value = false;
     });
 }
@@ -402,7 +414,7 @@ function onNewSession() {
         return;
     }
     const session = newSession('New conversation');
-    const runner = getRunner(selectedRunnerId.value);
+    const runner = ensureSelectable(selectedRunnerId.value);
     if (runner) {
         setSessionRunnerMetadata(session.id, {
             runnerId: runner.id,
@@ -417,12 +429,6 @@ function onNewSession() {
     }
 }
 
-function continuationModeForRunner(runnerId?: string | null) {
-    const runner = getRunner(runnerId || undefined);
-    const caps = runner?.chat_capabilities || runner?.supports?.chat;
-    return caps?.chatNativeSession ? 'native' : 'replay';
-}
-
 const externalChannelKey = computed(() => {
     if (!canUseHostApi(activeHost.value)) return '';
     const sessionKey = activeSession.value?.sessionKey ?? '';
@@ -430,12 +436,17 @@ const externalChannelKey = computed(() => {
 });
 
 watch(
-    () => activeSession.value?.runnerId ?? '',
-    (runnerId, previous) => {
-        if (runnerId === previous) return;
-        selectedRunnerId.value =
-            runnerId || defaultRunner.value?.id || INTERN_RUNNER_ID;
-        selectedRunnerModel.value = activeSession.value?.runnerModel || '';
+    () => ({
+        sessionId: activeSession.value?.id ?? '',
+        runnerId: activeSession.value?.runnerId ?? '',
+        runnerModel: activeSession.value?.runnerModel ?? '',
+        defaultRunnerId: defaultRunner.value?.id ?? '',
+    }),
+    (next, previous) => {
+        if (next.sessionId !== previous?.sessionId) {
+            resetRunnerModelFields();
+        }
+        resyncFromSession();
     },
     { immediate: true },
 );
@@ -498,37 +509,13 @@ watch(selectedRunnerId, (runnerId, previous) => {
             activeSession.value.runnerLabel ||
             getRunner(activeSession.value.runnerId)?.display_name ||
             activeSession.value.runnerId ||
-            'OR3 Intern';
+            'Current runner';
         runnerSwitchNextLabel.value = runner.display_name || runner.id;
         runnerSwitchOpen.value = true;
         return;
     }
     applyRunnerToActiveSession(runnerId, runner);
 });
-
-function applyRunnerToActiveSession(
-    runnerId: string,
-    runner: NonNullable<ReturnType<typeof getRunner>>,
-) {
-    if (shouldApplyRunnerDefaultModel(runnerId)) {
-        selectedRunnerModel.value = defaultRunnerModelForSelection(
-            runnerId,
-            runner.default_model || runner.runtime?.default_model,
-        );
-    }
-    selectedRunnerThinkingLevel.value = '';
-    if (!activeSession.value) return;
-    setSessionRunnerMetadata(activeSession.value.id, {
-        runnerId,
-        runnerLabel: runner.display_name || runner.id,
-        runnerModel: resolveSessionRunnerModel({
-            runnerId,
-            selected: selectedRunnerModel.value,
-            runnerDefault: runner.default_model || runner.runtime?.default_model,
-        }),
-        runnerContinuationMode: continuationModeForRunner(runnerId),
-    });
-}
 
 function confirmRunnerSwitch() {
     const runnerId = pendingRunnerSwitchId.value;
@@ -561,10 +548,8 @@ function confirmRunnerSwitch() {
 function cancelRunnerSwitch() {
     runnerSwitchOpen.value = false;
     pendingRunnerSwitchId.value = null;
-    selectedRunnerId.value =
-        activeSession.value?.runnerId ||
-        defaultRunner.value?.id ||
-        INTERN_RUNNER_ID;
+    const runner = ensureSelectable(activeSession.value?.runnerId);
+    selectedRunnerId.value = runner?.id ?? '';
 }
 
 function sendWithMode(payload: Parameters<typeof send>[0]) {
@@ -674,8 +659,10 @@ useManagedToast(showHistoryErrorToast, toast, historyToastId, () => ({
 }));
 
 useManagedToast(showRunnersErrorToast, toast, runnersToastId, () => ({
-    title: "Couldn't load agents",
-    description: 'Using OR3 Intern for now.',
+    title: "Couldn't load runners",
+    description:
+        runnersError.value ||
+        'Install and authenticate a runner (for example OpenCode) in or3-intern settings.',
     color: 'warning',
     icon: 'i-pixelarticons-alert',
     actions: [

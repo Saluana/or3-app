@@ -1,8 +1,7 @@
-/** Runner id for the built-in intern chat path (per-session chat model override). */
-export const INTERN_RUNNER_ID = 'or3-intern';
+import { isLegacyRunnerId } from '~/utils/runnerIds';
 
 export function isInternChatModelRunner(runnerId?: string | null): boolean {
-    return String(runnerId ?? '').trim() === INTERN_RUNNER_ID;
+    return isLegacyRunnerId(runnerId);
 }
 
 /** Whether switching runners should reset the composer model from runner defaults. */

@@ -641,7 +641,20 @@ function detectPreset(
  * Hides controls whose underlying fields aren't available, supporting
  * version-aware behaviour (Phase 15).
  */
-function isControlAvailable(control: SimpleSettingControl): boolean {
+function isRunnerFirstActive(values: Record<string, unknown>): boolean {
+    return (
+        coerceConfigBoolean(values['agentCLI.enabled']) ||
+        coerceConfigBoolean(values['agentCLI.agentCLI_enabled'])
+    );
+}
+
+function isControlAvailable(
+    control: SimpleSettingControl,
+    values: Record<string, unknown> = {},
+): boolean {
+    if (control.hiddenWhenRunnerFirst && isRunnerFirstActive(values)) {
+        return false;
+    }
     return control.fieldRefs.some(
         (ref) => !!findField(ref.section, ref.field, ref.channel),
     );
@@ -767,18 +780,23 @@ export function useSimpleSettings() {
         if (!section) return undefined;
         return {
             ...section,
-            controls: section.controls.filter(isControlAvailable),
+            controls: section.controls.filter(controlVisible),
         };
     }
 
     const availableSections = computed(() => {
+        const values = valueIndex.value;
         return SIMPLE_SETTING_SECTIONS.map((s) => ({
             ...s,
-            controls: s.controls.filter(isControlAvailable),
+            controls: s.controls.filter((c) => isControlAvailable(c, values)),
         })).filter((s) => s.controls.length > 0);
     });
 
     const valueIndex = computed(() => buildValueIndex());
+
+    function controlVisible(control: SimpleSettingControl): boolean {
+        return isControlAvailable(control, valueIndex.value);
+    }
 
     function summaryFor(section: SimpleSettingSection): string {
         try {

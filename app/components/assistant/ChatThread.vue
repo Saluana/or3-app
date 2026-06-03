@@ -34,7 +34,7 @@
                         />
                     </div>
                     <component :is="emptyTitleTag" class="or3-chat-empty__title">
-                        Hi, I'm or3-intern.
+                        Hi, I'm your assistant.
                     </component>
                     <p class="or3-chat-empty__subtitle">
                         {{

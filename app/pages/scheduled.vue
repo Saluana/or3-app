@@ -155,7 +155,13 @@
                                     :name="job.payload?.kind === 'agent_cli_run' ? 'pixelarticons:mood-happy' : 'pixelarticons:zap'"
                                     class="size-3"
                                 />
-                                {{ job.payload?.kind === 'agent_cli_run' ? agentRunnerLabel(job.payload?.agent_run?.runner_id) : 'OR3 assistant' }}
+                                {{
+                                    job.payload?.kind === 'agent_cli_run'
+                                        ? agentRunnerLabel(
+                                              job.payload?.agent_run?.runner_id,
+                                          )
+                                        : 'Legacy OR3 task'
+                                }}
                             </span>
                         </div>
                     </div>
@@ -441,7 +447,7 @@ function jobPrompt(job: CronJob) {
 
 function agentRunnerLabel(id?: string) {
     if (!id) return 'Unknown';
-    if (id === 'or3-intern') return 'OR3 assistant';
+    if (id === 'or3-intern') return 'Legacy OR3 runner';
     const runner = (agentRunners.value ?? []).find((item: AgentRunnerInfo) => item.id === id);
     return runner?.display_name || id;
 }

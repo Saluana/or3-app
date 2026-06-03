@@ -10,19 +10,29 @@ import { useActiveHost } from './useActiveHost';
 import { canUseHostApi } from './useSecureHostTokens';
 import { useOr3Api } from './useOr3Api';
 import { createLogger } from '~/utils/logger';
+import {
+    isLegacyRunnerId,
+    isSelectableRunnerId,
+    pickDefaultRunnerId,
+} from '~/utils/runnerIds';
 
 const runnersByHost = ref<Record<string, ChatRunnerInfo[]>>({});
+const defaultRunnerByHost = ref<Record<string, string>>({});
 const loadingByHost = ref<Record<string, boolean>>({});
 const errorByHost = ref<Record<string, string | null>>({});
 const logger = createLogger('chat_runners');
 let refreshGeneration = 0;
 
 function runnerLabel(runner: Pick<ChatRunnerInfo, 'display_name' | 'id'>) {
+    if (isLegacyRunnerId(runner.id)) {
+        return runner.display_name || 'OR3 Intern (legacy)';
+    }
     return runner.display_name || runner.id;
 }
 
 function isSelectableRunner(runner: ChatRunnerInfo) {
-    if (runner.id === 'or3-intern') return true;
+    if (isLegacyRunnerId(runner.id)) return false;
+    if (runner.runner_selectable === false) return false;
     if (runner.status !== 'available') return false;
     if (
         runner.auth_status &&
@@ -76,14 +86,19 @@ export function useChatRunners() {
     );
     const loading = computed(() => Boolean(loadingByHost.value[hostId.value]));
     const error = computed(() => errorByHost.value[hostId.value] ?? null);
-    const defaultRunner = computed(
-        () =>
-            selectableRunners.value.find(
-                (runner) => runner.id === 'or3-intern',
-            ) ??
-            selectableRunners.value[0] ??
-            runners.value.find((runner) => runner.id === 'or3-intern') ??
-            null,
+    const serviceDefaultRunnerId = computed(
+        () => defaultRunnerByHost.value[hostId.value] ?? '',
+    );
+    const defaultRunner = computed(() => {
+        const id = pickDefaultRunnerId(
+            selectableRunners.value,
+            serviceDefaultRunnerId.value,
+        );
+        if (!id) return null;
+        return selectableRunners.value.find((r) => r.id === id) ?? null;
+    });
+    const hasSelectableRunner = computed(
+        () => selectableRunners.value.length > 0,
     );
 
     async function refresh() {
@@ -104,49 +119,52 @@ export function useChatRunners() {
         let agentRunners: AgentRunnerInfo[] | null = null;
         let errors: string[] = [];
         let pinLocked = false;
+        let serviceDefault = '';
 
         try {
             const response = await api.request<ChatRunnersResponse>(
                 '/internal/v1/chat-runners',
             );
             chatRunners = response.runners ?? [];
+            serviceDefault = String(response.default_runner ?? '').trim();
         } catch (err) {
             if (isPinLockedError(err)) {
                 pinLocked = true;
             } else {
-            const msg =
-                err && typeof err === 'object' && 'message' in err
-                    ? String((err as { message?: unknown }).message)
-                    : 'chat-runners failed';
-            errors.push(msg);
-            logger.warn('refresh:chat-error', 'Chat runner discovery failed', {
-                hostId: currentHost,
-                error: msg,
-            });
+                const msg =
+                    err && typeof err === 'object' && 'message' in err
+                        ? String((err as { message?: unknown }).message)
+                        : 'chat-runners failed';
+                errors.push(msg);
+                logger.warn('refresh:chat-error', 'Chat runner discovery failed', {
+                    hostId: currentHost,
+                    error: msg,
+                });
             }
         }
 
-        if (!pinLocked) try {
-            const response = await api.request<AgentRunnersResponse>(
-                '/internal/v1/agent-runners',
-            );
-            agentRunners = response.runners ?? [];
-        } catch (err) {
-            if (isPinLockedError(err)) {
-                pinLocked = true;
-            } else {
-            const msg =
-                err && typeof err === 'object' && 'message' in err
-                    ? String((err as { message?: unknown }).message)
-                    : 'agent-runners failed';
-            errors.push(msg);
-            logger.warn(
-                'refresh:agent-error',
-                'Agent runner discovery failed',
-                { hostId: currentHost, error: msg },
-            );
+        if (!pinLocked)
+            try {
+                const response = await api.request<AgentRunnersResponse>(
+                    '/internal/v1/agent-runners',
+                );
+                agentRunners = response.runners ?? [];
+            } catch (err) {
+                if (isPinLockedError(err)) {
+                    pinLocked = true;
+                } else {
+                    const msg =
+                        err && typeof err === 'object' && 'message' in err
+                            ? String((err as { message?: unknown }).message)
+                            : 'agent-runners failed';
+                    errors.push(msg);
+                    logger.warn(
+                        'refresh:agent-error',
+                        'Agent runner discovery failed',
+                        { hostId: currentHost, error: msg },
+                    );
+                }
             }
-        }
 
         if (pinLocked) {
             if (generation === refreshGeneration) {
@@ -156,44 +174,29 @@ export function useChatRunners() {
         }
 
         const merged = mergeRunnerResults(chatRunners, agentRunners);
-        if (merged.length > 0) {
-            const normalized = normalizeChatRunners(merged);
-            runnersByHost.value[currentHost] = normalized;
-            logger.info('refresh:complete', 'Chat runner discovery completed', {
+        const normalized = normalizeChatRunners(merged);
+        runnersByHost.value[currentHost] = normalized;
+        defaultRunnerByHost.value[currentHost] = serviceDefault;
+
+        if (normalized.filter(isSelectableRunner).length === 0) {
+            errorByHost.value[currentHost] =
+                errors[0] ||
+                'No external runner is ready. Install and authenticate OpenCode, or choose another runner in or3-intern settings.';
+            logger.warn('refresh:no-selectable', 'No selectable runners', {
                 hostId: currentHost,
-                runnerCount: normalized.length,
-                selectableCount: normalized.filter(isSelectableRunner).length,
             });
+        } else if (errors.length > 0) {
+            errorByHost.value[currentHost] = errors.join('; ');
         } else {
             errorByHost.value[currentHost] = null;
-            runnersByHost.value[currentHost] = [
-                {
-                    id: 'or3-intern',
-                    display_name: 'OR3 Intern',
-                    status: 'available',
-                    auth_status: 'ready',
-                    supports: {
-                        structuredOutput: false,
-                        streamingJson: false,
-                        modelFlag: true,
-                        permissionsMode: false,
-                        safeSandboxFlag: false,
-                        dangerousBypassFlag: false,
-                        stdinPrompt: false,
-                        chat: { chatSelectable: true, chatReplay: true },
-                    },
-                    chat_capabilities: {
-                        chatSelectable: true,
-                        chatReplay: true,
-                    },
-                },
-            ];
-            logger.info(
-                'refresh:fallback',
-                'Fell back to the built-in OR3 runner',
-                { hostId: currentHost },
-            );
         }
+
+        logger.info('refresh:complete', 'Chat runner discovery completed', {
+            hostId: currentHost,
+            runnerCount: normalized.length,
+            selectableCount: normalized.filter(isSelectableRunner).length,
+            defaultRunner: serviceDefault,
+        });
 
         if (generation === refreshGeneration) {
             loadingByHost.value[currentHost] = false;
@@ -218,7 +221,8 @@ export function useChatRunners() {
             out.push({
                 ...runner,
                 chat_capabilities:
-                    runner.supports?.chat && Object.keys(runner.supports.chat).length > 0
+                    runner.supports?.chat &&
+                    Object.keys(runner.supports.chat).length > 0
                         ? runner.supports.chat
                         : undefined,
             });
@@ -228,26 +232,32 @@ export function useChatRunners() {
     }
 
     function getRunner(id?: AgentRunnerId | string) {
-        const normalized = id?.trim() || 'or3-intern';
+        const normalized = String(id ?? '').trim();
+        if (!normalized) return defaultRunner.value;
         return runners.value.find((runner) => runner.id === normalized) ?? null;
     }
 
     function ensureSelectable(id?: AgentRunnerId | string) {
-        const runner = getRunner(id) ?? defaultRunner.value;
-        if (!runner) return null;
-        return isSelectableRunner(runner) ? runner : defaultRunner.value;
+        const normalized = String(id ?? '').trim();
+        const runner = normalized ? getRunner(normalized) : null;
+        if (runner && isSelectableRunner(runner)) return runner;
+        return defaultRunner.value;
     }
 
     return {
         runners,
         selectableRunners,
         defaultRunner,
+        serviceDefaultRunnerId,
+        hasSelectableRunner,
         loading,
         error,
         refresh,
         getRunner,
         ensureSelectable,
         isSelectableRunner,
+        isSelectableRunnerId,
+        isLegacyRunnerId,
         runnerLabel,
     };
 }

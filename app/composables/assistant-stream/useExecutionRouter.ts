@@ -1,4 +1,5 @@
 import type { AssistantSendPayload, ChatSession } from '~/types/app-state';
+import { isLegacyRunnerId } from '~/utils/runnerIds';
 import {
     streamDirectTurn,
     streamFollowJob,
@@ -34,10 +35,11 @@ export function useExecutionRouter(options: { chat: ChatStore }) {
         session: ChatSession,
     ): ResolveExecutionRouteResult => {
         const selectedRunnerId =
-            payload.runnerId || session.runnerId || 'or3-intern';
+            payload.runnerId || session.runnerId || '';
         return {
             selectedRunnerId,
-            useRunnerChat: selectedRunnerId !== 'or3-intern',
+            useRunnerChat:
+                Boolean(selectedRunnerId) && !isLegacyRunnerId(selectedRunnerId),
         };
     };
 
@@ -76,6 +78,10 @@ export function useExecutionRouter(options: { chat: ChatStore }) {
                 text,
                 selectedRunnerId,
             });
+        }
+
+        if (!selectedRunnerId) {
+            throw new Error('Choose an available runner before sending.');
         }
 
         return streamDirectTurn({

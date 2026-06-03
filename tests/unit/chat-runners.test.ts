@@ -14,7 +14,7 @@ type ActiveHostRef = ReturnType<typeof ref<{ id: string } | null>>;
 function makeRunner(id: string, status = 'available', authStatus = 'ready') {
     return {
         id,
-        display_name: id === 'or3-intern' ? 'OR3 Intern' : id,
+        display_name: id,
         status,
         auth_status: authStatus,
         supports: {
@@ -68,32 +68,31 @@ describe('useChatRunners', () => {
 
     it('keeps runner state scoped by host and refreshes per host', async () => {
         const byHost: Record<string, any> = {
-            'host-a': { runners: [makeRunner('or3-intern'), makeRunner('opencode')] },
-            'host-b': { runners: [makeRunner('or3-intern'), makeRunner('claude', 'missing', 'missing')] },
+            'host-a': {
+                runners: [makeRunner('opencode'), makeRunner('claude')],
+                default_runner: 'opencode',
+            },
+            'host-b': {
+                runners: [makeRunner('claude', 'missing', 'missing')],
+                default_runner: 'claude',
+            },
         };
         const { chatRunners, activeHost, request } = await loadComposable(async () => byHost[activeHost.value?.id || 'host-a']);
 
         await chatRunners.refresh();
 
-        expect(chatRunners.runners.value.map((runner) => runner.id)).toEqual(['or3-intern', 'opencode']);
+        expect(chatRunners.selectableRunners.value.map((runner) => runner.id)).toEqual(['opencode', 'claude']);
         expect(request).toHaveBeenCalledTimes(2);
 
         activeHost.value = { id: 'host-b' };
         await nextTick();
         await chatRunners.refresh();
 
-        expect(chatRunners.runners.value.map((runner) => runner.id)).toEqual(['or3-intern', 'claude']);
+        expect(chatRunners.selectableRunners.value.map((runner) => runner.id)).toEqual([]);
         expect(request).toHaveBeenCalledTimes(4);
-
-        activeHost.value = { id: 'host-a' };
-        await nextTick();
-        await chatRunners.refresh();
-
-        expect(chatRunners.runners.value.map((runner) => runner.id)).toEqual(['or3-intern', 'opencode']);
-        expect(request).toHaveBeenCalledTimes(6);
     });
 
-    it('falls back to OR3 when both endpoints fail without surfacing an error', async () => {
+    it('surfaces setup error when discovery fails', async () => {
         const { chatRunners, request } = await loadComposable(async () => {
             throw new Error('runner discovery offline');
         });
@@ -101,49 +100,44 @@ describe('useChatRunners', () => {
         await chatRunners.refresh();
 
         expect(request).toHaveBeenCalledTimes(2);
-        expect(chatRunners.error.value).toBeNull();
-        expect(chatRunners.runners.value).toHaveLength(1);
-        expect(chatRunners.runners.value[0]?.id).toBe('or3-intern');
-        expect(chatRunners.defaultRunner.value?.id).toBe('or3-intern');
+        expect(chatRunners.error.value).toContain('runner');
+        expect(chatRunners.runners.value).toHaveLength(0);
+        expect(chatRunners.defaultRunner.value).toBeNull();
     });
 
-    it('prefers OR3 as default and falls back when a selected runner is unavailable', async () => {
+    it('prefers service default_runner and falls back to OpenCode', async () => {
         const { chatRunners } = await loadComposable(async () => ({
             runners: [
                 makeRunner('opencode', 'auth_missing', 'missing'),
-                makeRunner('or3-intern'),
                 makeRunner('claude'),
             ],
+            default_runner: 'claude',
         }));
 
         await chatRunners.refresh();
 
-        expect(chatRunners.defaultRunner.value?.id).toBe('or3-intern');
+        expect(chatRunners.defaultRunner.value?.id).toBe('claude');
         expect(chatRunners.ensureSelectable('claude')?.id).toBe('claude');
-        expect(chatRunners.ensureSelectable('opencode')?.id).toBe('or3-intern');
-        expect(chatRunners.ensureSelectable('missing-runner')?.id).toBe('or3-intern');
-        expect(chatRunners.selectableRunners.value.map((runner) => runner.id)).toEqual(['or3-intern', 'claude']);
+        expect(chatRunners.ensureSelectable('opencode')?.id).toBe('claude');
+        expect(chatRunners.ensureSelectable('missing-runner')?.id).toBe('claude');
     });
 
-    it('keeps Gemini selectable when auth readiness is unknown but the runner is available', async () => {
+    it('excludes legacy or3-intern from selectable runners', async () => {
         const { chatRunners } = await loadComposable(async () => ({
-            runners: [
-                makeRunner('or3-intern'),
-                makeRunner('gemini', 'available', 'unknown'),
-            ],
+            runners: [makeRunner('or3-intern'), makeRunner('gemini')],
+            default_runner: 'gemini',
         }));
 
         await chatRunners.refresh();
 
-        expect(chatRunners.selectableRunners.value.map((runner) => runner.id)).toEqual(['or3-intern', 'gemini']);
-        expect(chatRunners.getRunner('gemini')?.auth_status).toBe('ready');
+        expect(chatRunners.selectableRunners.value.map((runner) => runner.id)).toEqual(['gemini']);
+        expect(chatRunners.defaultRunner.value?.id).toBe('gemini');
     });
 
     it('normalizes runtime model metadata for native runners', async () => {
         const opencode = makeRunner('opencode');
         const { chatRunners } = await loadComposable(async () => ({
             runners: [
-                makeRunner('or3-intern'),
                 {
                     ...opencode,
                     default_model: '',
@@ -162,6 +156,7 @@ describe('useChatRunners', () => {
                     },
                 },
             ],
+            default_runner: 'opencode',
         }));
 
         await chatRunners.refresh();
@@ -169,6 +164,26 @@ describe('useChatRunners', () => {
         const runner = chatRunners.getRunner('opencode');
         expect(runner?.default_model).toBe('gpt-5');
         expect(runner?.models.map((model) => model.id)).toEqual(['gpt-5', 'gpt-5-mini']);
-        expect(runner?.runtime?.ownership).toBe('external');
+    });
+
+    it('clears stale errors after a later successful refresh', async () => {
+        let failChat = true;
+        const { chatRunners } = await loadComposable(async (path: string) => {
+            if (path.includes('chat-runners') && failChat) {
+                throw new Error('chat-runners unavailable');
+            }
+            return {
+                runners: [makeRunner('opencode')],
+                default_runner: 'opencode',
+            };
+        });
+
+        await chatRunners.refresh();
+        expect(chatRunners.error.value).toMatch(/chat-runners unavailable/);
+
+        failChat = false;
+        await chatRunners.refresh();
+        expect(chatRunners.error.value).toBeNull();
+        expect(chatRunners.defaultRunner.value?.id).toBe('opencode');
     });
 });

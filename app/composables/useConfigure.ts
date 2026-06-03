@@ -75,7 +75,9 @@ export function useConfigure() {
       const params = new URLSearchParams({ section })
       if (channel) params.set('channel', channel)
       const response = await api.request<ConfigureFieldsResponse>(`/internal/v1/configure/fields?${params.toString()}`)
-      fields.value = response.fields ?? []
+      fields.value = (response.fields ?? []).filter(
+        (field) => field.status !== 'hidden',
+      )
       return response
     } catch (error: any) {
       configureError.value = error?.message ?? 'Unable to load section fields.'

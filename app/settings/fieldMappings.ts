@@ -865,8 +865,10 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
         controls: [
             {
                 key: 'auto-subagents',
-                label: 'Background agents',
-                description: 'Let OR3 run helper agents in the background.',
+                label: 'Background agents (legacy)',
+                description:
+                    'Legacy built-in subagents. Hidden when runner-first mode is active on your computer.',
+                hiddenWhenRunnerFirst: true,
                 kind: 'toggle',
                 fieldRefs: [{ section: 'subagents', field: 'enabled' }],
                 advancedKeys: ['subagents.enabled'],
@@ -881,8 +883,9 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
             },
             {
                 key: 'auto-subagent-power',
-                label: 'Background agent power',
-                description: 'How many helper agents may run at once.',
+                label: 'Background agent power (legacy)',
+                description: 'Legacy subagent concurrency limits.',
+                hiddenWhenRunnerFirst: true,
                 kind: 'preset-slider',
                 fieldRefs: [
                     { section: 'subagents', field: 'maxConcurrent' },
@@ -980,9 +983,9 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
             },
             {
                 key: 'auto-agent-cli',
-                label: 'External CLI agents',
+                label: 'Runners',
                 description:
-                    'Let OR3 run external tools like OpenCode, Codex, Claude, or Gemini alongside internal agents.',
+                    'Delegate chat and background work to external runners such as OpenCode, Codex, Claude, or Gemini.',
                 kind: 'toggle',
                 fieldRefs: [{ section: 'agentCLI', field: 'enabled' }],
                 impacts: ['higher-risk'],

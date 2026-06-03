@@ -173,10 +173,15 @@ export interface ChatRunnerInfo extends AgentRunnerInfo {
     default_mode?: string;
     default_isolation?: string;
     default_cwd?: string;
+    /** False for legacy built-in OR3 sessions in metadata. */
+    runner_selectable?: boolean;
+    legacy_runner_id?: string;
 }
 
 export interface ChatRunnersResponse {
     runners: ChatRunnerInfo[];
+    /** Service default runner id (e.g. opencode). */
+    default_runner?: string;
 }
 
 export type RunnerChatTurnStatus =
@@ -286,6 +291,8 @@ export interface ChatSessionMeta {
     host_id?: string;
     title: string;
     runner_id?: AgentRunnerId;
+    legacy_runner_id?: string;
+    runner_selectable?: boolean;
     runner_label?: string;
     runner_chat_session_id?: string;
     runner_continuation_mode?: RunnerChatContinuationMode | string;
@@ -912,6 +919,8 @@ export interface ConfigureField {
     key: string;
     label: string;
     description?: string;
+    /** active | deprecated | compatibility — hidden fields are omitted from API responses. */
+    status?: string;
     kind: 'text' | 'secret' | 'toggle' | 'boolean' | 'choice' | 'list' | string;
     value?: string | boolean | string[] | null;
     choices?: ConfigureFieldOption[] | string[];
@@ -984,6 +993,7 @@ export interface DoctorConfigFieldMetadata {
     requires_step_up_auth?: boolean;
     user_intents?: string[];
     advanced_only?: boolean;
+    status?: string;
     docs?: string;
     rollback_behavior?: {
         safe?: boolean;

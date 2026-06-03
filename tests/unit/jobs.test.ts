@@ -95,7 +95,7 @@ describe('useJobs', () => {
     expect(jobs.value[0]?.final_text).toBe('done')
   })
 
-  it('loads agent runners and synthesizes or3-intern when omitted', async () => {
+  it('loads agent runners without synthesizing or3-intern when omitted', async () => {
     const cache = useLocalCache()
     cache.updateHost({ id: 'alpha', name: 'Alpha', baseUrl: 'http://alpha.test', token: 'alpha-token' })
     cache.setActiveHost('alpha')
@@ -107,7 +107,7 @@ describe('useJobs', () => {
     await loadAgentRunners()
     expect(runnerListSupported.value).toBe(true)
     const ids = agentRunners.value.map((r) => r.id)
-    expect(ids).toContain('or3-intern')
+    expect(ids).not.toContain('or3-intern')
     expect(ids).toContain('codex')
   })
 
@@ -125,7 +125,7 @@ describe('useJobs', () => {
     expect(gemini?.auth_status).toBe('ready')
   })
 
-  it('falls back to or3-intern only on runner endpoint 404', async () => {
+  it('marks runner endpoint unsupported on 404 without adding a legacy runner', async () => {
     const cache = useLocalCache()
     cache.updateHost({ id: 'alpha', name: 'Alpha', baseUrl: 'http://alpha.test', token: 'alpha-token' })
     cache.setActiveHost('alpha')
@@ -134,7 +134,7 @@ describe('useJobs', () => {
     const { agentRunners, loadAgentRunners, runnerListSupported } = useJobs()
     await loadAgentRunners()
     expect(runnerListSupported.value).toBe(false)
-    expect(agentRunners.value.map((r) => r.id)).toEqual(['or3-intern'])
+    expect(agentRunners.value.map((r) => r.id)).toEqual([])
   })
 
   it('submits external CLI jobs to the correct endpoint', async () => {

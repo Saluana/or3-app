@@ -213,6 +213,7 @@ import {
 } from '~/utils/or3/agent-jobs';
 import { useReviewedJobs } from '~/composables/useReviewedJobs';
 import { useWhenHostApiReady } from '~/composables/useWhenHostApiReady';
+import { isLegacyRunnerId, isSelectableRunnerId } from '~/utils/runnerIds';
 
 const router = useRouter();
 const route = useRoute();
@@ -224,7 +225,6 @@ const {
     loadingJobs,
     lastListError,
     listSupported,
-    queueJob,
     queueAgentCliJob,
     loadJobs,
     loadAgentRunners,
@@ -237,7 +237,6 @@ const {
     loadingRunners,
     runnerListSupported,
 } = useJobs();
-const { health, refreshStatus } = useComputerStatus();
 const { isReviewed, markReviewed, reviewedIds } = useReviewedJobs();
 
 const commandCenterRef = ref<{
@@ -354,10 +353,13 @@ const selectedJob = computed<JobSnapshot | null>(() => {
     return jobs.value.find((j) => j.job_id === id) ?? null;
 });
 
-const subagentsAvailable = computed(() => {
-    const flag = health.value?.subagentManagerEnabled;
-    return flag === undefined ? true : flag === true;
-});
+const hasSelectableRunners = computed(
+    () =>
+        agentRunners.value?.some(
+            (runner) =>
+                isSelectableRunnerId(runner.id) && runner.status === 'available',
+        ) ?? false,
+);
 
 const disabledReason = computed<AgentCommandDisabledReason | null>(() => {
     if (!activeHost.value) {
@@ -381,13 +383,11 @@ const disabledReason = computed<AgentCommandDisabledReason | null>(() => {
     if (loadingRunners.value) {
         return null;
     }
-    const hasExternalRunners =
-        agentRunners.value?.some((r) => r.id !== 'or3-intern') ?? false;
-    if (!subagentsAvailable.value && !hasExternalRunners) {
+    if (!hasSelectableRunners.value) {
         return {
-            title: 'Agents are turned off on this computer',
+            title: 'Set up a runner first',
             description:
-                'Enable subagents in or3-intern\u2019s configuration, then reload this page.',
+                'Install and authenticate OpenCode (or another external runner) on your computer, then reload this page.',
             actionTo: '/settings',
             actionLabel: 'Open settings',
         };
@@ -415,7 +415,7 @@ const emptyActiveDescription = computed(() => {
     if (!commandReady.value) {
         return 'Once your computer is connected, tasks you delegate will appear here.';
     }
-    return 'Hand off a task above and it\u2019ll appear here. You can keep using the app while or3-intern works.';
+    return 'Hand off a task above and it\u2019ll appear here. Your selected runner works in the background.';
 });
 
 function describeError(error: unknown, fallback: string): string {
@@ -493,15 +493,15 @@ async function createJob(payload: AgentTaskPayload) {
     submitError.value = null;
     try {
         const session = activeSession.value ?? ensureSession();
-        const isExternal = payload.runnerId !== 'or3-intern';
-        if (isExternal) {
-            await queueAgentCliJob(
+        if (!isSelectableRunnerId(payload.runnerId)) {
+            submitError.value =
+                'Choose an available external runner to hand off this task.';
+            return;
+        }
+        await queueAgentCliJob(
                 {
                     parent_session_key: session.sessionKey,
-                    runner_id: payload.runnerId as Exclude<
-                        string,
-                        'or3-intern'
-                    >,
+                    runner_id: payload.runnerId,
                     task: payload.transportTask,
                     timeout_seconds:
                         payload.priority === 'high'
@@ -547,37 +547,8 @@ async function createJob(payload: AgentTaskPayload) {
                     max_turns: payload.maxTurns,
                 },
             );
-        } else {
-            await queueJob(
-                {
-                    parent_session_key: session.sessionKey,
-                    task: payload.transportTask,
-                    timeout_seconds:
-                        payload.priority === 'high'
-                            ? 1800
-                            : payload.priority === 'low'
-                              ? 600
-                              : 900,
-                    meta: {
-                        category: payload.category,
-                        priority: payload.priority,
-                        notify: payload.notify,
-                        auto_approve_safe: payload.autoApprove,
-                        attachments: payload.attachments,
-                    },
-                },
-                {
-                    task: payload.task,
-                    category: payload.category,
-                    priority: payload.priority,
-                    notify: payload.notify,
-                    autoApprove: payload.autoApprove,
-                    parent_session_key: session.sessionKey,
-                },
-            );
-        }
         commandCenterRef.value?.resetForm();
-        const runnerName = payload.runnerLabel || 'or3-intern';
+        const runnerName = payload.runnerLabel || payload.runnerId;
         toast.add({
             title: `Task handed off to ${runnerName}`,
             description: `${runnerName} will work on it in the background.`,
@@ -694,8 +665,8 @@ function buildContinuationPrompt(
                 : 'is in progress';
     const agentName =
         job.runner_label || job.runner_id
-            ? `${job.runner_label || job.runner_id} (via or3-intern)`
-            : 'or3-intern';
+            ? job.runner_label || job.runner_id
+            : 'Legacy runner';
     lines.push(
         `I just had my **${agentName}** run a background task that ${statusWord}, and I want to keep working on it here in chat with full context.`,
     );

@@ -184,8 +184,8 @@ function normalizePersistedSessions(
 ): Or3AppState['sessions'] {
     return sessions.map((session) => ({
         ...session,
-        runnerId: session.runnerId || 'or3-intern',
-        runnerLabel: session.runnerLabel || 'OR3 Intern',
+        runnerId: session.runnerId || '',
+        runnerLabel: session.runnerLabel || '',
         runnerContinuationMode: session.runnerContinuationMode || 'replay',
         archived: Boolean(session.archived),
     }));
