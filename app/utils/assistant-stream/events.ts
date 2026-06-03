@@ -57,12 +57,28 @@ export function normalizeTurnEvent(
 }
 
 export function normalizeRunnerChatEvent(
-    event: RunnerChatEvent | { event?: string; json?: unknown },
+    event: RunnerChatEvent | { event?: string; json?: unknown; data?: unknown; sequence?: number },
 ) {
     if ('json' in event) {
         return {
             ...event,
             json: normalizeRunnerChatEventPayload(event.json),
+        };
+    }
+    if ('event' in event && 'data' in event) {
+        const data =
+            event.data && typeof event.data === 'object' && !Array.isArray(event.data)
+                ? (event.data as Record<string, unknown>)
+                : {};
+        return {
+            event: event.event,
+            json: normalizeRunnerChatEventPayload({
+                ...data,
+                sequence:
+                    typeof event.sequence === 'number'
+                        ? event.sequence
+                        : data.sequence,
+            }),
         };
     }
     const runnerEvent = event as RunnerChatEvent;

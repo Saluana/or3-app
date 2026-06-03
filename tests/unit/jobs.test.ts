@@ -41,12 +41,10 @@ describe('useJobs', () => {
     }), { status: 202, headers: { 'Content-Type': 'application/json' } })))
 
     cache.setActiveHost('beta')
-    const { jobs, queueJob } = useJobs()
-    await queueJob({ parent_session_key: 'parent', task: 'do work' })
-
-    expect(jobs.value.map((job) => job.job_id)).toEqual(['job-beta-new'])
-    expect(cache.state.value.recentJobs.beta?.map((job) => job.job_id)).toEqual(['job-beta-new'])
-    expect(cache.state.value.recentJobs.alpha).toBeUndefined()
+    const { queueJob } = useJobs()
+    await expect(
+      queueJob({ parent_session_key: 'parent', task: 'do work' }),
+    ).rejects.toThrow(/Subagent jobs were removed/)
   })
 
   it('keeps polling after the stream endpoint fails', async () => {

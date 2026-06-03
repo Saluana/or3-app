@@ -1,14 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChatActivityEntry, ChatMessage } from '../../app/types/app-state';
+import {
+    defaultRunnerSendPayload,
+    installRunnerChatRequestMock,
+} from '../helpers/runnerChatApiMock';
 
 const requestMock = vi.fn();
 let streamFailure: unknown = null;
-let streamCallBody: unknown = null;
 
 vi.mock('../../app/composables/useOr3Api', () => ({
     useOr3Api: () => ({
-        async *stream(_path: string, options?: { body?: unknown }) {
-            streamCallBody = options?.body ?? null;
+        async *stream(_path: string) {
             if (streamFailure) throw streamFailure;
         },
         request: requestMock,
@@ -33,7 +35,15 @@ describe('assistant stream service ceiling handling', () => {
         vi.stubGlobal('useToast', () => ({ add: vi.fn() }));
         requestMock.mockReset();
         streamFailure = null;
-        streamCallBody = null;
+        installRunnerChatRequestMock(requestMock, {
+            sessionId: 'rcs_ceiling',
+            turnId: 'rct_ceiling',
+            jobId: 'job_ceiling',
+            turnSnapshot: {
+                status: 'succeeded',
+                final_text: 'Recovered in ask mode.',
+            },
+        });
     });
 
     afterEach(() => {
@@ -41,73 +51,38 @@ describe('assistant stream service ceiling handling', () => {
         vi.clearAllMocks();
     });
 
-    it('keeps work mode on loopback hosts before the first stream request', async () => {
+    it('does not call removed direct-turn endpoints for runner chat sends', async () => {
         addHost();
         const assistant = useAssistantStream();
         assistant.chatMode.value = 'work';
-        await assistant.send('hello loopback');
-
-        expect(streamCallBody).toMatchObject({
-            tool_policy: { mode: 'work' },
-        });
-        expect(requestMock).not.toHaveBeenCalled();
-    });
-
-    it('retries OR3 turns in ask mode when work mode exceeds the service ceiling', async () => {
-        useLocalCache().updateHost({
-            id: 'remote-host',
-            name: 'Remote Host',
-            baseUrl: 'http://100.82.202.111:9100',
-            token: 'secret',
-        });
-        streamFailure = Object.assign(
-            new Error('requested tools exceed service capability ceiling'),
-            {
-                status: 400,
-                request_id: 'req_trace_1',
-            },
-        );
-        requestMock.mockResolvedValue({
-            status: 'completed',
-            final_text: 'Recovered in ask mode.',
+        await assistant.send({
+            text: 'hello loopback',
+            transportText: 'hello loopback',
+            ...defaultRunnerSendPayload,
         });
 
-        const assistant = useAssistantStream();
-        assistant.chatMode.value = 'work';
-        await assistant.send('check this safely');
-
-        expect(requestMock).toHaveBeenCalledWith(
+        expect(requestMock).not.toHaveBeenCalledWith(
             '/internal/v1/turns',
+            expect.anything(),
+        );
+        expect(requestMock).toHaveBeenCalledWith(
+            '/internal/v1/runner-chat/sessions',
             expect.objectContaining({
-                body: expect.objectContaining({
-                    tool_policy: { mode: 'ask' },
-                }),
+                method: 'POST',
             }),
         );
-
-        const assistantMessage = useChatSessions().messages.value.find(
-            (message: ChatMessage) => message.role === 'assistant',
-        );
-        expect(assistantMessage?.status).toBe('complete');
-        expect(assistantMessage?.content).toBe('Recovered in ask mode.');
-        expect(
-            assistantMessage?.activityLog?.some(
-                (entry: ChatActivityEntry) => entry.type === 'policy_adjusted',
-            ),
-        ).toBe(true);
     });
 
     it('does not mark plain request failures as approval-required', async () => {
         addHost();
         streamFailure = new Error('stream unavailable');
-        requestMock.mockRejectedValue({
-            message: 'Bad request',
-            status: 400,
-            request_id: 'req_trace_2',
-        });
 
         const assistant = useAssistantStream();
-        await assistant.send('hello');
+        await assistant.send({
+            text: 'hello',
+            transportText: 'hello',
+            ...defaultRunnerSendPayload,
+        });
 
         const assistantMessage = useChatSessions().messages.value.find(
             (message: ChatMessage) => message.role === 'assistant',
@@ -117,70 +92,18 @@ describe('assistant stream service ceiling handling', () => {
         expect(assistantMessage?.approvalRequestId).toBeUndefined();
     });
 
-    it('keeps a live job streaming when recovery snapshot is still running', async () => {
-        addHost();
-        streamFailure = {
-            code: 'stream_idle_timeout',
-            message: 'stream stalled',
-        };
-        requestMock.mockResolvedValue({
-            job_id: 'job_live',
-            status: 'running',
-            events: [
-                {
-                    type: 'tool_call',
-                    sequence: 1,
-                    data: {
-                        name: 'exec',
-                        tool_call_id: 'call_live',
-                        status: 'running',
-                        job_id: 'job_live',
-                    },
-                },
-            ],
-        });
-
-        const chat = useChatSessions();
-        const session = chat.ensureSession();
-        const assistantMessage = chat.addMessage({
-            sessionId: session.id,
-            role: 'assistant',
-            content: '',
-            status: 'streaming',
-            jobId: 'job_live',
-            retryPayload: {
-                text: 'continue',
-                transportText: 'continue',
-            },
-        });
-
-        await useAssistantStream().send({
-            text: '',
-            transportText: '',
-            followJobId: 'job_live',
-            continueMessageId: assistantMessage.id,
-            suppressUserEcho: true,
-        });
-
-        const latest = chat.messages.value.find(
-            (message: ChatMessage) => message.id === assistantMessage.id,
-        );
-        expect(latest?.status).toBe('streaming');
-        expect(latest?.jobId).toBe('job_live');
-        expect(latest?.parts?.[0]).toMatchObject({
-            type: 'tool',
-            toolCallId: 'call_live',
-            status: 'running',
-        });
-    });
-
     it('preserves existing partial content when a follow-up snapshot completes without new text', async () => {
         addHost();
-        requestMock.mockResolvedValue({
-            job_id: 'job_partial',
-            status: 'completed',
-            final_text: '',
-            events: [],
+        installRunnerChatRequestMock(requestMock, {
+            sessionId: 'rcs_ceiling',
+            turnId: 'rct_partial',
+            jobId: 'job_partial',
+            getTurnSnapshot: () => ({
+                job_id: 'job_partial',
+                status: 'completed',
+                final_text: '',
+                events: [],
+            }),
         });
 
         const chat = useChatSessions();
@@ -191,9 +114,13 @@ describe('assistant stream service ceiling handling', () => {
             content: 'Partial answer.',
             status: 'streaming',
             jobId: 'job_partial',
+            runnerId: 'opencode',
+            runnerChatSessionId: 'rcs_ceiling',
+            runnerChatTurnId: 'rct_partial',
             retryPayload: {
                 text: 'continue',
                 transportText: 'continue',
+                ...defaultRunnerSendPayload,
             },
             parts: [
                 {
@@ -210,6 +137,9 @@ describe('assistant stream service ceiling handling', () => {
             followJobId: 'job_partial',
             continueMessageId: assistantMessage.id,
             suppressUserEcho: true,
+            runnerId: 'opencode',
+            runnerChatSessionId: 'rcs_ceiling',
+            runnerChatTurnId: 'rct_partial',
         });
 
         const latest = chat.messages.value.find(

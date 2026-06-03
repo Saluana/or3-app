@@ -680,7 +680,6 @@ export function createAssistantEventApplier(
             if (approvalRequestId) {
                 options.setSawVisibleOutput(true);
                 const current = options.readAssistant();
-                const replayToolCall = options.findReplayableToolCall(toolName);
                 const baseRetryPayload =
                     current?.retryPayload ??
                     options.readAssistant()?.retryPayload;
@@ -696,7 +695,7 @@ export function createAssistantEventApplier(
                     approvalType: approvalMetadata.approvalType,
                     approvalPreview: approvalMetadata.approvalPreview,
                     toolName,
-                    argsJson: replayToolCall?.arguments,
+                    argsJson: options.findReplayableToolCall(toolName)?.arguments,
                 });
                 const content =
                     current?.content?.trim() &&
@@ -725,7 +724,6 @@ export function createAssistantEventApplier(
                     retryPayload: baseRetryPayload
                         ? {
                               ...baseRetryPayload,
-                              ...(replayToolCall ? { replayToolCall } : {}),
                               continueMessageId: options.assistantId,
                               suppressUserEcho: true,
                           }

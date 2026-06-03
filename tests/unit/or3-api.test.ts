@@ -330,20 +330,16 @@ describe('useOr3Api', () => {
         const fetchMock = vi.fn(
             async (_url: string | URL | Request, init?: RequestInit) => {
                 expect(String(_url)).toBe(
-                    'http://127.0.0.1:9100/internal/v1/subagents',
+                    'http://127.0.0.1:9100/internal/v1/agent-runs',
                 );
                 expect(JSON.parse(String(init?.body))).toEqual({
                     parent_session_key: 'main',
+                    runner_id: 'opencode',
                     task: 'summarize',
                     timeout_seconds: 30,
-                    tool_policy: {
-                        mode: 'allow',
-                        allowed_tools: ['files.read'],
-                    },
                 });
                 expect(String(init?.body)).not.toContain('parentSessionKey');
                 expect(String(init?.body)).not.toContain('timeoutSeconds');
-                expect(String(init?.body)).not.toContain('toolPolicy');
                 return new Response(JSON.stringify({ job_id: 'job_1' }), {
                     status: 200,
                     headers: { 'Content-Type': 'application/json' },
@@ -354,16 +350,13 @@ describe('useOr3Api', () => {
 
         const api = useOr3Api();
         await expect(
-            api.request('/internal/v1/subagents', {
+            api.request('/internal/v1/agent-runs', {
                 method: 'POST',
                 body: {
                     parent_session_key: 'main',
+                    runner_id: 'opencode',
                     task: 'summarize',
                     timeout_seconds: 30,
-                    tool_policy: {
-                        mode: 'allow',
-                        allowed_tools: ['files.read'],
-                    },
                 },
             }),
         ).resolves.toEqual({ job_id: 'job_1' });

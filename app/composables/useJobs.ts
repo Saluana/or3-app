@@ -535,32 +535,13 @@ export function useJobs() {
         }
     }
 
-    async function queueJob(request: SubagentRequest, uiMeta?: AgentJobUiMeta) {
-        const response = await api.request<SubagentResponse>(
-            '/internal/v1/subagents',
-            { body: request },
+    async function queueJob(
+        _request: SubagentRequest,
+        _uiMeta?: AgentJobUiMeta,
+    ): Promise<SubagentResponse> {
+        throw new Error(
+            'Subagent jobs were removed. Hand off work with an external runner from Agents or runner chat.',
         );
-        const nowIso = new Date().toISOString();
-        const summary: RecentJobSummary = {
-            job_id: response.job_id,
-            kind: 'subagent',
-            status: normalizeStatus(response.status ?? 'queued'),
-            title: uiMeta?.task || request.task || 'Agent task',
-            task: uiMeta?.task ?? request.task,
-            updated_at: nowIso,
-            created_at: nowIso,
-            child_session_key: response.child_session_key,
-            parent_session_key:
-                uiMeta?.parent_session_key ?? request.parent_session_key,
-            category: uiMeta?.category,
-            priority: uiMeta?.priority,
-            notify: uiMeta?.notify,
-            autoApprove: uiMeta?.autoApprove,
-            source: 'live',
-        };
-        upsertHostJob(cache, summary);
-        void subscribeJob(response.job_id);
-        return response;
     }
 
     async function queueAgentCliJob(
@@ -747,27 +728,7 @@ export function useJobs() {
                 },
             );
         }
-        return await queueJob(
-            {
-                parent_session_key: summary.parent_session_key,
-                task: summary.task,
-                meta: {
-                    category: summary.category,
-                    priority: summary.priority,
-                    notify: summary.notify,
-                    auto_approve_safe: summary.autoApprove,
-                    retry_of: jobId,
-                },
-            },
-            {
-                task: summary.task,
-                category: summary.category,
-                priority: summary.priority,
-                notify: summary.notify,
-                autoApprove: summary.autoApprove,
-                parent_session_key: summary.parent_session_key,
-            },
-        );
+        return null;
     }
 
     function startActiveJobTracking() {

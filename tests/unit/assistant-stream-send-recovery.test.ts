@@ -1,13 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../app/utils/assistant-stream/execution', () => ({
-    streamDirectTurn: vi.fn(),
-    streamFollowJob: vi.fn(),
+    streamFollowJob: vi.fn(async () => ({
+        sawStreamEvent: false,
+        streamEndedWithFailure: false,
+        streamedJobId: 'job_bg',
+        runnerChatTurnForRecovery: null,
+    })),
     streamFollowRunnerTurn: vi.fn(),
     streamRunnerChat: vi.fn(),
     fetchAndApplyJobSnapshot: vi.fn(),
     handleRunnerExecutionError: vi.fn(),
-    recoverDirectExecutionError: vi.fn(),
 }));
 
 vi.stubGlobal('useToast', () => ({ add: vi.fn() }));
@@ -50,15 +53,14 @@ describe('useAssistantStream send recovery', () => {
         });
 
         const { send } = useAssistantStream();
-        const sendPromise = send({
+        await send({
             text: 'continue please',
             transportText: 'continue please',
             followJobId: 'job_bg',
             continueMessageId: assistant.id,
             suppressUserEcho: true,
+            runnerId: 'opencode',
         });
-
-        await expect(sendPromise).resolves.toBeUndefined();
         expect(chat.activeSession.value?.id).toBe(background.id);
     });
 });

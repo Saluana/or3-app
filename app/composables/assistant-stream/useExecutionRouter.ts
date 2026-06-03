@@ -1,7 +1,6 @@
 import type { AssistantSendPayload, ChatSession } from '~/types/app-state';
 import { isLegacyRunnerId } from '~/utils/runnerIds';
 import {
-    streamDirectTurn,
     streamFollowJob,
     streamFollowRunnerTurn,
     streamRunnerChat,
@@ -26,7 +25,6 @@ interface RouteExecutionOptions extends ResolveExecutionRouteResult {
     payload: AssistantSendPayload;
     session: ChatSession;
     text: string;
-    turnRequest: Record<string, unknown> | null;
 }
 
 export function useExecutionRouter(options: { chat: ChatStore }) {
@@ -51,7 +49,6 @@ export function useExecutionRouter(options: { chat: ChatStore }) {
         selectedRunnerId,
         session,
         text,
-        turnRequest,
         useRunnerChat,
     }: RouteExecutionOptions) => {
         if (followRunnerTurnId && payload.runnerChatSessionId) {
@@ -80,14 +77,12 @@ export function useExecutionRouter(options: { chat: ChatStore }) {
             });
         }
 
-        if (!selectedRunnerId) {
-            throw new Error('Choose an available runner before sending.');
+        if (isLegacyRunnerId(selectedRunnerId)) {
+            throw new Error(
+                'The built-in or3-intern runner was removed. Choose Codex, Claude Code, or another installed runner.',
+            );
         }
-
-        return streamDirectTurn({
-            ...executionContext,
-            turnRequest,
-        });
+        throw new Error('Choose an available runner before sending.');
     };
 
     return {

@@ -102,7 +102,6 @@ export interface AssistantSendPayload {
     toolPolicy?: ToolPolicy;
     approvalToken?: string;
     followJobId?: string;
-    replayToolCall?: AssistantReplayToolCall;
     continueMessageId?: string;
     suppressUserEcho?: boolean;
     runnerId?: string;

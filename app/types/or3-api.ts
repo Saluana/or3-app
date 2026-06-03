@@ -458,48 +458,17 @@ export interface AgentCliSseErrorEvent {
 
 // ── Existing types ──
 
-export interface TurnRequest {
-    session_key: string;
-    message: string;
-    tool_policy?: ToolPolicy;
-    profile_name?: string;
-    meta?: Record<string, unknown>;
-}
-
-export interface TurnResponse {
-    job_id: string;
-    kind: 'turn';
-    status:
-        | 'queued'
-        | 'running'
-        | 'completed'
-        | 'failed'
-        | 'aborted'
-        | 'approval_required';
-    final_text?: string;
-    error?: string;
-    message?: string;
-    code?: string;
-    request_id?: number | string;
-    approval_id?: number | string;
-}
-
+/** Legacy subagent queue payload (creation endpoint removed; historical reads only). */
 export interface SubagentRequest {
     parent_session_key: string;
     task: string;
-    prompt_snapshot?: string;
-    tool_policy?: ToolPolicy;
-    timeout_seconds?: number;
-    profile_name?: string;
-    channel?: string;
-    reply_to?: string;
     meta?: Record<string, unknown>;
 }
 
 export interface SubagentResponse {
     job_id: string;
-    child_session_key: string;
-    status: 'queued' | string;
+    child_session_key?: string;
+    status?: string;
 }
 
 export interface JobEvent {

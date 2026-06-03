@@ -3,13 +3,9 @@ import { computed, ref, watch, type Ref } from 'vue';
 import type { ToolPolicy } from '~/types/or3-api';
 import type { AssistantSendPayload } from '~/types/app-state';
 import { describeApprovalRequest } from '~/utils/assistant-stream/approval';
-import {
-    isServiceCapabilityCeilingError,
-    serializeErrorForLog,
-} from '~/utils/assistant-stream/errors';
+import { serializeErrorForLog } from '~/utils/assistant-stream/errors';
 import {
     clearServiceCapabilityCeilingHost,
-    effectiveToolPolicyForHost,
     loadPersistedServiceCapabilityCeilingHosts,
     persistServiceCapabilityCeilingHost,
 } from '~/utils/assistant-stream/tool-policy-host';
@@ -18,14 +14,12 @@ import {
     EMPTY_FINAL_USER_MESSAGE,
     EMPTY_STREAM_USER_MESSAGE,
 } from '~/utils/assistant-stream/userErrorCopy';
-import { internTurnModelRequestField } from '~/utils/runnerModelPolicy';
 import {
     fetchAndApplyJobSnapshot,
+    handleAssistantSendError,
     handleRunnerExecutionError,
-    recoverDirectExecutionError,
 } from '~/utils/assistant-stream/execution';
 import { normalizeTurnEvent } from '~/utils/assistant-stream/events';
-import { toServiceAttachments } from '~/utils/chat/service-attachments';
 import { createLogger } from '~/utils/logger';
 import { clearActiveTraceId, setActiveTraceId } from '~/utils/logTrace';
 import {
@@ -285,48 +279,10 @@ export function useAssistantStream() {
             flushAssistantUpdates,
         } = executionState;
         const activeHostId = activeHost.value?.id?.trim() || '';
-        const requestedToolPolicy =
-            payload.toolPolicy ?? modeToolPolicy(payload.mode);
-        const effectiveRequestedToolPolicy = payload.toolPolicy
-            ? requestedToolPolicy
-            : effectiveToolPolicyForHost({
-                  hostId: activeHostId,
-                  host: activeHost.value,
-                  sessionKey: session.sessionKey,
-                  rememberedHosts: serviceCapabilityCeilingHosts,
-                  policy: requestedToolPolicy,
-              });
-        const serviceAttachments = toServiceAttachments(payload.attachments);
         const { selectedRunnerId, useRunnerChat } = resolveExecutionRoute(
             payload,
             session,
         );
-        const buildTurnRequest = (toolPolicy = requestedToolPolicy) => ({
-            session_key: session.sessionKey,
-            message: text,
-            meta: { trace_id: traceId },
-            ...internTurnModelRequestField({
-                runnerId: selectedRunnerId,
-                payloadModel: payload.runnerModel,
-                sessionModel: session.runnerModel,
-            }),
-            ...(serviceAttachments.length
-                ? { attachments: serviceAttachments }
-                : {}),
-            ...(toolPolicy ? { tool_policy: toolPolicy } : {}),
-            ...(payload.approvalToken
-                ? { approval_token: payload.approvalToken }
-                : {}),
-            ...(payload.replayToolCall
-                ? {
-                      replay_tool_call: {
-                          name: payload.replayToolCall.name,
-                          arguments_json:
-                              payload.replayToolCall.arguments || '{}',
-                      },
-                  }
-                : {}),
-        });
         const buildExecutionContext = () => ({
             api,
             activeController,
@@ -346,12 +302,7 @@ export function useAssistantStream() {
             sessionId: string;
             turnId: string;
         } | null = null;
-        let turnRequest: Record<string, unknown> | null = null;
-
         try {
-            turnRequest = followJobId
-                ? null
-                : buildTurnRequest(effectiveRequestedToolPolicy);
             const execution = await routeExecution({
                 executionContext: buildExecutionContext(),
                 followJobId,
@@ -360,7 +311,6 @@ export function useAssistantStream() {
                 selectedRunnerId,
                 session,
                 text,
-                turnRequest,
                 useRunnerChat,
             });
 
@@ -459,37 +409,15 @@ export function useAssistantStream() {
                 return;
             }
 
-            const executionContext = buildExecutionContext();
-            const capabilityCeiling =
-                isServiceCapabilityCeilingError(streamError);
-            const logPayload = {
+            logger.error('send:error', 'Assistant send failed', {
                 sessionKey: session.sessionKey,
                 ...serializeErrorForLog(streamError),
-            };
-            if (capabilityCeiling) {
-                logger.info(
-                    'send:policy_retry',
-                    'Work mode exceeded this host service limit; retrying in Ask mode',
-                    logPayload,
-                );
-            } else {
-                logger.error(
-                    'send:error',
-                    'Direct assistant execution failed',
-                    logPayload,
-                );
-            }
-            await recoverDirectExecutionError({
-                ...executionContext,
+            });
+            await handleAssistantSendError({
+                ...buildExecutionContext(),
                 toast,
                 streamError,
-                payload,
-                turnRequest,
-                requestedToolPolicy,
-                activeHostId,
-                rememberServiceCapabilityCeilingHost,
-                buildTurnRequest,
-                fetchAndApplyJobSnapshot: runFetchAndApplyJobSnapshot,
+                runnerChatTurnForRecovery: null,
             });
         } finally {
             const pendingAssistant = readAssistant();

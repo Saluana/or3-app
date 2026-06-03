@@ -11,19 +11,16 @@ import type { useChatSessions } from '../../app/composables/useChatSessions';
 import type { useOr3Api } from '../../app/composables/useOr3Api';
 
 const {
-    streamDirectTurn,
     streamFollowJob,
     streamFollowRunnerTurn,
     streamRunnerChat,
 } = vi.hoisted(() => ({
-    streamDirectTurn: vi.fn(),
     streamFollowJob: vi.fn(),
     streamFollowRunnerTurn: vi.fn(),
     streamRunnerChat: vi.fn(),
 }));
 
 vi.mock('../../app/utils/assistant-stream/execution', () => ({
-    streamDirectTurn,
     streamFollowJob,
     streamFollowRunnerTurn,
     streamRunnerChat,
@@ -291,10 +288,9 @@ describe('assistant-stream helper composables', () => {
         vi.useRealTimers();
     });
 
-    it('routes follow-ups before starting a fresh direct turn', async () => {
+    it('routes follow-ups before rejecting legacy direct turns', async () => {
         streamFollowRunnerTurn.mockResolvedValue({ route: 'runner_turn' });
         streamFollowJob.mockResolvedValue({ route: 'job' });
-        streamDirectTurn.mockResolvedValue({ route: 'direct' });
 
         const chat = {} as ReturnType<typeof useChatSessions>;
         const { resolveExecutionRoute, routeExecution } = useExecutionRouter({
@@ -316,7 +312,6 @@ describe('assistant-stream helper composables', () => {
             session,
             selectedRunnerId: resolved.selectedRunnerId,
             text: 'continue',
-            turnRequest: null,
             useRunnerChat: resolved.useRunnerChat,
         });
         await routeExecution({
@@ -327,20 +322,20 @@ describe('assistant-stream helper composables', () => {
             session,
             selectedRunnerId: resolved.selectedRunnerId,
             text: 'continue',
-            turnRequest: null,
             useRunnerChat: resolved.useRunnerChat,
         });
-        await routeExecution({
-            executionContext: {} as never,
-            followJobId: '',
-            followRunnerTurnId: '',
-            payload,
-            session,
-            selectedRunnerId: resolved.selectedRunnerId,
-            text: 'continue',
-            turnRequest: { message: 'continue' },
-            useRunnerChat: false,
-        });
+        await expect(
+            routeExecution({
+                executionContext: {} as never,
+                followJobId: '',
+                followRunnerTurnId: '',
+                payload,
+                session,
+                selectedRunnerId: resolved.selectedRunnerId,
+                text: 'continue',
+                useRunnerChat: false,
+            }),
+        ).rejects.toThrow(/built-in or3-intern runner was removed/);
 
         expect(streamFollowRunnerTurn).toHaveBeenCalledWith(
             expect.objectContaining({
@@ -350,9 +345,6 @@ describe('assistant-stream helper composables', () => {
         );
         expect(streamFollowJob).toHaveBeenCalledWith(
             expect.objectContaining({ followJobId: 'job_1' }),
-        );
-        expect(streamDirectTurn).toHaveBeenCalledWith(
-            expect.objectContaining({ turnRequest: { message: 'continue' } }),
         );
     });
 
@@ -378,11 +370,9 @@ describe('assistant-stream helper composables', () => {
                 session,
                 selectedRunnerId: resolved.selectedRunnerId,
                 text: 'hello',
-                turnRequest: { message: 'hello' },
                 useRunnerChat: resolved.useRunnerChat,
             }),
         ).rejects.toThrow('Choose an available runner');
-        expect(streamDirectTurn).not.toHaveBeenCalled();
     });
 
     it('routes fresh non-default runners through runner chat', async () => {
@@ -411,7 +401,6 @@ describe('assistant-stream helper composables', () => {
             session,
             selectedRunnerId: resolved.selectedRunnerId,
             text: 'hello runner',
-            turnRequest: { message: 'hello runner' },
             useRunnerChat: resolved.useRunnerChat,
         });
 

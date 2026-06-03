@@ -13,19 +13,14 @@ import type {
     RunnerChatSession,
     RunnerChatTurn,
     RunnerChatTurnStartResponse,
-    ToolPolicy,
-    TurnResponse,
 } from '~/types/or3-api';
 import { toServiceAttachments } from '~/utils/chat/service-attachments';
 import { createActivity } from './activity';
 import { normalizeResultDisplayText } from '~/utils/or3/result-display';
 import {
     describeRequestError,
-    downgradeToolPolicyForServiceCapability,
-    extractApprovalRequestId,
     extractErrorCode,
     formatUserFacingErrorInline,
-    isServiceCapabilityCeilingError,
     showFailureToast,
     type ToastLike,
 } from './errors';
@@ -109,10 +104,6 @@ export interface RunnerChatTurnRef {
     turnId: string;
 }
 
-interface DirectStreamContext extends BaseExecutionContext {
-    turnRequest: Record<string, unknown> | null;
-}
-
 interface FollowJobStreamContext extends BaseExecutionContext {
     followJobId: string;
 }
@@ -134,21 +125,6 @@ interface RunnerErrorContext extends BaseExecutionContext {
     toast: ToastLike;
     streamError: unknown;
     runnerChatTurnForRecovery: RunnerChatTurnRef | null;
-}
-
-interface DirectRecoveryContext extends BaseExecutionContext {
-    api: StreamApiLike;
-    toast: ToastLike;
-    streamError: unknown;
-    payload: AssistantSendPayload;
-    turnRequest: Record<string, unknown> | null;
-    requestedToolPolicy?: ToolPolicy;
-    activeHostId: string;
-    rememberServiceCapabilityCeilingHost: (hostId?: string | null) => void;
-    buildTurnRequest: (toolPolicy?: ToolPolicy) => Record<string, unknown>;
-    fetchAndApplyJobSnapshot: (
-        jobId?: string | null,
-    ) => Promise<JobSnapshot | null>;
 }
 
 const COMPLETION_ACTIVITY_TYPES = [
@@ -523,6 +499,43 @@ export async function fetchAndApplyRunnerTurn(
     context.applyRunnerStructuredResult?.(turn.final_text, runnerId);
     const displayText = normalizeResultDisplayText(turn.final_text, runnerId);
     applyRecoveredFinalText(displayText, context);
+    const latest = context.readAssistant();
+    const emptyAfterToolWork =
+        !displayText.trim() && assistantHasToolWork(latest);
+    if (emptyAfterToolWork) {
+        context.updateActivity(
+            (entry) =>
+                entry.type === 'completion' && entry.status === 'running',
+            {
+                status: 'attention',
+                label: 'Completed turn',
+                detail: 'Tool work completed without a final assistant message.',
+            },
+        );
+        if (!context.sanitizeAssistantText(latest?.content || '')) {
+            context.replaceAssistantContent(EMPTY_FINAL_TEXT_WARNING);
+            if (
+                !hasTextPartContent(
+                    context.readAssistant(),
+                    EMPTY_FINAL_TEXT_WARNING,
+                    context.sanitizeAssistantText,
+                )
+            ) {
+                context.appendCompleteTextPart(EMPTY_FINAL_TEXT_WARNING);
+            }
+        }
+        context.updateAssistant({
+            status: 'attention',
+            error: EMPTY_FINAL_USER_MESSAGE,
+            errorCode: 'empty_final_text',
+            backendMessageId: turn.assistant_message_id,
+            runnerChatTurnId: turn.id,
+            runnerChatSessionId: turn.session_id,
+            agentCliRunId: turn.agent_cli_run_id,
+            jobId: turn.agent_cli_job_id,
+        });
+        return turn;
+    }
     context.updateAssistant({
         status:
             turn.status === 'approval_required'
@@ -536,9 +549,7 @@ export async function fetchAndApplyRunnerTurn(
             displayText.trim() || turn.status === 'approval_required'
                 ? undefined
                 : turn.error,
-        errorCode: displayText.trim()
-            ? undefined
-            : context.readAssistant()?.errorCode,
+        errorCode: displayText.trim() ? undefined : latest?.errorCode,
         approvalState:
             turn.status === 'approval_required'
                 ? 'pending'
@@ -779,47 +790,6 @@ export async function streamRunnerChat(
     };
 }
 
-export async function streamDirectTurn(
-    context: DirectStreamContext,
-): Promise<AssistantExecutionResult> {
-    let sawStreamEvent = false;
-    let streamEndedWithFailure = false;
-    let streamedJobId: string | null = null;
-
-    const path = '/internal/v1/turns';
-    for await (const event of withStreamWatchdog(
-        context.api.stream(path, {
-            body: context.turnRequest,
-            signal: context.activeController.signal,
-            onOpen(response) {
-                const jobId = responseJobId(response);
-                if (!jobId) return;
-                streamedJobId = jobId;
-                context.activeJobId.value = jobId;
-                context.updateAssistant({ jobId });
-            },
-        }),
-        path,
-    )) {
-        sawStreamEvent = true;
-        const jobId = eventJobId(event as JobEvent);
-        if (jobId) {
-            streamedJobId = jobId;
-            context.activeJobId.value = jobId;
-            context.updateAssistant({ jobId });
-        }
-        const result = context.applyEvent(event as JobEvent);
-        streamEndedWithFailure = streamEndedWithFailure || result.failed;
-    }
-
-    return {
-        sawStreamEvent,
-        streamEndedWithFailure,
-        streamedJobId,
-        runnerChatTurnForRecovery: null,
-    };
-}
-
 export async function handleRunnerExecutionError(context: RunnerErrorContext) {
     if (context.runnerChatTurnForRecovery) {
         try {
@@ -864,167 +834,21 @@ export async function handleRunnerExecutionError(context: RunnerErrorContext) {
     );
 }
 
-export async function recoverDirectExecutionError(
-    context: DirectRecoveryContext,
-) {
-    if (context.activeJobId.value) {
-        try {
-            const snapshot = await context.fetchAndApplyJobSnapshot(
-                context.activeJobId.value,
-            );
-            if (snapshot) {
-                if (isLiveJobStatus(snapshot.status)) {
-                    context.updateAssistant({
-                        status: 'streaming',
-                        error: 'Live stream was interrupted. Reconnecting to the running job.',
-                    });
-                }
-                return;
-            }
-        } catch {
-            // Fall back to the existing non-stream recovery path.
-        }
-    }
-    try {
-        const capabilityCeilingError = isServiceCapabilityCeilingError(
-            context.streamError,
-        );
-        const fallbackTurnRequest =
-            context.turnRequest &&
-            !context.payload.toolPolicy &&
-            capabilityCeilingError
-                ? context.buildTurnRequest(
-                      downgradeToolPolicyForServiceCapability(
-                          context.requestedToolPolicy,
-                      ),
-                  )
-                : context.turnRequest;
-
-        if (capabilityCeilingError) {
-            context.rememberServiceCapabilityCeilingHost(context.activeHostId);
-        }
-        if (
-            fallbackTurnRequest !== context.turnRequest &&
-            (fallbackTurnRequest as { tool_policy?: { mode?: string } })
-                ?.tool_policy?.mode === 'ask'
-        ) {
-            context.addActivity(
-                createActivity(
-                    'policy_adjusted',
-                    'Tool mode adjusted',
-                    'This host only allows safe OR3 tools, so the request retried in Ask mode.',
-                    'complete',
-                ),
-            );
-        }
-
-        const response = await context.api.request<TurnResponse>(
-            '/internal/v1/turns',
-            {
-                body: fallbackTurnRequest,
-                signal: context.activeController.signal,
-            },
-        );
-        context.activeJobId.value = response.job_id;
-        if (response.job_id) {
-            try {
-                await context.fetchAndApplyJobSnapshot(response.job_id);
-            } catch {
-                const emptyFinalText = !response.final_text && !response.error;
-                const responseText =
-                    response.final_text ||
-                    response.error ||
-                    'The turn completed without text.';
-                context.replaceAssistantContent(responseText);
-                context.updateAssistant({
-                    status:
-                        response.status === 'approval_required'
-                            ? 'attention'
-                            : emptyFinalText
-                              ? 'attention'
-                              : response.error
-                                ? 'failed'
-                                : 'complete',
-                    error:
-                        response.status === 'approval_required'
-                            ? undefined
-                            : response.error,
-                    errorCode:
-                        response.status === 'approval_required'
-                            ? 'approval_required'
-                            : emptyFinalText
-                              ? 'empty_final_text'
-                              : response.error
-                                ? 'unknown'
-                                : undefined,
-                    approvalRequestId: extractApprovalRequestId(response),
-                    approvalState:
-                        response.status === 'approval_required'
-                            ? 'pending'
-                            : undefined,
-                    jobId: response.job_id,
-                });
-            }
-        } else {
-            const emptyFinalText = !response.final_text && !response.error;
-            const responseText =
-                response.final_text ||
-                response.error ||
-                'The turn completed without text.';
-            context.replaceAssistantContent(responseText);
-            context.updateAssistant({
-                status:
-                    response.status === 'approval_required'
-                        ? 'attention'
-                        : emptyFinalText
-                          ? 'attention'
-                          : response.error
-                            ? 'failed'
-                            : 'complete',
-                error:
-                    response.status === 'approval_required'
-                        ? undefined
-                        : response.error,
-                errorCode:
-                    response.status === 'approval_required'
-                        ? 'approval_required'
-                        : emptyFinalText
-                          ? 'empty_final_text'
-                          : response.error
-                            ? 'unknown'
-                            : undefined,
-                approvalRequestId: extractApprovalRequestId(response),
-                approvalState:
-                    response.status === 'approval_required'
-                        ? 'pending'
-                        : undefined,
-                jobId: response.job_id,
-            });
-        }
-        context.completeRunningActivity(COMPLETION_ACTIVITY_TYPES);
-    } catch (error) {
-        const primaryError = error || context.streamError;
-        const errorCode = extractErrorCode(primaryError);
-        const friendly = formatUserFacingErrorInline(primaryError, errorCode);
-        const approvalRequestId = extractApprovalRequestId(primaryError);
-        context.updateActivity(
-            (entry: ChatActivityEntry) => entry.status === 'running',
-            {
-                status: 'error',
-            },
-        );
-        context.updateAssistant({
-            content: friendly,
-            status: 'failed',
-            error: userFacingErrorCopy(primaryError, errorCode).message,
-            errorCode,
-            approvalRequestId,
-            approvalState: approvalRequestId ? 'pending' : undefined,
-        });
-        showFailureToast(
-            context.toast,
-            'or3-intern request failed',
-            primaryError,
-        );
-    }
+export async function handleAssistantSendError(context: RunnerErrorContext) {
+    const errorCode = extractErrorCode(context.streamError);
+    const friendly = formatUserFacingErrorInline(
+        context.streamError,
+        errorCode,
+    );
+    context.updateActivity(
+        (entry: ChatActivityEntry) => entry.status === 'running',
+        { status: 'error' },
+    );
+    context.updateAssistant({
+        content: friendly,
+        status: 'failed',
+        error: userFacingErrorCopy(context.streamError, errorCode).message,
+        errorCode,
+    });
+    showFailureToast(context.toast, 'Could not send message', context.streamError);
 }

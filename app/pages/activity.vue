@@ -974,7 +974,7 @@ function jobLabel(kind?: string) {
     if (!kind) return 'Agent run';
     if (kind.startsWith('agent_cli:'))
         return `${kind.slice('agent_cli:'.length)} run`;
-    if (kind === 'subagent') return 'Subagent run';
+    if (kind === 'subagent') return 'Historical subagent run';
     if (kind === 'turn') return 'Assistant reply';
     if (kind === 'exec' || kind === 'terminal') return 'Terminal command';
     if (kind === 'file_list') return 'File listing';
