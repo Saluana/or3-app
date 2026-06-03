@@ -339,6 +339,62 @@ describe('createAssistantEventApplier', () => {
         ]);
     });
 
+    it('keeps streamed assistant text when final_text adds a reasoning prefix', () => {
+        const { applyEvent, assistant } = createApplier();
+        const streamed = 'I can help with code.';
+
+        applyEvent(
+            {
+                event: 'text_delta',
+                json: {
+                    type: 'text_delta',
+                    sequence: 1,
+                    text: streamed,
+                    delta: streamed,
+                },
+            },
+            'stream',
+        );
+        applyEvent(
+            {
+                event: 'completion',
+                json: {
+                    type: 'completion',
+                    sequence: 2,
+                    status: 'completed',
+                    final_text:
+                        'The user wants help with code.I can help with code.',
+                },
+            },
+            'stream',
+        );
+
+        expect(assistant.value.content).toBe(streamed);
+    });
+
+    it('routes reasoning_delta payloads with delta text to reasoningText', () => {
+        const { applyEvent, assistant } = createApplier();
+
+        applyEvent(
+            {
+                event: 'reasoning_delta',
+                json: {
+                    type: 'content.delta',
+                    sequence: 3,
+                    stream_kind: 'reasoning_text',
+                    delta: 'The user wants a brief overview.',
+                    text: 'The user wants a brief overview.',
+                },
+            },
+            'stream',
+        );
+
+        expect(assistant.value.reasoningText).toBe(
+            'The user wants a brief overview.',
+        );
+        expect(assistant.value.content).toBe('');
+    });
+
     it('does not fail the turn on runtime_error events', () => {
         const { applyEvent, assistant } = createApplier();
 

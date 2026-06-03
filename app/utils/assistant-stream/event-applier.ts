@@ -202,6 +202,19 @@ export function createAssistantEventApplier(
 
     const recoverEmptyFinalWithText = (assistantText: string) => {
         const current = options.readAssistant();
+        const normalizedIncoming = sanitizeAssistantText(assistantText);
+        const currentText = sanitizeAssistantText(current?.content || '');
+        if (
+            currentText &&
+            normalizedIncoming.length > currentText.length &&
+            normalizedIncoming.endsWith(currentText)
+        ) {
+            // Keep clean streamed assistant text when final_text includes a reasoning prefix.
+            if (!options.hasVisibleTextPart()) {
+                options.appendCompleteTextPart(currentText);
+            }
+            return;
+        }
         const wasEmptyFinal =
             current?.errorCode === 'empty_final_text' ||
             isEmptyFinalWarningText(current?.content || '') ||
@@ -380,6 +393,51 @@ export function createAssistantEventApplier(
                 payload?.chunk ??
                 '',
         );
+        // #region agent log
+        if (
+            delta &&
+            (type === 'text_delta' ||
+                type === 'reasoning_delta' ||
+                type === 'content.delta')
+        ) {
+            const rawPayload =
+                payload?.raw && typeof payload.raw === 'object'
+                    ? (payload.raw as Record<string, unknown>)
+                    : undefined;
+            const rawPart =
+                rawPayload?.part && typeof rawPayload.part === 'object'
+                    ? (rawPayload.part as Record<string, unknown>)
+                    : undefined;
+            fetch(
+                'http://127.0.0.1:7845/ingest/f9918b6c-53f1-4b7a-a810-8a4b7fbf8eb8',
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Debug-Session-Id': '3fa1b1',
+                    },
+                    body: JSON.stringify({
+                        sessionId: '3fa1b1',
+                        runId: 'pre-fix',
+                        hypothesisId: 'A-D',
+                        location: 'event-applier.ts:stream-delta',
+                        message: 'Stream delta event received',
+                        data: {
+                            sseType: type,
+                            payloadType: payload?.type,
+                            streamKind: payload?.stream_kind,
+                            partKind: rawPart?.kind ?? payload?.kind,
+                            deltaPreview: delta.slice(0, 120),
+                            hasContentField: typeof payload?.content === 'string',
+                            hasDeltaField: typeof payload?.delta === 'string',
+                            hasTextField: typeof payload?.text === 'string',
+                        },
+                        timestamp: Date.now(),
+                    }),
+                },
+            ).catch(() => {});
+        }
+        // #endregion
         if (type === 'queued' || type === 'started') {
             options.addActivity(
                 createActivity(
@@ -389,6 +447,32 @@ export function createAssistantEventApplier(
             );
         }
         if (type === 'text_delta' && delta) {
+            // #region agent log
+            fetch(
+                'http://127.0.0.1:7845/ingest/f9918b6c-53f1-4b7a-a810-8a4b7fbf8eb8',
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Debug-Session-Id': '3fa1b1',
+                    },
+                    body: JSON.stringify({
+                        sessionId: '3fa1b1',
+                        runId: 'pre-fix',
+                        hypothesisId: 'A',
+                        location: 'event-applier.ts:text_delta',
+                        message: 'Appending text_delta to assistant content',
+                        data: {
+                            deltaPreview: delta.slice(0, 120),
+                            streamKind: payload?.stream_kind,
+                            contentBeforeLen:
+                                options.readAssistant()?.content?.length ?? 0,
+                        },
+                        timestamp: Date.now(),
+                    }),
+                },
+            ).catch(() => {});
+            // #endregion
             options.appendAssistantContent(delta);
             options.appendTextPart(delta);
             markVisibleOutput(delta);
@@ -435,6 +519,30 @@ export function createAssistantEventApplier(
                 streamKind === 'reasoning_text' ||
                 streamKind === 'reasoning_summary_text'
             ) {
+                // #region agent log
+                fetch(
+                    'http://127.0.0.1:7845/ingest/f9918b6c-53f1-4b7a-a810-8a4b7fbf8eb8',
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Debug-Session-Id': '3fa1b1',
+                        },
+                        body: JSON.stringify({
+                            sessionId: '3fa1b1',
+                            runId: 'pre-fix',
+                            hypothesisId: 'C',
+                            location: 'event-applier.ts:content.delta-reasoning',
+                            message: 'Routing content.delta to reasoningText',
+                            data: {
+                                streamKind,
+                                deltaPreview: delta.slice(0, 120),
+                            },
+                            timestamp: Date.now(),
+                        }),
+                    },
+                ).catch(() => {});
+                // #endregion
                 options.updateAssistant({
                     reasoningText: `${options.readAssistant()?.reasoningText || ''}${delta}`,
                 });
@@ -738,10 +846,39 @@ export function createAssistantEventApplier(
         }
         if (
             type === 'reasoning_delta' &&
-            typeof payload?.content === 'string'
+            (typeof payload?.content === 'string' ||
+                typeof payload?.delta === 'string' ||
+                typeof payload?.text === 'string')
         ) {
+            const reasoningDelta = String(
+                payload?.content ?? payload?.delta ?? payload?.text ?? '',
+            );
+            // #region agent log
+            fetch(
+                'http://127.0.0.1:7845/ingest/f9918b6c-53f1-4b7a-a810-8a4b7fbf8eb8',
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Debug-Session-Id': '3fa1b1',
+                    },
+                    body: JSON.stringify({
+                        sessionId: '3fa1b1',
+                        runId: 'post-fix',
+                        hypothesisId: 'B-C',
+                        location: 'event-applier.ts:reasoning_delta',
+                        message: 'Routing reasoning_delta to reasoningText',
+                        data: {
+                            reasoningDeltaPreview: reasoningDelta.slice(0, 120),
+                            streamKind: payload?.stream_kind,
+                        },
+                        timestamp: Date.now(),
+                    }),
+                },
+            ).catch(() => {});
+            // #endregion
             options.updateAssistant({
-                reasoningText: `${options.readAssistant()?.reasoningText || ''}${payload.content}`,
+                reasoningText: `${options.readAssistant()?.reasoningText || ''}${reasoningDelta}`,
             });
         }
         if (type === 'runtime_error') {

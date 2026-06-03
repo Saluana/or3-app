@@ -363,7 +363,35 @@ function extractPartText(value: unknown): string {
     const part = asObject(value);
     if (!part) return '';
     if (part.type && part.type !== 'text') return '';
+    if (isReasoningPart(part)) return '';
     return asText(part.text ?? part) ?? '';
+}
+
+function isReasoningPart(part: ParsedPayload): boolean {
+    if (asText(part.type)?.toLowerCase() === 'reasoning') {
+        return true;
+    }
+    const metadata = asObject(part.metadata);
+    const state = asObject(part.state);
+    return [
+        part.kind,
+        part.name,
+        part.title,
+        part.stream,
+        part.stream_kind,
+        part.streamKind,
+        metadata?.kind,
+        metadata?.type,
+        state?.kind,
+        state?.type,
+    ].some((value) => {
+        const normalized = asText(value)?.toLowerCase() ?? '';
+        return (
+            normalized.includes('reasoning') ||
+            normalized.includes('thinking') ||
+            normalized.includes('thought')
+        );
+    });
 }
 
 function splitJsonDocuments(text: string): string[] {

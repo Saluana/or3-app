@@ -110,4 +110,15 @@ describe('result display helpers', () => {
             ),
         ).toBe(true);
     });
+
+    it('does not extract OpenCode reasoning text parts as readable result text', () => {
+        const raw = [
+            '{"type":"text","part":{"type":"text","kind":"thinking","text":"I should keep this concise."}}',
+            `{"type":"text","part":{"type":"text","text":"Hey, what's up?"}}`,
+        ].join(' ');
+
+        expect(extractReadableResultText(raw, 'opencode')).toBe(
+            "Hey, what's up?",
+        );
+    });
 });

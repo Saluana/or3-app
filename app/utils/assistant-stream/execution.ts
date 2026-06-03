@@ -252,6 +252,35 @@ function applyRecoveredFinalText(
     const normalized = context.sanitizeAssistantText(displayText);
     if (!normalized) return false;
 
+    // #region agent log
+    fetch('http://127.0.0.1:7845/ingest/f9918b6c-53f1-4b7a-a810-8a4b7fbf8eb8', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Debug-Session-Id': '3fa1b1',
+        },
+        body: JSON.stringify({
+            sessionId: '3fa1b1',
+            runId: 'pre-fix',
+            hypothesisId: 'E',
+            location: 'execution.ts:applyRecoveredFinalText',
+            message: 'Applying recovered final text',
+            data: {
+                displayTextPreview: normalized.slice(0, 160),
+                sawVisibleOutput: context.sawVisibleOutput(),
+                existingContentLen:
+                    context.readAssistant()?.content?.length ?? 0,
+                existingReasoningLen:
+                    context.readAssistant()?.reasoningText?.length ?? 0,
+                appendFinalTextToExistingContent: Boolean(
+                    context.appendFinalTextToExistingContent,
+                ),
+            },
+            timestamp: Date.now(),
+        }),
+    }).catch(() => {});
+    // #endregion
+
     if (context.appendFinalTextToExistingContent && context.applyFinalText) {
         context.applyFinalText(normalized);
         context.updateActivity(
