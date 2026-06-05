@@ -6,6 +6,13 @@ import type {
     ChatToolCall,
 } from '~/types/app-state';
 import type { ChatHistoryMessage } from '~/types/or3-api';
+import {
+    canonicalActivityDetail,
+    canonicalActivityKey,
+    canonicalActivityStatus,
+    canonicalToolDisplayName,
+    createActivity,
+} from '~/utils/assistant-stream/activity';
 import { msToIso } from './chat-session-utils';
 
 export function backendRole(backend: ChatHistoryMessage): ChatMessage['role'] {
@@ -165,6 +172,220 @@ export function upsertById<T extends { id: string }>(
     return next;
 }
 
+function runnerEventPayload(raw: unknown) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+    const outer = raw as Record<string, unknown>;
+    const nested =
+        outer.payload &&
+        typeof outer.payload === 'object' &&
+        !Array.isArray(outer.payload)
+            ? (outer.payload as Record<string, unknown>)
+            : {};
+    return { ...outer, ...nested };
+}
+
+function runnerEventType(raw: unknown, payload: Record<string, unknown>) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+        return String(payload.type ?? '').trim();
+    }
+    const outer = raw as Record<string, unknown>;
+    return String(outer.type ?? outer.event ?? payload.type ?? '').trim();
+}
+
+function runnerDeltaText(payload: Record<string, unknown>) {
+    return String(
+        payload.delta ?? payload.text ?? payload.content ?? payload.chunk ?? '',
+    );
+}
+
+function upsertHydratedTool(
+    state: {
+        toolCalls: ChatToolCall[];
+        toolParts: ChatMessagePart[];
+        activities: ChatActivityEntry[];
+    },
+    call: ChatToolCall,
+    includeGenericActivity = true,
+) {
+    state.toolCalls = upsertById(state.toolCalls, call);
+    state.toolParts = upsertById(state.toolParts, toolPart(call));
+    if (!includeGenericActivity) return;
+    state.activities = upsertById(
+        state.activities,
+        activityForTool(call),
+    ).slice(-30);
+}
+
+function hydratedRunnerEventState(
+    rawEvents: unknown,
+    createdAt: string,
+): {
+    reasoningText?: string;
+    toolCalls: ChatToolCall[];
+    toolParts: ChatMessagePart[];
+    activities: ChatActivityEntry[];
+} {
+    if (!Array.isArray(rawEvents)) {
+        return { toolCalls: [], toolParts: [], activities: [] };
+    }
+
+    const state = {
+        reasoningText: '',
+        toolCalls: [] as ChatToolCall[],
+        toolParts: [] as ChatMessagePart[],
+        activities: [] as ChatActivityEntry[],
+    };
+
+    for (const raw of rawEvents) {
+        const payload = runnerEventPayload(raw);
+        const type = runnerEventType(raw, payload);
+        const delta = runnerDeltaText(payload);
+
+        if (
+            type === 'reasoning_delta' ||
+            (type === 'content.delta' &&
+                (payload.stream_kind === 'reasoning_text' ||
+                    payload.stream_kind === 'reasoning_summary_text'))
+        ) {
+            state.reasoningText += delta;
+            continue;
+        }
+
+        if (type === 'tool_call') {
+            const name = String(payload.name ?? 'tool').trim() || 'tool';
+            const id =
+                String(
+                    payload.tool_call_id ??
+                        payload.call_id ??
+                        payload.id ??
+                        `legacy:${name}`,
+                ).trim() || `legacy:${name}`;
+            upsertHydratedTool(state, {
+                id,
+                name,
+                status: 'running',
+                arguments:
+                    typeof payload.arguments === 'string'
+                        ? payload.arguments
+                        : previewValue(payload.arguments_preview),
+                startedAt: createdAt,
+            });
+            continue;
+        }
+
+        if (type === 'tool_result') {
+            const name = String(payload.name ?? 'tool').trim() || 'tool';
+            const id =
+                String(
+                    payload.tool_call_id ??
+                        payload.call_id ??
+                        payload.id ??
+                        `legacy:${name}`,
+                ).trim() || `legacy:${name}`;
+            const error = String(payload.error ?? '').trim();
+            upsertHydratedTool(state, {
+                id,
+                name,
+                status: error ? 'error' : 'complete',
+                result: previewValue(
+                    payload.result_preview ?? payload.result ?? '',
+                    4_000,
+                ),
+                error: error || undefined,
+                startedAt: createdAt,
+                completedAt: createdAt,
+            });
+            continue;
+        }
+
+        if (
+            type === 'item.started' ||
+            type === 'item.updated' ||
+            type === 'item.completed'
+        ) {
+            const itemType = String(payload.item_type ?? 'unknown');
+            const status = canonicalActivityStatus(
+                payload.status ??
+                    (type === 'item.completed'
+                        ? 'completed'
+                        : type === 'item.started'
+                          ? 'running'
+                          : undefined),
+            );
+            const toolName = canonicalToolDisplayName(itemType, payload);
+            const data =
+                payload.data &&
+                typeof payload.data === 'object' &&
+                !Array.isArray(payload.data)
+                    ? (payload.data as Record<string, unknown>)
+                    : {};
+            const id = String(
+                data.callID ||
+                    data.callId ||
+                    data.id ||
+                    payload.id ||
+                    `${itemType}:${toolName}`,
+            );
+            upsertHydratedTool(
+                state,
+                {
+                    id,
+                    name: toolName,
+                    status,
+                    arguments: previewValue(
+                        data.command ??
+                            data.arguments ??
+                            data.input ??
+                            (data.state && typeof data.state === 'object'
+                                ? (data.state as Record<string, unknown>).input
+                                : '') ??
+                            '',
+                        2_000,
+                    ),
+                    result:
+                        status === 'complete'
+                            ? previewValue(
+                                  data.result ??
+                                      data.output ??
+                                      (data.state &&
+                                      typeof data.state === 'object'
+                                          ? (
+                                                data.state as Record<
+                                                    string,
+                                                    unknown
+                                                >
+                                            ).output
+                                          : '') ??
+                                      payload.detail ??
+                                      '',
+                                  4_000,
+                              )
+                            : undefined,
+                    error:
+                        status === 'error'
+                            ? String(payload.detail ?? data.error ?? '')
+                            : undefined,
+                    startedAt: createdAt,
+                    completedAt: status === 'running' ? undefined : createdAt,
+                },
+                false,
+            );
+            state.activities = upsertById(
+                state.activities,
+                createActivity(
+                    itemType,
+                    toolName,
+                    canonicalActivityDetail(payload),
+                    status,
+                    canonicalActivityKey(itemType, toolName, payload),
+                ),
+            ).slice(-30);
+        }
+    }
+
+    return state;
+}
+
 /** Tracks assistant messages touched during hydration for fast reverse lookup. */
 export class HydrationAssistantIndex {
     private readonly stack: ChatMessage[] = [];
@@ -175,7 +396,10 @@ export class HydrationAssistantIndex {
     ) {}
 
     noteAssistant(message: ChatMessage) {
-        if (message.sessionId !== this.sessionId || message.role !== 'assistant') {
+        if (
+            message.sessionId !== this.sessionId ||
+            message.role !== 'assistant'
+        ) {
             return;
         }
         const index = this.stack.findIndex((item) => item.id === message.id);
@@ -308,8 +532,41 @@ export function buildHydrationPatch(
         status:
             payload.status === 'approval_required' ? 'attention' : 'complete',
     };
-    if (toolCalls.length) {
-        patch.toolCalls = toolCalls;
+    const runnerEventState = hydratedRunnerEventState(
+        payload.runner_chat_events,
+        msToIso(backend.created_at),
+    );
+    const mergedToolCalls = toolCalls;
+    for (const call of runnerEventState.toolCalls) {
+        const index = mergedToolCalls.findIndex((item) => item.id === call.id);
+        if (index >= 0)
+            mergedToolCalls[index] = { ...mergedToolCalls[index], ...call };
+        else mergedToolCalls.push(call);
+    }
+    const mergedToolParts = toolParts;
+    for (const part of runnerEventState.toolParts) {
+        const index = mergedToolParts.findIndex((item) => item.id === part.id);
+        if (index >= 0)
+            mergedToolParts[index] = { ...mergedToolParts[index], ...part };
+        else mergedToolParts.push(part);
+    }
+    const mergedActivities = toolActivities;
+    for (const activity of runnerEventState.activities) {
+        const index = mergedActivities.findIndex(
+            (item) => item.id === activity.id,
+        );
+        if (index >= 0)
+            mergedActivities[index] = {
+                ...mergedActivities[index],
+                ...activity,
+            };
+        else mergedActivities.push(activity);
+    }
+    if (runnerEventState.reasoningText) {
+        patch.reasoningText = runnerEventState.reasoningText;
+    }
+    if (mergedToolCalls.length) {
+        patch.toolCalls = mergedToolCalls;
         patch.parts = [
             ...(backend.content.trim()
                 ? [
@@ -320,9 +577,9 @@ export function buildHydrationPatch(
                       },
                   ]
                 : []),
-            ...toolParts,
+            ...mergedToolParts,
         ];
-        patch.activityLog = toolActivities;
+        patch.activityLog = mergedActivities.slice(-30);
     }
     return patch;
 }

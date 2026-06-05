@@ -142,4 +142,61 @@ describe('stream recovery for approved resume jobs', () => {
             }),
         );
     });
+
+    it('recovers a running runner turn using the owning chat session id', async () => {
+        const isStreaming = ref(false);
+        const send = vi.fn<
+            (message: string | AssistantSendPayload) => Promise<void>
+        >(async () => {
+            isStreaming.value = true;
+        });
+        const state: Or3AppState = {
+            activeHostId: 'test-host',
+            hosts: [createHost()],
+            sessions: [
+                {
+                    ...createSession(),
+                    runnerChatSessionId: 'runner_session_1',
+                },
+            ],
+            messages: [
+                {
+                    id: 'msg_runner',
+                    sessionId: 'session_1',
+                    role: 'assistant',
+                    content: '',
+                    status: 'streaming',
+                    createdAt: '2026-05-24T00:00:00.000Z',
+                    runnerChatTurnId: 'turn_1',
+                    retryPayload: {
+                        text: 'continue',
+                        transportText: 'continue',
+                    },
+                },
+            ],
+            drafts: {},
+            recentJobs: {},
+            lastKnownStatus: {},
+            preferences: {},
+        };
+
+        const { recoverPendingMessages } = useStreamRecovery({
+            activeHost: ref(createHost()),
+            cacheState: ref(state),
+            isStreaming,
+            isClient: true,
+            send,
+        });
+
+        await recoverPendingMessages();
+
+        expect(send).toHaveBeenCalledWith(
+            expect.objectContaining({
+                continueMessageId: 'msg_runner',
+                suppressUserEcho: true,
+                runnerChatSessionId: 'runner_session_1',
+                runnerChatTurnId: 'turn_1',
+            }),
+        );
+    });
 });

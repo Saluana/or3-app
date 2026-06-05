@@ -395,4 +395,86 @@ describe('useChatSessions', () => {
         ]);
         expect(chat.messages.value).toHaveLength(2);
     });
+
+    it('hydrates runner chat event payloads back into reasoning and tool state', () => {
+        useLocalCache().updateHost({
+            id: 'test-host',
+            name: 'Test Host',
+            baseUrl: 'http://127.0.0.1:9100',
+            token: 'secret',
+        });
+
+        const chat = useChatSessions();
+        const session = chat.activateSessionByKey(
+            'or3-app:test',
+            'Runner history',
+        );
+        if (!session) throw new Error('expected session');
+
+        chat.hydrateBackendMessages(session, [
+            {
+                id: 20,
+                session_key: 'or3-app:test',
+                role: 'assistant',
+                content: 'Done.',
+                created_at: 1_717_171_719_000,
+                payload: {
+                    runner_chat_events: [
+                        {
+                            type: 'reasoning_delta',
+                            text: 'Thinking it through.',
+                            payload: {
+                                type: 'content.delta',
+                                stream_kind: 'reasoning_text',
+                                delta: 'Thinking it through.',
+                            },
+                        },
+                        {
+                            type: 'item.started',
+                            payload: {
+                                type: 'item.started',
+                                item_type: 'command_execution',
+                                status: 'inProgress',
+                                title: 'Command run',
+                                data: {
+                                    id: 'cmd-1',
+                                    command: 'go test ./...',
+                                },
+                            },
+                        },
+                        {
+                            type: 'item.completed',
+                            payload: {
+                                type: 'item.completed',
+                                item_type: 'command_execution',
+                                status: 'completed',
+                                title: 'Command run',
+                                data: {
+                                    id: 'cmd-1',
+                                    output: 'ok',
+                                },
+                            },
+                        },
+                    ],
+                },
+            },
+        ]);
+
+        const assistant = chat.messages.value[0];
+        expect(assistant?.content).toBe('Done.');
+        expect(assistant?.reasoningText).toBe('Thinking it through.');
+        expect(assistant?.toolCalls?.[0]).toMatchObject({
+            id: 'cmd-1',
+            name: 'Command run',
+            status: 'complete',
+            result: 'ok',
+        });
+        expect(assistant?.parts?.some((part) => part.type === 'tool')).toBe(
+            true,
+        );
+        expect(assistant?.activityLog?.[0]).toMatchObject({
+            type: 'command_execution',
+            status: 'complete',
+        });
+    });
 });

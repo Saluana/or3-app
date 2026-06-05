@@ -29,6 +29,7 @@ vi.mock('../../app/composables/useOr3Api', () => ({
 import { useAssistantStream } from '../../app/composables/useAssistantStream';
 import { useChatSessions } from '../../app/composables/useChatSessions';
 import { useLocalCache } from '../../app/composables/useLocalCache';
+import { streamRunnerChat } from '../../app/utils/assistant-stream/execution';
 import { EMPTY_FINAL_USER_MESSAGE } from '../../app/utils/assistant-stream/userErrorCopy';
 
 function addHost() {
@@ -63,40 +64,51 @@ describe('assistant stream runner bootstrap', () => {
 
     it('uses replay for the first native-capable runner turn before a session ref exists', async () => {
         addHost();
-        requestMock.mockImplementation(async (path: string, options?: { body?: Record<string, unknown> }) => {
-            if (path === '/internal/v1/runner-chat/sessions') {
-                return {
-                    id: 'rcs_bootstrap',
-                    app_session_key: 'or3-app:test-host:session_1',
-                    runner_id: 'opencode',
-                    continuation_mode: 'native',
-                };
-            }
-            if (path === '/internal/v1/runner-chat/sessions/rcs_bootstrap/turns') {
-                expect(options?.body).toMatchObject({
-                    continuation_mode: 'replay',
-                    user_message: 'hello runner',
-                    thinking_level: 'high',
-                    meta: { runner_thinking_level: 'high' },
-                });
-                return {
-                    session_id: 'rcs_bootstrap',
-                    turn_id: 'rct_bootstrap',
-                    job_id: 'job_runner_1',
-                    status: 'running',
-                };
-            }
-            if (path === '/internal/v1/runner-chat/sessions/rcs_bootstrap/turns/rct_bootstrap') {
-                return {
-                    id: 'rct_bootstrap',
-                    session_id: 'rcs_bootstrap',
-                    status: 'succeeded',
-                    final_text: 'OpenCode says hi.',
-                    agent_cli_job_id: 'job_runner_1',
-                };
-            }
-            throw new Error(`Unexpected request path: ${path}`);
-        });
+        requestMock.mockImplementation(
+            async (
+                path: string,
+                options?: { body?: Record<string, unknown> },
+            ) => {
+                if (path === '/internal/v1/runner-chat/sessions') {
+                    return {
+                        id: 'rcs_bootstrap',
+                        app_session_key: 'or3-app:test-host:session_1',
+                        runner_id: 'opencode',
+                        continuation_mode: 'native',
+                    };
+                }
+                if (
+                    path ===
+                    '/internal/v1/runner-chat/sessions/rcs_bootstrap/turns'
+                ) {
+                    expect(options?.body).toMatchObject({
+                        continuation_mode: 'replay',
+                        user_message: 'hello runner',
+                        thinking_level: 'high',
+                        meta: { runner_thinking_level: 'high' },
+                    });
+                    return {
+                        session_id: 'rcs_bootstrap',
+                        turn_id: 'rct_bootstrap',
+                        job_id: 'job_runner_1',
+                        status: 'running',
+                    };
+                }
+                if (
+                    path ===
+                    '/internal/v1/runner-chat/sessions/rcs_bootstrap/turns/rct_bootstrap'
+                ) {
+                    return {
+                        id: 'rct_bootstrap',
+                        session_id: 'rcs_bootstrap',
+                        status: 'succeeded',
+                        final_text: 'OpenCode says hi.',
+                        agent_cli_job_id: 'job_runner_1',
+                    };
+                }
+                throw new Error(`Unexpected request path: ${path}`);
+            },
+        );
 
         await useAssistantStream().send({
             text: 'hello runner',
@@ -121,6 +133,103 @@ describe('assistant stream runner bootstrap', () => {
         );
     });
 
+    it('flushes runner turn ids before opening the runner stream', async () => {
+        let assistantMessage: ChatMessage = {
+            id: 'assistant_1',
+            sessionId: 'session_1',
+            role: 'assistant',
+            content: '',
+            status: 'streaming',
+            createdAt: '2026-05-24T00:00:00.000Z',
+        };
+        const flushAssistantUpdates = vi.fn();
+        const flushMessage = vi.fn();
+        const request = vi.fn(async (path: string) => {
+            if (path === '/internal/v1/runner-chat/sessions') {
+                return {
+                    id: 'rcs_flush',
+                    app_session_key: 'or3-app:test-host:session_1',
+                    runner_id: 'opencode',
+                    continuation_mode: 'replay',
+                };
+            }
+            if (path === '/internal/v1/runner-chat/sessions/rcs_flush/turns') {
+                return {
+                    session_id: 'rcs_flush',
+                    turn_id: 'rct_flush',
+                    job_id: 'job_flush',
+                    status: 'running',
+                };
+            }
+            if (
+                path ===
+                '/internal/v1/runner-chat/sessions/rcs_flush/turns/rct_flush'
+            ) {
+                return {
+                    id: 'rct_flush',
+                    session_id: 'rcs_flush',
+                    status: 'succeeded',
+                    final_text: 'done',
+                    agent_cli_job_id: 'job_flush',
+                };
+            }
+            throw new Error(`Unexpected request path: ${path}`);
+        });
+        const stream = vi.fn(async function* () {
+            expect(flushAssistantUpdates).toHaveBeenCalledTimes(1);
+            expect(flushMessage).toHaveBeenCalledWith('assistant_1');
+        });
+
+        await streamRunnerChat({
+            api: { request, stream },
+            activeController: new AbortController(),
+            activeJobId: { value: null },
+            readAssistant: () => assistantMessage,
+            updateAssistant: (patch: Partial<ChatMessage>) => {
+                assistantMessage = { ...assistantMessage, ...patch };
+            },
+            updateActivity: vi.fn(),
+            completeRunningActivity: vi.fn(),
+            addActivity: vi.fn(),
+            applyEvent: vi.fn(() => ({ failed: false, completed: false })),
+            replaceAssistantContent: vi.fn((content: string) => {
+                assistantMessage = { ...assistantMessage, content };
+            }),
+            appendCompleteTextPart: vi.fn(),
+            sawVisibleOutput: vi.fn(() => true),
+            setSawVisibleOutput: vi.fn(),
+            sanitizeAssistantText: (value: string) => value,
+            flushAssistantUpdates,
+            chat: {
+                bindRunnerChatSession: vi.fn(),
+                flushMessage,
+                messages: { value: [] },
+            },
+            session: {
+                id: 'session_1',
+                hostId: 'test-host',
+                sessionKey: 'or3-app:test-host:session_1',
+                title: 'Session',
+                createdAt: '2026-05-24T00:00:00.000Z',
+                updatedAt: '2026-05-24T00:00:00.000Z',
+            },
+            payload: {
+                text: 'hello',
+                transportText: 'hello',
+                runnerContinuationMode: 'replay',
+            },
+            text: 'hello',
+            selectedRunnerId: 'opencode',
+        });
+
+        expect(stream).toHaveBeenCalledWith(
+            '/internal/v1/runner-chat/sessions/rcs_flush/turns/rct_flush/stream',
+            expect.any(Object),
+        );
+        expect(assistantMessage.runnerChatSessionId).toBe('rcs_flush');
+        expect(assistantMessage.runnerChatTurnId).toBe('rct_flush');
+    });
+
     it('renders Gemini structured stdout as chat text with tool cards', async () => {
         addHost();
         requestMock.mockImplementation(async (path: string) => {
@@ -140,7 +249,10 @@ describe('assistant stream runner bootstrap', () => {
                     status: 'running',
                 };
             }
-            if (path === '/internal/v1/runner-chat/sessions/rcs_gemini/turns/rct_gemini') {
+            if (
+                path ===
+                '/internal/v1/runner-chat/sessions/rcs_gemini/turns/rct_gemini'
+            ) {
                 return {
                     id: 'rct_gemini',
                     session_id: 'rcs_gemini',
@@ -207,7 +319,10 @@ describe('assistant stream runner bootstrap', () => {
         addHost();
         runnerStreamEvents = [];
         requestMock.mockImplementation(async (path: string) => {
-            if (path === '/internal/v1/runner-chat/sessions/rcs_recover/turns/rct_recover') {
+            if (
+                path ===
+                '/internal/v1/runner-chat/sessions/rcs_recover/turns/rct_recover'
+            ) {
                 return {
                     id: 'rct_recover',
                     session_id: 'rcs_recover',

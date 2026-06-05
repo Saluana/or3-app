@@ -36,6 +36,22 @@ function sessionsForHost(state: Or3AppState, hostId: string) {
     );
 }
 
+function sessionForMessage(state: Or3AppState, message: ChatMessage) {
+    return state.sessions.find((session) => session.id === message.sessionId);
+}
+
+function runnerChatSessionIdForMessage(
+    state: Or3AppState,
+    message: ChatMessage,
+) {
+    return (
+        message.runnerChatSessionId?.trim() ||
+        message.retryPayload?.runnerChatSessionId?.trim() ||
+        sessionForMessage(state, message)?.runnerChatSessionId?.trim() ||
+        ''
+    );
+}
+
 function isRecoverableAssistantMessage(message: ChatMessage) {
     if (message.role !== 'assistant') return false;
     if (!message.jobId && !message.runnerChatTurnId) return false;
@@ -88,7 +104,7 @@ function recoveryWatchSignature(state: Or3AppState, hostId: string) {
     const pending = pendingStreamingMessages(state.messages, sessionIds)
         .map(
             (message) =>
-                `${message.id}:${message.sessionId}:${message.jobId || message.runnerChatTurnId}:${message.status}`,
+                `${message.id}:${message.sessionId}:${message.jobId || message.runnerChatTurnId}:${runnerChatSessionIdForMessage(state, message)}:${message.status}`,
         )
         .join('|');
     return `${hostId}:${pending}`;
@@ -103,7 +119,7 @@ export function useStreamRecovery(options: UseStreamRecoveryOptions) {
         const hostId = options.activeHost.value?.id?.trim();
         const hasAuth = Boolean(
             options.activeHost.value?.token?.trim() ||
-                options.activeHost.value?.authMode === 'secure-session',
+            options.activeHost.value?.authMode === 'secure-session',
         );
         if (!hostId || !hasAuth) return;
 
@@ -113,7 +129,16 @@ export function useStreamRecovery(options: UseStreamRecoveryOptions) {
         );
         if (!pendingMessage?.jobId && !pendingMessage?.runnerChatTurnId) return;
 
-        const recoveryKey = `${hostId}:${pendingMessage.id}:${pendingMessage.jobId || pendingMessage.runnerChatTurnId}`;
+        const followJobId = pendingMessage.jobId?.trim() || '';
+        const followRunnerTurnId =
+            pendingMessage.runnerChatTurnId?.trim() || '';
+        const runnerChatSessionId = runnerChatSessionIdForMessage(
+            options.cacheState.value,
+            pendingMessage,
+        );
+        if (followRunnerTurnId && !runnerChatSessionId && !followJobId) return;
+
+        const recoveryKey = `${hostId}:${pendingMessage.id}:${followJobId || followRunnerTurnId}:${runnerChatSessionId}`;
         if (recoveryAttempted.has(recoveryKey)) return;
 
         recoveryAttempted.add(recoveryKey);
@@ -130,11 +155,11 @@ export function useStreamRecovery(options: UseStreamRecoveryOptions) {
                     pendingMessage.retryPayload?.text ||
                     pendingMessage.content,
                 attachments: pendingMessage.retryPayload?.attachments || [],
-                followJobId: pendingMessage.jobId,
+                followJobId,
                 continueMessageId: pendingMessage.id,
                 suppressUserEcho: true,
-                runnerChatSessionId: pendingMessage.runnerChatSessionId,
-                runnerChatTurnId: pendingMessage.runnerChatTurnId,
+                runnerChatSessionId: runnerChatSessionId || undefined,
+                runnerChatTurnId: followRunnerTurnId || undefined,
                 runnerId: pendingMessage.runnerId,
             });
         } finally {

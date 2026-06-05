@@ -57,6 +57,7 @@ interface ChatLike {
         sessionId: string,
         runnerChatSessionId: string,
     ): unknown;
+    flushMessage?(id: string): unknown;
     messages: Ref<ChatMessage[]>;
 }
 
@@ -86,6 +87,7 @@ interface AssistantExecutionState {
         value?: string | null,
         runnerId?: string,
     ) => void;
+    flushAssistantUpdates?: () => void;
 }
 
 interface BaseExecutionContext extends AssistantExecutionState {
@@ -544,11 +546,11 @@ export async function fetchAndApplyRunnerTurn(
                 ? 'attention'
                 : live
                   ? 'streaming'
-                : turn.status === 'failed' ||
-                    turn.status === 'aborted' ||
-                    turn.status === 'timed_out'
-                  ? 'failed'
-                  : 'complete',
+                  : turn.status === 'failed' ||
+                      turn.status === 'aborted' ||
+                      turn.status === 'timed_out'
+                    ? 'failed'
+                    : 'complete',
         error:
             displayText.trim() || turn.status === 'approval_required'
                 ? undefined
@@ -760,6 +762,9 @@ export async function streamRunnerChat(
         runnerChatSessionId: runnerSession.id,
         runnerChatTurnId: started.turn_id,
     });
+    context.flushAssistantUpdates?.();
+    const assistantId = context.readAssistant()?.id;
+    if (assistantId) context.chat.flushMessage?.(assistantId);
 
     const path = `/internal/v1/runner-chat/sessions/${encodeURIComponent(runnerSession.id)}/turns/${encodeURIComponent(started.turn_id)}/stream`;
     for await (const event of withStreamWatchdog(
@@ -912,5 +917,9 @@ export async function handleAssistantSendError(
         error: userFacingErrorCopy(context.streamError, errorCode).message,
         errorCode,
     });
-    showFailureToast(context.toast, 'Could not send message', context.streamError);
+    showFailureToast(
+        context.toast,
+        'Could not send message',
+        context.streamError,
+    );
 }
