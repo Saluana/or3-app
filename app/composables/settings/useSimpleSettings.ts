@@ -124,18 +124,6 @@ const FIELD_ALIASES: Record<string, BackendFieldRef> = {
         section: 'provider',
         field: 'routing_agents_fallbacks',
     },
-    [refKey('routing', 'subagentsProvider')]: {
-        section: 'provider',
-        field: 'routing_subagents_provider',
-    },
-    [refKey('routing', 'subagentsModel')]: {
-        section: 'provider',
-        field: 'routing_subagents_model',
-    },
-    [refKey('routing', 'subagentsFallbacks')]: {
-        section: 'provider',
-        field: 'routing_subagents_fallbacks',
-    },
     [refKey('routing', 'summarizationProvider')]: {
         section: 'provider',
         field: 'routing_summarization_provider',
@@ -275,22 +263,6 @@ const FIELD_ALIASES: Record<string, BackendFieldRef> = {
         field: 'docindex_refresh_seconds',
     },
 
-    [refKey('subagents', 'enabled')]: {
-        section: 'runtime',
-        field: 'runtime_subagents_enabled',
-    },
-    [refKey('subagents', 'maxConcurrent')]: {
-        section: 'runtime',
-        field: 'runtime_subagents_max_concurrent',
-    },
-    [refKey('subagents', 'maxQueued')]: {
-        section: 'runtime',
-        field: 'runtime_subagents_max_queued',
-    },
-    [refKey('subagents', 'taskTimeoutSeconds')]: {
-        section: 'runtime',
-        field: 'runtime_subagents_timeout',
-    },
     [refKey('cron', 'enabled')]: {
         section: 'automation',
         field: 'automation_cron_enabled',
@@ -391,50 +363,6 @@ const FIELD_ALIASES: Record<string, BackendFieldRef> = {
     [refKey('security', 'secretStore.keyFile')]: {
         section: 'security',
         field: 'security_secret_store_key_file',
-    },
-    [refKey('security', 'approvals.moderator.enabled')]: {
-        section: 'security',
-        field: 'security_approval_moderator_enabled',
-    },
-    [refKey('security', 'approvals.moderator.preset')]: {
-        section: 'security',
-        field: 'security_approval_moderator_preset',
-    },
-    [refKey('security', 'approvals.moderator.provider')]: {
-        section: 'security',
-        field: 'security_approval_moderator_provider',
-    },
-    [refKey('security', 'approvals.moderator.model')]: {
-        section: 'security',
-        field: 'security_approval_moderator_model',
-    },
-    [refKey('security', 'approvals.moderator.timeoutSeconds')]: {
-        section: 'security',
-        field: 'security_approval_moderator_timeout',
-    },
-    [refKey('security', 'approvals.moderator.failureAction')]: {
-        section: 'security',
-        field: 'security_approval_moderator_failure_action',
-    },
-    [refKey('security', 'approvals.moderator.userPolicy')]: {
-        section: 'security',
-        field: 'security_approval_moderator_user_policy',
-    },
-    [refKey('security', 'approvals.moderator.actions.low')]: {
-        section: 'security',
-        field: 'security_approval_moderator_action_low',
-    },
-    [refKey('security', 'approvals.moderator.actions.medium')]: {
-        section: 'security',
-        field: 'security_approval_moderator_action_medium',
-    },
-    [refKey('security', 'approvals.moderator.actions.high')]: {
-        section: 'security',
-        field: 'security_approval_moderator_action_high',
-    },
-    [refKey('security', 'approvals.moderator.actions.extreme')]: {
-        section: 'security',
-        field: 'security_approval_moderator_action_extreme',
     },
 
     [refKey('agentCLI', 'enabled')]: {
@@ -831,9 +759,7 @@ export function useSimpleSettings() {
         readFieldValue,
         findField,
         isControlAvailable,
-        hasModeratorSettings: () =>
-            !!findField('security', 'security_approval_moderator_enabled') ||
-            !!findField('security', 'security_approval_moderator_preset'),
+        hasModeratorSettings: () => false,
         lastError,
         applyChanges: async (changes: SimpleSettingChange[]) => {
             const plannedChanges = changes.map((change) => {

@@ -864,6 +864,8 @@ type RunnerPickerModel = {
     default?: boolean;
     display_name?: string;
     provider_name?: string;
+    reasoning?: string[];
+    reasoning_default?: string;
 };
 
 /** One row per model id; backend may list the same id under multiple providers. */

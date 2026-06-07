@@ -500,7 +500,15 @@ export async function fetchAndApplyRunnerTurn(
         (context as { selectedRunnerId?: string }).selectedRunnerId ||
         context.readAssistant()?.runnerId;
     context.applyRunnerStructuredResult?.(turn.final_text, runnerId);
-    const displayText = normalizeResultDisplayText(turn.final_text, runnerId);
+    const turnResultText =
+        turn.final_text?.trim() ||
+        JSON.stringify({
+            assistant_message_id: turn.assistant_message_id,
+            error_message: turn.error_message || turn.error || '',
+            final_text: turn.final_text || '',
+            status: turn.status,
+        });
+    const displayText = normalizeResultDisplayText(turnResultText, runnerId);
     applyRecoveredFinalText(displayText, context);
     const latest = context.readAssistant();
     const live = isLiveRunnerTurnStatus(turn.status);

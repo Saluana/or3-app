@@ -31,44 +31,6 @@
 
         <template v-for="group in controlGroups" :key="group.key">
             <SurfaceCard
-                v-if="showModeratorCta && group === controlGroups[0]"
-                class-name="space-y-3"
-            >
-                <div class="flex items-start gap-3">
-                    <span class="or3-heartbeat-cta__icon">
-                        <Icon name="i-pixelarticons-shield" class="size-5" />
-                    </span>
-                    <div class="min-w-0 flex-1">
-                        <p
-                            class="font-mono text-base font-semibold text-(--or3-text)"
-                        >
-                            Approval autopilot
-                        </p>
-                        <p
-                            class="mt-1 text-sm leading-6 text-(--or3-text-muted)"
-                        >
-                            Let OR3 review routine approvals automatically and
-                            still ask you before dangerous actions.
-                        </p>
-                    </div>
-                </div>
-                <div
-                    class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-(--or3-border) bg-white/70 px-4 py-3"
-                >
-                    <p class="text-sm leading-6 text-(--or3-text-muted)">
-                        Preset-first setup with plain-language risk examples.
-                    </p>
-                    <UButton
-                        to="/settings/approval-autopilot"
-                        color="primary"
-                        icon="i-pixelarticons-arrow-right"
-                    >
-                        Open approval autopilot
-                    </UButton>
-                </div>
-            </SurfaceCard>
-
-            <SurfaceCard
                 v-if="
                     section.key === 'automation' && group === controlGroups[0]
                 "
@@ -217,10 +179,6 @@ const props = defineProps<{ section: SimpleSettingSection }>();
 const route = useRoute();
 const simple = useSimpleSettings();
 const snapshots = useSettingsSnapshots();
-const showModeratorCta = computed(
-    () =>
-        props.section.key === 'safety' && simple.hasModeratorSettings(),
-);
 
 const focusKey = computed(() => {
     const q = route.query.focus;

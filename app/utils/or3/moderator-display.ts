@@ -1,9 +1,32 @@
 import type { ApprovalModeratorMetadata } from '~/types/or3-api';
-import {
-    moderatorActionBadge,
-    moderatorActionLabel,
-    type ModeratorAction,
-} from '~/utils/or3/moderator-settings';
+
+type ModeratorAction = 'approve' | 'escalate' | 'deny' | string;
+
+function moderatorActionLabel(action: ModeratorAction): string {
+    switch (action) {
+        case 'approve':
+            return 'Approve';
+        case 'escalate':
+            return 'Ask me';
+        case 'deny':
+            return 'Deny';
+        default:
+            return action.replaceAll('_', ' ');
+    }
+}
+
+function moderatorActionBadge(action: ModeratorAction): string {
+    switch (action) {
+        case 'approve':
+            return 'Low friction';
+        case 'escalate':
+            return 'Needs review';
+        case 'deny':
+            return 'Blocked';
+        default:
+            return moderatorActionLabel(action);
+    }
+}
 
 export function formatModeratorRiskLabel(risk?: string): string {
     const normalized = String(risk ?? '').trim().toLowerCase();

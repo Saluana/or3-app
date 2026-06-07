@@ -30,8 +30,6 @@ const roleProviderField = computed(() => {
     switch (props.control.modelRole) {
         case 'agents':
             return 'agentsProvider';
-        case 'subagents':
-            return 'subagentsProvider';
         case 'summarization':
             return 'summarizationProvider';
         case 'contextManager':

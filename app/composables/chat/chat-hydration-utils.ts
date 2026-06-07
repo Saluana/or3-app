@@ -311,7 +311,7 @@ function hydratedRunnerEventState(
                         : type === 'item.started'
                           ? 'running'
                           : undefined),
-            );
+            ) ?? 'running';
             const toolName = canonicalToolDisplayName(itemType, payload);
             const data =
                 payload.data &&

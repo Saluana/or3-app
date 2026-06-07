@@ -228,6 +228,7 @@ export interface RunnerChatTurn {
     user_message?: string;
     final_text?: string;
     error?: string;
+    error_message?: string;
     agent_cli_run_id?: string;
     agent_cli_job_id?: string;
     user_message_id?: number;

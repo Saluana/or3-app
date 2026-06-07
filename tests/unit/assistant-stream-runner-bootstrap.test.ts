@@ -133,6 +133,59 @@ describe('assistant stream runner bootstrap', () => {
         );
     });
 
+    it('renders aborted runner turn error_message instead of raw JSON', async () => {
+        addHost();
+        requestMock.mockImplementation(async (path: string) => {
+            if (path === '/internal/v1/runner-chat/sessions') {
+                return {
+                    id: 'rcs_aborted',
+                    app_session_key: 'or3-app:test-host:session_aborted',
+                    runner_id: 'opencode',
+                    continuation_mode: 'replay',
+                };
+            }
+            if (path === '/internal/v1/runner-chat/sessions/rcs_aborted/turns') {
+                return {
+                    session_id: 'rcs_aborted',
+                    turn_id: 'rct_aborted',
+                    job_id: 'job_aborted',
+                    status: 'running',
+                };
+            }
+            if (
+                path ===
+                '/internal/v1/runner-chat/sessions/rcs_aborted/turns/rct_aborted'
+            ) {
+                return {
+                    id: 'rct_aborted',
+                    session_id: 'rcs_aborted',
+                    status: 'aborted',
+                    final_text: '',
+                    error_message: 'service restarted',
+                    assistant_message_id: 0,
+                    agent_cli_job_id: 'job_aborted',
+                };
+            }
+            throw new Error(`Unexpected request path: ${path}`);
+        });
+
+        await useAssistantStream().send({
+            text: 'bro we need to talk',
+            transportText: 'bro we need to talk',
+            attachments: [],
+            runnerId: 'opencode',
+            runnerLabel: 'OpenCode',
+            runnerContinuationMode: 'replay',
+        });
+
+        const assistantMessage = useChatSessions().messages.value.find(
+            (message: ChatMessage) => message.role === 'assistant',
+        );
+        expect(assistantMessage?.content).toBe('service restarted');
+        expect(assistantMessage?.content).not.toContain('assistant_message_id');
+        expect(assistantMessage?.status).toBe('failed');
+    });
+
     it('flushes runner turn ids before opening the runner stream', async () => {
         let assistantMessage: ChatMessage = {
             id: 'assistant_1',

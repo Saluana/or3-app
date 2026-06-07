@@ -9,11 +9,11 @@
  */
 
 import {
+    AGENT_CLI_POWER_PRESETS,
     CONVERSATION_DETAIL_PRESETS,
     FILE_SEARCH_SIZE_PRESETS,
     MEMORY_SEARCH_PRESETS,
     SAFETY_MODE_PRESETS,
-    SUBAGENT_POWER_PRESETS,
 } from './presets';
 import { COMMON_COMMAND_PROGRAMS } from './commandPrograms';
 import type { SimpleSettingSection } from './simpleSettings';
@@ -154,43 +154,6 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 modelKind: 'chat',
                 fieldRefs: [{ section: 'routing', field: 'agentsFallbacks' }],
                 advancedKeys: ['routing.agentsFallbacks'],
-            },
-            {
-                key: 'subagents-provider',
-                label: 'Subagents provider',
-                description: 'Provider used for internal background subagents.',
-                kind: 'choice',
-                group: 'subagents',
-                groupLabel: 'Subagents',
-                groupDescription: 'Internal background work split away from the main chat.',
-                fieldRefs: [{ section: 'routing', field: 'subagentsProvider' }],
-                advancedKeys: ['routing.subagentsProvider'],
-            },
-            {
-                key: 'subagents-model',
-                label: 'Subagent model',
-                description: 'Model used for internal background subagents.',
-                kind: 'model-picker',
-                group: 'subagents',
-                groupLabel: 'Subagents',
-                groupDescription: 'Internal background work split away from the main chat.',
-                modelRole: 'subagents',
-                modelKind: 'chat',
-                fieldRefs: [{ section: 'routing', field: 'subagentsModel' }],
-                advancedKeys: ['routing.subagentsProvider', 'routing.subagentsModel'],
-            },
-            {
-                key: 'subagents-fallbacks',
-                label: 'Subagent fallbacks',
-                description: 'Fallback provider/model entries for background subagent failures.',
-                kind: 'model-picker',
-                group: 'subagents',
-                groupLabel: 'Subagents',
-                groupDescription: 'Internal background work split away from the main chat.',
-                modelRole: 'subagents',
-                modelKind: 'chat',
-                fieldRefs: [{ section: 'routing', field: 'subagentsFallbacks' }],
-                advancedKeys: ['routing.subagentsFallbacks'],
             },
             {
                 key: 'summarization-provider',
@@ -853,52 +816,12 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
         description: 'Control background work, schedules, and skills.',
         icon: 'i-pixelarticons-zap',
         summaryTemplate: (v) => {
-            const sub = Boolean(get(v, 'subagents.enabled', false));
             const cron = Boolean(get(v, 'cron.enabled', false));
-            if (sub && cron)
-                return 'Background agents and scheduled tasks are on.';
-            if (sub) return 'Background agents are on; schedules are off.';
-            if (cron)
-                return 'Scheduled tasks are on; background agents are off.';
-            return 'Background work is limited.';
+            return cron
+                ? 'Scheduled tasks and runner jobs are available.'
+                : 'Runner jobs are available; schedules are off.';
         },
         controls: [
-            {
-                key: 'auto-subagents',
-                label: 'Background agents (legacy)',
-                description:
-                    'Legacy built-in subagents. Hidden when runner-first mode is active on your computer.',
-                hiddenWhenRunnerFirst: true,
-                kind: 'toggle',
-                fieldRefs: [{ section: 'subagents', field: 'enabled' }],
-                advancedKeys: ['subagents.enabled'],
-                toggle: {
-                    on: { section: 'subagents', field: 'enabled', value: true },
-                    off: {
-                        section: 'subagents',
-                        field: 'enabled',
-                        value: false,
-                    },
-                },
-            },
-            {
-                key: 'auto-subagent-power',
-                label: 'Background agent power (legacy)',
-                description: 'Legacy subagent concurrency limits.',
-                hiddenWhenRunnerFirst: true,
-                kind: 'preset-slider',
-                fieldRefs: [
-                    { section: 'subagents', field: 'maxConcurrent' },
-                    { section: 'subagents', field: 'maxQueued' },
-                ],
-                presets: SUBAGENT_POWER_PRESETS,
-                impacts: ['higher-cost'],
-                advancedKeys: [
-                    'subagents.maxConcurrent',
-                    'subagents.maxQueued',
-                    'subagents.taskTimeoutSeconds',
-                ],
-            },
             {
                 key: 'auto-cron',
                 label: 'Scheduled tasks',
@@ -1010,7 +933,7 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                     { section: 'agentCLI', field: 'maxConcurrent' },
                     { section: 'agentCLI', field: 'maxQueued' },
                 ],
-                presets: SUBAGENT_POWER_PRESETS,
+                presets: AGENT_CLI_POWER_PRESETS,
                 impacts: ['higher-cost'],
                 warningLevel: 'medium',
                 advancedKeys: [
@@ -1122,41 +1045,6 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                     off: {
                         section: 'security',
                         field: 'audit.enabled',
-                        value: false,
-                    },
-                },
-            },
-            {
-                key: 'approval-autopilot-enabled',
-                label: 'Approval autopilot',
-                description:
-                    'Let OR3 review routine approvals automatically. Open the full setup page for presets and custom rules.',
-                kind: 'toggle',
-                fieldRefs: [
-                    { section: 'security', field: 'approvals.moderator.enabled' },
-                ],
-                impacts: ['safer'],
-                advancedKeys: [
-                    'security.approvals.moderator.enabled',
-                    'security.approvals.moderator.preset',
-                    'security.approvals.moderator.userPolicy',
-                ],
-                toggle: {
-                    on: [
-                        {
-                            section: 'security',
-                            field: 'security_approvals_enabled',
-                            value: true,
-                        },
-                        {
-                            section: 'security',
-                            field: 'approvals.moderator.enabled',
-                            value: true,
-                        },
-                    ],
-                    off: {
-                        section: 'security',
-                        field: 'approvals.moderator.enabled',
                         value: false,
                     },
                 },

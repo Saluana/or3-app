@@ -41,7 +41,6 @@ export const SETTINGS_ROUTES = {
     heartbeat: '/settings/heartbeat',
     permissions: '/settings/permissions',
     observability: '/settings/observability',
-    approvalAutopilot: '/settings/approval-autopilot',
     connectDevice: '/computer/connect-device',
     trustedDevices: '/computer/trusted-devices',
 } as const;
@@ -128,7 +127,6 @@ export const REQUIRED_DESKTOP_SIDEBAR_KEYS = [
     'addons',
     'passkeys',
     'observability',
-    'approval-autopilot',
     'advanced',
     'super-advanced',
 ] as const;
@@ -234,14 +232,6 @@ const SETTINGS_DESTINATIONS: SettingsDestinationDef[] = [
         description: 'Turn on heartbeat and edit its background checklist.',
         icon: 'tabler:activity-heartbeat',
         to: SETTINGS_ROUTES.heartbeat,
-        surfaces: ['desktop-sidebar', 'advanced'],
-    },
-    {
-        key: 'approval-autopilot',
-        label: 'Approval autopilot',
-        description: 'Choose what OR3 can approve by itself.',
-        icon: 'i-pixelarticons-shield',
-        to: SETTINGS_ROUTES.approvalAutopilot,
         surfaces: ['desktop-sidebar', 'advanced'],
     },
     {

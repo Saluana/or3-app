@@ -10,8 +10,6 @@ import type {
     JobSnapshot,
     Or3SseEvent,
     PersistedAgentCliJob,
-    PersistedSubagentJob,
-    SubagentListResponse,
     SubagentRequest,
     SubagentResponse,
 } from '~/types/or3-api';
@@ -23,7 +21,6 @@ import {
     mergeJobSummary,
     normalizeStatus,
     persistedAgentCliJobToSummary,
-    persistedJobToSummary,
     runnerLabel,
     summaryToSnapshot,
 } from '~/utils/or3/jobs';
@@ -432,22 +429,8 @@ export function useJobs() {
         loadingJobs.value = true;
         lastListError.value = null;
         try {
-            const params = new URLSearchParams();
-            if (options.status) params.set('status', options.status);
-            params.set('limit', String(options.limit ?? 50));
-            const path = `/internal/v1/subagents?${params.toString()}`;
-            const response = await api.request<SubagentListResponse>(path);
+            await loadAgentCliHistory(options);
             listSupported.value = true;
-            const items: PersistedSubagentJob[] = Array.isArray(response?.items)
-                ? response.items
-                : [];
-            if (items.length > 0) {
-                batchUpsertHostJobs(cache, items.map(persistedJobToSummary));
-            }
-            // Best-effort CLI history loading
-            if (runnerListSupported.value) {
-                void loadAgentCliHistory().catch(() => {});
-            }
         } catch (error) {
             const err = error as Or3AppError;
             if (err?.code === 'pin_locked') return;
@@ -477,10 +460,15 @@ export function useJobs() {
         }
     }
 
-    async function loadAgentCliHistory() {
+    async function loadAgentCliHistory(
+        options: { status?: string; limit?: number } = {},
+    ) {
         try {
+            const params = new URLSearchParams();
+            if (options.status) params.set('status', options.status);
+            params.set('limit', String(options.limit ?? 50));
             const response = await api.request<AgentCliListResponse>(
-                '/internal/v1/agent-runs?limit=50',
+                `/internal/v1/agent-runs?${params.toString()}`,
             );
             const items: PersistedAgentCliJob[] = Array.isArray(response?.items)
                 ? response.items
@@ -497,7 +485,7 @@ export function useJobs() {
             ) {
                 return;
             }
-            // Non-fatal; subagent history still loaded.
+            throw err;
         }
     }
 

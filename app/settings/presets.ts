@@ -136,16 +136,16 @@ export const FILE_SEARCH_SIZE_PRESETS: SimpleSettingPreset[] = [
     },
 ]
 
-/** Background agent power: subagents.maxConcurrent + maxQueued. */
-export const SUBAGENT_POWER_PRESETS: SimpleSettingPreset[] = [
+/** Runner power: agentCLI.maxConcurrent + maxQueued. */
+export const AGENT_CLI_POWER_PRESETS: SimpleSettingPreset[] = [
     {
         id: 'low',
         label: 'Low',
         description: 'One thing at a time.',
         impacts: ['safer'],
         changes: [
-            { section: 'subagents', field: 'maxConcurrent', value: 1 },
-            { section: 'subagents', field: 'maxQueued', value: 4 },
+            { section: 'agentCLI', field: 'maxConcurrent', value: 1 },
+            { section: 'agentCLI', field: 'maxQueued', value: 4 },
         ],
     },
     {
@@ -153,8 +153,8 @@ export const SUBAGENT_POWER_PRESETS: SimpleSettingPreset[] = [
         label: 'Standard',
         description: 'A few background tasks at once.',
         changes: [
-            { section: 'subagents', field: 'maxConcurrent', value: 3 },
-            { section: 'subagents', field: 'maxQueued', value: 16 },
+            { section: 'agentCLI', field: 'maxConcurrent', value: 3 },
+            { section: 'agentCLI', field: 'maxQueued', value: 16 },
         ],
     },
     {
@@ -163,8 +163,8 @@ export const SUBAGENT_POWER_PRESETS: SimpleSettingPreset[] = [
         description: 'Lots of background work.',
         impacts: ['higher-cost'],
         changes: [
-            { section: 'subagents', field: 'maxConcurrent', value: 8 },
-            { section: 'subagents', field: 'maxQueued', value: 64 },
+            { section: 'agentCLI', field: 'maxConcurrent', value: 8 },
+            { section: 'agentCLI', field: 'maxQueued', value: 64 },
         ],
     },
     {
@@ -173,8 +173,8 @@ export const SUBAGENT_POWER_PRESETS: SimpleSettingPreset[] = [
         description: 'Use as much capacity as available.',
         impacts: ['higher-cost', 'slower'],
         changes: [
-            { section: 'subagents', field: 'maxConcurrent', value: 16 },
-            { section: 'subagents', field: 'maxQueued', value: 256 },
+            { section: 'agentCLI', field: 'maxConcurrent', value: 16 },
+            { section: 'agentCLI', field: 'maxQueued', value: 256 },
         ],
     },
 ]

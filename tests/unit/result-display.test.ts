@@ -75,6 +75,18 @@ describe('result display helpers', () => {
         );
     });
 
+    it('extracts readable text from aborted runner-chat wrapper payloads', () => {
+        const raw = JSON.stringify({
+            assistant_message_id: 0,
+            error_message: 'service restarted',
+            final_text: '',
+            status: 'aborted',
+        });
+        expect(normalizeResultDisplayText(raw, 'opencode')).toBe(
+            'service restarted',
+        );
+    });
+
     it('extracts readable text from OpenCode error events', () => {
         const raw = JSON.stringify({
             type: 'error',
