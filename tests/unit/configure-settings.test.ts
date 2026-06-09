@@ -689,6 +689,113 @@ describe('settings configure mappings', () => {
         ).resolves.toMatchObject({ ok: true });
     });
 
+    it('hides legacy model, context, vision, and skill controls when runners are enabled', async () => {
+        useLocalCache().updateHost({
+            id: 'host-1',
+            name: 'Host',
+            baseUrl: 'http://127.0.0.1:9100',
+            token: 'paired-token',
+            pairedToken: 'paired-token',
+        });
+        const fieldsBySection: Record<string, Array<Record<string, unknown>>> = {
+            agentcli: [{ key: 'agentCLI_enabled', value: true }],
+            provider: [
+                { key: 'provider_preset', value: 'openrouter' },
+                { key: 'provider_model', value: 'openai/gpt-4.1-mini' },
+                { key: 'provider_vision', value: true },
+                { key: 'provider_timeout', value: 120 },
+                { key: 'routing_chat_provider', value: 'openrouter' },
+                { key: 'routing_chat_model', value: 'openai/gpt-4.1-mini' },
+                { key: 'routing_chat_fallbacks', value: '' },
+                { key: 'routing_agents_provider', value: 'openrouter' },
+                { key: 'routing_agents_model', value: 'openai/gpt-4.1' },
+                { key: 'routing_agents_fallbacks', value: '' },
+                { key: 'routing_summarization_provider', value: 'openrouter' },
+                { key: 'routing_summarization_model', value: 'openai/gpt-4.1-mini' },
+                { key: 'routing_summarization_fallbacks', value: '' },
+                { key: 'routing_context_provider', value: 'openrouter' },
+                { key: 'routing_context_model', value: 'openai/gpt-4.1-mini' },
+                { key: 'routing_context_fallbacks', value: '' },
+                { key: 'routing_embeddings_provider', value: 'openai' },
+                { key: 'routing_embeddings_model', value: 'text-embedding-3-small' },
+                { key: 'routing_embeddings_dimensions', value: 1536 },
+            ],
+            runtime: [
+                { key: 'runtime_history_max', value: 40 },
+                { key: 'runtime_memory_retrieve', value: 8 },
+                { key: 'runtime_vector_k', value: 8 },
+                { key: 'runtime_fts_k', value: 8 },
+                { key: 'runtime_vector_scan_limit', value: 64 },
+                { key: 'runtime_consolidation_enabled', value: true },
+            ],
+            context: [
+                { key: 'context_max_input_tokens', value: 16000 },
+                { key: 'context_task_card_enforce_plan', value: true },
+            ],
+            tools: [
+                { key: 'tools_enable_exec', value: true },
+                { key: 'tools_exec_timeout', value: 60 },
+                { key: 'tools_path_append', value: '/opt/homebrew/bin' },
+            ],
+            hardening: [
+                { key: 'hardening_guarded_tools', value: true },
+                { key: 'hardening_exec_allowed_programs', value: 'git,gws' },
+                { key: 'hardening_exec_shell', value: true },
+            ],
+            security: [
+                { key: 'security_approval_exec_mode', value: 'ask' },
+                { key: 'security_approval_skill_mode', value: 'trusted' },
+            ],
+            service: [{ key: 'service_max_capability', value: 'safe' }],
+            skills: [{ key: 'skills_enable_exec', value: true }],
+        };
+        vi.stubGlobal(
+            'fetch',
+            vi.fn(async (_url: string | URL | Request) => {
+                const url = String(_url);
+                const section = new URL(url).searchParams.get('section') ?? '';
+                return new Response(
+                    JSON.stringify({
+                        section,
+                        fields: fieldsBySection[section] ?? [],
+                    }),
+                    {
+                        status: 200,
+                        headers: { 'Content-Type': 'application/json' },
+                    },
+                );
+            }),
+        );
+
+        const simple = useSimpleSettings();
+        await simple.ensureLoaded();
+
+        const aiSection = simple.getSection('ai');
+        const aiKeys = aiSection?.controls.map((control) => control.key) ?? [];
+        expect(aiKeys).toEqual([
+            'embeddings-provider',
+            'embeddings-model',
+            'embeddings-dimensions',
+        ]);
+        expect(simple.summaryFor(aiSection!)).toContain('Runners handle chat');
+
+        const memoryKeys =
+            simple.getSection('memory')?.controls.map((control) => control.key) ?? [];
+        expect(memoryKeys).toContain('memory-history');
+        expect(memoryKeys).toContain('memory-cleanup');
+        expect(memoryKeys).not.toContain('memory-detail');
+
+        const toolKeys =
+            simple.getSection('tools')?.controls.map((control) => control.key) ?? [];
+        expect(toolKeys).toContain('tools-service-capability');
+        expect(toolKeys).toContain('tools-allowed-programs');
+        expect(toolKeys).not.toContain('tools-enable-skill-exec');
+        expect(toolKeys).not.toContain('tools-enforce-plan');
+        expect(toolKeys).not.toContain('tools-skill-approval');
+        expect(toolKeys).not.toContain('tools-exec-timeout');
+        expect(toolKeys).not.toContain('tools-shell-mode');
+    });
+
     it('loads and updates agent skills through the skills API', async () => {
         useLocalCache().updateHost({
             id: 'host-1',

@@ -68,10 +68,14 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
         description: 'Choose which provider and model handles each kind of work.',
         icon: 'i-pixelarticons-cpu',
         summaryTemplate: (v) => {
+            const runnersEnabled = Boolean(get(v, 'agentCLI.enabled', false));
             const provider = get(v, 'routing.chatProvider', get(v, 'provider.kind', 'OpenAI'));
             const model = get(v, 'routing.chatModel', get(v, 'provider.model', 'default model'));
             const embedProvider = get(v, 'routing.embeddingsProvider', provider);
             const embedModel = get(v, 'routing.embeddingsModel', get(v, 'provider.embedModel', 'default embedding model'));
+            if (runnersEnabled) {
+                return `Runners handle chat; embeddings use ${embedProvider}/${embedModel}.`;
+            }
             return `Chat uses ${provider}/${model}; embeddings use ${embedProvider}/${embedModel}.`;
         },
         controls: [
@@ -88,6 +92,7 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                     { section: 'provider', field: 'kind' },
                 ],
                 advancedKeys: ['routing.chatProvider', 'provider.kind'],
+                hiddenWhenRunnerFirst: true,
             },
             {
                 key: 'ai-model',
@@ -104,6 +109,7 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                     { section: 'provider', field: 'model' },
                 ],
                 advancedKeys: ['routing.chatModel', 'provider.model'],
+                hiddenWhenRunnerFirst: true,
             },
             {
                 key: 'chat-fallbacks',
@@ -117,6 +123,7 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 modelKind: 'chat',
                 fieldRefs: [{ section: 'routing', field: 'chatFallbacks' }],
                 advancedKeys: ['routing.chatFallbacks'],
+                hiddenWhenRunnerFirst: true,
             },
             {
                 key: 'agents-provider',
@@ -128,6 +135,7 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 groupDescription: 'Longer tool-using work and agent runs.',
                 fieldRefs: [{ section: 'routing', field: 'agentsProvider' }],
                 advancedKeys: ['routing.agentsProvider'],
+                hiddenWhenRunnerFirst: true,
             },
             {
                 key: 'agents-model',
@@ -141,6 +149,7 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 modelKind: 'chat',
                 fieldRefs: [{ section: 'routing', field: 'agentsModel' }],
                 advancedKeys: ['routing.agentsProvider', 'routing.agentsModel'],
+                hiddenWhenRunnerFirst: true,
             },
             {
                 key: 'agents-fallbacks',
@@ -154,6 +163,7 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 modelKind: 'chat',
                 fieldRefs: [{ section: 'routing', field: 'agentsFallbacks' }],
                 advancedKeys: ['routing.agentsFallbacks'],
+                hiddenWhenRunnerFirst: true,
             },
             {
                 key: 'summarization-provider',
@@ -165,6 +175,7 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 groupDescription: 'Memory consolidation and compact summaries.',
                 fieldRefs: [{ section: 'routing', field: 'summarizationProvider' }],
                 advancedKeys: ['routing.summarizationProvider'],
+                hiddenWhenRunnerFirst: true,
             },
             {
                 key: 'summarization-model',
@@ -178,6 +189,7 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 modelKind: 'chat',
                 fieldRefs: [{ section: 'routing', field: 'summarizationModel' }],
                 advancedKeys: ['routing.summarizationProvider', 'routing.summarizationModel'],
+                hiddenWhenRunnerFirst: true,
             },
             {
                 key: 'summarization-fallbacks',
@@ -191,6 +203,7 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 modelKind: 'chat',
                 fieldRefs: [{ section: 'routing', field: 'summarizationFallbacks' }],
                 advancedKeys: ['routing.summarizationFallbacks'],
+                hiddenWhenRunnerFirst: true,
             },
             {
                 key: 'context-provider',
@@ -202,6 +215,7 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 groupDescription: 'Context cleanup and maintenance proposals.',
                 fieldRefs: [{ section: 'routing', field: 'contextProvider' }],
                 advancedKeys: ['routing.contextProvider'],
+                hiddenWhenRunnerFirst: true,
             },
             {
                 key: 'context-model',
@@ -215,6 +229,7 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 modelKind: 'chat',
                 fieldRefs: [{ section: 'routing', field: 'contextModel' }],
                 advancedKeys: ['routing.contextProvider', 'routing.contextModel'],
+                hiddenWhenRunnerFirst: true,
             },
             {
                 key: 'context-fallbacks',
@@ -228,6 +243,7 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 modelKind: 'chat',
                 fieldRefs: [{ section: 'routing', field: 'contextFallbacks' }],
                 advancedKeys: ['routing.contextFallbacks'],
+                hiddenWhenRunnerFirst: true,
             },
             {
                 key: 'embeddings-provider',
@@ -297,6 +313,7 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                         value: false,
                     },
                 },
+                hiddenWhenRunnerFirst: true,
             },
             {
                 key: 'ai-timeout',
@@ -305,6 +322,7 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 kind: 'text',
                 fieldRefs: [{ section: 'provider', field: 'timeoutSeconds' }],
                 advancedKeys: ['provider.timeoutSeconds'],
+                hiddenWhenRunnerFirst: true,
             },
         ],
     },
@@ -316,13 +334,13 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
         summaryTemplate: (v) => {
             const history = Number(get(v, 'context.historyMaxMessages', 40));
             const recall = Number(get(v, 'context.memoryRetrieveLimit', 8));
-            return `OR3 keeps about ${history} recent messages in mind and may recall up to ${recall} saved memories per reply.`;
+            return `Memory cleanup scans about ${history} recent messages and may recall up to ${recall} saved memories per reply.`;
         },
         controls: [
             {
                 key: 'memory-history',
-                label: 'Recent conversation size',
-                description: 'How many recent messages stay in the AI’s mind.',
+                label: 'Memory cleanup window',
+                description: 'How many recent messages memory cleanup and recall can inspect.',
                 kind: 'text',
                 fieldRefs: [
                     { section: 'context', field: 'historyMaxMessages' },
@@ -369,6 +387,7 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                     'context.outputReserveTokens',
                     'context.safetyMarginTokens',
                 ],
+                hiddenWhenRunnerFirst: true,
             },
             {
                 key: 'memory-cleanup',
@@ -498,6 +517,7 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
             'Manage local tools, skill execution, and service capability.',
         icon: 'i-pixelarticons-tool-case',
         summaryTemplate: (v) => {
+            const runnersEnabled = Boolean(get(v, 'agentCLI.enabled', false));
             const exec = Boolean(get(v, 'tools.enableExec', false));
             const skillExec = Boolean(get(v, 'skills.enableExec', false));
             const capability = String(get(v, 'service.maxCapability', 'safe'));
@@ -514,6 +534,9 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
             const programSummary = formattedPrograms
                 ? ` Allowed programs: ${formattedPrograms}.`
                 : '';
+            if (runnersEnabled) {
+                return `Service ceiling is ${capability}; runner permissions control external CLI tools.${programSummary}`;
+            }
             return `Local exec is ${exec ? 'on' : 'off'}, skill scripts are ${skillExec ? 'on' : 'off'}, service ceiling is ${capability}.${programSummary}`;
         },
         controls: [
@@ -564,6 +587,7 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                     'skills.enableExec',
                     'security.approvals.skillMode',
                 ],
+                hiddenWhenRunnerFirst: true,
                 toggle: {
                     on: { section: 'skills', field: 'enableExec', value: true },
                     off: {
@@ -609,6 +633,7 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                     'context.taskCard.enforcePlan',
                     'context_task_card_enforce_plan',
                 ],
+                hiddenWhenRunnerFirst: true,
                 toggle: {
                     on: {
                         section: 'context',
@@ -672,6 +697,7 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 impacts: ['higher-risk'],
                 warningLevel: 'medium',
                 advancedKeys: ['security.approvals.skillMode'],
+                hiddenWhenRunnerFirst: true,
             },
             {
                 key: 'tools-exec-timeout',
@@ -687,6 +713,7 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                     { value: 300, label: '5m' },
                 ],
                 advancedKeys: ['tools.execTimeoutSeconds'],
+                hiddenWhenRunnerFirst: true,
             },
             {
                 key: 'tools-shell-mode',
@@ -698,6 +725,7 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 impacts: ['higher-risk'],
                 warningLevel: 'high',
                 advancedKeys: ['hardening.enableExecShell'],
+                hiddenWhenRunnerFirst: true,
                 toggle: {
                     on: {
                         section: 'hardening',
