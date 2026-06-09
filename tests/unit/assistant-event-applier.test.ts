@@ -416,6 +416,55 @@ describe('createAssistantEventApplier', () => {
         expect(assistant.value.activityLog[0]?.type).toBe('runtime_error');
     });
 
+    it('maps native runner observability events into activity entries', () => {
+        const { applyEvent, assistant } = createApplier();
+
+        for (const json of [
+            {
+                type: 'config.warning',
+                message: 'OpenAI key missing',
+            },
+            {
+                type: 'model.reroute',
+                from: 'gpt-5',
+                to: 'gpt-5-mini',
+            },
+            {
+                type: 'skill.invoked',
+                name: 'code-review',
+            },
+            {
+                type: 'token.usage',
+                usage: {
+                    input_tokens: 10,
+                    output_tokens: 5,
+                    total_tokens: 15,
+                },
+            },
+            {
+                type: 'approval_response',
+                route: 'native',
+                native_continued: true,
+            },
+        ]) {
+            applyEvent({ event: String(json.type), json }, 'stream');
+        }
+
+        expect(assistant.value.activityLog.map((entry) => entry.type)).toEqual([
+            'config_warning',
+            'model_reroute',
+            'skill_invoked',
+            'token_usage',
+            'approval_response',
+        ]);
+        expect(assistant.value.activityLog[1]?.label).toBe(
+            'Switched model to gpt-5-mini',
+        );
+        expect(assistant.value.activityLog[4]?.label).toBe(
+            'Approval accepted; runner resumed',
+        );
+    });
+
     it('does not fail the turn when an individual tool_result fails', () => {
         const { applyEvent, assistant } = createApplier();
 

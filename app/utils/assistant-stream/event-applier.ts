@@ -589,6 +589,79 @@ export function createAssistantEventApplier(
                 ),
             );
         }
+        if (type === 'config.warning') {
+            options.addActivity(
+                createActivity(
+                    'config_warning',
+                    'Runner configuration warning',
+                    canonicalActivityDetail(payload),
+                    'attention',
+                ),
+            );
+        }
+        if (type === 'model.reroute') {
+            const from = String(payload?.from ?? '').trim();
+            const to = String(payload?.to ?? '').trim();
+            options.addActivity(
+                createActivity(
+                    'model_reroute',
+                    to ? `Switched model to ${to}` : 'Switched model',
+                    from ? `From ${from}` : canonicalActivityDetail(payload),
+                    'complete',
+                ),
+            );
+        }
+        if (type === 'skill.invoked') {
+            const name = String(
+                payload?.name || payload?.skill_id || 'skill',
+            ).trim();
+            options.addActivity(
+                createActivity(
+                    'skill_invoked',
+                    `Used skill: ${name}`,
+                    canonicalActivityDetail(payload),
+                    'complete',
+                ),
+            );
+        }
+        if (type === 'token.usage') {
+            const usage =
+                payload?.usage && typeof payload.usage === 'object'
+                    ? (payload.usage as Record<string, unknown>)
+                    : payload;
+            const total = String(usage?.total_tokens ?? '').trim();
+            const detail = [
+                usage?.input_tokens ? `in ${usage.input_tokens}` : '',
+                usage?.output_tokens ? `out ${usage.output_tokens}` : '',
+                usage?.cached_input_tokens
+                    ? `cached ${usage.cached_input_tokens}`
+                    : '',
+            ]
+                .filter(Boolean)
+                .join(' · ');
+            options.addActivity(
+                createActivity(
+                    'token_usage',
+                    total ? `Token usage: ${total}` : 'Token usage updated',
+                    detail || canonicalActivityDetail(payload),
+                    'complete',
+                ),
+            );
+        }
+        if (type === 'approval.response' || type === 'approval_response') {
+            const route = String(payload?.route ?? '').trim();
+            const nativeContinued = Boolean(payload?.native_continued);
+            options.addActivity(
+                createActivity(
+                    'approval_response',
+                    nativeContinued
+                        ? 'Approval accepted; runner resumed'
+                        : 'Approval accepted',
+                    route ? `Route: ${route}` : canonicalActivityDetail(payload),
+                    'complete',
+                ),
+            );
+        }
         if (type === 'runtime.error') {
             options.addActivity(
                 createActivity(

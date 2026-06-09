@@ -150,9 +150,34 @@ describe('useChatRunners', () => {
                         endpoint: 'http://127.0.0.1:4096',
                         default_model: 'gpt-5',
                         models: [
-                            { id: 'gpt-5', display_name: 'GPT-5', default: true },
+                            {
+                                id: 'gpt-5',
+                                display_name: 'GPT-5',
+                                default: true,
+                                reasoning: ['low', 'medium', 'high'],
+                                reasoning_default: 'medium',
+                                capabilities: { fast_mode: true },
+                                options: [
+                                    {
+                                        id: 'thinking_level',
+                                        label: 'Thinking',
+                                        kind: 'thinking_level',
+                                        default: 'medium',
+                                        values: [
+                                            { id: 'medium', label: 'Medium' },
+                                        ],
+                                    },
+                                ],
+                            },
                             { id: 'gpt-5-mini', display_name: 'GPT-5 Mini' },
                         ],
+                        runtime_message: 'Native runtime ready',
+                        health: {
+                            reachable: true,
+                            endpoint: 'http://127.0.0.1:4096',
+                            detail: 'OpenCode server is reachable',
+                            last_checked_at: 1700000000000,
+                        },
                     },
                 },
             ],
@@ -164,6 +189,13 @@ describe('useChatRunners', () => {
         const runner = chatRunners.getRunner('opencode');
         expect(runner?.default_model).toBe('gpt-5');
         expect(runner?.models.map((model) => model.id)).toEqual(['gpt-5', 'gpt-5-mini']);
+        expect(runner?.runtime?.models.map((model) => model.id)).toEqual(['gpt-5', 'gpt-5-mini']);
+        expect(runner?.runtime?.default_model).toBe('gpt-5');
+        expect(runner?.native_health?.message).toBe('OpenCode server is reachable');
+        expect(runner?.runtime?.native_health?.message).toBe('OpenCode server is reachable');
+        expect(runner?.runtime?.health?.detail).toBe('OpenCode server is reachable');
+        expect(runner?.models[0]?.options?.[0]?.default).toBe('medium');
+        expect(runner?.models[0]?.capabilities?.fast_mode).toBe(true);
     });
 
     it('clears stale errors after a later successful refresh', async () => {

@@ -206,6 +206,18 @@
                                                         model,
                                                     )
                                                 }}</small>
+                                                <small
+                                                    v-if="
+                                                        runnerModelOptionSummary(
+                                                            model,
+                                                        )
+                                                    "
+                                                    >{{
+                                                        runnerModelOptionSummary(
+                                                            model,
+                                                        )
+                                                    }}</small
+                                                >
                                             </span>
                                             <Icon
                                                 v-if="
@@ -615,7 +627,10 @@ const runnerOptions = computed(() => {
                 runner.auth_status === 'unknown') &&
             caps?.chatSelectable !== false &&
             caps?.chatReplay !== false;
-        const reason = legacy
+        const runtimeDetail = runnerRuntimeDetail(runner);
+        const reason = runtimeDetail
+            ? runtimeDetail
+            : legacy
             ? 'Legacy built-in session (read-only).'
             : runner.status === 'missing'
               ? 'Binary missing'
@@ -866,6 +881,8 @@ type RunnerPickerModel = {
     provider_name?: string;
     reasoning?: string[];
     reasoning_default?: string;
+    options?: { id: string; label?: string; default?: string }[];
+    capabilities?: { fast_mode?: boolean; reasoning?: boolean };
 };
 
 /** One row per model id; backend may list the same id under multiple providers. */
@@ -894,11 +911,53 @@ function runnerModelProviderLabel(model: {
     id: string;
     provider?: string;
     provider_name?: string;
+    default?: boolean;
 }) {
+    if (model.default) {
+        const provider = model.provider_name || model.provider;
+        return provider ? `Default · ${provider}` : 'Default';
+    }
     if (model.provider_name && model.provider) {
         return `${model.provider_name} · ${model.provider}`;
     }
     return model.provider_name || model.provider || model.id;
+}
+
+function runnerModelOptionSummary(model: RunnerPickerModel) {
+    const parts: string[] = [];
+    const reasoning = (model.reasoning || []).filter(Boolean);
+    if (reasoning.length) {
+        parts.push(
+            `Thinking: ${model.reasoning_default || reasoning[0] || 'auto'}`,
+        );
+    }
+    if (model.capabilities?.fast_mode) parts.push('Fast mode');
+    for (const option of model.options || []) {
+        const label = option.label || option.id;
+        const value = option.default;
+        if (label && value) parts.push(`${label}: ${value}`);
+    }
+    return parts.slice(0, 3).join(' · ');
+}
+
+function runnerRuntimeDetail(runner: ChatRunnerInfo) {
+    const runtime = runner.runtime;
+    if (!runtime) return '';
+    if (runtime.runtime_message) return runtime.runtime_message;
+    if (runtime.fallback && runtime.fallback_reason) {
+        return `Fallback: ${runtime.fallback_reason}`;
+    }
+    if (runtime.next_action) return runtime.next_action;
+    const health = runtime.native_health ?? runtime.health;
+    if (health?.message) return health.message;
+    if (health?.detail) return health.detail;
+    const state = runtime.state || runner.status;
+    const kind = runtime.kind === 'native' ? 'Native' : 'CLI';
+    if (state === 'ready') return `${kind} runtime ready`;
+    if (state === 'starting') return `${kind} runtime starting`;
+    if (state === 'fallback') return `${kind} fallback available`;
+    if (state === 'error') return runtime.message || `${kind} runtime error`;
+    return '';
 }
 
 watch(actionMenuOpen, (open) => {

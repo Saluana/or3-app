@@ -5,6 +5,7 @@ import type {
     AgentRunnersResponse,
     ChatRunnerInfo,
     ChatRunnersResponse,
+    RunnerNativeHealth,
 } from '~/types/or3-api';
 import { useActiveHost } from './useActiveHost';
 import { canUseHostApi } from './useSecureHostTokens';
@@ -54,6 +55,38 @@ function isPinLockedError(err: unknown) {
     );
 }
 
+function normalizeRunnerNativeHealth(
+    runner: ChatRunnerInfo,
+): RunnerNativeHealth | undefined {
+    const raw =
+        runner.native_health ??
+        runner.runtime?.health ??
+        runner.runtime?.native_health;
+    if (!raw) return undefined;
+
+    const detail =
+        typeof raw.detail === 'string'
+            ? raw.detail.trim()
+            : typeof raw.message === 'string'
+              ? raw.message.trim()
+              : '';
+    const reachable = raw.reachable === true;
+    const state =
+        raw.state ??
+        (reachable
+            ? 'ready'
+            : raw.reachable === false
+              ? 'unavailable'
+              : undefined);
+
+    return {
+        ...raw,
+        detail: detail || undefined,
+        message: detail || raw.message,
+        state,
+    };
+}
+
 function normalizeChatRunners(runners: ChatRunnerInfo[]): ChatRunnerInfo[] {
     return runners.map((runner) => {
         const models = runner.models?.length
@@ -64,10 +97,23 @@ function normalizeChatRunners(runners: ChatRunnerInfo[]): ChatRunnerInfo[] {
             runner.runtime?.default_model ||
             models.find((model) => model.default)?.id ||
             '';
+        const nativeHealth = normalizeRunnerNativeHealth(runner);
         return {
             ...runner,
             models,
             default_model: defaultModel || runner.default_model,
+            native_health: nativeHealth ?? runner.native_health,
+            runtime: runner.runtime
+                ? {
+                      ...runner.runtime,
+                      models,
+                      default_model:
+                          runner.runtime.default_model || defaultModel || undefined,
+                      native_health:
+                          nativeHealth ?? runner.runtime.native_health,
+                      health: runner.runtime.health ?? nativeHealth,
+                  }
+                : runner.runtime,
             auth_status:
                 runner.status === 'available' && runner.auth_status === 'unknown'
                     ? 'ready'

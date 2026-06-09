@@ -149,6 +149,23 @@ export interface RunnerModelInfo {
     default?: boolean;
     reasoning?: string[];
     reasoning_default?: string;
+    options?: RunnerModelOption[];
+    capabilities?: RunnerModelCapabilities;
+}
+
+export interface RunnerModelCapabilities {
+    reasoning?: boolean;
+    fast_mode?: boolean;
+    tool_use?: boolean;
+    vision?: boolean;
+}
+
+export interface RunnerModelOption {
+    id: string;
+    label?: string;
+    kind: 'mode' | 'isolation' | 'thinking_level' | string;
+    values?: { id: string; label?: string; default?: boolean }[];
+    default?: string;
 }
 
 export interface RunnerRuntimeInfo {
@@ -162,6 +179,91 @@ export interface RunnerRuntimeInfo {
     fallback_reason?: string;
     models?: RunnerModelInfo[];
     default_model?: string;
+    /**
+     * Suggested next action for the user when the runtime is in a
+     * non-ready state (e.g. "authenticate", "install", "restart").
+     */
+    next_action?: string;
+    /** Human-readable, single-sentence runtime message for the UI. */
+    runtime_message?: string;
+    /** Detailed auth state (account, key hint, validation errors). */
+    auth_detail?: RunnerAuthDetail;
+    /** Available providers as advertised by the runtime. */
+    providers?: RunnerProviderInfo[];
+    /** Available agents / modes the runtime exposes. */
+    agents?: RunnerAgentInfo[];
+    /** Available skills the runtime can invoke. */
+    skills?: RunnerSkillInfo[];
+    /** Allowed runtime options (mode / isolation / etc). */
+    runner_options?: RunnerRuntimeOption[];
+    /** Liveness, build version, and last-known probe timestamp. */
+    native_health?: RunnerNativeHealth;
+    /** Backend-native health snapshot (`runtime.health` from discovery). */
+    health?: RunnerNativeHealth;
+}
+
+export interface RunnerAuthDetail {
+    state: 'ready' | 'missing' | 'expired' | 'unknown' | string;
+    account?: string;
+    source?: string;
+    message?: string;
+    scopes?: string[];
+    expires_at?: number;
+}
+
+export interface RunnerProviderInfo {
+    id: string;
+    name?: string;
+    type?: string;
+    auth_state?: 'ready' | 'missing' | 'unknown' | string;
+    account?: string;
+    default_model?: string;
+    models?: string[];
+}
+
+export interface RunnerAgentInfo {
+    name: string;
+    display_name?: string;
+    description?: string;
+    default?: boolean;
+    built_in?: boolean;
+    mode?: string;
+}
+
+export interface RunnerSkillInfo {
+    id: string;
+    name?: string;
+    description?: string;
+    version?: string;
+    trust_state?: string;
+    enabled?: boolean;
+}
+
+export interface RunnerRuntimeOption {
+    id: string;
+    label?: string;
+    kind: 'mode' | 'isolation' | 'thinking_level' | string;
+    values: { id: string; label?: string; default?: boolean }[];
+    default?: string;
+}
+
+export interface RunnerNativeHealth {
+    state?: 'unavailable' | 'ready' | 'starting' | 'error' | 'fallback' | string;
+    reachable?: boolean;
+    pid?: number;
+    endpoint?: string;
+    started_at?: number;
+    last_checked_at?: number;
+    last_heartbeat_at?: number;
+    latency_ms?: number;
+    server_version?: string;
+    /** Backend probe summary (`detail`); normalized to `message` in the app. */
+    detail?: string;
+    message?: string;
+    next_action?: string;
+    version?: string;
+    auth_status?: string;
+    auth_detail?: string;
 }
 
 export interface AgentRunnersResponse {
@@ -198,6 +300,36 @@ export interface RunnerPermissionRequest {
     kind?: string;
     access?: string;
     target_path?: string;
+}
+
+/**
+ * Reference to a native runtime request (codex app-server or opencode
+ * server) that the chat manager has surfaced for an interactive decision.
+ */
+export interface NativeRequestRef {
+    runner_id?: AgentRunnerId;
+    kind?: 'approval' | 'question' | 'input' | 'unknown' | string;
+    request_id?: string;
+    session_id?: string;
+    thread_id?: string;
+    method?: string;
+    summary?: string;
+    issued_at?: number;
+}
+
+/** Payload of an `approval_response` chat event. */
+export interface ApprovalResponseEvent {
+    status?: 'approval_response' | string;
+    code?: string;
+    decision?: 'approve' | 'reject' | 'cancel' | string;
+    approval_id?: number;
+    route?: 'native' | 'broker' | string;
+    native_continued?: boolean;
+    fallback_to_token?: boolean;
+    allowlist_session?: boolean;
+    runner_id?: AgentRunnerId;
+    runner_chat_session_id?: string;
+    runner_chat_turn_id?: string;
 }
 
 export interface RunnerChatSession {
@@ -248,7 +380,133 @@ export interface RunnerChatEvent {
     stream?: string;
     text?: string;
     job_id?: string;
-    payload?: Record<string, unknown> | unknown;
+    payload?: RunnerChatEventPayload | Record<string, unknown> | unknown;
+}
+
+export type RunnerChatEventPayload =
+    | TextDeltaEvent
+    | ReasoningDeltaEvent
+    | TurnPlanEvent
+    | TurnDiffEvent
+    | TurnCompletedEvent
+    | RequestOpenedEvent
+    | RequestResolvedEvent
+    | TokenUsageEvent
+    | ConfigWarningEvent
+    | ModelRerouteEvent
+    | SkillInvokedEvent
+    | ApprovalRequiredEvent
+    | ApprovalResponseEvent
+    | RuntimeErrorEvent
+    | Record<string, unknown>;
+
+export interface TextDeltaEvent {
+    type?: 'text_delta' | 'content.delta' | string;
+    stream_kind?: string;
+    delta?: string;
+    raw?: unknown;
+}
+
+export interface ReasoningDeltaEvent {
+    type?: 'reasoning_delta' | string;
+    stream_kind?: string;
+    delta?: string;
+    raw?: unknown;
+}
+
+export interface TurnPlanEvent {
+    type?: 'turn.plan.updated' | 'turn.proposed.delta' | string;
+    plan?: unknown;
+    explanation?: string;
+    delta?: string;
+    raw?: unknown;
+}
+
+export interface TurnDiffEvent {
+    type?: 'turn.diff.updated' | string;
+    unified_diff?: string;
+    raw?: unknown;
+}
+
+export interface TurnCompletedEvent {
+    type?: 'turn.completed' | string;
+    state?: 'completed' | 'failed' | 'cancelled' | 'interrupted' | string;
+    raw?: unknown;
+}
+
+export interface RequestOpenedEvent {
+    type?: 'request.opened' | 'user-input.requested' | string;
+    request_type?: string;
+    detail?: string;
+    args?: unknown;
+    questions?: unknown;
+    raw?: unknown;
+}
+
+export interface RequestResolvedEvent {
+    type?: 'request.resolved' | 'user-input.resolved' | string;
+    request_type?: string;
+    decision?: string;
+    answers?: unknown;
+    resolution?: unknown;
+    raw?: unknown;
+}
+
+export interface TokenUsageEvent {
+    type?: 'token.usage' | string;
+    usage?: {
+        input_tokens?: number;
+        output_tokens?: number;
+        cached_input_tokens?: number;
+        total_tokens?: number;
+        model?: string;
+    };
+    raw?: unknown;
+}
+
+export interface ConfigWarningEvent {
+    type?: 'config.warning' | string;
+    code?: string;
+    kind?: string;
+    message?: string;
+    context?: unknown;
+    raw?: unknown;
+}
+
+export interface ModelRerouteEvent {
+    type?: 'model.reroute' | string;
+    from?: string;
+    to?: string;
+    reason?: string;
+    raw?: unknown;
+}
+
+export interface SkillInvokedEvent {
+    type?: 'skill.invoked' | string;
+    skill_id?: string;
+    name?: string;
+    version?: string;
+    trust_state?: string;
+    raw?: unknown;
+}
+
+export interface ApprovalRequiredEvent {
+    type?: 'approval_required' | string;
+    status?: string;
+    code?: string;
+    approval_id?: number;
+    approval_request_id?: number;
+    approval_state?: 'pending' | 'approved' | 'denied' | 'canceled' | string;
+    message?: string;
+    runner_permission?: RunnerPermissionRequest;
+    native_request_ref?: NativeRequestRef;
+    raw?: unknown;
+}
+
+export interface RuntimeErrorEvent {
+    type?: 'runtime.error' | string;
+    message?: string;
+    raw?: unknown;
 }
 
 export interface RunnerChatSessionRequest {
