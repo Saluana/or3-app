@@ -48,17 +48,6 @@
                 <div class="grid grid-cols-2 gap-3">
                     <div class="or3-detail-row">
                         <span class="or3-detail-row__icon">
-                            <Icon name="i-pixelarticons-monitor" class="size-4" />
-                        </span>
-                        <div class="min-w-0">
-                            <p class="or3-detail-row__label">Mode</p>
-                            <p class="or3-detail-row__value">
-                                {{ runtimeProfile }}
-                            </p>
-                        </div>
-                    </div>
-                    <div class="or3-detail-row">
-                        <span class="or3-detail-row__icon">
                             <Icon name="i-pixelarticons-shield" class="size-4" />
                         </span>
                         <div class="min-w-0">
@@ -236,11 +225,6 @@ const bootstrapGuidance = computed(() =>
     getBootstrapWarningGuidance(bootstrapWarning.value, readiness.value),
 );
 
-const runtimeProfile = computed(
-    () =>
-        capabilities.value?.runtimeProfile ||
-        (connected.value ? 'local-dev' : 'unknown'),
-);
 const approvalsLabel = computed(() => {
     if (!connected.value) return 'off';
     if (health.value?.approvalBrokerAvailable === false) return 'off';

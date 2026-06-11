@@ -226,42 +226,6 @@ const FIELD_ALIASES: Record<string, BackendFieldRef> = {
         section: 'workspace',
         field: 'workspace_restrict',
     },
-    [refKey('tools', 'enableExec')]: {
-        section: 'tools',
-        field: 'tools_enable_exec',
-    },
-    [refKey('tools', 'execTimeoutSeconds')]: {
-        section: 'tools',
-        field: 'tools_exec_timeout',
-    },
-    [refKey('tools', 'pathAppend')]: {
-        section: 'tools',
-        field: 'tools_path_append',
-    },
-    [refKey('docindex', 'enabled')]: {
-        section: 'docindex',
-        field: 'docindex_enabled',
-    },
-    [refKey('docindex', 'maxFiles')]: {
-        section: 'docindex',
-        field: 'docindex_max_files',
-    },
-    [refKey('docindex', 'maxChunks')]: {
-        section: 'docindex',
-        field: 'docindex_max_chunks',
-    },
-    [refKey('docindex', 'maxFileBytes')]: {
-        section: 'docindex',
-        field: 'docindex_max_file_bytes',
-    },
-    [refKey('docindex', 'embedMaxBytes')]: {
-        section: 'docindex',
-        field: 'docindex_embed_max_bytes',
-    },
-    [refKey('docindex', 'refreshSeconds')]: {
-        section: 'docindex',
-        field: 'docindex_refresh_seconds',
-    },
 
     [refKey('cron', 'enabled')]: {
         section: 'automation',
@@ -320,34 +284,6 @@ const FIELD_ALIASES: Record<string, BackendFieldRef> = {
         section: 'context',
         field: 'context_task_card_enabled',
     },
-    [refKey('service', 'maxCapability')]: {
-        section: 'service',
-        field: 'service_max_capability',
-    },
-    [refKey('hardening', 'guardedTools')]: {
-        section: 'hardening',
-        field: 'hardening_guarded_tools',
-    },
-    [refKey('hardening', 'privilegedTools')]: {
-        section: 'hardening',
-        field: 'hardening_privileged_tools',
-    },
-    [refKey('hardening', 'enableExecShell')]: {
-        section: 'hardening',
-        field: 'hardening_exec_shell',
-    },
-    [refKey('hardening', 'execAllowedPrograms')]: {
-        section: 'hardening',
-        field: 'hardening_exec_allowed_programs',
-    },
-    [refKey('security', 'approvals.execMode')]: {
-        section: 'security',
-        field: 'security_approval_exec_mode',
-    },
-    [refKey('security', 'approvals.skillMode')]: {
-        section: 'security',
-        field: 'security_approval_skill_mode',
-    },
     [refKey('security', 'audit.enabled')]: {
         section: 'security',
         field: 'security_audit_enabled',
@@ -363,39 +299,6 @@ const FIELD_ALIASES: Record<string, BackendFieldRef> = {
     [refKey('security', 'secretStore.keyFile')]: {
         section: 'security',
         field: 'security_secret_store_key_file',
-    },
-
-    [refKey('agentCLI', 'enabled')]: {
-        section: 'agentcli',
-        field: 'agentCLI_enabled',
-    },
-    [refKey('agentCLI', 'maxConcurrent')]: {
-        section: 'agentcli',
-        field: 'agentCLI_max_concurrent',
-    },
-    [refKey('agentCLI', 'maxQueued')]: {
-        section: 'agentcli',
-        field: 'agentCLI_max_queued',
-    },
-    [refKey('agentCLI', 'defaultTimeoutSeconds')]: {
-        section: 'agentcli',
-        field: 'agentCLI_default_timeout',
-    },
-    [refKey('agentCLI', 'allowSandboxAuto')]: {
-        section: 'agentcli',
-        field: 'agentCLI_allow_sandbox_auto',
-    },
-    [refKey('agentCLI', 'disabledRunners')]: {
-        section: 'agentcli',
-        field: 'agentCLI_disabled_runners',
-    },
-    [refKey('agentCLI', 'defaultMode')]: {
-        section: 'agentcli',
-        field: 'agentCLI_default_mode',
-    },
-    [refKey('agentCLI', 'defaultIsolation')]: {
-        section: 'agentcli',
-        field: 'agentCLI_default_isolation',
     },
 };
 
@@ -567,22 +470,13 @@ function detectPreset(
  * Determine if a control should be shown for the current backend.
  *
  * Hides controls whose underlying fields aren't available, supporting
- * version-aware behaviour (Phase 15).
+ * version-aware behaviour (Phase 15). Runner-first is now the only path,
+ * so no legacy-mode flag toggles visibility anymore.
  */
-function isRunnerFirstActive(values: Record<string, unknown>): boolean {
-    return (
-        coerceConfigBoolean(values['agentCLI.enabled']) ||
-        coerceConfigBoolean(values['agentCLI.agentCLI_enabled'])
-    );
-}
-
 function isControlAvailable(
     control: SimpleSettingControl,
-    values: Record<string, unknown> = {},
+    _values: Record<string, unknown> = {},
 ): boolean {
-    if (control.hiddenWhenRunnerFirst && isRunnerFirstActive(values)) {
-        return false;
-    }
     return control.fieldRefs.some(
         (ref) => !!findField(ref.section, ref.field, ref.channel),
     );
@@ -713,17 +607,16 @@ export function useSimpleSettings() {
     }
 
     const availableSections = computed(() => {
-        const values = valueIndex.value;
         return SIMPLE_SETTING_SECTIONS.map((s) => ({
             ...s,
-            controls: s.controls.filter((c) => isControlAvailable(c, values)),
+            controls: s.controls.filter((c) => isControlAvailable(c)),
         })).filter((s) => s.controls.length > 0);
     });
 
     const valueIndex = computed(() => buildValueIndex());
 
     function controlVisible(control: SimpleSettingControl): boolean {
-        return isControlAvailable(control, valueIndex.value);
+        return isControlAvailable(control);
     }
 
     function summaryFor(section: SimpleSettingSection): string {

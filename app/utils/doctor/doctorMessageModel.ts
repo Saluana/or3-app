@@ -10,13 +10,8 @@ import type {
 } from '~/types/or3-api';
 import { previewValue, sanitizeAssistantText } from '~/utils/assistant-stream/activity';
 import { scrubDoctorUserMessageContent } from './doctorContent';
-import type { DoctorChatMessage } from './doctorTypes';
+import type { DoctorChatMessage, DoctorMessageState } from './doctorTypes';
 import { parseFindingCard, parsePlan } from './doctorValidate';
-
-export type {
-    DoctorChatMessage,
-    DoctorMessageState,
-} from './doctorTypes';
 
 export const DOCTOR_EMPTY_FINAL_TEXT_WARNING =
     'Tool work completed, but or3-intern did not return a final assistant message. The last tool result is shown above; retry the turn if it still matters.';

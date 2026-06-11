@@ -9,7 +9,6 @@ import {
     suppressOr3ApiNetworkErrorLogsFor,
 } from '~/utils/or3ApiNetworkLogs';
 
-export { suppressOr3ApiNetworkErrorLogsFor };
 import { readSseStream } from '~/utils/or3/sse';
 import {
     buildSecureSessionStartPayload,

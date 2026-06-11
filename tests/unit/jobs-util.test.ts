@@ -7,15 +7,11 @@ import {
     mergeJobSummary,
     normalizeStatus,
     persistedAgentCliJobToSummary,
-    persistedJobToSummary,
     runnerLabel,
     summaryToSnapshot,
 } from '../../app/utils/or3/jobs';
 import type { RecentJobSummary } from '../../app/types/app-state';
-import type {
-    PersistedAgentCliJob,
-    PersistedSubagentJob,
-} from '../../app/types/or3-api';
+import type { PersistedAgentCliJob } from '../../app/types/or3-api';
 
 describe('normalizeStatus', () => {
     it('maps backend statuses to UI vocabulary', () => {
@@ -50,53 +46,12 @@ describe('isTerminalStatus / isActiveStatus', () => {
     });
 });
 
-describe('persistedJobToSummary', () => {
-    it('maps a persisted job into a summary with normalized status', () => {
-        const job: PersistedSubagentJob = {
-            job_id: 'j1',
-            kind: 'subagent',
-            parent_session_key: 'session-a',
-            child_session_key: 'child-a',
-            task: 'Summarize the docs',
-            status: 'succeeded',
-            requested_at: '2026-04-24T10:00:00Z',
-            started_at: '2026-04-24T10:00:01Z',
-            finished_at: '2026-04-24T10:00:30Z',
-            updated_at: '2026-04-24T10:00:30Z',
-            result_preview: 'Here is the summary',
-        };
-        const summary = persistedJobToSummary(job);
-        expect(summary.status).toBe('completed');
-        expect(summary.title).toBe('Summarize the docs');
-        expect(summary.task).toBe('Summarize the docs');
-        expect(summary.final_text).toBe('Here is the summary');
-        expect(summary.parent_session_key).toBe('session-a');
-        expect(summary.source).toBe('persisted');
-    });
-
-    it('falls back to requested_at when timestamps missing', () => {
-        const job: PersistedSubagentJob = {
-            job_id: 'j2',
-            kind: 'subagent',
-            parent_session_key: 'session-a',
-            child_session_key: 'child-a',
-            task: 'Pending task',
-            status: 'queued',
-            requested_at: '2026-04-24T11:00:00Z',
-            updated_at: '2026-04-24T11:00:00Z',
-        };
-        const summary = persistedJobToSummary(job);
-        expect(summary.status).toBe('queued');
-        expect(summary.created_at).toBe('2026-04-24T11:00:00Z');
-    });
-});
-
 describe('mergeJobSummary', () => {
     const base: RecentJobSummary = {
         job_id: 'j1',
         kind: 'subagent',
         status: 'queued',
-        title: 'Old title',
+        title: 'Legacy title',
         task: 'Original task',
         category: 'research',
         priority: 'high',
@@ -111,7 +66,7 @@ describe('mergeJobSummary', () => {
             job_id: 'j1',
             kind: 'subagent',
             status: 'completed',
-            title: 'Persisted',
+            title: 'Persisted legacy task',
             updated_at: '2026-04-24T11:00:00Z',
         };
         expect(mergeJobSummary(undefined, next)).toEqual(next);
@@ -122,7 +77,7 @@ describe('mergeJobSummary', () => {
             job_id: 'j1',
             kind: 'subagent',
             status: 'completed',
-            title: 'Persisted task',
+            title: 'Persisted legacy task',
             task: 'Original task',
             updated_at: '2026-04-24T11:00:00Z',
             final_text: 'preview',
@@ -147,7 +102,7 @@ describe('mergeJobSummary', () => {
             job_id: 'j1',
             kind: 'subagent',
             status: 'completed',
-            title: 'Persisted task',
+            title: 'Persisted legacy task',
             updated_at: '2026-04-24T12:00:00Z',
         };
         const merged = mergeJobSummary(withPreview, next);
@@ -211,7 +166,7 @@ describe('isCliJob', () => {
         expect(isCliJob('agent_cli:gemini')).toBe(true);
     });
 
-    it('returns false for subagent and unknown kinds', () => {
+    it('returns false for legacy and unknown non-CLI kinds', () => {
         expect(isCliJob('subagent')).toBe(false);
         expect(isCliJob('turn')).toBe(false);
         expect(isCliJob(undefined)).toBe(false);
@@ -221,7 +176,6 @@ describe('isCliJob', () => {
 
 describe('runnerLabel', () => {
     it('returns display names for known runners', () => {
-        expect(runnerLabel('or3-intern')).toBe('or3-intern');
         expect(runnerLabel('opencode')).toBe('OpenCode');
         expect(runnerLabel('codex')).toBe('Codex');
         expect(runnerLabel('claude')).toBe('Claude');
@@ -242,7 +196,6 @@ describe('formatAgentCliKind', () => {
     });
 
     it('returns generic labels for non-CLI kinds', () => {
-        expect(formatAgentCliKind('subagent')).toBe('Agent task');
         expect(formatAgentCliKind('turn')).toBe('Turn');
         expect(formatAgentCliKind(undefined)).toBe('Agent task');
     });

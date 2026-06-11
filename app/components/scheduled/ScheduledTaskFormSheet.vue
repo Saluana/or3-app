@@ -73,9 +73,9 @@
                                 class="size-4 shrink-0"
                             />
                             <span>
-                                This task used the legacy OR3 assistant. Pick a
+                                This task used the legacy built-in task path. Pick a
                                 runner below and save to run it through an
-                                external agent.
+                                external runner.
                             </span>
                         </div>
 
@@ -504,7 +504,7 @@ const runnerSelectOptions = computed(() =>
 );
 
 const externalRunnerOptions = computed(() => {
-    const runners = (agentRunners.value ?? []).filter((runner) => runner.id !== 'or3-intern');
+    const runners = agentRunners.value ?? [];
     const available = runners.filter((runner) => runner.status === 'available');
     return available.length ? available : runners;
 });

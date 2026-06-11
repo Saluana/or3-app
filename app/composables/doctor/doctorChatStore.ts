@@ -7,7 +7,7 @@ import type {
     DoctorPostCheckResponse,
     DoctorStatusResponse,
 } from '~/types/or3-api';
-import type { DoctorMessageState } from '~/utils/doctor';
+import type { DoctorMessageState } from '../../utils/doctor';
 
 export type DoctorChatStore = ReturnType<typeof useDoctorChatStore>;
 

@@ -1,30 +1,23 @@
-/** Built-in OR3 agent runner — legacy read-only, not selectable for new work. */
-export const LEGACY_INTERN_RUNNER_ID = 'or3-intern';
-
-export const LEGACY_RUNNER_LABEL = 'OR3 Intern (legacy)';
-
-export function isLegacyRunnerId(id?: string | null): boolean {
-    return String(id ?? '').trim() === LEGACY_INTERN_RUNNER_ID;
-}
-
-export function isSelectableRunnerId(id?: string | null): boolean {
-    const trimmed = String(id ?? '').trim();
-    return trimmed !== '' && !isLegacyRunnerId(trimmed);
-}
-
-export function legacyRunnerDisplayLabel(id?: string | null): string {
-    return isLegacyRunnerId(id) ? LEGACY_RUNNER_LABEL : String(id ?? '').trim();
-}
-
+/**
+ * Pick the runner id the chat composer should use by default.
+ *
+ * Order: the host's `default_runner`, then the first `opencode` entry, then
+ * the first selectable entry. The legacy built-in `or3-intern` agent is no
+ * longer a selectable runner — chat work is always handed off to a runner
+ * (OpenCode, Codex, Claude, Gemini, …) via the runner-first flow.
+ */
 export function pickDefaultRunnerId<T extends { id: string }>(
     runners: T[],
     serviceDefault?: string | null,
 ): string {
-    const selectable = runners.filter((r) => isSelectableRunnerId(r.id));
-    if (serviceDefault && selectable.some((r) => r.id === serviceDefault)) {
-        return serviceDefault;
+    const trimmedServiceDefault = String(serviceDefault ?? '').trim();
+    if (
+        trimmedServiceDefault &&
+        runners.some((r) => r.id === trimmedServiceDefault)
+    ) {
+        return trimmedServiceDefault;
     }
-    const openCode = selectable.find((r) => r.id === 'opencode');
+    const openCode = runners.find((r) => r.id === 'opencode');
     if (openCode) return openCode.id;
-    return selectable[0]?.id ?? '';
+    return runners[0]?.id ?? '';
 }

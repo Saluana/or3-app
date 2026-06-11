@@ -34,7 +34,7 @@ describe('agent-jobs filters', () => {
             job_id: '1',
             status: 'running',
             task: 'Alpha research',
-            runner_id: 'or3-intern',
+            runner_id: 'opencode',
             updated_at: '2026-05-24T12:00:00Z',
         }),
         job({
@@ -106,9 +106,9 @@ describe('agent-jobs filters', () => {
         expect(jobMatchesSearch(replay, 'approval')).toBe(true);
     });
 
-    it('builds runner filter options with or3-intern first', () => {
+    it('builds runner filter options from job runner ids', () => {
         const options = buildRunnerFilterOptions(jobs);
-        expect(options[0]?.id).toBe('or3-intern');
+        expect(options.some((o) => o.id === 'opencode')).toBe(true);
         expect(options.some((o) => o.id === 'codex')).toBe(true);
     });
 });

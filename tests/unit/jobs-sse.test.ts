@@ -53,19 +53,19 @@ describe('applySseEventToCache', () => {
         expect(job?.final_text).toBe('all done');
     });
 
-    it('stores subagent preview text on completion', () => {
+    it('stores legacy preview text on completion', () => {
         const cache = seed();
         const terminal = applySseEventToCache(cache, 'job-1', {
             event: 'completion',
             data: JSON.stringify({
                 status: 'succeeded',
-                preview: 'subagent summary',
+                preview: 'legacy summary',
             }),
         });
         expect(terminal).toBe(true);
         const job = cache.state.value.recentJobs.alpha?.[0];
         expect(job?.status).toBe('completed');
-        expect(job?.final_text).toBe('subagent summary');
+        expect(job?.final_text).toBe('legacy summary');
     });
 
     it('stores error message on a runtime_error event', () => {

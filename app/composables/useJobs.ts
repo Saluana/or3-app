@@ -10,11 +10,8 @@ import type {
     JobSnapshot,
     Or3SseEvent,
     PersistedAgentCliJob,
-    SubagentRequest,
-    SubagentResponse,
 } from '~/types/or3-api';
 import {
-    formatAgentCliKind,
     isActiveStatus,
     isCliJob,
     isTerminalStatus,
@@ -24,11 +21,6 @@ import {
     runnerLabel,
     summaryToSnapshot,
 } from '~/utils/or3/jobs';
-import {
-    isLegacyRunnerId,
-    isSelectableRunnerId,
-    legacyRunnerDisplayLabel,
-} from '~/utils/runnerIds';
 import { useActiveHost } from './useActiveHost';
 import { useLocalCache } from './useLocalCache';
 import { useOr3Api } from './useOr3Api';
@@ -87,28 +79,31 @@ function activeHostId(cache: ReturnType<typeof useLocalCache>) {
 }
 
 function normalizeRunnerList(runners: AgentRunnerInfo[]): AgentRunnerInfo[] {
-    return runners
-        .map((runner) => ({
-            ...runner,
-            display_name: isLegacyRunnerId(runner.id)
-                ? legacyRunnerDisplayLabel(runner.id)
-                : runner.display_name,
-            auth_status:
-                runner.status === 'available' && runner.auth_status === 'unknown'
-                    ? 'ready'
-                    : runner.auth_status,
-        }))
-        .filter((runner) => isSelectableRunnerId(runner.id) || isLegacyRunnerId(runner.id));
+    return runners.map((runner) => ({
+        ...runner,
+        auth_status:
+            runner.status === 'available' && runner.auth_status === 'unknown'
+                ? 'ready'
+                : runner.auth_status,
+    }));
 }
 
 function selectableAgentRunners(runners: AgentRunnerInfo[]): AgentRunnerInfo[] {
-    return runners.filter((runner) => isSelectableRunnerId(runner.id));
+    return runners;
 }
 
 function hostJobSummaries(cache: ReturnType<typeof useLocalCache>) {
     const hostId = activeHostId(cache);
     cache.state.value.recentJobs[hostId] ??= [];
     return cache.state.value.recentJobs[hostId];
+}
+
+function fallbackJobKind(job: Pick<JobSnapshot, 'kind' | 'runner_id'>) {
+    const explicit = String(job.kind ?? '').trim();
+    if (explicit) return explicit;
+    const runnerID = String(job.runner_id ?? '').trim();
+    if (runnerID) return `agent_cli:${runnerID}`;
+    return 'runner';
 }
 
 function snapshotToSummary(
@@ -118,13 +113,13 @@ function snapshotToSummary(
     return {
         ...(base ?? {
             job_id: job.job_id,
-            kind: job.kind || 'subagent',
+            kind: fallbackJobKind(job),
             status: normalizeStatus(job.status),
             title: 'Agent task',
             updated_at: job.updated_at,
         }),
         job_id: job.job_id,
-        kind: job.kind || base?.kind || 'subagent',
+        kind: fallbackJobKind(job) || base?.kind || 'runner',
         status: normalizeStatus(job.status),
         title: base?.title || base?.task || 'Agent task',
         updated_at: job.updated_at,
@@ -523,15 +518,6 @@ export function useJobs() {
         }
     }
 
-    async function queueJob(
-        _request: SubagentRequest,
-        _uiMeta?: AgentJobUiMeta,
-    ): Promise<SubagentResponse> {
-        throw new Error(
-            'Subagent jobs were removed. Hand off work with an external runner from Agents or runner chat.',
-        );
-    }
-
     async function queueAgentCliJob(
         request: AgentCliRunRequest,
         uiMeta?: AgentCliJobUiMeta,
@@ -681,11 +667,11 @@ export function useJobs() {
         if (!summary || !summary.task || !summary.parent_session_key) {
             return null;
         }
-        if (isCliJob(summary.kind) && summary.runner_id && summary.runner_id !== 'or3-intern') {
+        if (isCliJob(summary.kind) && summary.runner_id) {
             return await queueAgentCliJob(
                 {
                     parent_session_key: summary.parent_session_key,
-                    runner_id: summary.runner_id as Exclude<string, 'or3-intern'>,
+                    runner_id: summary.runner_id,
                     task: summary.task,
                     mode: summary.mode as AgentCliRunRequest['mode'],
                     isolation: summary.isolation as AgentCliRunRequest['isolation'],
@@ -760,7 +746,6 @@ export function useJobs() {
         loadingJobs,
         lastListError,
         listSupported,
-        queueJob,
         queueAgentCliJob,
         loadJobs,
         loadAgentRunners,

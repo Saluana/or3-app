@@ -80,7 +80,10 @@ export function isDebugLoggingEnabled() {
     return getCachedLogLevel() === 'debug';
 }
 
-if (typeof window !== 'undefined') {
+if (
+    typeof window !== 'undefined' &&
+    typeof window.addEventListener === 'function'
+) {
     window.addEventListener('storage', (event) => {
         if (event.key === 'or3.logLevel') {
             cachedLogLevel = null;

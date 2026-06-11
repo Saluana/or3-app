@@ -36,7 +36,6 @@ import { createId, msToIso, now } from './chat/chat-session-utils';
 import { useActiveHost } from './useActiveHost';
 import { useLocalCache } from './useLocalCache';
 import { useChatRunners } from './useChatRunners';
-import { isLegacyRunnerId, legacyRunnerDisplayLabel } from '~/utils/runnerIds';
 
 let chatSyncInstalled = false;
 
@@ -66,11 +65,7 @@ function patchFromBackendSessionMeta(
     return {
         title: meta.title || session.title,
         runnerId: meta.runner_id || session.runnerId || '',
-        runnerLabel:
-            meta.runner_label ||
-            (isLegacyRunnerId(meta.runner_id)
-                ? legacyRunnerDisplayLabel(meta.runner_id)
-                : session.runnerLabel),
+        runnerLabel: meta.runner_label || session.runnerLabel,
         runnerChatSessionId:
             meta.runner_chat_session_id || session.runnerChatSessionId,
         runnerContinuationMode:

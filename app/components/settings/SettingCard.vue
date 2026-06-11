@@ -76,12 +76,6 @@
                 @update:model-value="onTextInput"
             />
 
-            <SettingCommandProgramsControl
-                v-else-if="control.kind === 'command-programs'"
-                :model-value="String(currentValue ?? '')"
-                :options="control.commandOptions ?? []"
-                @update:model-value="onTextInput"
-            />
 
             <SettingSecondsControl
                 v-else-if="control.kind === 'seconds'"
@@ -214,12 +208,6 @@
                 @update:model-value="onTextInput"
             />
 
-            <SettingCommandProgramsControl
-                v-else-if="control.kind === 'command-programs'"
-                :model-value="String(currentValue ?? '')"
-                :options="control.commandOptions ?? []"
-                @update:model-value="onTextInput"
-            />
 
             <SettingSecondsControl
                 v-else-if="control.kind === 'seconds'"
@@ -301,7 +289,6 @@ import type {
     SimpleSettingPreset,
 } from '../../settings/simpleSettings';
 import { useSimpleSettings } from '../../composables/settings/useSimpleSettings';
-import SettingCommandProgramsControl from './SettingCommandProgramsControl.vue';
 import SettingPathControl from './SettingPathControl.vue';
 import SettingSecondsControl from './SettingSecondsControl.vue';
 import SurfaceCard from '../ui/SurfaceCard.vue';

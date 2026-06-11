@@ -47,7 +47,7 @@
                 }}</span>
             </span>
             <p class="or3-desktop-list-item__preview">
-                {{ job.runner_id || 'or3-intern' }} · {{ formatTime(job) }}
+                {{ job.runner_id || 'Agent job' }} · {{ formatTime(job) }}
             </p>
         </button>
 

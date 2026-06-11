@@ -302,7 +302,7 @@ describe('assistant-stream helper composables', () => {
         vi.useRealTimers();
     });
 
-    it('routes follow-ups before rejecting legacy direct turns', async () => {
+    it('routes follow-ups in order (turn, then job)', async () => {
         streamFollowRunnerTurn.mockResolvedValue({ route: 'runner_turn' });
         streamFollowJob.mockResolvedValue({ route: 'job' });
 
@@ -338,18 +338,6 @@ describe('assistant-stream helper composables', () => {
             text: 'continue',
             useRunnerChat: resolved.useRunnerChat,
         });
-        await expect(
-            routeExecution({
-                executionContext: {} as never,
-                followJobId: '',
-                followRunnerTurnId: '',
-                payload,
-                session,
-                selectedRunnerId: resolved.selectedRunnerId,
-                text: 'continue',
-                useRunnerChat: false,
-            }),
-        ).rejects.toThrow(/built-in or3-intern runner was removed/);
 
         expect(streamFollowRunnerTurn).toHaveBeenCalledWith(
             expect.objectContaining({

@@ -291,9 +291,9 @@
                             </button>
                         </div>
                     </div>
-                    <!-- Mode selector (external runners only) -->
+                    <!-- Mode selector (only when a runner is picked) -->
                     <div
-                        v-if="usesExternalRunner"
+                        v-if="selectedRunner"
                         class="col-span-2 sm:col-span-1"
                     >
                         <label
@@ -353,10 +353,10 @@
                     </div>
                 </div>
 
-                <!-- Model and max-turns (external runners only, compact row) -->
+                <!-- Model and max-turns (only when a runner is picked, compact row) -->
                 <div
                     v-if="
-                        usesExternalRunner && activeRunnerSupports?.modelFlag
+                        selectedRunner && activeRunnerSupports?.modelFlag
                     "
                     class="grid grid-cols-2 gap-2"
                 >
@@ -404,8 +404,8 @@
                     </div>
                 </div>
 
-                <!-- Working directory (external runners only) -->
-                <div v-if="usesExternalRunner">
+                <!-- Working directory (only when a runner is picked) -->
+                <div v-if="selectedRunner">
                     <label
                         class="block font-mono text-[11px] font-semibold tracking-[0.18em] text-(--or3-text-muted) mb-1.5"
                     >
@@ -425,9 +425,9 @@
                     </button>
                 </div>
 
-                <!-- Safety copy for external runners -->
+                <!-- Safety copy when a runner is picked -->
                 <p
-                    v-if="usesExternalRunner"
+                    v-if="selectedRunner"
                     class="font-mono text-[10px] text-(--or3-text-muted) leading-relaxed"
                 >
                     Runs in the background using non-interactive safe mode. It
@@ -635,7 +635,6 @@ import type { ChatAttachment } from '~/types/app-state';
 import type { AgentRunnerInfo } from '~/types/or3-api';
 import { runnerLabel } from '~/utils/or3/jobs';
 import type { AgentCommandDraft } from '~/utils/or3/agent-jobs';
-import { isLegacyRunnerId } from '~/utils/runnerIds';
 import CwdPickerSheet from '~/components/agents/CwdPickerSheet.vue';
 
 export type { AgentCommandDraft };
@@ -708,11 +707,7 @@ const formState = reactive({
     autoApprove: true,
 });
 
-const selectedRunner = ref(
-    props.selectedRunnerId && !isLegacyRunnerId(props.selectedRunnerId)
-        ? props.selectedRunnerId
-        : '',
-);
+const selectedRunner = ref(props.selectedRunnerId ?? '');
 const selectedMode = ref<AgentCommandMode>('safe_edit');
 const selectedModel = ref('');
 const selectedMaxTurns = ref<number | undefined>(undefined);
@@ -777,12 +772,6 @@ const displayedAttachments = computed(() => [
     ...manualAttachments.value,
 ]);
 
-const usesExternalRunner = computed(
-    () =>
-        Boolean(selectedRunner.value) &&
-        !isLegacyRunnerId(selectedRunner.value),
-);
-
 const canSubmit = computed(() => {
     if (props.disabled || props.submitting) return false;
     const hasTask =
@@ -792,7 +781,7 @@ const canSubmit = computed(() => {
     if (
         props.runnerListSupported !== false &&
         availableRunners.value.length > 0 &&
-        !usesExternalRunner.value
+        !selectedRunner.value
     ) {
         return false;
     }
@@ -872,9 +861,7 @@ const notifyMenuItems = computed(() =>
 // ── Runner dropdown helpers ──
 
 const runnerList = computed<RunnerOption[]>(() => {
-    const runners = (props.runnerOptions ?? []).filter(
-        (r) => !isLegacyRunnerId(r.id),
-    );
+    const runners = props.runnerOptions ?? [];
     return runners.map((r) => ({
         id: r.id,
         label: r.display_name || r.id,
@@ -1056,7 +1043,7 @@ function setDraft(draft: AgentCommandDraft) {
     if (draft.autoApprove !== undefined) {
         formState.autoApprove = draft.autoApprove;
     }
-    if (draft.runnerId && !isLegacyRunnerId(draft.runnerId)) {
+    if (draft.runnerId) {
         selectedRunner.value = draft.runnerId;
     }
     if (draft.mode) {
@@ -1483,20 +1470,20 @@ function submit() {
         attachments: attachmentPayload(),
         runnerId: selectedRunner.value,
         runnerLabel: runnerLabel(selectedRunner.value),
-        mode: usesExternalRunner.value ? selectedMode.value : undefined,
-        isolation: usesExternalRunner.value
+        mode: selectedRunner.value ? selectedMode.value : undefined,
+        isolation: selectedRunner.value
             ? modeToIsolation(selectedMode.value)
             : undefined,
         model:
-            usesExternalRunner.value && selectedModel.value
+            selectedRunner.value && selectedModel.value
                 ? selectedModel.value
                 : undefined,
         maxTurns:
-            usesExternalRunner.value && selectedMaxTurns.value
+            selectedRunner.value && selectedMaxTurns.value
                 ? selectedMaxTurns.value
                 : undefined,
         cwd:
-            usesExternalRunner.value && cwdText.value
+            selectedRunner.value && cwdText.value
                 ? cwdText.value
                 : undefined,
     });

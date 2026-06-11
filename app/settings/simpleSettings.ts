@@ -19,7 +19,6 @@ export type SimpleSettingSectionKey =
     | 'ai'
     | 'memory'
     | 'workspace'
-    | 'tools'
     | 'connections'
     | 'automation'
     | 'safety'
@@ -31,7 +30,6 @@ export type SimpleSettingControlKind =
     | 'secret'
     | 'text'
     | 'path'
-    | 'command-programs'
     | 'seconds'
     | 'connection-card'
     | 'summary-card'
@@ -110,8 +108,6 @@ export interface SimpleSettingControl {
     fieldRefs: SimpleSettingFieldRef[]
     /** Long-form list of advanced keys to surface in "Advanced details". */
     advancedKeys?: string[]
-    /** Omit from simple settings when agentCLI (runner-first) is enabled on the host. */
-    hiddenWhenRunnerFirst?: boolean
     impacts?: SimpleSettingImpact[]
     warningLevel?: SimpleSettingWarningLevel
     /** Recommended default for new users. Used by RecommendedBadge. */

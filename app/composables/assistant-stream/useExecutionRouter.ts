@@ -1,5 +1,4 @@
 import type { AssistantSendPayload, ChatSession } from '~/types/app-state';
-import { isLegacyRunnerId } from '~/utils/runnerIds';
 import {
     streamFollowJob,
     streamFollowRunnerTurn,
@@ -62,8 +61,7 @@ export function useExecutionRouter(options: { chat: ChatStore }) {
             payload.runnerId || session.runnerId || '';
         return {
             selectedRunnerId,
-            useRunnerChat:
-                Boolean(selectedRunnerId) && !isLegacyRunnerId(selectedRunnerId),
+            useRunnerChat: Boolean(selectedRunnerId),
         };
     };
 
@@ -103,11 +101,6 @@ export function useExecutionRouter(options: { chat: ChatStore }) {
             });
         }
 
-        if (isLegacyRunnerId(selectedRunnerId)) {
-            throw new Error(
-                'The built-in or3-intern runner was removed. Choose Codex, Claude Code, or another installed runner.',
-            );
-        }
         throw new Error('Choose an available runner before sending.');
     };
 

@@ -34,7 +34,7 @@ export interface CronAgentRunPayload {
 }
 
 export interface CronPayload {
-    kind: 'agent_turn' | 'system_event' | 'agent_cli_run' | string;
+    kind: 'system_event' | 'agent_cli_run' | string;
     message?: string;
     deliver?: boolean;
     channel?: string;
@@ -82,7 +82,6 @@ export interface CronJobResponse {
 // ── External Agent CLI Delegation ──
 
 export type AgentRunnerId =
-    | 'or3-intern'
     | 'opencode'
     | 'codex'
     | 'claude'
@@ -275,6 +274,8 @@ export interface ChatRunnerInfo extends AgentRunnerInfo {
     default_mode?: string;
     default_isolation?: string;
     default_cwd?: string;
+    /** Normalized from `runtime.health` / `runtime.native_health` in the app. */
+    native_health?: RunnerNativeHealth;
     /** False for legacy built-in OR3 sessions in metadata. */
     runner_selectable?: boolean;
     legacy_runner_id?: string;
@@ -619,7 +620,7 @@ export type AgentRunIsolation =
 
 export interface AgentCliRunRequest {
     parent_session_key: string;
-    runner_id: Exclude<AgentRunnerId, 'or3-intern'>;
+    runner_id: AgentRunnerId;
     task: string;
     timeout_seconds?: number;
     cwd?: string;
@@ -717,19 +718,6 @@ export interface AgentCliSseErrorEvent {
 
 // ── Existing types ──
 
-/** Legacy subagent queue payload (creation endpoint removed; historical reads only). */
-export interface SubagentRequest {
-    parent_session_key: string;
-    task: string;
-    meta?: Record<string, unknown>;
-}
-
-export interface SubagentResponse {
-    job_id: string;
-    child_session_key?: string;
-    status?: string;
-}
-
 export interface JobEvent {
     type: string;
     message?: string;
@@ -808,7 +796,6 @@ export interface HealthResponse {
     status: string;
     runtimeAvailable?: boolean;
     jobRegistryAvailable?: boolean;
-    subagentManagerEnabled?: boolean;
     approvalBrokerAvailable?: boolean;
     processId?: number;
     startedAt?: string;
@@ -1424,34 +1411,6 @@ export interface Or3SseEvent {
     id?: string;
     retry?: number;
     json?: unknown;
-}
-
-export type PersistedSubagentStatus =
-    | 'queued'
-    | 'running'
-    | 'succeeded'
-    | 'failed'
-    | 'interrupted';
-
-export interface PersistedSubagentJob {
-    job_id: string;
-    kind: 'subagent';
-    parent_session_key: string;
-    child_session_key: string;
-    task: string;
-    status: PersistedSubagentStatus;
-    result_preview?: string;
-    artifact_id?: string;
-    error?: string;
-    requested_at: string;
-    started_at?: string;
-    finished_at?: string;
-    updated_at: string;
-    attempts?: number;
-}
-
-export interface SubagentListResponse {
-    items: PersistedSubagentJob[];
 }
 
 export interface ArtifactResponse {

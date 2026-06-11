@@ -9,13 +9,9 @@
  */
 
 import {
-    AGENT_CLI_POWER_PRESETS,
     CONVERSATION_DETAIL_PRESETS,
-    FILE_SEARCH_SIZE_PRESETS,
     MEMORY_SEARCH_PRESETS,
-    SAFETY_MODE_PRESETS,
 } from './presets';
-import { COMMON_COMMAND_PROGRAMS } from './commandPrograms';
 import type { SimpleSettingSection } from './simpleSettings';
 
 function get<T>(values: Record<string, unknown>, key: string, fallback: T): T {
@@ -68,15 +64,11 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
         description: 'Choose which provider and model handles each kind of work.',
         icon: 'i-pixelarticons-cpu',
         summaryTemplate: (v) => {
-            const runnersEnabled = Boolean(get(v, 'agentCLI.enabled', false));
             const provider = get(v, 'routing.chatProvider', get(v, 'provider.kind', 'OpenAI'));
             const model = get(v, 'routing.chatModel', get(v, 'provider.model', 'default model'));
             const embedProvider = get(v, 'routing.embeddingsProvider', provider);
             const embedModel = get(v, 'routing.embeddingsModel', get(v, 'provider.embedModel', 'default embedding model'));
-            if (runnersEnabled) {
-                return `Runners handle chat; embeddings use ${embedProvider}/${embedModel}.`;
-            }
-            return `Chat uses ${provider}/${model}; embeddings use ${embedProvider}/${embedModel}.`;
+            return `Runners handle chat; embeddings use ${embedProvider}/${embedModel}.`;
         },
         controls: [
             {
@@ -92,7 +84,6 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                     { section: 'provider', field: 'kind' },
                 ],
                 advancedKeys: ['routing.chatProvider', 'provider.kind'],
-                hiddenWhenRunnerFirst: true,
             },
             {
                 key: 'ai-model',
@@ -109,7 +100,6 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                     { section: 'provider', field: 'model' },
                 ],
                 advancedKeys: ['routing.chatModel', 'provider.model'],
-                hiddenWhenRunnerFirst: true,
             },
             {
                 key: 'chat-fallbacks',
@@ -123,7 +113,6 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 modelKind: 'chat',
                 fieldRefs: [{ section: 'routing', field: 'chatFallbacks' }],
                 advancedKeys: ['routing.chatFallbacks'],
-                hiddenWhenRunnerFirst: true,
             },
             {
                 key: 'agents-provider',
@@ -135,7 +124,6 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 groupDescription: 'Longer tool-using work and agent runs.',
                 fieldRefs: [{ section: 'routing', field: 'agentsProvider' }],
                 advancedKeys: ['routing.agentsProvider'],
-                hiddenWhenRunnerFirst: true,
             },
             {
                 key: 'agents-model',
@@ -149,7 +137,6 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 modelKind: 'chat',
                 fieldRefs: [{ section: 'routing', field: 'agentsModel' }],
                 advancedKeys: ['routing.agentsProvider', 'routing.agentsModel'],
-                hiddenWhenRunnerFirst: true,
             },
             {
                 key: 'agents-fallbacks',
@@ -163,7 +150,6 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 modelKind: 'chat',
                 fieldRefs: [{ section: 'routing', field: 'agentsFallbacks' }],
                 advancedKeys: ['routing.agentsFallbacks'],
-                hiddenWhenRunnerFirst: true,
             },
             {
                 key: 'summarization-provider',
@@ -175,7 +161,6 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 groupDescription: 'Memory consolidation and compact summaries.',
                 fieldRefs: [{ section: 'routing', field: 'summarizationProvider' }],
                 advancedKeys: ['routing.summarizationProvider'],
-                hiddenWhenRunnerFirst: true,
             },
             {
                 key: 'summarization-model',
@@ -189,7 +174,6 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 modelKind: 'chat',
                 fieldRefs: [{ section: 'routing', field: 'summarizationModel' }],
                 advancedKeys: ['routing.summarizationProvider', 'routing.summarizationModel'],
-                hiddenWhenRunnerFirst: true,
             },
             {
                 key: 'summarization-fallbacks',
@@ -203,7 +187,6 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 modelKind: 'chat',
                 fieldRefs: [{ section: 'routing', field: 'summarizationFallbacks' }],
                 advancedKeys: ['routing.summarizationFallbacks'],
-                hiddenWhenRunnerFirst: true,
             },
             {
                 key: 'context-provider',
@@ -215,7 +198,6 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 groupDescription: 'Context cleanup and maintenance proposals.',
                 fieldRefs: [{ section: 'routing', field: 'contextProvider' }],
                 advancedKeys: ['routing.contextProvider'],
-                hiddenWhenRunnerFirst: true,
             },
             {
                 key: 'context-model',
@@ -229,7 +211,6 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 modelKind: 'chat',
                 fieldRefs: [{ section: 'routing', field: 'contextModel' }],
                 advancedKeys: ['routing.contextProvider', 'routing.contextModel'],
-                hiddenWhenRunnerFirst: true,
             },
             {
                 key: 'context-fallbacks',
@@ -243,7 +224,6 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 modelKind: 'chat',
                 fieldRefs: [{ section: 'routing', field: 'contextFallbacks' }],
                 advancedKeys: ['routing.contextFallbacks'],
-                hiddenWhenRunnerFirst: true,
             },
             {
                 key: 'embeddings-provider',
@@ -313,7 +293,6 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                         value: false,
                     },
                 },
-                hiddenWhenRunnerFirst: true,
             },
             {
                 key: 'ai-timeout',
@@ -322,7 +301,6 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 kind: 'text',
                 fieldRefs: [{ section: 'provider', field: 'timeoutSeconds' }],
                 advancedKeys: ['provider.timeoutSeconds'],
-                hiddenWhenRunnerFirst: true,
             },
         ],
     },
@@ -387,7 +365,6 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                     'context.outputReserveTokens',
                     'context.safetyMarginTokens',
                 ],
-                hiddenWhenRunnerFirst: true,
             },
             {
                 key: 'memory-cleanup',
@@ -471,273 +448,6 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 kind: 'path',
                 fieldRefs: [{ section: 'workspace', field: 'allowedDir' }],
                 advancedKeys: ['workspace.allowedDir'],
-            },
-            {
-                key: 'workspace-search',
-                label: 'Search workspace files',
-                description: 'Let OR3 search the workspace by content.',
-                kind: 'toggle',
-                fieldRefs: [{ section: 'docindex', field: 'enabled' }],
-                impacts: ['uses-storage'],
-                advancedKeys: ['docindex.enabled'],
-                toggle: {
-                    on: { section: 'docindex', field: 'enabled', value: true },
-                    off: {
-                        section: 'docindex',
-                        field: 'enabled',
-                        value: false,
-                    },
-                },
-            },
-            {
-                key: 'workspace-search-size',
-                label: 'File search size',
-                description: 'How much of the workspace OR3 will index.',
-                kind: 'preset-slider',
-                fieldRefs: [
-                    { section: 'docindex', field: 'maxFiles' },
-                    { section: 'docindex', field: 'maxChunks' },
-                ],
-                presets: FILE_SEARCH_SIZE_PRESETS,
-                impacts: ['uses-storage', 'slower'],
-                advancedKeys: [
-                    'docindex.maxFiles',
-                    'docindex.maxChunks',
-                    'docindex.maxFileBytes',
-                    'docindex.embedMaxBytes',
-                    'docindex.refreshSeconds',
-                ],
-            },
-        ],
-    },
-    {
-        key: 'tools',
-        label: 'Tools & Skills',
-        description:
-            'Manage local tools, skill execution, and service capability.',
-        icon: 'i-pixelarticons-tool-case',
-        summaryTemplate: (v) => {
-            const runnersEnabled = Boolean(get(v, 'agentCLI.enabled', false));
-            const exec = Boolean(get(v, 'tools.enableExec', false));
-            const skillExec = Boolean(get(v, 'skills.enableExec', false));
-            const capability = String(get(v, 'service.maxCapability', 'safe'));
-            const programs = String(
-                get(v, 'hardening.execAllowedPrograms', '') || '',
-            ).trim();
-            const formattedPrograms = programs
-                ? programs
-                      .split(',')
-                      .map((program) => program.trim())
-                      .filter(Boolean)
-                      .join(', ')
-                : '';
-            const programSummary = formattedPrograms
-                ? ` Allowed programs: ${formattedPrograms}.`
-                : '';
-            if (runnersEnabled) {
-                return `Service ceiling is ${capability}; runner permissions control external CLI tools.${programSummary}`;
-            }
-            return `Local exec is ${exec ? 'on' : 'off'}, skill scripts are ${skillExec ? 'on' : 'off'}, service ceiling is ${capability}.${programSummary}`;
-        },
-        controls: [
-            {
-                key: 'tools-service-capability',
-                label: 'Service tool power',
-                description:
-                    'The highest tool capability the app may request. Advanced: changing this affects all connected clients. For terminal access, use the terminal setup flow instead.',
-                kind: 'choice',
-                fieldRefs: [{ section: 'service', field: 'maxCapability' }],
-                impacts: ['higher-risk', 'requires-restart'],
-                warningLevel: 'high',
-                advancedKeys: ['service.maxCapability'],
-            },
-            {
-                key: 'tools-enable-exec',
-                label: 'Local command tool',
-                description:
-                    'Register the exec tool so OR3 can run approved local programs like gws.',
-                kind: 'toggle',
-                fieldRefs: [{ section: 'tools', field: 'enableExec' }],
-                impacts: ['higher-risk', 'requires-restart'],
-                warningLevel: 'high',
-                advancedKeys: [
-                    'tools.enableExec',
-                    'hardening.execAllowedPrograms',
-                    'security.approvals.execMode',
-                ],
-                toggle: {
-                    on: { section: 'tools', field: 'enableExec', value: true },
-                    off: {
-                        section: 'tools',
-                        field: 'enableExec',
-                        value: false,
-                    },
-                },
-            },
-            {
-                key: 'tools-enable-skill-exec',
-                label: 'Skill scripts',
-                description:
-                    'Expose skill script execution for installed skills when approval policy allows it.',
-                kind: 'toggle',
-                fieldRefs: [{ section: 'skills', field: 'enableExec' }],
-                impacts: ['higher-risk', 'requires-restart'],
-                warningLevel: 'high',
-                advancedKeys: [
-                    'skills.enableExec',
-                    'security.approvals.skillMode',
-                ],
-                hiddenWhenRunnerFirst: true,
-                toggle: {
-                    on: { section: 'skills', field: 'enableExec', value: true },
-                    off: {
-                        section: 'skills',
-                        field: 'enableExec',
-                        value: false,
-                    },
-                },
-            },
-            {
-                key: 'tools-guarded-tools',
-                label: 'Guarded tools',
-                description:
-                    'Allow guarded-capability tools after policy and approvals. Exec program calls are guarded.',
-                kind: 'toggle',
-                fieldRefs: [{ section: 'hardening', field: 'guardedTools' }],
-                impacts: ['higher-risk'],
-                warningLevel: 'medium',
-                advancedKeys: ['hardening.guardedTools'],
-                toggle: {
-                    on: {
-                        section: 'hardening',
-                        field: 'guardedTools',
-                        value: true,
-                    },
-                    off: {
-                        section: 'hardening',
-                        field: 'guardedTools',
-                        value: false,
-                    },
-                },
-            },
-            {
-                key: 'tools-enforce-plan',
-                label: 'Require plan before writes',
-                description:
-                    'Block write, exec, web, and skill tools until the agent calls create_plan. Best for untrusted or multi-step work; leave off for quick local edits.',
-                kind: 'toggle',
-                fieldRefs: [{ section: 'context', field: 'enforcePlan' }],
-                impacts: ['slower'],
-                warningLevel: 'medium',
-                advancedKeys: [
-                    'context.taskCard.enforcePlan',
-                    'context_task_card_enforce_plan',
-                ],
-                hiddenWhenRunnerFirst: true,
-                toggle: {
-                    on: {
-                        section: 'context',
-                        field: 'enforcePlan',
-                        value: true,
-                    },
-                    off: {
-                        section: 'context',
-                        field: 'enforcePlan',
-                        value: false,
-                    },
-                },
-            },
-            {
-                key: 'tools-allowed-programs',
-                label: 'Allowed command programs',
-                description:
-                    'Pick binaries the exec tool may run. Add gws for Google Workspace skills.',
-                kind: 'command-programs',
-                fieldRefs: [
-                    { section: 'hardening', field: 'execAllowedPrograms' },
-                ],
-                impacts: ['higher-risk'],
-                warningLevel: 'medium',
-                recommended: { value: 'gws', label: 'Include gws' },
-                commandOptions: COMMON_COMMAND_PROGRAMS,
-                advancedKeys: ['hardening.execAllowedPrograms'],
-            },
-            {
-                key: 'tools-path-append',
-                label: 'Extra command PATH',
-                description:
-                    'Additional PATH entries used to find local command binaries such as Homebrew tools.',
-                kind: 'path',
-                fieldRefs: [{ section: 'tools', field: 'pathAppend' }],
-                impacts: ['requires-restart'],
-                advancedKeys: ['tools.pathAppend'],
-            },
-            {
-                key: 'tools-exec-approval',
-                label: 'Command approval mode',
-                description:
-                    'How command execution requests are approved before they run.',
-                kind: 'choice',
-                fieldRefs: [
-                    { section: 'security', field: 'approvals.execMode' },
-                ],
-                impacts: ['higher-risk'],
-                warningLevel: 'medium',
-                advancedKeys: ['security.approvals.execMode'],
-            },
-            {
-                key: 'tools-skill-approval',
-                label: 'Skill script approval mode',
-                description:
-                    'How skill script execution requests are approved before they run.',
-                kind: 'choice',
-                fieldRefs: [
-                    { section: 'security', field: 'approvals.skillMode' },
-                ],
-                impacts: ['higher-risk'],
-                warningLevel: 'medium',
-                advancedKeys: ['security.approvals.skillMode'],
-                hiddenWhenRunnerFirst: true,
-            },
-            {
-                key: 'tools-exec-timeout',
-                label: 'Command timeout',
-                description:
-                    'Maximum local command runtime, measured in seconds, before OR3 stops waiting.',
-                kind: 'seconds',
-                fieldRefs: [{ section: 'tools', field: 'execTimeoutSeconds' }],
-                secondsPresets: [
-                    { value: 15, label: '15s' },
-                    { value: 45, label: '45s' },
-                    { value: 120, label: '2m' },
-                    { value: 300, label: '5m' },
-                ],
-                advancedKeys: ['tools.execTimeoutSeconds'],
-                hiddenWhenRunnerFirst: true,
-            },
-            {
-                key: 'tools-shell-mode',
-                label: 'Shell command strings',
-                description:
-                    'Allow shell-style command strings. Not needed for gws; direct program execution is safer.',
-                kind: 'toggle',
-                fieldRefs: [{ section: 'hardening', field: 'enableExecShell' }],
-                impacts: ['higher-risk'],
-                warningLevel: 'high',
-                advancedKeys: ['hardening.enableExecShell'],
-                hiddenWhenRunnerFirst: true,
-                toggle: {
-                    on: {
-                        section: 'hardening',
-                        field: 'enableExecShell',
-                        value: true,
-                    },
-                    off: {
-                        section: 'hardening',
-                        field: 'enableExecShell',
-                        value: false,
-                    },
-                },
             },
         ],
     },
@@ -932,126 +642,25 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                     },
                 },
             },
-            {
-                key: 'auto-agent-cli',
-                label: 'Runners',
-                description:
-                    'Delegate chat and background work to external runners such as OpenCode, Codex, Claude, or Gemini.',
-                kind: 'toggle',
-                fieldRefs: [{ section: 'agentCLI', field: 'enabled' }],
-                impacts: ['higher-risk'],
-                warningLevel: 'medium',
-                advancedKeys: ['agentCLI.enabled'],
-                toggle: {
-                    on: { section: 'agentCLI', field: 'enabled', value: true },
-                    off: {
-                        section: 'agentCLI',
-                        field: 'enabled',
-                        value: false,
-                    },
-                },
-            },
-            {
-                key: 'auto-agent-cli-power',
-                label: 'External agent power',
-                description:
-                    'How many external CLI agents may run at once.',
-                kind: 'preset-slider',
-                fieldRefs: [
-                    { section: 'agentCLI', field: 'maxConcurrent' },
-                    { section: 'agentCLI', field: 'maxQueued' },
-                ],
-                presets: AGENT_CLI_POWER_PRESETS,
-                impacts: ['higher-cost'],
-                warningLevel: 'medium',
-                advancedKeys: [
-                    'agentCLI.maxConcurrent',
-                    'agentCLI.maxQueued',
-                    'agentCLI.defaultTimeoutSeconds',
-                ],
-            },
-            {
-                key: 'auto-agent-cli-sandbox',
-                label: 'Full autonomy in sandbox',
-                description:
-                    'Allow external CLIs to run with full autonomy inside an isolated sandbox. Requires sandbox setup.',
-                kind: 'toggle',
-                fieldRefs: [
-                    { section: 'agentCLI', field: 'allowSandboxAuto' },
-                ],
-                impacts: ['higher-risk'],
-                warningLevel: 'high',
-                recommended: { value: false, label: 'Off for safety' },
-                advancedKeys: [
-                    'agentCLI.allowSandboxAuto',
-                ],
-                toggle: {
-                    on: {
-                        section: 'agentCLI',
-                        field: 'allowSandboxAuto',
-                        value: true,
-                    },
-                    off: {
-                        section: 'agentCLI',
-                        field: 'allowSandboxAuto',
-                        value: false,
-                    },
-                },
-            },
         ],
     },
     {
         key: 'safety',
         label: 'Safety & Privacy',
-        description:
-            'Control approvals, terminal access, network access, and logs.',
+        description: 'Logging and secret storage for your OR3 service.',
         icon: 'i-pixelarticons-shield',
         summaryTemplate: (v) => {
-            const profile = String(
-                get(v, 'runtimeProfile', 'single-user-hardened'),
+            const audit = Boolean(get(v, 'security.audit.enabled', true));
+            const secrets = Boolean(
+                get(v, 'security.secretStore.enabled', true),
             );
-            const exec = Boolean(get(v, 'hardening.enableExecShell', false));
-            return exec
-                ? `Safety mode: ${profile}. Terminal commands are allowed.`
-                : `Safety mode: ${profile}. Terminal commands are off.`;
+            const parts = [
+                audit ? 'safety log on' : 'safety log off',
+                secrets ? 'secrets encrypted' : 'secrets not encrypted',
+            ];
+            return `${parts.join(', ')}. Runners manage their own permissions.`;
         },
         controls: [
-            {
-                key: 'safety-mode',
-                label: 'Safety mode',
-                description: 'Pick a balance between power and protection.',
-                kind: 'preset-slider',
-                fieldRefs: [{ section: 'runtimeProfile', field: 'value' }],
-                presets: SAFETY_MODE_PRESETS,
-                warningLevel: 'medium',
-                advancedKeys: ['runtimeProfile'],
-            },
-            {
-                key: 'safety-exec',
-                label: 'Allow terminal commands',
-                description: 'Let OR3 run shell commands when approved.',
-                kind: 'toggle',
-                fieldRefs: [{ section: 'hardening', field: 'enableExecShell' }],
-                impacts: ['higher-risk'],
-                warningLevel: 'high',
-                recommended: { value: false, label: 'Off for beginners' },
-                advancedKeys: [
-                    'hardening.enableExecShell',
-                    'hardening.execAllowedPrograms',
-                ],
-                toggle: {
-                    on: {
-                        section: 'hardening',
-                        field: 'enableExecShell',
-                        value: true,
-                    },
-                    off: {
-                        section: 'hardening',
-                        field: 'enableExecShell',
-                        value: false,
-                    },
-                },
-            },
             {
                 key: 'safety-audit',
                 label: 'Keep safety log',

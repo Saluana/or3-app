@@ -130,7 +130,7 @@ export function jobSearchHaystack(job: JobSnapshot): string {
 }
 
 export function jobRunnerDisplay(job: JobSnapshot): string {
-    return job.runner_label || runnerLabel(job.runner_id) || 'or3-intern';
+    return job.runner_label || runnerLabel(job.runner_id) || '';
 }
 
 export function sortJobsByUpdated(jobs: JobSnapshot[]): JobSnapshot[] {
@@ -181,7 +181,7 @@ export function filterJobsByRunner(
     runnerId: string | 'all',
 ): JobSnapshot[] {
     if (runnerId === 'all') return jobs;
-    return jobs.filter((job) => (job.runner_id || 'or3-intern') === runnerId);
+    return jobs.filter((job) => (job.runner_id || '') === runnerId);
 }
 
 export function filterUnreviewedJobs(
@@ -198,13 +198,9 @@ export function buildRunnerFilterOptions(
 ): Array<{ id: string; label: string }> {
     const ids = new Set<string>();
     for (const job of jobs) {
-        ids.add(job.runner_id || 'or3-intern');
+        if (job.runner_id) ids.add(job.runner_id);
     }
-    const sorted = [...ids].sort((a, b) => {
-        if (a === 'or3-intern') return -1;
-        if (b === 'or3-intern') return 1;
-        return a.localeCompare(b);
-    });
+    const sorted = [...ids].sort((a, b) => a.localeCompare(b));
     return sorted.map((id) => ({ id, label: runnerLabel(id) }));
 }
 
@@ -306,8 +302,7 @@ export function isAttentionStatus(job: JobSnapshot): boolean {
     if (job.error?.trim()) return true;
     if (job.error_preview?.trim()) return true;
     if (isStaleJob(job)) return true;
-    const runner = (job.runner_id || 'or3-intern').toLowerCase();
-    if (runner !== 'or3-intern' && status === 'queued' && !job.started_at) {
+    if (job.runner_id && status === 'queued' && !job.started_at) {
         return true;
     }
     return false;
@@ -354,7 +349,7 @@ export function jobToCommandDraft(job: JobSnapshot): AgentCommandDraft {
         category,
         priority: job.priority,
         notify: job.notify,
-        runnerId: job.runner_id || 'or3-intern',
+        runnerId: job.runner_id || '',
         mode: job.mode,
         model: job.model,
         cwd: job.cwd,

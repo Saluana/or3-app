@@ -373,45 +373,6 @@ export function useSettingsHealth() {
                 });
             }
 
-            // 6. Doc index configured if enabled.
-            if (v['docindex.enabled'] && !v['docindex.maxFiles']) {
-                next.push({
-                    id: 'docindex',
-                    label: 'File search ready',
-                    status: 'warning',
-                    detail: 'File search is on but no size limit is set.',
-                    fixHref:
-                        '/settings/section/workspace?focus=workspace-search-size',
-                    fixLabel: 'Set size',
-                });
-            }
-
-            // 7. Terminal access matches safety.
-            const execEnabled = Boolean(v['hardening.enableExecShell']);
-            const profile = String(v['runtimeProfile.value'] ?? '');
-            if (execEnabled && profile.startsWith('hosted-no-exec')) {
-                next.push({
-                    id: 'safety-mismatch',
-                    label: 'Safety mode matches terminal access',
-                    status: 'warning',
-                    detail: 'Terminal is allowed but the safety mode forbids exec.',
-                    fixHref: '/settings/section/safety',
-                    fixLabel: 'Review safety',
-                });
-            }
-
-            // 8. Capabilities sanity.
-            if (caps?.execAvailable === false && execEnabled) {
-                next.push({
-                    id: 'exec-unavailable',
-                    label: 'Terminal can actually run',
-                    status: 'warning',
-                    detail: 'The host reports exec is unavailable even though you allow it.',
-                    fixHref: '/settings/section/safety',
-                    fixLabel: 'Review safety',
-                });
-            }
-
             findings.value = next;
             lastRun.value = new Date().toISOString();
             logger.info('run:complete', 'Settings health check completed', {

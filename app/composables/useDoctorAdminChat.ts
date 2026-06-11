@@ -88,7 +88,7 @@ function readPersistedSessionKey() {
     }
 }
 
-export * from '~/utils/doctor';
+export * from '../utils/doctor';
 import {
     DOCTOR_EMPTY_FINAL_TEXT_WARNING,
     doctorLastUserMessageBefore,
@@ -102,7 +102,7 @@ import {
     resolveDoctorMessageRef,
     sortDoctorMessages,
     type DoctorChatMessage,
-} from '~/utils/doctor';
+} from '../utils/doctor';
 
 function isAbortLikeError(value: unknown) {
     const record = value as { code?: unknown; cause?: unknown; name?: unknown };
@@ -146,7 +146,7 @@ function doctorAdminBrainUsesExternalRunner(
     const runnerID = String(provider?.runner_id ?? '').trim();
     return (
         String(provider?.kind ?? '').trim() === 'runner' ||
-        Boolean(provider?.available && runnerID && runnerID !== 'or3-intern')
+        Boolean(provider?.available && runnerID)
     );
 }
 

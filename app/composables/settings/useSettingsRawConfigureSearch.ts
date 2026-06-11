@@ -81,28 +81,26 @@ export const RAW_CONFIGURE_GROUPS = [
 const QUICK_KEYS: Record<RawConfigureFilterKey, string[]> = {
     connection: ['workspace', 'storage', 'service'],
     security: ['security', 'session', 'service'],
-    safety: ['security', 'hardening', 'session'],
+    safety: ['security', 'session'],
     'agent-behavior': ['provider', 'runtime', 'skills', 'automation'],
-    knowledge: ['workspace', 'storage', 'docindex', 'context'],
-    advanced: ['context', 'service', 'hardening', 'tools'],
+    knowledge: ['workspace', 'storage', 'context'],
+    advanced: ['context', 'service'],
 };
 
 const FILTER_MAP: Record<RawConfigureFilterKey, string[] | null> = {
     connection: ['workspace', 'storage', 'service', 'session'],
     security: ['security', 'session', 'service'],
-    safety: ['security', 'hardening', 'session', 'service'],
+    safety: ['security', 'session', 'service'],
     'agent-behavior': [
         'provider',
         'runtime',
         'context',
         'skills',
-        'docindex',
-        'tools',
         'automation',
         'channels',
     ],
-    knowledge: ['workspace', 'storage', 'docindex', 'context'],
-    advanced: ['hardening', 'context', 'docindex', 'tools', 'service'],
+    knowledge: ['workspace', 'storage', 'context'],
+    advanced: ['context', 'service'],
 };
 
 const ICON_MAP: Record<string, string> = {
@@ -113,13 +111,10 @@ const ICON_MAP: Record<string, string> = {
     channels: 'i-pixelarticons-message-text',
     automation: 'i-pixelarticons-zap',
     runtime: 'i-pixelarticons-analytics',
-    tools: 'i-pixelarticons-tool-case',
-    docindex: 'i-pixelarticons-book-open',
     skills: 'i-pixelarticons-sparkle',
     session: 'i-pixelarticons-users',
     service: 'i-pixelarticons-monitor',
     context: 'i-pixelarticons-card-stack',
-    hardening: 'i-pixelarticons-lock',
 };
 
 const FIELD_MATCH_LIMIT = 25;

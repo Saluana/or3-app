@@ -72,17 +72,13 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useToast } from '@nuxt/ui/composables';
-import { useActiveHost } from '~/composables/useActiveHost';
 import { useComputerStatus } from '~/composables/useComputerStatus';
-import { useLocalCache } from '~/composables/useLocalCache';
 import { useSettingsSnapshots } from '~/composables/settings/useSettingsSnapshots';
 import { useSimpleSettings } from '~/composables/settings/useSimpleSettings';
 import { useElectronHostSetup } from '~/composables/useElectronHostSetup';
 import { createLogger } from '~/utils/logger';
 
 const logger = createLogger('settings');
-const { activeHost } = useActiveHost();
-const cache = useLocalCache();
 const computerStatus = useComputerStatus();
 const snapshots = useSettingsSnapshots();
 const simple = useSimpleSettings();
@@ -121,25 +117,7 @@ const activeTerminalCount = computed(
     () => computerStatus.bootstrap.value?.counts?.active_terminals ?? 0,
 );
 
-const cachedRuntimeProfile = computed(() => {
-    const hostId = activeHost.value?.id;
-    if (!hostId) return '';
-    const entry = cache.state.value.lastKnownStatus[hostId];
-    const payload = entry?.value as {
-        capabilities?: { runtimeProfile?: string };
-    } | null;
-    return payload?.capabilities?.runtimeProfile?.trim() || '';
-});
-
 const connectionStats = computed(() => [
-    {
-        label: 'Mode',
-        value:
-            computerStatus.capabilities.value?.runtimeProfile ||
-            cachedRuntimeProfile.value ||
-            (computerStatus.loadingStatus.value ? '…' : 'unknown'),
-        icon: 'i-pixelarticons-terminal',
-    },
     {
         label: 'Approvals',
         value:

@@ -791,29 +791,16 @@ const formattedLastRun = computed(() => {
 const doctorUsesExternalRunner = computed(
     () => chat.adminBrain.value?.kind === 'runner',
 );
-const runners = computed(() =>
-    doctorUsesExternalRunner.value
-        ? selectableRunners.value
-        : selectableRunners.value.filter(
-              (runner) => runner.id === 'or3-intern',
-          ),
-);
+const runners = computed(() => selectableRunners.value);
 const preferredDoctorRunner = computed(() => {
     if (doctorUsesExternalRunner.value) {
         return (
             selectableRunners.value.find(
                 (runner) => runner.id === chat.adminBrain.value?.runner_id,
-            ) ??
-            selectableRunners.value.find(
-                (runner) => runner.id !== 'or3-intern',
-            ) ??
-            defaultRunner.value
+            ) ?? defaultRunner.value
         );
     }
-    return (
-        runners.value.find((runner) => runner.id === 'or3-intern') ??
-        defaultRunner.value
-    );
+    return defaultRunner.value;
 });
 const selectableRunnerIDs = computed(() =>
     runners.value.map((runner) => runner.id),

@@ -15,12 +15,6 @@ export interface RiskFinding {
 export function evaluateRisk(change: SimpleSettingChange): RiskFinding | null {
     const path = `${change.section}.${change.field}`
 
-    if (path === 'hardening.enableExecShell' && change.value === true) {
-        return {
-            level: 'high',
-            message: 'You are allowing terminal commands.',
-        }
-    }
     if (path === 'tools.restrictToWorkspace' && change.value === false) {
         return {
             level: 'high',
@@ -39,34 +33,11 @@ export function evaluateRisk(change: SimpleSettingChange): RiskFinding | null {
             message: 'You are turning off encrypted secret storage.',
         }
     }
-    if (
-        path === 'runtimeProfile.value' &&
-        typeof change.value === 'string' &&
-        change.value.startsWith('local-dev')
-    ) {
-        return {
-            level: 'medium',
-            message: 'You are switching to a more permissive safety mode.',
-        }
-    }
     if (path.startsWith('channels.') && path.endsWith('.enabled') && change.value === true) {
         return {
             level: 'low',
             message: 'You are allowing external messages.',
         }
     }
-    if (path === 'security.approvals.execMode' && change.value === 'auto') {
-        return {
-            level: 'high',
-            message: 'You are removing approval prompts for terminal commands.',
-        }
-    }
-    if (path === 'security.approvals.skillMode' && change.value === 'auto') {
-        return {
-            level: 'medium',
-            message: 'You are removing approval prompts for skill execution.',
-        }
-    }
-
     return null
 }

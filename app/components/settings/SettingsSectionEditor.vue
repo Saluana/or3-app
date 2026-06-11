@@ -72,15 +72,8 @@
             @update:model-value="(value: string) => updateValue(field.key, value)"
           />
 
-          <SettingCommandProgramsControl
-            v-else-if="field.key === 'hardening_exec_allowed_programs'"
-            :model-value="String(localValues[field.key] ?? '')"
-            :options="COMMON_COMMAND_PROGRAMS"
-            @update:model-value="(value: string) => updateValue(field.key, value)"
-          />
-
           <SettingPathControl
-            v-else-if="field.kind === 'path' || field.key === 'tools_path_append'"
+            v-else-if="field.kind === 'path'"
             :model-value="String(localValues[field.key] ?? '')"
             :label="field.label"
             :placeholder="field.placeholder || field.emptyHint || '/path/to/folder'"
@@ -135,8 +128,6 @@
 <script setup lang="ts">
 import { computed, reactive, watch } from 'vue'
 import type { ConfigureField } from '~/types/or3-api'
-import { COMMON_COMMAND_PROGRAMS } from '~/settings/commandPrograms'
-import SettingCommandProgramsControl from './SettingCommandProgramsControl.vue'
 import DiscordConversationDiscoveryControl from './DiscordConversationDiscoveryControl.vue'
 import SettingPathControl from './SettingPathControl.vue'
 import SettingSecondsControl from './SettingSecondsControl.vue'

@@ -1,6 +1,5 @@
 import { computed, ref } from 'vue';
 import type {
-    AgentRunnerId,
     AgentRunnerInfo,
     AgentRunnersResponse,
     ChatRunnerInfo,
@@ -11,11 +10,7 @@ import { useActiveHost } from './useActiveHost';
 import { canUseHostApi } from './useSecureHostTokens';
 import { useOr3Api } from './useOr3Api';
 import { createLogger } from '~/utils/logger';
-import {
-    isLegacyRunnerId,
-    isSelectableRunnerId,
-    pickDefaultRunnerId,
-} from '~/utils/runnerIds';
+import { pickDefaultRunnerId } from '~/utils/runnerIds';
 
 const runnersByHost = ref<Record<string, ChatRunnerInfo[]>>({});
 const defaultRunnerByHost = ref<Record<string, string>>({});
@@ -25,14 +20,10 @@ const logger = createLogger('chat_runners');
 let refreshGeneration = 0;
 
 function runnerLabel(runner: Pick<ChatRunnerInfo, 'display_name' | 'id'>) {
-    if (isLegacyRunnerId(runner.id)) {
-        return runner.display_name || 'OR3 Intern (legacy)';
-    }
     return runner.display_name || runner.id;
 }
 
 function isSelectableRunner(runner: ChatRunnerInfo) {
-    if (isLegacyRunnerId(runner.id)) return false;
     if (runner.runner_selectable === false) return false;
     if (runner.status !== 'available') return false;
     if (
@@ -227,7 +218,7 @@ export function useChatRunners() {
         if (normalized.filter(isSelectableRunner).length === 0) {
             errorByHost.value[currentHost] =
                 errors[0] ||
-                'No external runner is ready. Install and authenticate OpenCode, or choose another runner in or3-intern settings.';
+                'No runner is ready. Install and authenticate OpenCode, Codex, Claude, or Gemini, then refresh.';
             logger.warn('refresh:no-selectable', 'No selectable runners', {
                 hostId: currentHost,
             });
@@ -277,17 +268,29 @@ export function useChatRunners() {
         return out;
     }
 
-    function getRunner(id?: AgentRunnerId | string) {
+    function getRunner(id?: string) {
         const normalized = String(id ?? '').trim();
         if (!normalized) return defaultRunner.value;
         return runners.value.find((runner) => runner.id === normalized) ?? null;
     }
 
-    function ensureSelectable(id?: AgentRunnerId | string) {
+    function ensureSelectable(id?: string) {
         const normalized = String(id ?? '').trim();
         const runner = normalized ? getRunner(normalized) : null;
         if (runner && isSelectableRunner(runner)) return runner;
         return defaultRunner.value;
+    }
+
+    /**
+     * True when `id` refers to a runner that no longer exists in the chat
+     * runner set. Used to detect sessions/jobs that were cached against
+     * the removed built-in `or3-intern` agent so the UI can fall back to
+     * the default runner instead of showing a phantom selection.
+     */
+    function isStaleRunnerId(id?: string | null): boolean {
+        const normalized = String(id ?? '').trim();
+        if (!normalized) return false;
+        return !runners.value.some((runner) => runner.id === normalized);
     }
 
     return {
@@ -302,8 +305,7 @@ export function useChatRunners() {
         getRunner,
         ensureSelectable,
         isSelectableRunner,
-        isSelectableRunnerId,
-        isLegacyRunnerId,
+        isStaleRunnerId,
         runnerLabel,
     };
 }

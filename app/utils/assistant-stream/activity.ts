@@ -88,7 +88,7 @@ export function canonicalActivityLabel(itemType: unknown, fallback?: unknown) {
         case "web_search":
             return "Web search";
         case "collab_agent_tool_call":
-            return "Subagent task";
+            return "Delegated task";
         case "dynamic_tool_call":
             return "Tool call";
         case "plan":

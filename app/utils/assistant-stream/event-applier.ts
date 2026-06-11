@@ -1024,6 +1024,40 @@ export function createAssistantEventApplier(
                 );
                 return { failed: false, completed: true };
             }
+            if (!finalText && !hasToolWork) {
+                options.upsertActivity(
+                    createActivity(
+                        'completion',
+                        'Completed turn',
+                        'No final text was included in the completion event.',
+                        'attention',
+                        completionActivityId,
+                    ),
+                );
+                if (!sanitizeAssistantText(currentAssistant?.content || '')) {
+                    options.replaceAssistantContent(emptyFinalTextWarning);
+                    if (!options.hasTextPartContent(emptyFinalTextWarning)) {
+                        options.appendCompleteTextPart(emptyFinalTextWarning);
+                    }
+                }
+                options.setSawVisibleOutput(true);
+                options.updateAssistant({
+                    status: 'attention',
+                    error: EMPTY_FINAL_USER_MESSAGE,
+                    errorCode: 'empty_final_text',
+                    jobId,
+                });
+                logger.warn(
+                    'completion:empty_final_text',
+                    'Completion had no final assistant text and no tool work',
+                    {
+                        jobId: eventJobId(event),
+                        hasToolWork,
+                        source,
+                    },
+                );
+                return { failed: false, completed: true };
+            }
             options.upsertActivity(
                 createActivity(
                     'completion',

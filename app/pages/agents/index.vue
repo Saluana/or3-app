@@ -213,7 +213,6 @@ import {
 } from '~/utils/or3/agent-jobs';
 import { useReviewedJobs } from '~/composables/useReviewedJobs';
 import { useWhenHostApiReady } from '~/composables/useWhenHostApiReady';
-import { isLegacyRunnerId, isSelectableRunnerId } from '~/utils/runnerIds';
 
 const router = useRouter();
 const route = useRoute();
@@ -356,8 +355,7 @@ const selectedJob = computed<JobSnapshot | null>(() => {
 const hasSelectableRunners = computed(
     () =>
         agentRunners.value?.some(
-            (runner) =>
-                isSelectableRunnerId(runner.id) && runner.status === 'available',
+            (runner) => runner.status === 'available',
         ) ?? false,
 );
 
@@ -435,7 +433,7 @@ function describeError(error: unknown, fallback: string): string {
         case 'auth_rate_limited':
             return 'Too many requests at once. Wait a moment, then try again.';
         case 'capability_unavailable':
-            return 'Subagents aren\u2019t available on this computer right now.';
+            return 'Runner tasks aren\u2019t available on this computer right now.';
         case 'validation_failed':
             return err.message || 'That request looks malformed.';
         default:
@@ -493,7 +491,7 @@ async function createJob(payload: AgentTaskPayload) {
     submitError.value = null;
     try {
         const session = activeSession.value ?? ensureSession();
-        if (!isSelectableRunnerId(payload.runnerId)) {
+        if (!payload.runnerId) {
             submitError.value =
                 'Choose an available external runner to hand off this task.';
             return;

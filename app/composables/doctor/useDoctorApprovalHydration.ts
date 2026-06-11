@@ -4,7 +4,7 @@ import { useOr3Api } from '../useOr3Api';
 import { useDoctorChatStore } from './doctorChatStore';
 import { pendingApprovalPlaceholderContent } from '~/utils/assistant-stream/approval';
 import { normalizeApprovalRequest } from '~/utils/or3/approvals';
-import { sortDoctorMessages, type DoctorMessageState } from '~/utils/doctor';
+import { sortDoctorMessages, type DoctorMessageState } from '../../utils/doctor';
 
 const doctorApprovalHydrationInFlight = new Set<string>();
 export const doctorApprovalHydrationError = ref<string | null>(null);

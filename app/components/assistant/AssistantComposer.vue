@@ -128,37 +128,23 @@
                             </button>
                         </div>
 
-                        <template v-if="isInternChatModelRunner(selectedRunnerId)">
-                            <div class="or3-composer-menu__divider" />
-                            <p class="or3-composer-menu__eyebrow">Chat model</p>
-                            <ComposerInternModelPicker
-                                v-model="internModelSelection"
-                            />
-                            <small class="or3-composer-menu__hint">
-                                Overrides the default chat model for this
-                                conversation. Favorites come from your provider
-                                settings.
-                            </small>
-                        </template>
-
-                        <template v-else>
-                            <div class="or3-composer-menu__divider" />
-                            <!-- Per-run agent model override; sent as runnerModel on send, not global configure roles. -->
-                            <p class="or3-composer-menu__eyebrow">Agent model</p>
-                            <div class="or3-composer-menu__picker">
-                                <button
-                                    type="button"
-                                    class="or3-composer-menu__picker-trigger"
-                                    @click="modelPickerOpen = !modelPickerOpen"
-                                >
-                                    <span>
-                                        {{ selectedRunnerModelLabel }}
-                                    </span>
-                                    <Icon
-                                        name="i-pixelarticons-chevron-down"
-                                        class="size-4"
-                                    />
-                                </button>
+                        <div class="or3-composer-menu__divider" />
+                        <!-- Per-run agent model override; sent as runnerModel on send, not global configure roles. -->
+                        <p class="or3-composer-menu__eyebrow">Agent model</p>
+                        <div class="or3-composer-menu__picker">
+                            <button
+                                type="button"
+                                class="or3-composer-menu__picker-trigger"
+                                @click="modelPickerOpen = !modelPickerOpen"
+                            >
+                                <span>
+                                    {{ selectedRunnerModelLabel }}
+                                </span>
+                                <Icon
+                                    name="i-pixelarticons-chevron-down"
+                                    class="size-4"
+                                />
+                            </button>
                                 <div
                                     v-if="modelPickerOpen"
                                     class="or3-composer-menu__picker-panel"
@@ -296,7 +282,7 @@
                                                 selectedRunnerThinkingLevel ===
                                                 option,
                                         }"
-                                        @click="
+                                         @click="
                                             selectRunnerThinkingLevel(option)
                                         "
                                     >
@@ -311,7 +297,6 @@
                                         : 'No model list yet; type a custom id if needed.'
                                 }}
                             </small>
-                        </template>
 
                         <div class="or3-composer-menu__divider" />
                         <p class="or3-composer-menu__eyebrow">Mode</p>
@@ -450,14 +435,7 @@ import type {
     ChatAttachment,
 } from '../../types/app-state';
 import type { ChatRunnerInfo } from '../../types/or3-api';
-import ComposerInternModelPicker from './ComposerInternModelPicker.vue';
-import { useChatModelRouting } from '../../composables/settings/useChatModelRouting';
-import {
-    isInternChatModelRunner,
-    shouldApplyRunnerDefaultModel,
-    defaultRunnerModelForSelection,
-} from '../../utils/runnerModelPolicy';
-import { isLegacyRunnerId } from '../../utils/runnerIds';
+import { defaultRunnerModelForSelection } from '../../utils/runnerModelPolicy';
 
 const props = withDefaults(
     defineProps<{
@@ -561,10 +539,8 @@ const {
 const { filterCommands, findCommand, runCommand } = useChatCommands();
 const { fetchRoots, ensureDirectoryPath, uploadFilesToPath } =
     useComputerFiles();
-const api = useOr3Api();
 const chat = useChatSessions();
 const toast = useToast();
-const { ensureLoaded: ensureChatRoutingLoaded } = useChatModelRouting();
 
 const displayedAttachments = computed(() => [
     ...workspaceMentionAttachments.value,
@@ -608,19 +584,10 @@ const selectedRunnerThinkingLevel = computed(
 const modelPickerOpen = ref(false);
 const modelSearch = ref('');
 
-const internModelSelection = computed({
-    get: () => selectedRunnerModel.value,
-    set: (value: string) => {
-        emit('update:selectedRunnerModel', value.trim());
-    },
-});
-
 const runnerOptions = computed(() => {
     return props.runners.map((runner) => {
         const caps = runner.chat_capabilities || runner.supports.chat;
-        const legacy = isLegacyRunnerId(runner.id);
         const selectable =
-            !legacy &&
             runner.status === 'available' &&
             (!runner.auth_status ||
                 runner.auth_status === 'ready' ||
@@ -630,8 +597,6 @@ const runnerOptions = computed(() => {
         const runtimeDetail = runnerRuntimeDetail(runner);
         const reason = runtimeDetail
             ? runtimeDetail
-            : legacy
-            ? 'Legacy built-in session (read-only).'
             : runner.status === 'missing'
               ? 'Binary missing'
               : runner.status === 'disabled_by_config'
@@ -648,9 +613,7 @@ const runnerOptions = computed(() => {
             label: runner.display_name || runner.id,
             description: reason,
             selectable,
-            icon: legacy
-                ? 'i-pixelarticons-robot'
-                : 'i-pixelarticons-terminal',
+            icon: 'i-pixelarticons-terminal',
         };
     });
 });
@@ -826,17 +789,15 @@ function selectRunner(runnerId: string) {
     emit('update:selectedRunnerId', runnerId);
     modelPickerOpen.value = false;
     modelSearch.value = '';
-    if (shouldApplyRunnerDefaultModel(runnerId)) {
-        const runner = props.runners.find((item) => item.id === runnerId);
-        emit(
-            'update:selectedRunnerModel',
-            defaultRunnerModelForSelection(
-                runnerId,
-                runner?.default_model || runner?.runtime?.default_model,
-            ),
-        );
-        emit('update:selectedRunnerThinkingLevel', '');
-    }
+    const runner = props.runners.find((item) => item.id === runnerId);
+    emit(
+        'update:selectedRunnerModel',
+        defaultRunnerModelForSelection(
+            runnerId,
+            runner?.default_model || runner?.runtime?.default_model,
+        ),
+    );
+    emit('update:selectedRunnerThinkingLevel', '');
 }
 
 function selectRunnerModel(model: string) {
@@ -959,11 +920,6 @@ function runnerRuntimeDetail(runner: ChatRunnerInfo) {
     if (state === 'error') return runtime.message || `${kind} runtime error`;
     return '';
 }
-
-watch(actionMenuOpen, (open) => {
-    if (!open || !isInternChatModelRunner(selectedRunnerId.value)) return;
-    void ensureChatRoutingLoaded();
-});
 
 watch(activeModelReasoningOptions, (options) => {
     if (!options.length && selectedRunnerThinkingLevel.value) {
@@ -1230,54 +1186,12 @@ function toPayloadAttachment(attachment: DraftAttachment): ChatAttachment {
     return payload;
 }
 
-async function stageNativeInternDraftAttachments(
-    drafts: DraftAttachment[],
-    sessionKey: string,
-) {
-    const staged: ChatAttachment[] = [];
-    for (const draft of drafts) {
-        if (!(draft.file instanceof File)) {
-            staged.push(toPayloadAttachment(draft));
-            continue;
-        }
-        const form = new FormData();
-        form.append('session_key', sessionKey);
-        form.append('file', draft.file);
-        const uploaded = await api.request<{
-            artifact_id?: string;
-            id?: string;
-            name?: string;
-            mime_type?: string;
-            size_bytes?: number;
-            kind?: string;
-        }>('/internal/v1/artifacts', {
-            method: 'POST',
-            body: form,
-        });
-        const artifactId = uploaded.artifact_id || uploaded.id;
-        if (!artifactId) {
-            throw new Error('Artifact upload did not return an id.');
-        }
-        staged.push({
-            ...toPayloadAttachment(draft),
-            source: 'local_artifact',
-            artifact_id: artifactId,
-            mime_type: uploaded.mime_type || draft.mimeType,
-            size_bytes: uploaded.size_bytes ?? draft.size,
-            kind:
-                (uploaded.kind as ChatAttachment['kind']) ||
-                (draft.file.type.startsWith('image/') ? 'image' : 'file'),
-        });
-    }
-    return staged;
-}
-
 async function stageLocalFilesForExternalRunner() {
     const attachments = localFileAttachments().filter(
         (attachment): attachment is DraftAttachment & { file: File } =>
             attachment.file instanceof File,
     );
-    if (!attachments.length || isLegacyRunnerId(selectedRunnerId.value)) {
+    if (!attachments.length) {
         return [] as DraftAttachment[];
     }
 
@@ -1380,46 +1294,22 @@ async function submit() {
     }
 
     const draftAttachments = payloadAttachments(stagedWorkspaceAttachments);
-    const sessionKey = chat.activeSession.value?.sessionKey?.trim() || '';
-    let attachments: ChatAttachment[];
-    try {
-        if (isLegacyRunnerId(selectedRunnerId.value) && sessionKey) {
-            attachments = await stageNativeInternDraftAttachments(
-                draftAttachments,
-                sessionKey,
-            );
-        } else {
-            attachments = draftAttachments.map(toPayloadAttachment);
-        }
-    } catch (error: any) {
-        toast.add({
-            title: 'Could not upload attachments',
-            description:
-                error?.message ||
-                'OR3 could not store local files as artifacts for this turn.',
-            color: 'error',
-            icon: 'i-pixelarticons-warning-box',
-        });
-        submitLocked.value = false;
-        return;
-    }
+    const attachments: ChatAttachment[] =
+        draftAttachments.map(toPayloadAttachment);
 
     const payload: AssistantSendPayload = {
         text: visiblePayloadText(),
-        transportText:
-            isLegacyRunnerId(selectedRunnerId.value)
-                ? formState.text.trim()
-                : buildTransportTextForAttachments(stagedWorkspaceAttachments),
+        transportText: buildTransportTextForAttachments(
+            stagedWorkspaceAttachments,
+        ),
         attachments,
         runnerId: selectedRunnerId.value,
         runnerModel: selectedRunnerModel.value || undefined,
-        runnerThinkingLevel:
-            !isLegacyRunnerId(selectedRunnerId.value) &&
-            activeModelReasoningOptions.value.includes(
-                selectedRunnerThinkingLevel.value,
-            )
-                ? selectedRunnerThinkingLevel.value
-                : undefined,
+        runnerThinkingLevel: activeModelReasoningOptions.value.includes(
+            selectedRunnerThinkingLevel.value,
+        )
+            ? selectedRunnerThinkingLevel.value
+            : undefined,
         runnerLabel: runnerOptions.value.find(
             (runner) => runner.id === selectedRunnerId.value,
         )?.label,

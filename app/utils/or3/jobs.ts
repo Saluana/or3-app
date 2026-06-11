@@ -1,10 +1,5 @@
 import type { RecentJobSummary } from '~/types/app-state';
-import type {
-    JobSnapshot,
-    PersistedAgentCliJob,
-    PersistedSubagentJob,
-    PersistedSubagentStatus,
-} from '~/types/or3-api';
+import type { JobSnapshot, PersistedAgentCliJob } from '~/types/or3-api';
 
 /**
  * UI status vocabulary used across Active/Queue/History panels and the detail
@@ -69,39 +64,6 @@ export function normalizeStatus(status: string | undefined): AgentJobUiStatus {
         default:
             return 'queued';
     }
-}
-
-/**
- * Convert a persisted backend job into a UI summary that can be merged with
- * locally cached metadata.
- */
-export function persistedJobToSummary(
-    job: PersistedSubagentJob,
-): RecentJobSummary {
-    const status = normalizeStatus(job.status);
-    const updatedAt =
-        job.updated_at ||
-        job.finished_at ||
-        job.started_at ||
-        job.requested_at ||
-        new Date().toISOString();
-    return {
-        job_id: job.job_id,
-        kind: job.kind || 'subagent',
-        status,
-        title: job.task || 'Agent task',
-        task: job.task,
-        updated_at: updatedAt,
-        final_text: job.result_preview,
-        error: job.error,
-        child_session_key: job.child_session_key,
-        parent_session_key: job.parent_session_key,
-        created_at: job.requested_at,
-        started_at: job.started_at,
-        finished_at: job.finished_at,
-        artifact_id: job.artifact_id,
-        source: 'persisted',
-    };
 }
 
 /**
@@ -183,12 +145,6 @@ export function summaryToSnapshot(summary: RecentJobSummary): JobSnapshot {
     };
 }
 
-export function persistedStatusToUi(
-    status: PersistedSubagentStatus,
-): AgentJobUiStatus {
-    return normalizeStatus(status);
-}
-
 /**
  * Returns true when the job kind indicates an external CLI runner.
  */
@@ -201,8 +157,6 @@ export function isCliJob(kind?: string): boolean {
  */
 export function runnerLabel(runnerId?: string): string {
     switch (runnerId) {
-        case 'or3-intern':
-            return 'or3-intern';
         case 'opencode':
             return 'OpenCode';
         case 'codex':
@@ -223,7 +177,6 @@ export function runnerLabel(runnerId?: string): string {
 export function formatAgentCliKind(kind?: string): string {
     if (!kind) return 'Agent task';
     if (!isCliJob(kind)) {
-        if (kind === 'subagent' || kind === 'agent') return 'Agent task';
         return kind.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
     }
     const runnerId = kind.slice('agent_cli:'.length);

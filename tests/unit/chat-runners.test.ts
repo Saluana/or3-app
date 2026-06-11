@@ -122,18 +122,6 @@ describe('useChatRunners', () => {
         expect(chatRunners.ensureSelectable('missing-runner')?.id).toBe('claude');
     });
 
-    it('excludes legacy or3-intern from selectable runners', async () => {
-        const { chatRunners } = await loadComposable(async () => ({
-            runners: [makeRunner('or3-intern'), makeRunner('gemini')],
-            default_runner: 'gemini',
-        }));
-
-        await chatRunners.refresh();
-
-        expect(chatRunners.selectableRunners.value.map((runner) => runner.id)).toEqual(['gemini']);
-        expect(chatRunners.defaultRunner.value?.id).toBe('gemini');
-    });
-
     it('normalizes runtime model metadata for native runners', async () => {
         const opencode = makeRunner('opencode');
         const { chatRunners } = await loadComposable(async () => ({

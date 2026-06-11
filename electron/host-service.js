@@ -527,21 +527,18 @@ function builtinAccessProfiles() {
             allowedTools: ['read_file', 'search_file', 'list_dir', 'read_artifact', 'memory_search', 'memory_recent', 'memory_get_pinned'],
             allowedHosts: [],
             writablePaths: [],
-            allowSubagents: false,
         },
         operator: {
             maxCapability: 'guarded',
             allowedTools: ['read_file', 'search_file', 'list_dir', 'read_artifact', 'write_file', 'edit_file', 'delete_file', 'memory_search', 'memory_recent', 'memory_get_pinned', 'web_search', 'web_fetch', 'web_fetch_markdown', 'exec'],
             allowedHosts: [],
             writablePaths: ['${workspaceDir}'],
-            allowSubagents: false,
         },
         admin: {
             maxCapability: 'privileged',
-            allowedTools: ['read_file', 'search_file', 'list_dir', 'read_artifact', 'write_file', 'edit_file', 'delete_file', 'memory_set_pinned', 'memory_add_note', 'memory_search', 'memory_recent', 'memory_get_pinned', 'web_search', 'web_fetch', 'web_fetch_markdown', 'exec', 'run_skill', 'run_skill_script', 'spawn_subagent', 'send_message', 'cron'],
+            allowedTools: ['read_file', 'search_file', 'list_dir', 'read_artifact', 'write_file', 'edit_file', 'delete_file', 'memory_set_pinned', 'memory_add_note', 'memory_search', 'memory_recent', 'memory_get_pinned', 'web_search', 'web_fetch', 'web_fetch_markdown', 'exec', 'send_message', 'cron'],
             allowedHosts: [],
             writablePaths: ['${workspaceDir}'],
-            allowSubagents: true,
         },
     };
 }

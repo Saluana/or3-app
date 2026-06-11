@@ -199,7 +199,6 @@ import {
     defaultRunnerModelForSelection,
     resolveRunnerModelForSend,
     resolveSessionRunnerModel,
-    shouldApplyRunnerDefaultModel,
 } from '~/utils/runnerModelPolicy';
 import { useChatRunnerSelection } from '~/composables/useChatRunnerSelection';
 
@@ -420,7 +419,6 @@ function onNewSession() {
             runnerId: runner.id,
             runnerLabel: runner.display_name || runner.id,
             runnerModel: resolveSessionRunnerModel({
-                runnerId: runner.id,
                 selected: selectedRunnerModel.value,
                 runnerDefault: runner.default_model,
             }),
@@ -526,18 +524,15 @@ function confirmRunnerSwitch() {
     if (!runner) return;
     const session = newSession('New conversation');
     selectedRunnerId.value = runnerId;
-    if (shouldApplyRunnerDefaultModel(runnerId)) {
-        selectedRunnerModel.value = defaultRunnerModelForSelection(
-            runnerId,
-            runner.default_model || runner.runtime?.default_model,
-        );
-    }
+    selectedRunnerModel.value = defaultRunnerModelForSelection(
+        runnerId,
+        runner.default_model || runner.runtime?.default_model,
+    );
     selectedRunnerThinkingLevel.value = '';
     setSessionRunnerMetadata(session.id, {
         runnerId,
         runnerLabel: runner.display_name || runner.id,
         runnerModel: resolveSessionRunnerModel({
-            runnerId,
             selected: selectedRunnerModel.value,
             runnerDefault: runner.default_model || runner.runtime?.default_model,
         }),
@@ -558,7 +553,6 @@ function sendWithMode(payload: Parameters<typeof send>[0]) {
         activeSession.value?.runnerContinuationMode ||
         continuationModeForRunner(selectedRunnerId.value);
     const resolvedRunnerModel = resolveRunnerModelForSend({
-        runnerId: selectedRunnerId.value,
         selected: selectedRunnerModel.value,
         runnerDefault: runner?.default_model,
     });

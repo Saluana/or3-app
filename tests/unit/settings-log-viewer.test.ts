@@ -1,5 +1,5 @@
 import { mount } from '@vue/test-utils';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import SettingsLogViewer from '../../app/components/settings/SettingsLogViewer.vue';
 
 function mountViewer(propOverrides: Record<string, unknown> = {}) {
@@ -43,6 +43,13 @@ function mountViewer(propOverrides: Record<string, unknown> = {}) {
 }
 
 describe('SettingsLogViewer', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+    });
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
     it('filters entries by level, component, and trace', async () => {
         const wrapper = mountViewer();
         expect(wrapper.text()).toContain('stream:open');
@@ -56,6 +63,7 @@ describe('SettingsLogViewer', () => {
         expect(wrapper.text()).toContain('action:failed');
 
         await wrapper.findAll('input')[0].setValue('api');
+        await vi.advanceTimersByTimeAsync(250);
         expect(wrapper.text()).toContain('No events');
 
         const allButton = wrapper
@@ -65,6 +73,7 @@ describe('SettingsLogViewer', () => {
         expect(wrapper.text()).toContain('stream:open');
 
         await wrapper.findAll('input')[1].setValue('trace-b');
+        await vi.advanceTimersByTimeAsync(250);
         expect(wrapper.text()).not.toContain('stream:open');
         expect(wrapper.text()).not.toContain('action:failed');
     });

@@ -1,11 +1,9 @@
 import { ref, type ComputedRef } from 'vue';
 import type { ChatSession } from '~/types/app-state';
 import type { ChatRunnerInfo } from '~/types/or3-api';
-import { isLegacyRunnerId } from '~/utils/runnerIds';
 import {
     defaultRunnerModelForSelection,
     resolveSessionRunnerModel,
-    shouldApplyRunnerDefaultModel,
 } from '~/utils/runnerModelPolicy';
 
 type RunnerMetadataPatch = {
@@ -39,12 +37,10 @@ export function useChatRunnerSelection(options: {
         runnerId: string,
         runner: ChatRunnerInfo,
     ) {
-        if (shouldApplyRunnerDefaultModel(runnerId)) {
-            selectedRunnerModel.value = defaultRunnerModelForSelection(
-                runnerId,
-                runner.default_model || runner.runtime?.default_model,
-            );
-        }
+        selectedRunnerModel.value = defaultRunnerModelForSelection(
+            runnerId,
+            runner.default_model || runner.runtime?.default_model,
+        );
         selectedRunnerThinkingLevel.value = '';
         const session = options.activeSession.value;
         if (!session) return;
@@ -52,7 +48,6 @@ export function useChatRunnerSelection(options: {
             runnerId,
             runnerLabel: runner.display_name || runner.id,
             runnerModel: resolveSessionRunnerModel({
-                runnerId,
                 selected: selectedRunnerModel.value,
                 runnerDefault:
                     runner.default_model || runner.runtime?.default_model,
@@ -61,20 +56,11 @@ export function useChatRunnerSelection(options: {
         });
     }
 
-    function migrateLegacySessionIfEmpty() {
-        const session = options.activeSession.value;
-        if (!session || !isLegacyRunnerId(session.runnerId)) return;
-        if (options.messageCount(session.id) > 0) return;
-        const runner = options.ensureSelectable(session.runnerId);
-        if (!runner) return;
-        applyRunnerToActiveSession(runner.id, runner);
-    }
-
     function resyncFromSession() {
         const session = options.activeSession.value;
-        const runner = options.ensureSelectable(
-            session?.runnerId || selectedRunnerId.value || undefined,
-        );
+        const requestedId =
+            session?.runnerId || selectedRunnerId.value || undefined;
+        const runner = options.ensureSelectable(requestedId);
         if (!runner) return;
 
         const nextId = runner.id;
@@ -84,17 +70,25 @@ export function useChatRunnerSelection(options: {
 
         if (session?.runnerModel) {
             selectedRunnerModel.value = session.runnerModel;
-        } else if (
-            shouldApplyRunnerDefaultModel(nextId) &&
-            !selectedRunnerModel.value
-        ) {
+        } else if (!selectedRunnerModel.value) {
             selectedRunnerModel.value = defaultRunnerModelForSelection(
                 nextId,
                 runner.default_model || runner.runtime?.default_model,
             );
         }
 
-        migrateLegacySessionIfEmpty();
+        if (session && session.runnerId !== nextId) {
+            options.setSessionRunnerMetadata(session.id, {
+                runnerId: nextId,
+                runnerLabel: runner.display_name || runner.id,
+                runnerModel: resolveSessionRunnerModel({
+                    selected: selectedRunnerModel.value,
+                    runnerDefault:
+                        runner.default_model || runner.runtime?.default_model,
+                }),
+                runnerContinuationMode: continuationModeForRunner(nextId),
+            });
+        }
     }
 
     function resetModelFields() {

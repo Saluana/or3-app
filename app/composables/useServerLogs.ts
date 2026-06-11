@@ -81,11 +81,11 @@ function pushEntry(entry: ServerLogEntry) {
         nextEntry = { ...entry, id: `${entry.id}_${++localCollisionId}` };
     }
     seenEntryIds.add(nextEntry.id);
-    entries.value.unshift(nextEntry);
-    if (entries.value.length > MAX_SERVER_LOG_ENTRIES) {
-        const removed = entries.value.pop();
+    if (entries.value.length >= MAX_SERVER_LOG_ENTRIES) {
+        const removed = entries.value.shift();
         if (removed) seenEntryIds.delete(removed.id);
     }
+    entries.value.push(nextEntry);
 }
 
 function clearReconnectTimer() {

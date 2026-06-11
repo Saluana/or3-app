@@ -160,7 +160,7 @@
                                         ? agentRunnerLabel(
                                               job.payload?.agent_run?.runner_id,
                                           )
-                                        : 'Legacy OR3 task'
+                                        : 'Legacy scheduled task'
                                 }}
                             </span>
                         </div>
@@ -447,7 +447,6 @@ function jobPrompt(job: CronJob) {
 
 function agentRunnerLabel(id?: string) {
     if (!id) return 'Unknown';
-    if (id === 'or3-intern') return 'Legacy OR3 runner';
     const runner = (agentRunners.value ?? []).find((item: AgentRunnerInfo) => item.id === id);
     return runner?.display_name || id;
 }

@@ -15,8 +15,8 @@ describe('useJobs', () => {
   it('returns persisted jobs for the active host only', () => {
     const cache = useLocalCache()
     cache.state.value.recentJobs = {
-      alpha: [{ job_id: 'job-alpha', kind: 'subagent', status: 'queued', title: 'subagent', updated_at: '2026-01-01T00:00:00.000Z' }],
-      beta: [{ job_id: 'job-beta', kind: 'subagent', status: 'completed', title: 'subagent', updated_at: '2026-01-02T00:00:00.000Z' }],
+      alpha: [{ job_id: 'job-alpha', kind: 'subagent', status: 'queued', title: 'legacy task', updated_at: '2026-01-01T00:00:00.000Z' }],
+      beta: [{ job_id: 'job-beta', kind: 'subagent', status: 'completed', title: 'legacy task', updated_at: '2026-01-02T00:00:00.000Z' }],
     }
     cache.updateHost({ id: 'alpha', name: 'Alpha', baseUrl: 'http://alpha.test', token: 'alpha-token' })
     cache.updateHost({ id: 'beta', name: 'Beta', baseUrl: 'http://beta.test', token: 'beta-token' })
@@ -30,23 +30,6 @@ describe('useJobs', () => {
     expect(jobs.value.map((job) => job.job_id)).toEqual(['job-beta'])
   })
 
-  it('queues jobs under the active host', async () => {
-    const cache = useLocalCache()
-    cache.updateHost({ id: 'alpha', name: 'Alpha', baseUrl: 'http://alpha.test', token: 'alpha-token' })
-    cache.updateHost({ id: 'beta', name: 'Beta', baseUrl: 'http://beta.test', token: 'beta-token' })
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
-      job_id: 'job-beta-new',
-      child_session_key: 'child',
-      status: 'queued',
-    }), { status: 202, headers: { 'Content-Type': 'application/json' } })))
-
-    cache.setActiveHost('beta')
-    const { queueJob } = useJobs()
-    await expect(
-      queueJob({ parent_session_key: 'parent', task: 'do work' }),
-    ).rejects.toThrow(/Subagent jobs were removed/)
-  })
-
   it('keeps polling after the stream endpoint fails', async () => {
     vi.useFakeTimers()
     const cache = useLocalCache()
@@ -57,7 +40,7 @@ describe('useJobs', () => {
         job_id: 'job-1',
         kind: 'subagent',
         status: 'running',
-        title: 'subagent',
+        title: 'legacy task',
         updated_at: '2026-01-01T00:00:00.000Z',
       },
     ]
@@ -93,7 +76,7 @@ describe('useJobs', () => {
     expect(jobs.value[0]?.final_text).toBe('done')
   })
 
-  it('loads agent runners without synthesizing or3-intern when omitted', async () => {
+  it('loads agent runners when the host advertises them', async () => {
     const cache = useLocalCache()
     cache.updateHost({ id: 'alpha', name: 'Alpha', baseUrl: 'http://alpha.test', token: 'alpha-token' })
     cache.setActiveHost('alpha')
@@ -105,7 +88,6 @@ describe('useJobs', () => {
     await loadAgentRunners()
     expect(runnerListSupported.value).toBe(true)
     const ids = agentRunners.value.map((r) => r.id)
-    expect(ids).not.toContain('or3-intern')
     expect(ids).toContain('codex')
   })
 

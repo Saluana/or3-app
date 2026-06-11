@@ -36,13 +36,6 @@ export const FIELD_LABEL_MAP: Record<string, string> = {
     'workspace.workspaceDir': 'Workspace folder',
     'workspace.allowedDir': 'Extra allowed folder',
     'tools.restrictToWorkspace': 'Keep OR3 inside this folder',
-    'docindex.enabled': 'Search workspace files',
-    'docindex.maxFiles': 'File search size (files)',
-    'docindex.maxFileBytes': 'File search size (per file)',
-    'docindex.maxChunks': 'File search chunks',
-    'docindex.retrieveLimit': 'File results per query',
-    'docindex.refreshSeconds': 'File index refresh',
-    'docindex.embedMaxBytes': 'Embed max bytes',
 
     // Devices & Connections
     'channels.telegram.enabled': 'Telegram',
@@ -63,20 +56,8 @@ export const FIELD_LABEL_MAP: Record<string, string> = {
     'skills.registries': 'Skill registries',
 
     // Safety & Privacy
-    runtimeProfile: 'Safety mode',
-    'hardening.enableExecShell': 'Allow terminal commands',
     'security.audit.enabled': 'Keep safety log',
     'security.secretStore.enabled': 'Protect saved secrets',
-    'approvalModes.exec': 'Approval for terminal',
-    'approvalModes.skill': 'Approval for skills',
-
-    // External Agent CLI Delegation
-    'agentCLI.enabled': 'External CLI agents',
-    'agentCLI.maxConcurrent': 'External agent power',
-    'agentCLI.maxQueued': 'External queue size',
-    'agentCLI.defaultTimeoutSeconds': 'External task timeout',
-    'agentCLI.allowSandboxAuto': 'Full autonomy in sandbox',
-    'agentCLI.disabledRunners': 'Disabled external runners',
 }
 
 export function labelForFieldRef(section: string, field: string): string {

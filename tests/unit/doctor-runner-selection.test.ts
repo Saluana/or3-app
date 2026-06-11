@@ -8,7 +8,7 @@ describe('doctorRunnerSelection', () => {
     it('drops stale runner ids before Admin Brain or runner discovery is ready', () => {
         expect(
             resolveDoctorRunnerID({
-                currentRunnerID: 'or3-intern',
+                currentRunnerID: 'unknown-runner',
                 selectableRunnerIDs: [],
             }),
         ).toBe('');
@@ -29,8 +29,8 @@ describe('doctorRunnerSelection', () => {
             resolveDoctorRunnerID({
                 currentRunnerID: 'claude',
                 adminBrainRunnerID: 'opencode',
-                defaultRunnerID: 'or3-intern',
-                selectableRunnerIDs: ['or3-intern', 'claude'],
+                defaultRunnerID: 'opencode',
+                selectableRunnerIDs: ['opencode', 'claude'],
             }),
         ).toBe('claude');
     });
@@ -39,17 +39,17 @@ describe('doctorRunnerSelection', () => {
         expect(
             resolveDoctorRunnerID({
                 currentRunnerID: 'missing-runner',
-                defaultRunnerID: 'or3-intern',
-                selectableRunnerIDs: ['or3-intern', 'claude'],
+                defaultRunnerID: 'opencode',
+                selectableRunnerIDs: ['opencode', 'claude'],
             }),
-        ).toBe('or3-intern');
+        ).toBe('opencode');
     });
 
     it('only allows selectable or Admin Brain runner ids', () => {
         expect(
-            canUseDoctorRunnerID('or3-intern', {
+            canUseDoctorRunnerID('claude', {
                 adminBrainRunnerID: 'opencode',
-                selectableRunnerIDs: ['claude'],
+                selectableRunnerIDs: ['opencode'],
             }),
         ).toBe(false);
         expect(

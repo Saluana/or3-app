@@ -958,12 +958,12 @@ function cronPayloadLabel(job: CronJob) {
     if (job.payload?.kind === 'agent_cli_run') {
         return agentRunnerLabel(job.payload?.agent_run?.runner_id);
     }
-    if (job.payload?.kind === 'agent_turn') return 'OR3 assistant';
+    if (job.payload?.kind === 'agent_turn') return 'Legacy scheduled chat task';
     return job.payload?.kind || 'task';
 }
 
 function agentRunnerLabel(runnerId?: string) {
-    if (!runnerId || runnerId === 'or3-intern') return 'OR3 assistant';
+    if (!runnerId) return 'Agent job';
     const runner = (agentRunners.value ?? []).find(
         (item: AgentRunnerInfo) => item.id === runnerId,
     );
@@ -974,7 +974,7 @@ function jobLabel(kind?: string) {
     if (!kind) return 'Agent run';
     if (kind.startsWith('agent_cli:'))
         return `${kind.slice('agent_cli:'.length)} run`;
-    if (kind === 'subagent') return 'Historical subagent run';
+    if (kind === 'subagent') return 'Legacy background task';
     if (kind === 'turn') return 'Assistant reply';
     if (kind === 'exec' || kind === 'terminal') return 'Terminal command';
     if (kind === 'file_list') return 'File listing';
@@ -987,7 +987,6 @@ function jobSource(job: JobSnapshot) {
     if (job.runner_id) return job.runner_id;
     if (job.kind?.startsWith('agent_cli:'))
         return job.kind.slice('agent_cli:'.length);
-    if (job.kind === 'subagent') return 'or3-intern';
     return 'Agent job';
 }
 

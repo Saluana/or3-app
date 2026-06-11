@@ -185,7 +185,7 @@ const activity = computed<ActivityEntry[]>(() => {
 function jobLabel(kind?: string): string {
     if (!kind) return 'Activity:';
     if (kind === 'turn') return 'Assistant reply:';
-    if (kind === 'subagent') return 'Subagent run:';
+    if (kind === 'subagent') return 'Legacy task:';
     if (kind === 'exec' || kind === 'terminal') return 'Executed:';
     if (kind === 'file_list') return 'Listed files in';
     return `${kind.replace(/_/g, ' ')}:`;

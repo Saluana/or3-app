@@ -500,28 +500,83 @@ export async function fetchAndApplyRunnerTurn(
         (context as { selectedRunnerId?: string }).selectedRunnerId ||
         context.readAssistant()?.runnerId;
     context.applyRunnerStructuredResult?.(turn.final_text, runnerId);
-    const turnResultText =
-        turn.final_text?.trim() ||
-        JSON.stringify({
-            assistant_message_id: turn.assistant_message_id,
-            error_message: turn.error_message || turn.error || '',
-            final_text: turn.final_text || '',
-            status: turn.status,
-        });
+    const trimmedFinal = turn.final_text?.trim() || '';
+    const turnResultText: string = trimmedFinal
+        ? turn.final_text!
+        : JSON.stringify({
+              assistant_message_id: turn.assistant_message_id,
+              error_message: turn.error_message || turn.error || '',
+              final_text: turn.final_text || '',
+              status: turn.status,
+          });
     const displayText = normalizeResultDisplayText(turnResultText, runnerId);
-    applyRecoveredFinalText(displayText, context);
-    const latest = context.readAssistant();
+    const displayTrimmed = displayText.trim();
     const live = isLiveRunnerTurnStatus(turn.status);
+    // The server returned an empty final_text and the JSON envelope has
+    // no human-readable field. Treat that as "no final answer" so the
+    // attention branch below can take over.
+    const envelopeHasContent = (() => {
+        if (!turnResultText.trim()) return false;
+        if (!turnResultText.trim().startsWith('{')) return true;
+        try {
+            const parsed = JSON.parse(turnResultText.trim()) as Record<
+                string,
+                unknown
+            >;
+            return Boolean(
+                parsed.final_text ||
+                parsed.message ||
+                parsed.content ||
+                parsed.response ||
+                parsed.result ||
+                parsed.text ||
+                parsed.error_message,
+            );
+        } catch {
+            return true;
+        }
+    })();
+    const noFinalAnswer = !trimmedFinal && !envelopeHasContent;
+    // If the assistant already has real user-visible content (a partial
+    // answer from streaming), an empty follow-up turn is just a
+    // continuation that didn't add anything new — not an "empty final
+    // text" failure. The empty-final warning itself doesn't count as
+    // "real" content; it was written by the stream-side attention
+    // branch and we want the recovery path to confirm it.
+    const existingContent = context
+        .sanitizeAssistantText(
+            context.readAssistant()?.content || '',
+        )
+        .trim();
+    const hasRealContent =
+        existingContent.length > 0 &&
+        existingContent !==
+            context.sanitizeAssistantText(EMPTY_FINAL_USER_MESSAGE);
+    const noFinalAnswerWithContent = noFinalAnswer && !hasRealContent;
+    if (noFinalAnswerWithContent) {
+        // Don't let applyRecoveredFinalText overwrite the assistant
+        // content with the empty envelope; the attention branch below
+        // writes the user-facing empty-final warning.
+        applyRecoveredFinalText('', context);
+    } else {
+        applyRecoveredFinalText(displayText, context);
+    }
+    const latest = context.readAssistant();
     const emptyAfterToolWork =
-        !live && !displayText.trim() && assistantHasToolWork(latest);
-    if (emptyAfterToolWork) {
+        !live && noFinalAnswerWithContent && assistantHasToolWork(latest);
+    const emptyWithoutToolWork =
+        !live && noFinalAnswerWithContent && !assistantHasToolWork(latest);
+    if (emptyAfterToolWork || emptyWithoutToolWork) {
+        const detail = emptyAfterToolWork
+            ? 'Tool work completed without a final assistant message.'
+            : 'No final text was included in the turn.';
         context.updateActivity(
             (entry) =>
                 entry.type === 'completion' && entry.status === 'running',
             {
                 status: 'attention',
                 label: 'Completed turn',
-                detail: 'Tool work completed without a final assistant message.',
+                detail,
             },
         );
         if (!context.sanitizeAssistantText(latest?.content || '')) {
