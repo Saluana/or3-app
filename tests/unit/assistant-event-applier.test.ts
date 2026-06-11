@@ -191,6 +191,39 @@ describe('createAssistantEventApplier', () => {
         ).toHaveLength(1);
     });
 
+    it('preserves streamed assistant text when a terminal runner failure follows', () => {
+        const { applyEvent, assistant } = createApplier();
+
+        applyEvent(
+            {
+                event: 'text_delta',
+                json: {
+                    type: 'text_delta',
+                    sequence: 1,
+                    delta: 'Hey whatsup?',
+                },
+            },
+            'stream',
+        );
+        applyEvent(
+            {
+                event: 'completion',
+                json: {
+                    type: 'completion',
+                    sequence: 2,
+                    status: 'failed',
+                    error_message:
+                        'Codex authentication failed while refreshing its login token. Run `codex login` to reconnect Codex, then retry the runner turn.',
+                },
+            },
+            'stream',
+        );
+
+        expect(assistant.value.content).toBe('Hey whatsup?');
+        expect(assistant.value.status).toBe('failed');
+        expect(assistant.value.error).toContain('codex login');
+    });
+
     it('reuses finalizing completion activity and resolves it on final text', () => {
         const { applyEvent, assistant } = createApplier();
 

@@ -66,7 +66,13 @@ export function coerceErrorText(value: unknown): string {
     }
     if (typeof value === 'object') {
         const record = value as Record<string, unknown>;
-        for (const key of ['message', 'error', 'detail', 'description']) {
+        for (const key of [
+            'message',
+            'error_message',
+            'error',
+            'detail',
+            'description',
+        ]) {
             const text = coerceErrorText(record[key]);
             if (text) return text;
         }

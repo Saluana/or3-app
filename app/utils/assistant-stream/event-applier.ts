@@ -31,7 +31,11 @@ import {
     extractErrorCode,
     formatUserFacingErrorInline,
 } from './errors';
-import { EMPTY_FINAL_USER_MESSAGE, userFacingErrorCopy } from './userErrorCopy';
+import {
+    EMPTY_FINAL_USER_MESSAGE,
+    isGenericJobFailureInline,
+    userFacingErrorCopy,
+} from './userErrorCopy';
 import { eventJobId, eventName, eventPayload, eventSequence } from './events';
 import { normalizeRunnerPermissionPayload } from './payload';
 
@@ -868,8 +872,15 @@ export function createAssistantEventApplier(
                     : payload,
                 errorCode,
             );
+            const currentText = sanitizeAssistantText(
+                options.readAssistant()?.content || '',
+            );
+            const shouldReplaceContent =
+                !currentText ||
+                isEmptyFinalWarningText(currentText) ||
+                isGenericJobFailureInline(currentText);
             options.updateAssistant({
-                content: failureText,
+                ...(shouldReplaceContent ? { content: failureText } : {}),
                 status: 'failed',
                 error: failureCopy.message,
                 errorCode,

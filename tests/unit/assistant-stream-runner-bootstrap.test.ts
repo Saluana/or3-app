@@ -29,7 +29,10 @@ vi.mock('../../app/composables/useOr3Api', () => ({
 import { useAssistantStream } from '../../app/composables/useAssistantStream';
 import { useChatSessions } from '../../app/composables/useChatSessions';
 import { useLocalCache } from '../../app/composables/useLocalCache';
-import { streamRunnerChat } from '../../app/utils/assistant-stream/execution';
+import {
+    fetchAndApplyRunnerTurn,
+    streamRunnerChat,
+} from '../../app/utils/assistant-stream/execution';
 import { EMPTY_FINAL_USER_MESSAGE } from '../../app/utils/assistant-stream/userErrorCopy';
 
 function addHost() {
@@ -184,6 +187,64 @@ describe('assistant stream runner bootstrap', () => {
         expect(assistantMessage?.content).toBe('service restarted');
         expect(assistantMessage?.content).not.toContain('assistant_message_id');
         expect(assistantMessage?.status).toBe('failed');
+    });
+
+    it('keeps visible streamed text when a runner turn snapshot fails', async () => {
+        let assistantMessage: ChatMessage = {
+            id: 'assistant_1',
+            sessionId: 'session_1',
+            role: 'assistant',
+            content: 'Hey whatsup?',
+            status: 'streaming',
+            createdAt: '2026-05-24T00:00:00.000Z',
+        };
+        const addActivity = vi.fn();
+        const request = vi.fn(async () => ({
+            id: 'rct_codex_auth',
+            session_id: 'rcs_codex_auth',
+            status: 'failed',
+            final_text: '',
+            error_message:
+                'Codex authentication failed while refreshing its login token. Run `codex login` to reconnect Codex, then retry the runner turn.',
+            assistant_message_id: 2512,
+            agent_cli_job_id: 'job_codex_auth',
+        }));
+
+        await fetchAndApplyRunnerTurn('rcs_codex_auth', 'rct_codex_auth', {
+            api: {
+                request,
+                stream: vi.fn(),
+            },
+            activeController: new AbortController(),
+            activeJobId: { value: null },
+            readAssistant: () => assistantMessage,
+            updateAssistant: (patch: Partial<ChatMessage>) => {
+                assistantMessage = { ...assistantMessage, ...patch };
+            },
+            updateActivity: vi.fn(),
+            completeRunningActivity: vi.fn(),
+            addActivity,
+            applyEvent: vi.fn(() => ({ failed: false, completed: false })),
+            replaceAssistantContent: vi.fn((content: string) => {
+                assistantMessage = { ...assistantMessage, content };
+            }),
+            appendCompleteTextPart: vi.fn(),
+            sawVisibleOutput: vi.fn(() => true),
+            setSawVisibleOutput: vi.fn(),
+            sanitizeAssistantText: (value: string) => value,
+            selectedRunnerId: 'codex',
+        });
+
+        expect(assistantMessage.content).toBe('Hey whatsup?');
+        expect(assistantMessage.status).toBe('failed');
+        expect(assistantMessage.error).toContain('codex login');
+        expect(addActivity).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: 'runtime_error',
+                detail: expect.stringContaining('codex login'),
+                status: 'error',
+            }),
+        );
     });
 
     it('flushes runner turn ids before opening the runner stream', async () => {

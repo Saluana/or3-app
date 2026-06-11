@@ -537,6 +537,10 @@ export async function fetchAndApplyRunnerTurn(
         }
     })();
     const noFinalAnswer = !trimmedFinal && !envelopeHasContent;
+    const terminalFailed =
+        turn.status === 'failed' ||
+        turn.status === 'aborted' ||
+        turn.status === 'timed_out';
     // If the assistant already has real user-visible content (a partial
     // answer from streaming), an empty follow-up turn is just a
     // continuation that didn't add anything new — not an "empty final
@@ -552,12 +556,23 @@ export async function fetchAndApplyRunnerTurn(
         existingContent.length > 0 &&
         existingContent !==
             context.sanitizeAssistantText(EMPTY_FINAL_USER_MESSAGE);
+    const preserveVisibleFailureContent =
+        terminalFailed && hasRealContent && Boolean(displayTrimmed);
     const noFinalAnswerWithContent = noFinalAnswer && !hasRealContent;
     if (noFinalAnswerWithContent) {
         // Don't let applyRecoveredFinalText overwrite the assistant
         // content with the empty envelope; the attention branch below
         // writes the user-facing empty-final warning.
         applyRecoveredFinalText('', context);
+    } else if (preserveVisibleFailureContent) {
+        context.addActivity(
+            createActivity(
+                'runtime_error',
+                'Runner error',
+                displayTrimmed,
+                'error',
+            ),
+        );
     } else {
         applyRecoveredFinalText(displayText, context);
     }
@@ -603,21 +618,22 @@ export async function fetchAndApplyRunnerTurn(
         });
         return turn;
     }
+    let assistantError: string | undefined;
+    if (preserveVisibleFailureContent) {
+        assistantError = displayTrimmed;
+    } else if (!displayTrimmed && turn.status !== 'approval_required') {
+        assistantError = turn.error;
+    }
     context.updateAssistant({
         status:
             turn.status === 'approval_required'
                 ? 'attention'
                 : live
                   ? 'streaming'
-                  : turn.status === 'failed' ||
-                      turn.status === 'aborted' ||
-                      turn.status === 'timed_out'
+                  : terminalFailed
                     ? 'failed'
                     : 'complete',
-        error:
-            displayText.trim() || turn.status === 'approval_required'
-                ? undefined
-                : turn.error,
+        error: assistantError,
         errorCode: displayText.trim() ? undefined : latest?.errorCode,
         approvalState:
             turn.status === 'approval_required'
