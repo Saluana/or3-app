@@ -1134,7 +1134,7 @@ export interface ConfigureField {
     key: string;
     label: string;
     description?: string;
-    /** active | deprecated | compatibility — hidden fields are omitted from API responses. */
+    /** active | compatibility — hidden fields are omitted from API responses. */
     status?: string;
     kind: 'text' | 'secret' | 'toggle' | 'boolean' | 'choice' | 'list' | string;
     value?: string | boolean | string[] | null;

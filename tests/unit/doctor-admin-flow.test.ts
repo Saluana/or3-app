@@ -2171,9 +2171,9 @@ describe('Doctor admin flow app integration', () => {
                             section: 'provider',
                             fields: [
                                 {
-                                    key: 'provider_model',
+                                    key: 'provider_api_base',
                                     kind: 'text',
-                                    value: 'old-model',
+                                    value: 'https://old.example/v1',
                                 },
                             ],
                         }),
@@ -2189,9 +2189,9 @@ describe('Doctor admin flow app integration', () => {
                             fields: [
                                 {
                                     section: 'provider',
-                                    key: 'model',
-                                    path: 'provider.model',
-                                    label: 'Chat model',
+                                    key: 'apiBase',
+                                    path: 'provider.apiBase',
+                                    label: 'API base URL',
                                     risk_level: 'warning',
                                     requires_approval: true,
                                 },
@@ -2206,14 +2206,14 @@ describe('Doctor admin flow app integration', () => {
                 if (url.endsWith('/internal/v1/doctor/plans')) {
                     const body = JSON.parse(String(init?.body ?? '{}'));
                     expect(body.plan.changes[0]).toMatchObject({
-                        config_path: 'provider.model',
+                        config_path: 'provider.apiBase',
                         section: 'provider',
-                        field: 'provider_model',
+                        field: 'provider_api_base',
                     });
                     expect(body.plan.exact_config_diff[0]).toMatchObject({
-                        path: 'provider.model',
-                        old_value: 'old-model',
-                        new_value: 'new-model',
+                        path: 'provider.apiBase',
+                        old_value: 'https://old.example/v1',
+                        new_value: 'https://new.example/v1',
                     });
                     return new Response(
                         JSON.stringify({
@@ -2242,10 +2242,14 @@ describe('Doctor admin flow app integration', () => {
         );
 
         const simple = useSimpleSettings();
-        await simple.ensureLoaded('ai');
+        await simple.ensureLoaded('providers');
         await expect(
             simple.applyChanges([
-                { section: 'provider', field: 'model', value: 'new-model' },
+                {
+                    section: 'provider',
+                    field: 'apiBase',
+                    value: 'https://new.example/v1',
+                },
             ]),
         ).rejects.toMatchObject({ status: 403 });
     });

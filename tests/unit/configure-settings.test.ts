@@ -130,14 +130,9 @@ describe('settings configure mappings', () => {
                                     value: 'configured',
                                 },
                                 {
-                                    key: 'provider_model',
+                                    key: 'provider_api_base',
                                     kind: 'text',
-                                    value: 'openai/gpt-4.1-mini',
-                                },
-                                {
-                                    key: 'provider_vision',
-                                    kind: 'toggle',
-                                    value: false,
+                                    value: 'https://api.openai.com/v1',
                                 },
                                 {
                                     key: 'provider_temperature',
@@ -171,15 +166,9 @@ describe('settings configure mappings', () => {
                         changes: [
                             {
                                 section: 'provider',
-                                field: 'provider_model',
+                                field: 'provider_api_base',
                                 op: 'set',
-                                value: 'openai/gpt-4.1',
-                            },
-                            {
-                                section: 'provider',
-                                field: 'provider_vision',
-                                op: 'set',
-                                value: true,
+                                value: 'https://openrouter.ai/api/v1',
                             },
                         ],
                     });
@@ -203,25 +192,23 @@ describe('settings configure mappings', () => {
         await simple.ensureLoaded('ai');
 
         expect(simple.valueIndex.value['provider.apiKey']).toBe('configured');
-        expect(simple.valueIndex.value['provider.model']).toBe(
-            'openai/gpt-4.1-mini',
+        expect(simple.valueIndex.value['provider.apiBase']).toBe(
+            'https://api.openai.com/v1',
         );
-        expect(simple.valueIndex.value['provider.enableVision']).toBe(false);
         expect(simple.findField('provider', 'apiKey')?.key).toBe(
             'provider_api_key',
         );
-        expect(simple.findField('provider', 'enableVision')?.key).toBe(
-            'provider_vision',
+        expect(simple.findField('provider', 'apiBase')?.key).toBe(
+            'provider_api_base',
         );
 
         await expect(
             simple.applyChanges([
                 {
                     section: 'provider',
-                    field: 'model',
-                    value: 'openai/gpt-4.1',
+                    field: 'apiBase',
+                    value: 'https://openrouter.ai/api/v1',
                 },
-                { section: 'provider', field: 'enableVision', value: true },
             ]),
         ).resolves.toMatchObject({ ok: true });
     });
@@ -303,9 +290,10 @@ describe('settings configure mappings', () => {
         });
         const fieldsBySection: Record<string, Array<Record<string, unknown>>> = {
             provider: [
-                { key: 'routing_chat_provider', value: 'openrouter' },
-                { key: 'routing_chat_model', value: 'openai/gpt-4.1-mini' },
-                { key: 'routing_chat_fallbacks', value: '' },
+                { key: 'provider_preset', value: 'OpenRouter' },
+                { key: 'routing_summarization_provider', value: 'openrouter' },
+                { key: 'routing_summarization_model', value: 'openai/gpt-4.1-mini' },
+                { key: 'routing_summarization_fallbacks', value: '' },
                 { key: 'routing_embeddings_provider', value: 'openai' },
                 { key: 'routing_embeddings_model', value: 'text-embedding-3-small' },
                 { key: 'routing_embeddings_dimensions', value: 1536 },

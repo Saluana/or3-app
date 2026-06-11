@@ -60,10 +60,6 @@ const FIELD_ALIASES: Record<string, BackendFieldRef> = {
         section: 'provider',
         field: 'provider_api_key',
     },
-    [refKey('provider', 'model')]: {
-        section: 'provider',
-        field: 'provider_model',
-    },
     [refKey('provider', 'embedModel')]: {
         section: 'provider',
         field: 'provider_embed',
@@ -75,10 +71,6 @@ const FIELD_ALIASES: Record<string, BackendFieldRef> = {
     [refKey('provider', 'temperature')]: {
         section: 'provider',
         field: 'provider_temperature',
-    },
-    [refKey('provider', 'enableVision')]: {
-        section: 'provider',
-        field: 'provider_vision',
     },
     [refKey('provider', 'timeoutSeconds')]: {
         section: 'provider',
@@ -100,30 +92,6 @@ const FIELD_ALIASES: Record<string, BackendFieldRef> = {
         section: 'provider',
         field: 'provider_custom_api_key',
     },
-    [refKey('routing', 'chatProvider')]: {
-        section: 'provider',
-        field: 'routing_chat_provider',
-    },
-    [refKey('routing', 'chatModel')]: {
-        section: 'provider',
-        field: 'routing_chat_model',
-    },
-    [refKey('routing', 'chatFallbacks')]: {
-        section: 'provider',
-        field: 'routing_chat_fallbacks',
-    },
-    [refKey('routing', 'agentsProvider')]: {
-        section: 'provider',
-        field: 'routing_agents_provider',
-    },
-    [refKey('routing', 'agentsModel')]: {
-        section: 'provider',
-        field: 'routing_agents_model',
-    },
-    [refKey('routing', 'agentsFallbacks')]: {
-        section: 'provider',
-        field: 'routing_agents_fallbacks',
-    },
     [refKey('routing', 'summarizationProvider')]: {
         section: 'provider',
         field: 'routing_summarization_provider',
@@ -135,18 +103,6 @@ const FIELD_ALIASES: Record<string, BackendFieldRef> = {
     [refKey('routing', 'summarizationFallbacks')]: {
         section: 'provider',
         field: 'routing_summarization_fallbacks',
-    },
-    [refKey('routing', 'contextProvider')]: {
-        section: 'provider',
-        field: 'routing_context_provider',
-    },
-    [refKey('routing', 'contextModel')]: {
-        section: 'provider',
-        field: 'routing_context_model',
-    },
-    [refKey('routing', 'contextFallbacks')]: {
-        section: 'provider',
-        field: 'routing_context_fallbacks',
     },
     [refKey('routing', 'embeddingsProvider')]: {
         section: 'provider',

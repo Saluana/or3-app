@@ -287,17 +287,17 @@ export function useSettingsHealth() {
             await settingsPromise;
             const v = simple.valueIndex.value;
 
-            // 4. AI providers and routing configured.
+            // 4. OR3 platform provider keys and retained model roles.
             const openaiKey = v['provider.openaiApiKey'];
             const openrouterKey = v['provider.openrouterApiKey'];
             const legacyApiKey = v['provider.apiKey'];
-            const chatProvider = String(
-                v['routing.chatProvider'] ?? v['provider.kind'] ?? '',
+            const summarizationProvider = String(
+                v['routing.summarizationProvider'] ?? v['provider.kind'] ?? '',
             );
             const embeddingsProvider = String(
                 v['routing.embeddingsProvider'] ?? '',
             );
-            const model = v['routing.chatModel'] ?? v['provider.model'];
+            const summarizationModel = v['routing.summarizationModel'];
             const providerHasKey = (provider: string) => {
                 if (provider === 'openai')
                     return Boolean(openaiKey || legacyApiKey);
@@ -322,12 +322,12 @@ export function useSettingsHealth() {
                     detail: 'At least one provider key is present.',
                 });
             }
-            if (chatProvider && !providerHasKey(chatProvider)) {
+            if (summarizationProvider && !providerHasKey(summarizationProvider)) {
                 next.push({
-                    id: 'chat-provider-key',
-                    label: 'Chat provider key set',
+                    id: 'summarization-provider-key',
+                    label: 'Summarization provider key set',
                     status: 'warning',
-                    detail: `${chatProvider} is selected for chat but has no key.`,
+                    detail: `${summarizationProvider} is selected for summarization but has no key.`,
                     fixHref: '/settings/section/providers',
                     fixLabel: 'Review providers',
                 });
@@ -342,13 +342,13 @@ export function useSettingsHealth() {
                     fixLabel: 'Review providers',
                 });
             }
-            if (!model) {
+            if (!summarizationModel) {
                 next.push({
-                    id: 'ai-model',
-                    label: 'Chat model selected',
+                    id: 'summarization-model',
+                    label: 'Summarization model selected',
                     status: 'warning',
-                    detail: 'No chat model picked.',
-                    fixHref: '/settings/section/providers?focus=ai-model',
+                    detail: 'No summarization model picked.',
+                    fixHref: '/settings/section/ai?focus=summarization-model',
                     fixLabel: 'Pick a model',
                 });
             }

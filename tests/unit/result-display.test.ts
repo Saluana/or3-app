@@ -87,6 +87,23 @@ describe('result display helpers', () => {
         );
     });
 
+    it('prefers runner-chat error_message over nested Codex JSONL noise', () => {
+        const raw = JSON.stringify({
+            assistant_message_id: 2636,
+            error_message:
+                'failed to load skill /Users/brendon/.agents/skills/waveapps-accounting/SKILL.md: invalid YAML',
+            final_text: [
+                '{"type":"thread.started","thread_id":"t1"}',
+                '{"type":"turn.completed","status":"failed"}',
+            ].join('\n'),
+            status: 'failed',
+        });
+
+        expect(normalizeResultDisplayText(raw, 'codex')).toBe(
+            'failed to load skill /Users/brendon/.agents/skills/waveapps-accounting/SKILL.md: invalid YAML',
+        );
+    });
+
     it('extracts readable text from OpenCode error events', () => {
         const raw = JSON.stringify({
             type: 'error',

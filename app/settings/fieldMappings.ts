@@ -8,10 +8,7 @@
  *   - emit ConfigureChange[] back via the existing apply endpoint
  */
 
-import {
-    CONVERSATION_DETAIL_PRESETS,
-    MEMORY_SEARCH_PRESETS,
-} from './presets';
+import { MEMORY_SEARCH_PRESETS } from './presets';
 import type { SimpleSettingSection } from './simpleSettings';
 
 function get<T>(values: Record<string, unknown>, key: string, fallback: T): T {
@@ -28,15 +25,15 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
         summaryTemplate: (v) => {
             const openai = get(v, 'provider.openaiApiKey', '');
             const openrouter = get(v, 'provider.openrouterApiKey', '');
-            const legacyProvider = get(v, 'provider.kind', '');
+            const selectedProvider = get(v, 'provider.kind', '');
             const names = [
                 openai ? 'OpenAI' : '',
                 openrouter ? 'OpenRouter' : '',
             ].filter(Boolean);
             return names.length
                 ? `${names.join(' and ')} configured.`
-                : legacyProvider
-                    ? `${legacyProvider} selected. Add more providers after restarting or3-intern.`
+                : selectedProvider
+                    ? `${selectedProvider} selected. Add more providers after restarting or3-intern.`
                     : 'No provider keys configured yet.';
         },
         controls: [
@@ -64,93 +61,12 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
         description: 'Choose which provider and model handles each kind of work.',
         icon: 'i-pixelarticons-cpu',
         summaryTemplate: (v) => {
-            const provider = get(v, 'routing.chatProvider', get(v, 'provider.kind', 'OpenAI'));
-            const model = get(v, 'routing.chatModel', get(v, 'provider.model', 'default model'));
+            const provider = get(v, 'provider.kind', 'OpenAI');
             const embedProvider = get(v, 'routing.embeddingsProvider', provider);
             const embedModel = get(v, 'routing.embeddingsModel', get(v, 'provider.embedModel', 'default embedding model'));
             return `Runners handle chat; embeddings use ${embedProvider}/${embedModel}.`;
         },
         controls: [
-            {
-                key: 'chat-provider',
-                label: 'Chat provider',
-                description: 'Which provider answers normal messages.',
-                kind: 'choice',
-                group: 'chat',
-                groupLabel: 'Chat',
-                groupDescription: 'Normal messages and direct replies.',
-                fieldRefs: [
-                    { section: 'routing', field: 'chatProvider' },
-                    { section: 'provider', field: 'kind' },
-                ],
-                advancedKeys: ['routing.chatProvider', 'provider.kind'],
-            },
-            {
-                key: 'ai-model',
-                label: 'Chat model',
-                description: 'The model used for replies.',
-                kind: 'model-picker',
-                group: 'chat',
-                groupLabel: 'Chat',
-                groupDescription: 'Normal messages and direct replies.',
-                modelRole: 'chat',
-                modelKind: 'chat',
-                fieldRefs: [
-                    { section: 'routing', field: 'chatModel' },
-                    { section: 'provider', field: 'model' },
-                ],
-                advancedKeys: ['routing.chatModel', 'provider.model'],
-            },
-            {
-                key: 'chat-fallbacks',
-                label: 'Chat fallbacks',
-                description: 'Fallback provider/model entries, like openrouter/openai/gpt-4o-mini.',
-                kind: 'model-picker',
-                group: 'chat',
-                groupLabel: 'Chat',
-                groupDescription: 'Normal messages and direct replies.',
-                modelRole: 'chat',
-                modelKind: 'chat',
-                fieldRefs: [{ section: 'routing', field: 'chatFallbacks' }],
-                advancedKeys: ['routing.chatFallbacks'],
-            },
-            {
-                key: 'agents-provider',
-                label: 'Agents provider',
-                description: 'Provider used for agent-style work.',
-                kind: 'choice',
-                group: 'agents',
-                groupLabel: 'Agents',
-                groupDescription: 'Longer tool-using work and agent runs.',
-                fieldRefs: [{ section: 'routing', field: 'agentsProvider' }],
-                advancedKeys: ['routing.agentsProvider'],
-            },
-            {
-                key: 'agents-model',
-                label: 'Agents model',
-                description: 'Model used for agent-style work.',
-                kind: 'model-picker',
-                group: 'agents',
-                groupLabel: 'Agents',
-                groupDescription: 'Longer tool-using work and agent runs.',
-                modelRole: 'agents',
-                modelKind: 'chat',
-                fieldRefs: [{ section: 'routing', field: 'agentsModel' }],
-                advancedKeys: ['routing.agentsProvider', 'routing.agentsModel'],
-            },
-            {
-                key: 'agents-fallbacks',
-                label: 'Agents fallbacks',
-                description: 'Fallback provider/model entries for agent failures.',
-                kind: 'model-picker',
-                group: 'agents',
-                groupLabel: 'Agents',
-                groupDescription: 'Longer tool-using work and agent runs.',
-                modelRole: 'agents',
-                modelKind: 'chat',
-                fieldRefs: [{ section: 'routing', field: 'agentsFallbacks' }],
-                advancedKeys: ['routing.agentsFallbacks'],
-            },
             {
                 key: 'summarization-provider',
                 label: 'Summarization provider',
@@ -189,43 +105,6 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 advancedKeys: ['routing.summarizationFallbacks'],
             },
             {
-                key: 'context-provider',
-                label: 'Context manager provider',
-                description: 'Provider used for context cleanup and maintenance proposals.',
-                kind: 'choice',
-                group: 'context-manager',
-                groupLabel: 'Context Manager',
-                groupDescription: 'Context cleanup and maintenance proposals.',
-                fieldRefs: [{ section: 'routing', field: 'contextProvider' }],
-                advancedKeys: ['routing.contextProvider'],
-            },
-            {
-                key: 'context-model',
-                label: 'Context manager model',
-                description: 'Model used for context cleanup and maintenance proposals.',
-                kind: 'model-picker',
-                group: 'context-manager',
-                groupLabel: 'Context Manager',
-                groupDescription: 'Context cleanup and maintenance proposals.',
-                modelRole: 'contextManager',
-                modelKind: 'chat',
-                fieldRefs: [{ section: 'routing', field: 'contextModel' }],
-                advancedKeys: ['routing.contextProvider', 'routing.contextModel'],
-            },
-            {
-                key: 'context-fallbacks',
-                label: 'Context manager fallbacks',
-                description: 'Fallback provider/model entries for context manager failures.',
-                kind: 'model-picker',
-                group: 'context-manager',
-                groupLabel: 'Context Manager',
-                groupDescription: 'Context cleanup and maintenance proposals.',
-                modelRole: 'contextManager',
-                modelKind: 'chat',
-                fieldRefs: [{ section: 'routing', field: 'contextFallbacks' }],
-                advancedKeys: ['routing.contextFallbacks'],
-            },
-            {
                 key: 'embeddings-provider',
                 label: 'Embeddings provider',
                 description: 'Provider used for memory and document search embeddings.',
@@ -257,7 +136,6 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 impacts: ['requires-reindex'],
                 advancedKeys: ['routing.embeddingsModel', 'routing.embeddingsDimensions', 'provider.embedModel'],
             },
-
             {
                 key: 'embeddings-dimensions',
                 label: 'Embedding dimensions',
@@ -272,35 +150,6 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 ],
                 impacts: ['requires-reindex'],
                 advancedKeys: ['routing.embeddingsDimensions', 'provider.embedDimensions'],
-            },
-            {
-                key: 'ai-vision',
-                label: 'Image understanding',
-                description: 'Let the AI look at images you attach.',
-                kind: 'toggle',
-                fieldRefs: [{ section: 'provider', field: 'enableVision' }],
-                impacts: ['higher-cost'],
-                advancedKeys: ['provider.enableVision'],
-                toggle: {
-                    on: {
-                        section: 'provider',
-                        field: 'enableVision',
-                        value: true,
-                    },
-                    off: {
-                        section: 'provider',
-                        field: 'enableVision',
-                        value: false,
-                    },
-                },
-            },
-            {
-                key: 'ai-timeout',
-                label: 'Wait time for AI',
-                description: 'How long to wait before giving up on a reply.',
-                kind: 'text',
-                fieldRefs: [{ section: 'provider', field: 'timeoutSeconds' }],
-                advancedKeys: ['provider.timeoutSeconds'],
             },
         ],
     },
@@ -350,20 +199,6 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                     'memory.vectorSearchK',
                     'memory.ftsSearchK',
                     'memory.vectorScanLimit',
-                ],
-            },
-            {
-                key: 'memory-detail',
-                label: 'Conversation detail',
-                description: 'How much context OR3 sends to the AI per reply.',
-                kind: 'preset-slider',
-                fieldRefs: [{ section: 'context', field: 'maxInputTokens' }],
-                presets: CONVERSATION_DETAIL_PRESETS,
-                impacts: ['higher-cost', 'slower'],
-                advancedKeys: [
-                    'context.maxInputTokens',
-                    'context.outputReserveTokens',
-                    'context.safetyMarginTokens',
                 ],
             },
             {

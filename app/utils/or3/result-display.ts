@@ -115,16 +115,16 @@ function extractCandidate(
     }
     const obj = payload as ParsedPayload;
 
+    const wrappedError = asText(obj.error_message);
+    if (wrappedError) {
+        return { score: 98, text: wrappedError };
+    }
     const wrappedFinalText = asText(obj.final_text);
     if (wrappedFinalText) {
         const nested = extractDisplayText(wrappedFinalText, runnerId, depth + 1);
         if (nested) {
             return { score: 97, text: nested };
         }
-    }
-    const wrappedError = asText(obj.error_message);
-    if (wrappedError) {
-        return { score: 98, text: wrappedError };
     }
 
     switch (runnerId) {
