@@ -169,16 +169,10 @@ const embeddingStatusDescription = computed(() => {
   const dims = Number(props.embeddingsStatus?.memoryVectorDims || 0)
   const missing = Number(props.embeddingsStatus?.missingVectorCount || 0)
   const dirty = Number(props.embeddingsStatus?.dirtyVectorCount || 0)
-  const searchMode = String(props.embeddingsStatus?.searchMode || '').trim().toLowerCase()
   if (status === 'ok') {
-    const docsEnabled = props.embeddingsStatus?.docIndexEnabled
-      ? searchMode === 'fts'
-        ? ' Documents use keyword search (FTS).'
-        : ' Document search is on.'
-      : ''
     return dims > 0
-      ? `Your saved memory vectors are ready (${dims} dimensions).${docsEnabled}`
-      : `The index reports as healthy.${docsEnabled}`
+      ? `Your saved memory vectors are ready (${dims} dimensions).`
+      : 'The index reports as healthy.'
   }
   if (status === 'degraded') {
     const parts = []

@@ -101,8 +101,7 @@ const NOISE_TRANSCRIPT_DOMAIN = textEncoder.encode(
 export type SecureConnectionTrustLevel =
     | 'native-hardware'
     | 'native-software'
-    | 'web-limited'
-    | 'legacy';
+    | 'web-limited';
 export type SecureConnectionStorageState =
     | 'hardware-backed'
     | 'software-backed'
@@ -161,7 +160,6 @@ export interface PairingInviteV2 {
     routes: PairingInviteRouteV2[];
     checksum?: string;
     signature?: string;
-    legacyQr?: string;
 }
 
 export type ParsedPairingInvite =
@@ -676,7 +674,6 @@ export function secureConnectionCapabilityDiscovery() {
         relayRendezvous: true,
         enrollmentCertificates: true,
         secureFrames: true,
-        legacyPairingRemote: false,
     };
 }
 
@@ -1016,7 +1013,7 @@ export function validateSecureSessionClaims(
         Array.isArray(c.capabilities) &&
         c.capabilities.every((capability) => typeof capability === 'string') &&
         typeof c.trust_level === 'string' &&
-        ['native-hardware', 'native-software', 'web-limited', 'legacy'].includes(
+        ['native-hardware', 'native-software', 'web-limited'].includes(
             c.trust_level,
         )
     );

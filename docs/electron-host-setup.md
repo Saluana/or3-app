@@ -39,23 +39,18 @@ Use **Private** unless you understand the tradeoff of exposing the local service
 
 Host mode uses `/computer/connect-device`:
 
-- Secure QR enrollment is the primary path.
-- **Use a code instead** generates a request ID/code fallback.
-- **Compatibility options** hides older short-code pairing for recovery and older clients.
+- Secure QR enrollment is the supported path.
 
 Remote/client mode still uses `/settings/pair` to connect this app to another computer.
 
 ## Trusted devices
 
-Host mode uses `/computer/trusted-devices` to list secure enrolled devices first and compatibility pairings separately. Revocation asks for confirmation and then calls the matching secure or legacy service API.
+Host mode uses `/computer/trusted-devices` to list secure enrolled devices. Revocation asks for confirmation and then calls the secure service API.
 
 Power users can still use CLI commands when troubleshooting:
 
 ```bash
 or3-intern service
-or3-intern connect-device
-or3-intern connect-device list
-or3-intern connect-device disconnect <device-id>
 ```
 
 ## Release validation checklist

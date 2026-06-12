@@ -330,7 +330,7 @@ describe('useOr3Api', () => {
         const fetchMock = vi.fn(
             async (_url: string | URL | Request, init?: RequestInit) => {
                 expect(String(_url)).toBe(
-                    'http://127.0.0.1:9100/internal/v1/agent-runs',
+                    'http://127.0.0.1:9100/internal/v1/runner-runs',
                 );
                 expect(JSON.parse(String(init?.body))).toEqual({
                     parent_session_key: 'main',
@@ -350,7 +350,7 @@ describe('useOr3Api', () => {
 
         const api = useOr3Api();
         await expect(
-            api.request('/internal/v1/agent-runs', {
+            api.request('/internal/v1/runner-runs', {
                 method: 'POST',
                 body: {
                     parent_session_key: 'main',

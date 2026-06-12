@@ -48,23 +48,9 @@ Electron host mode is documented in [docs/electron-host-setup.md](docs/electron-
 
 ## Pairing
 
-App-created flow:
+Use `/computer/connect-device` on the host computer to create a secure QR invite. Use `/settings/pair` on the remote app to scan or paste that invite.
 
-```bash
-or3-intern pairing approve-code 123456
-```
-
-Use this when `/settings/pair` shows a 6-digit code.
-
-CLI-created flow:
-
-```bash
-or3-intern connect-device
-```
-
-Use this when you want the computer to print the request ID and code first, then enter both values in the app's **Connect with a CLI code** section.
-
-After pairing, use **Disconnect this app** in Settings to forget the saved local token. Revoke host trust from the computer with `or3-intern connect-device disconnect <device-id>`.
+After pairing, use **Disconnect this app** in Settings to forget the saved local enrollment.
 
 ## Electron
 

@@ -11,7 +11,7 @@ describe('settings pair page', () => {
         vi.clearAllMocks();
     });
 
-    it('shows secure QR pairing before manual code and legacy sections', () => {
+    it('shows secure QR pairing before secure device approvals', () => {
         const wrapper = mount(PairPage, {
             global: {
                 stubs: {
@@ -31,17 +31,9 @@ describe('settings pair page', () => {
                         template:
                             '<section data-card="secure-pairing">SecurePairingCard</section>',
                     },
-                    HostConnectionCard: {
-                        template:
-                            '<section data-card="code-connection">HostConnectionCard</section>',
-                    },
                     SecureDeviceApprovalCard: {
                         template:
                             '<section data-card="secure-devices">SecureDeviceApprovalCard</section>',
-                    },
-                    DeviceManagementCard: {
-                        template:
-                            '<section data-card="legacy-devices">DeviceManagementCard</section>',
                     },
                 },
             },
@@ -53,9 +45,7 @@ describe('settings pair page', () => {
                 .map((node) => node.attributes('data-card')),
         ).toEqual([
             'secure-pairing',
-            'code-connection',
             'secure-devices',
-            'legacy-devices',
         ]);
     });
 });

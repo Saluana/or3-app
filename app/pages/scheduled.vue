@@ -160,7 +160,7 @@
                                         ? agentRunnerLabel(
                                               job.payload?.agent_run?.runner_id,
                                           )
-                                        : 'Legacy scheduled task'
+                                        : 'Unsupported scheduled task'
                                 }}
                             </span>
                         </div>

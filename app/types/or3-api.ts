@@ -600,7 +600,7 @@ export type AgentRunIsolation =
     | 'sandbox_workspace_write'
     | 'sandbox_dangerous';
 
-export interface AgentCliRunRequest {
+export interface RunnerRunRequest {
     parent_session_key: string;
     runner_id: AgentRunnerId;
     task: string;
@@ -613,13 +613,13 @@ export interface AgentCliRunRequest {
     meta?: Record<string, unknown>;
 }
 
-export interface AgentCliRunResponse {
+export interface RunnerRunResponse {
     job_id: string;
     run_id?: string;
     status: 'queued' | 'running' | string;
 }
 
-export type PersistedAgentCliStatus =
+export type PersistedRunnerRunStatus =
     | 'queued'
     | 'starting'
     | 'running'
@@ -628,14 +628,14 @@ export type PersistedAgentCliStatus =
     | 'aborted'
     | 'timed_out';
 
-export interface PersistedAgentCliJob {
+export interface PersistedRunnerRunJob {
     job_id: string;
     run_id?: string;
-    kind: `agent_cli:${string}` | string;
+    kind: `runner:${string}` | string;
     runner_id: string;
     parent_session_key: string;
     task: string;
-    status: PersistedAgentCliStatus | string;
+    status: PersistedRunnerRunStatus | string;
     requested_at: string;
     started_at?: string;
     completed_at?: string;
@@ -651,11 +651,11 @@ export interface PersistedAgentCliJob {
     attempts?: number;
 }
 
-export interface AgentCliListResponse {
-    items: PersistedAgentCliJob[];
+export interface RunnerRunListResponse {
+    items: PersistedRunnerRunJob[];
 }
 
-export interface AgentCliSseOutputEvent {
+export interface RunnerRunSseOutputEvent {
     type: 'output';
     ts?: string;
     seq?: number;
@@ -665,7 +665,7 @@ export interface AgentCliSseOutputEvent {
     chunk: string;
 }
 
-export interface AgentCliSseStructuredEvent {
+export interface RunnerRunSseStructuredEvent {
     type: 'structured';
     ts?: string;
     seq?: number;
@@ -674,7 +674,7 @@ export interface AgentCliSseStructuredEvent {
     payload?: unknown;
 }
 
-export interface AgentCliSseCompletionEvent {
+export interface RunnerRunSseCompletionEvent {
     type: 'completion';
     ts?: string;
     job_id?: string;
@@ -689,7 +689,7 @@ export interface AgentCliSseCompletionEvent {
     message?: string;
 }
 
-export interface AgentCliSseErrorEvent {
+export interface RunnerRunSseErrorEvent {
     type: 'error';
     ts?: string;
     job_id?: string;

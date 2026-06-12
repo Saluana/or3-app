@@ -117,9 +117,7 @@ describe('Electron host service manager', () => {
         const launchConfig = JSON.parse(await readFile(join(dir, 'or3-electron-launch-config.json'), 'utf8'));
         expect(launchConfig.service.maxCapability).toBe('privileged');
         expect(launchConfig.security.profiles.channels.service).toBe('admin');
-        expect(launchConfig.security.profiles.profiles.admin.allowedTools).toContain('delete_file');
-        expect(launchConfig.hardening.guardedTools).toBe(true);
-        expect(launchConfig.hardening.privilegedTools).toBe(true);
+        expect(launchConfig.security.profiles.profiles.admin.writablePaths).toContain('${workspaceDir}');
         expect(launchConfig.tools.enableExec).toBe(true);
         await stopService();
     });

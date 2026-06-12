@@ -60,7 +60,6 @@ export interface SecurityPreset {
     label: string;
     shortDescription: string;
     serviceListenMode: 'loopback' | 'private-network' | 'custom';
-    allowLegacyPairing: boolean;
     preferSecureQr: boolean;
     requireApprovals: boolean;
     exposeOnLan: boolean;
@@ -146,10 +145,9 @@ export interface ServiceTokenResult {
 
 export interface HostDeviceInvite {
     id: string;
-    kind: 'secure-qr' | 'cli-code' | 'legacy-code';
+    kind: 'secure-qr';
     qrText?: string;
     inviteLink?: string;
-    legacyQrText?: string;
     qrImageDataUrl?: string;
     routes?: Array<{ kind: 'app-proxy' | 'direct' | 'loopback'; baseUrl: string; priority: number }>;
     requestId?: number;
@@ -194,11 +192,8 @@ export interface Or3DesktopBridge {
         issueServiceToken(input: ServiceTokenRequest): Promise<ServiceTokenResult>;
         setAutostart(enabled: boolean): Promise<AutostartStatus>;
         createSecureInvite(input?: { appOrigin?: string; requestedRole?: string; capabilities?: string[] }): Promise<HostDeviceInvite>;
-        createCliInvite(): Promise<HostDeviceInvite>;
         listSecureDevices(): Promise<Array<Record<string, unknown>>>;
         revokeSecureDevice(deviceId: string): Promise<{ deviceId: string; status: string }>;
-        listLegacyDevices(): Promise<Array<Record<string, unknown>>>;
-        revokeLegacyDevice(deviceId: string): Promise<{ deviceId: string; status: string }>;
     };
 }
 

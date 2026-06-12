@@ -36,18 +36,6 @@ const mockHost = vi.hoisted(() => ({
             status: 'created',
         }),
     ),
-    createCliInvite: vi.fn(() =>
-        Promise.resolve({
-            id: 'cli-1',
-            kind: 'cli-code',
-            requestId: 42,
-            code: '123456',
-            expiresAt: '2026-05-17T12:00:00.000Z',
-            serviceBaseUrl: 'http://127.0.0.1:9100',
-            instructions: [],
-            status: 'created',
-        }),
-    ),
 }));
 
 vi.mock('../../app/composables/useElectronHostSetup', async () => {
@@ -109,7 +97,6 @@ describe('Electron host components', () => {
         mockHost.startService.mockClear();
         mockHost.restartService.mockClear();
         mockHost.createSecureInvite.mockClear();
-        mockHost.createCliInvite.mockClear();
         vi.mocked(navigateTo).mockClear();
     });
 
@@ -139,15 +126,15 @@ describe('Electron host components', () => {
         expect(wrapper.text()).toContain('Open pairing');
     });
 
-    it('renders Add device primary and advanced compatibility section for host mode', async () => {
+    it('renders Add device secure invite for host mode', async () => {
         const wrapper = mount(ConnectDevicePage, { global: { stubs } });
         await Promise.resolve();
         await Promise.resolve();
 
         expect(wrapper.text()).toContain('Add device');
         expect(wrapper.text()).toContain('Copy invite');
-        expect(wrapper.text()).toContain('Compatibility options');
-        expect(wrapper.text()).toContain('Generate one-time code');
+        expect(wrapper.text()).not.toContain('Compatibility options');
+        expect(wrapper.text()).not.toContain('Generate one-time code');
         expect(mockHost.createSecureInvite).toHaveBeenCalled();
     });
 

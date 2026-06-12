@@ -176,11 +176,11 @@ const SETTINGS_DESTINATIONS: SettingsDestinationDef[] = [
             'mobile-home': 'Connected devices',
         },
         description: {
-            'desktop-sidebar':
-                'Review and revoke devices trusted by this computer.',
-            'mobile-home':
-                'Review secure and legacy devices on the paired computer.',
-        },
+			'desktop-sidebar':
+				'Review and revoke devices trusted by this computer.',
+			'mobile-home':
+				'Review secure devices trusted by the paired computer.',
+		},
         icon: 'i-pixelarticons-shield',
         to: resolveTrustedDevicesRoute,
         surfaces: ['desktop-sidebar'],

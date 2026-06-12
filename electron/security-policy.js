@@ -83,11 +83,8 @@ export const IPC_CHANNELS = Object.freeze({
     internIssueServiceToken: 'or3:intern:issue-service-token',
     internSetAutostart: 'or3:intern:set-autostart',
     internCreateSecureInvite: 'or3:intern:create-secure-invite',
-    internCreateCliInvite: 'or3:intern:create-cli-invite',
     internListSecureDevices: 'or3:intern:list-secure-devices',
     internRevokeSecureDevice: 'or3:intern:revoke-secure-device',
-    internListLegacyDevices: 'or3:intern:list-legacy-devices',
-    internRevokeLegacyDevice: 'or3:intern:revoke-legacy-device',
 });
 
 export function isAllowedNavigation(url) {

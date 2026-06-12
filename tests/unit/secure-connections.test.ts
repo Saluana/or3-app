@@ -176,10 +176,10 @@ describe('secure connection helpers', () => {
         ).toThrow(/metadata is incomplete/i);
     });
 
-    it('reports v2 feature discovery without remote legacy pairing', () => {
+    it('reports secure connection feature discovery', () => {
         const discovery = secureConnectionCapabilityDiscovery();
         expect(discovery.qrPairingV2).toBe(true);
-        expect(discovery.legacyPairingRemote).toBe(false);
+        expect(discovery.enrollmentCertificates).toBe(true);
     });
 
     it('signs enrollment proposals over canonical bytes', async () => {

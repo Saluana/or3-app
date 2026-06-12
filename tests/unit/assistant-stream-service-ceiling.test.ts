@@ -51,7 +51,7 @@ describe('assistant stream service ceiling handling', () => {
         vi.clearAllMocks();
     });
 
-    it('does not call removed direct-turn endpoints for runner chat sends', async () => {
+    it('uses runner chat endpoints for runner chat sends', async () => {
         addHost();
         const assistant = useAssistantStream();
         assistant.chatMode.value = 'work';
@@ -61,10 +61,6 @@ describe('assistant stream service ceiling handling', () => {
             ...defaultRunnerSendPayload,
         });
 
-        expect(requestMock).not.toHaveBeenCalledWith(
-            '/internal/v1/turns',
-            expect.anything(),
-        );
         expect(requestMock).toHaveBeenCalledWith(
             '/internal/v1/runner-chat/sessions',
             expect.objectContaining({

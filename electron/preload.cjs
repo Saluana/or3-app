@@ -17,11 +17,8 @@ const channels = Object.freeze({
 	internIssueServiceToken: 'or3:intern:issue-service-token',
 	internSetAutostart: 'or3:intern:set-autostart',
 	internCreateSecureInvite: 'or3:intern:create-secure-invite',
-	internCreateCliInvite: 'or3:intern:create-cli-invite',
 	internListSecureDevices: 'or3:intern:list-secure-devices',
 	internRevokeSecureDevice: 'or3:intern:revoke-secure-device',
-	internListLegacyDevices: 'or3:intern:list-legacy-devices',
-	internRevokeLegacyDevice: 'or3:intern:revoke-legacy-device',
 });
 
 function invoke(channel, payload) {
@@ -62,11 +59,8 @@ contextBridge.exposeInMainWorld(
 				requestedRole: String(input?.requestedRole || ''),
 				capabilities: Array.isArray(input?.capabilities) ? input.capabilities.map((item) => String(item || '')).filter(Boolean) : [],
 			}),
-			createCliInvite: () => invoke(channels.internCreateCliInvite),
 			listSecureDevices: () => invoke(channels.internListSecureDevices),
 			revokeSecureDevice: (deviceId) => invoke(channels.internRevokeSecureDevice, { deviceId: String(deviceId || '') }),
-			listLegacyDevices: () => invoke(channels.internListLegacyDevices),
-			revokeLegacyDevice: (deviceId) => invoke(channels.internRevokeLegacyDevice, { deviceId: String(deviceId || '') }),
 		}),
 	}),
 );

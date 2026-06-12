@@ -66,8 +66,7 @@
                             <p class="text-sm leading-6 text-(--or3-text-muted)">
                                 Use <strong>Connect devices</strong> to add phones,
                                 browsers, or remote Electron apps.
-                                <strong>Trusted devices</strong> lists secure devices
-                                first and compatibility pairings separately.
+                                <strong>Trusted devices</strong> lists enrolled secure devices.
                             </p>
                             <div class="flex flex-wrap gap-2 pt-1">
                                 <UButton
@@ -95,40 +94,9 @@
                         </div>
                     </div>
 
-                    <details class="or3-pair-disclosure or3-pair-fade-in" style="animation-delay: 140ms">
-                        <summary class="or3-pair-disclosure__summary">
-                            <UIcon
-                                name="i-pixelarticons-chevron-right"
-                                class="or3-pair-disclosure__chev"
-                            />
-                            <span class="or3-pair-disclosure__label">
-                                Compatibility / Advanced
-                            </span>
-                            <span class="or3-pair-disclosure__hint">
-                                Older clients · recovery
-                            </span>
-                        </summary>
-                        <div class="or3-pair-disclosure__body">
-                            <p class="text-sm leading-6 text-(--or3-text-muted)">
-                                Use one-time code pairing only for older clients or
-                                recovery. Most devices should paste the invite link
-                                or scan the QR.
-                            </p>
-                            <div class="mt-3">
-                                <HostConnectionCard />
-                            </div>
-                        </div>
-                    </details>
-
                     <div class="or3-pair-fade-in" style="animation-delay: 200ms">
                         <div class="or3-pair-card">
                             <SecureDeviceApprovalCard />
-                        </div>
-                    </div>
-
-                    <div class="or3-pair-fade-in" style="animation-delay: 260ms">
-                        <div class="or3-pair-card">
-                            <DeviceManagementCard />
                         </div>
                     </div>
                 </template>

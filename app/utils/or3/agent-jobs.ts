@@ -1,8 +1,8 @@
 import type { JobSnapshot } from '~/types/or3-api';
 import {
-    formatAgentCliKind,
+    formatRunnerKind,
     isActiveStatus,
-    isCliJob,
+    isRunnerJob,
     normalizeStatus,
     runnerLabel,
 } from '~/utils/or3/jobs';
@@ -87,7 +87,7 @@ export function jobDisplayTitle(job: JobSnapshot): string {
     if (task && !isReplayOrSystemBlob(task)) return truncateLabel(task, 96);
     if (title) return truncateLabel(title, 96);
     if (task) return truncateLabel(task, 96);
-    return formatAgentCliKind(job.kind);
+    return formatRunnerKind(job.kind);
 }
 
 function isNoisePreview(text: string, displayTitle: string): boolean {
@@ -120,7 +120,7 @@ export function jobSearchHaystack(job: JobSnapshot): string {
         jobRunnerDisplay(job),
         job.category,
         job.kind,
-        formatAgentCliKind(job.kind),
+        formatRunnerKind(job.kind),
         job.job_id,
         job.cwd,
     ]
@@ -322,10 +322,10 @@ export function lastActivityPreview(job: JobSnapshot, maxLen = 120): string {
     if (job.error?.trim()) return job.error.trim().slice(0, maxLen);
     if (job.error_preview?.trim()) return job.error_preview.trim().slice(0, maxLen);
     if (job.final_text?.trim()) return job.final_text.trim().slice(0, maxLen);
-    if (isCliJob(job.kind) && job.stdout_preview?.trim()) {
+    if (isRunnerJob(job.kind) && job.stdout_preview?.trim()) {
         return job.stdout_preview.trim().slice(0, maxLen);
     }
-    if (isCliJob(job.kind) && job.stderr_preview?.trim()) {
+    if (isRunnerJob(job.kind) && job.stderr_preview?.trim()) {
         return job.stderr_preview.trim().slice(0, maxLen);
     }
     const events = job.structured_events ?? job.raw_events;

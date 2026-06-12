@@ -94,7 +94,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { JobSnapshot } from '~/types/or3-api';
-import { formatAgentCliKind } from '~/utils/or3/jobs';
+import { formatRunnerKind } from '~/utils/or3/jobs';
 
 const props = defineProps<{
     pending: JobSnapshot[];
@@ -113,7 +113,7 @@ const recent = computed<JobSnapshot[]>(
 function titleFor(job: JobSnapshot) {
     if (job.title) return job.title;
     if (job.task) return job.task;
-    return formatAgentCliKind(job.kind);
+    return formatRunnerKind(job.kind);
 }
 
 function labelFor(job: JobSnapshot) {

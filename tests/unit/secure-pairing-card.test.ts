@@ -12,9 +12,6 @@ const pairingMocks = vi.hoisted(() => {
         toastAdds,
         upgradeInputs,
         securePairingStatus: { value: 'idle' },
-        exchangeSecurePairingPayload: vi.fn(),
-        exchangeSecurePairingQR: vi.fn(),
-        upgradeLegacyDeviceToSecure: vi.fn(),
         upgradeSecurePairingPayload: vi.fn(async (input: unknown) => {
             upgradeInputs.push(input);
         }),

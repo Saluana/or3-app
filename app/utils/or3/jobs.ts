@@ -1,5 +1,5 @@
 import type { RecentJobSummary } from '~/types/app-state';
-import type { JobSnapshot, PersistedAgentCliJob } from '~/types/or3-api';
+import type { JobSnapshot, PersistedRunnerRunJob } from '~/types/or3-api';
 
 /**
  * UI status vocabulary used across Active/Queue/History panels and the detail
@@ -148,8 +148,8 @@ export function summaryToSnapshot(summary: RecentJobSummary): JobSnapshot {
 /**
  * Returns true when the job kind indicates an external CLI runner.
  */
-export function isCliJob(kind?: string): boolean {
-    return (kind ?? '').startsWith('agent_cli:');
+export function isRunnerJob(kind?: string): boolean {
+    return (kind ?? '').startsWith('runner:');
 }
 
 /**
@@ -171,15 +171,15 @@ export function runnerLabel(runnerId?: string): string {
 }
 
 /**
- * Format a `kind` string like `agent_cli:codex` into a user-facing label
+ * Format a `kind` string like `runner:codex` into a user-facing label
  * such as "Codex task".
  */
-export function formatAgentCliKind(kind?: string): string {
+export function formatRunnerKind(kind?: string): string {
     if (!kind) return 'Agent task';
-    if (!isCliJob(kind)) {
+    if (!isRunnerJob(kind)) {
         return kind.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
     }
-    const runnerId = kind.slice('agent_cli:'.length);
+    const runnerId = kind.slice('runner:'.length);
     const label = runnerLabel(runnerId);
     return `${label} task`;
 }
@@ -187,11 +187,11 @@ export function formatAgentCliKind(kind?: string): string {
 /**
  * Convert a persisted external CLI job into a UI summary.
  */
-export function persistedAgentCliJobToSummary(
-    job: PersistedAgentCliJob,
+export function persistedRunnerRunJobToSummary(
+    job: PersistedRunnerRunJob,
 ): RecentJobSummary {
     const status = normalizeStatus(job.status);
-    const kind = job.kind || `agent_cli:${job.runner_id}`;
+    const kind = job.kind || `runner:${job.runner_id}`;
     const updatedAt =
         job.updated_at ||
         job.completed_at ||
@@ -202,7 +202,7 @@ export function persistedAgentCliJobToSummary(
         job_id: job.job_id,
         kind,
         status,
-        title: job.task || formatAgentCliKind(kind),
+        title: job.task || formatRunnerKind(kind),
         task: job.task,
         updated_at: updatedAt,
         final_text: job.final_text_preview || job.stdout_preview,
@@ -225,4 +225,3 @@ export function persistedAgentCliJobToSummary(
         source: 'persisted',
     };
 }
-

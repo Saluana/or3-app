@@ -20,7 +20,7 @@ import {
 
 function job(partial: Partial<JobSnapshot> & { job_id: string }): JobSnapshot {
     return {
-        kind: 'agent_cli:codex',
+        kind: 'runner:codex',
         status: 'queued',
         created_at: '2026-05-24T10:00:00Z',
         updated_at: '2026-05-24T10:00:00Z',
@@ -43,7 +43,7 @@ describe('agent-jobs filters', () => {
             task: 'Beta fix',
             error: 'boom',
             runner_id: 'codex',
-            kind: 'agent_cli:codex',
+            kind: 'runner:codex',
             updated_at: '2026-05-24T11:00:00Z',
         }),
         job({

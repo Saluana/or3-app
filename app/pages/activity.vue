@@ -663,7 +663,7 @@ function jobToEntry(job: JobSnapshot): ActivityEntry {
 
 function displayJobTitle(job: JobSnapshot) {
     const prompt = summarizeRunnerPrompt(job.task || '');
-    if (job.kind?.startsWith('agent_cli:')) {
+    if (job.kind?.startsWith('runner:')) {
         return prompt || `${jobSource(job)} run`;
     }
     return job.title || prompt || jobLabel(job.kind);
@@ -950,7 +950,7 @@ function cronConversationLabel(job: CronJob) {
     const sessionKey = String(job.payload?.session_key || '').trim();
     if (!sessionKey) return 'Dedicated task memory';
     if (sessionKey.startsWith('scheduled:')) return 'Dedicated task memory';
-    if (sessionKey === 'cron:default') return 'Legacy shared memory';
+    if (sessionKey === 'cron:default') return 'Shared task memory';
     return 'Custom conversation';
 }
 
@@ -971,8 +971,8 @@ function agentRunnerLabel(runnerId?: string) {
 
 function jobLabel(kind?: string) {
     if (!kind) return 'Agent run';
-    if (kind.startsWith('agent_cli:'))
-        return `${kind.slice('agent_cli:'.length)} run`;
+    if (kind.startsWith('runner:'))
+        return `${kind.slice('runner:'.length)} run`;
     if (kind === 'exec' || kind === 'terminal') return 'Terminal command';
     if (kind === 'file_list') return 'File listing';
     if (kind === 'file_write') return 'File change';
@@ -982,8 +982,8 @@ function jobLabel(kind?: string) {
 function jobSource(job: JobSnapshot) {
     if (job.runner_label) return job.runner_label;
     if (job.runner_id) return job.runner_id;
-    if (job.kind?.startsWith('agent_cli:'))
-        return job.kind.slice('agent_cli:'.length);
+    if (job.kind?.startsWith('runner:'))
+        return job.kind.slice('runner:'.length);
     return 'Agent job';
 }
 

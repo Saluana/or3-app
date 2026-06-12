@@ -1,17 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
-    formatAgentCliKind,
+    formatRunnerKind,
     isActiveStatus,
-    isCliJob,
+    isRunnerJob,
     isTerminalStatus,
     mergeJobSummary,
     normalizeStatus,
-    persistedAgentCliJobToSummary,
+    persistedRunnerRunJobToSummary,
     runnerLabel,
     summaryToSnapshot,
 } from '../../app/utils/or3/jobs';
 import type { RecentJobSummary } from '../../app/types/app-state';
-import type { PersistedAgentCliJob } from '../../app/types/or3-api';
+import type { PersistedRunnerRunJob } from '../../app/types/or3-api';
 
 describe('normalizeStatus', () => {
     it('maps backend statuses to UI vocabulary', () => {
@@ -49,7 +49,7 @@ describe('isTerminalStatus / isActiveStatus', () => {
 describe('mergeJobSummary', () => {
     const base: RecentJobSummary = {
         job_id: 'j1',
-        kind: 'agent_cli:codex',
+        kind: 'runner:codex',
         status: 'queued',
         title: 'Codex task',
         task: 'Original task',
@@ -64,7 +64,7 @@ describe('mergeJobSummary', () => {
     it('returns the new summary when nothing existed', () => {
         const next: RecentJobSummary = {
             job_id: 'j1',
-            kind: 'agent_cli:codex',
+            kind: 'runner:codex',
             status: 'completed',
             title: 'Persisted codex task',
             updated_at: '2026-04-24T11:00:00Z',
@@ -75,7 +75,7 @@ describe('mergeJobSummary', () => {
     it('lets server-truth fields win while preserving UI metadata', () => {
         const next: RecentJobSummary = {
             job_id: 'j1',
-            kind: 'agent_cli:codex',
+            kind: 'runner:codex',
             status: 'completed',
             title: 'Persisted codex task',
             task: 'Original task',
@@ -100,7 +100,7 @@ describe('mergeJobSummary', () => {
         };
         const next: RecentJobSummary = {
             job_id: 'j1',
-            kind: 'agent_cli:codex',
+            kind: 'runner:codex',
             status: 'completed',
             title: 'Persisted codex task',
             updated_at: '2026-04-24T12:00:00Z',
@@ -114,7 +114,7 @@ describe('summaryToSnapshot', () => {
     it('exposes title and task on the snapshot', () => {
         const summary: RecentJobSummary = {
             job_id: 'j1',
-            kind: 'agent_cli:codex',
+            kind: 'runner:codex',
             status: 'running',
             title: 'Display title',
             task: 'Original task',
@@ -134,7 +134,7 @@ describe('summaryToSnapshot', () => {
     it('passes through CLI fields', () => {
         const summary: RecentJobSummary = {
             job_id: 'j-cli',
-            kind: 'agent_cli:codex',
+            kind: 'runner:codex',
             status: 'completed',
             title: 'Codex task',
             updated_at: '2026-04-24T10:00:00Z',
@@ -159,16 +159,16 @@ describe('summaryToSnapshot', () => {
     });
 });
 
-describe('isCliJob', () => {
-    it('returns true for agent_cli:* kinds', () => {
-        expect(isCliJob('agent_cli:codex')).toBe(true);
-        expect(isCliJob('agent_cli:claude')).toBe(true);
-        expect(isCliJob('agent_cli:gemini')).toBe(true);
+describe('isRunnerJob', () => {
+    it('returns true for runner:* kinds', () => {
+        expect(isRunnerJob('runner:codex')).toBe(true);
+        expect(isRunnerJob('runner:claude')).toBe(true);
+        expect(isRunnerJob('runner:gemini')).toBe(true);
     });
 
     it('returns false for unknown non-CLI kinds', () => {
-        expect(isCliJob(undefined)).toBe(false);
-        expect(isCliJob('')).toBe(false);
+        expect(isRunnerJob(undefined)).toBe(false);
+        expect(isRunnerJob('')).toBe(false);
     });
 });
 
@@ -186,25 +186,25 @@ describe('runnerLabel', () => {
     });
 });
 
-describe('formatAgentCliKind', () => {
+describe('formatRunnerKind', () => {
     it('formats CLI kind strings into task labels', () => {
-        expect(formatAgentCliKind('agent_cli:codex')).toBe('Codex task');
-        expect(formatAgentCliKind('agent_cli:claude')).toBe('Claude task');
-        expect(formatAgentCliKind('agent_cli:gemini')).toBe('Gemini task');
+        expect(formatRunnerKind('runner:codex')).toBe('Codex task');
+        expect(formatRunnerKind('runner:claude')).toBe('Claude task');
+        expect(formatRunnerKind('runner:gemini')).toBe('Gemini task');
     });
 
     it('returns generic labels for non-CLI kinds', () => {
-        expect(formatAgentCliKind('runner_run')).toBe('Runner Run');
-        expect(formatAgentCliKind(undefined)).toBe('Agent task');
+        expect(formatRunnerKind('runner_run')).toBe('Runner Run');
+        expect(formatRunnerKind(undefined)).toBe('Agent task');
     });
 });
 
-describe('persistedAgentCliJobToSummary', () => {
+describe('persistedRunnerRunJobToSummary', () => {
     it('maps a persisted CLI job into a summary', () => {
-        const job: PersistedAgentCliJob = {
+        const job: PersistedRunnerRunJob = {
             job_id: 'j-cli-1',
             run_id: 'run-1',
-            kind: 'agent_cli:codex',
+            kind: 'runner:codex',
             runner_id: 'codex',
             parent_session_key: 'session-a',
             task: 'Fix the failing auth test',
@@ -221,9 +221,9 @@ describe('persistedAgentCliJobToSummary', () => {
             final_text_preview: 'Final result text',
             attempts: 1,
         };
-        const summary = persistedAgentCliJobToSummary(job);
+        const summary = persistedRunnerRunJobToSummary(job);
         expect(summary.status).toBe('completed');
-        expect(summary.kind).toBe('agent_cli:codex');
+        expect(summary.kind).toBe('runner:codex');
         expect(summary.title).toBe('Fix the failing auth test');
         expect(summary.task).toBe('Fix the failing auth test');
         expect(summary.final_text).toBe('Final result text');
@@ -237,7 +237,7 @@ describe('persistedAgentCliJobToSummary', () => {
     });
 
     it('falls back to stdout_preview when final_text_preview is absent', () => {
-        const job: PersistedAgentCliJob = {
+        const job: PersistedRunnerRunJob = {
             job_id: 'j-cli-2',
             runner_id: 'codex',
             parent_session_key: 'session-a',
@@ -247,12 +247,12 @@ describe('persistedAgentCliJobToSummary', () => {
             updated_at: '2026-04-24T10:00:30Z',
             stdout_preview: 'Output only',
         };
-        const summary = persistedAgentCliJobToSummary(job);
+        const summary = persistedRunnerRunJobToSummary(job);
         expect(summary.final_text).toBe('Output only');
     });
 
     it('sets error from stderr_preview when failed', () => {
-        const job: PersistedAgentCliJob = {
+        const job: PersistedRunnerRunJob = {
             job_id: 'j-cli-3',
             runner_id: 'codex',
             parent_session_key: 'session-a',
@@ -262,13 +262,13 @@ describe('persistedAgentCliJobToSummary', () => {
             updated_at: '2026-04-24T10:00:30Z',
             stderr_preview: 'Command not found',
         };
-        const summary = persistedAgentCliJobToSummary(job);
+        const summary = persistedRunnerRunJobToSummary(job);
         expect(summary.status).toBe('failed');
         expect(summary.error).toBe('Command not found');
     });
 
     it('falls back to updated_at when no completed_at', () => {
-        const job: PersistedAgentCliJob = {
+        const job: PersistedRunnerRunJob = {
             job_id: 'j-cli-4',
             runner_id: 'codex',
             parent_session_key: 'session-a',
@@ -277,7 +277,7 @@ describe('persistedAgentCliJobToSummary', () => {
             requested_at: '2026-04-24T10:00:00Z',
             updated_at: '2026-04-24T10:00:01Z',
         };
-        const summary = persistedAgentCliJobToSummary(job);
+        const summary = persistedRunnerRunJobToSummary(job);
         expect(summary.updated_at).toBe('2026-04-24T10:00:01Z');
     });
 });

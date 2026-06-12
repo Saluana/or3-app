@@ -103,7 +103,7 @@ describe('/pair page', () => {
         });
     });
 
-    it('uses compatibility exchange when WebCrypto is unavailable', async () => {
+    it('uses secure approval even when WebCrypto is unavailable', async () => {
         history.replaceState(null, '', `/pair#invite=${encodePairingInviteV2(invite())}`);
         Object.defineProperty(globalThis, 'isSecureContext', { value: false, configurable: true });
         Object.defineProperty(globalThis, 'crypto', { value: {}, configurable: true });
@@ -114,11 +114,11 @@ describe('/pair page', () => {
         const PairPage = (await import('../../app/pages/pair.vue')).default;
 
         mount(PairPage, { global: { stubs } });
-        await vi.waitFor(() => expect(pairingMocks.exchangeSecurePairingPayload).toHaveBeenCalled());
+        await vi.waitFor(() => expect(pairingMocks.upgradeSecurePairingPayload).toHaveBeenCalled());
 
-        expect(pairingMocks.upgradeSecurePairingPayload).not.toHaveBeenCalled();
-        const compatibilityCall = pairingMocks.exchangeInputs.at(0);
-        expect(compatibilityCall).toMatchObject({
+        expect(pairingMocks.exchangeSecurePairingPayload).not.toHaveBeenCalled();
+        const secureCall = pairingMocks.upgradeInputs.at(0);
+        expect(secureCall).toMatchObject({
             baseUrl: 'http://localhost:3000/api/or3',
         });
     });

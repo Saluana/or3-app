@@ -32,8 +32,6 @@ const roleProviderField = computed(() => {
             return 'agentsProvider';
         case 'summarization':
             return 'summarizationProvider';
-        case 'contextManager':
-            return 'contextProvider';
         case 'embeddings':
             return 'embeddingsProvider';
         default:

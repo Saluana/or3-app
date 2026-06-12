@@ -103,7 +103,7 @@ import {
     lastActivityPreview,
     minutesSinceUpdate,
 } from '~/utils/or3/agent-jobs';
-import { isActiveStatus, isCliJob } from '~/utils/or3/jobs';
+import { isActiveStatus, isRunnerJob } from '~/utils/or3/jobs';
 import { useSharedNow } from '~/composables/useSharedNow';
 
 const props = defineProps<{ job: JobSnapshot; cancelling?: boolean }>();
@@ -170,7 +170,7 @@ const progressLabel = computed(() => {
 
 const iconName = computed(() => {
     if (attention.value) return 'i-pixelarticons-alert';
-    if (isCliJob(props.job.kind)) return 'i-pixelarticons-terminal';
+    if (isRunnerJob(props.job.kind)) return 'i-pixelarticons-terminal';
     return 'i-pixelarticons-robot';
 });
 </script>

@@ -280,7 +280,7 @@ describe('settings configure mappings', () => {
         ).resolves.toMatchObject({ ok: true });
     });
 
-    it('always renders the runner-first summary even when agentCLI.enabled is unset', async () => {
+    it('always renders the runner-first summary from canonical runner settings', async () => {
         useLocalCache().updateHost({
             id: 'host-1',
             name: 'Host',

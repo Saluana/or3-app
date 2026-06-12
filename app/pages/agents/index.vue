@@ -224,7 +224,7 @@ const {
     loadingJobs,
     lastListError,
     listSupported,
-    queueAgentCliJob,
+    queueRunnerRunJob,
     loadJobs,
     loadAgentRunners,
     abortJob,
@@ -496,7 +496,7 @@ async function createJob(payload: AgentTaskPayload) {
                 'Choose an available external runner to hand off this task.';
             return;
         }
-        await queueAgentCliJob(
+        await queueRunnerRunJob(
                 {
                     parent_session_key: session.sessionKey,
                     runner_id: payload.runnerId,
@@ -664,7 +664,7 @@ function buildContinuationPrompt(
     const agentName =
         job.runner_label || job.runner_id
             ? job.runner_label || job.runner_id
-            : 'Legacy runner';
+            : 'Runner';
     lines.push(
         `I just had my **${agentName}** run a background task that ${statusWord}, and I want to keep working on it here in chat with full context.`,
     );

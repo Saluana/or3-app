@@ -1,23 +1,23 @@
 import { computed, ref, shallowRef } from 'vue';
 import type { Or3AppError, RecentJobSummary } from '~/types/app-state';
 import type {
-    AgentCliListResponse,
-    AgentCliRunRequest,
-    AgentCliRunResponse,
+    RunnerRunListResponse,
+    RunnerRunRequest,
+    RunnerRunResponse,
     AgentRunnerInfo,
     AgentRunnersResponse,
     ArtifactResponse,
     JobSnapshot,
     Or3SseEvent,
-    PersistedAgentCliJob,
+    PersistedRunnerRunJob,
 } from '~/types/or3-api';
 import {
     isActiveStatus,
-    isCliJob,
+    isRunnerJob,
     isTerminalStatus,
     mergeJobSummary,
     normalizeStatus,
-    persistedAgentCliJobToSummary,
+    persistedRunnerRunJobToSummary,
     runnerLabel,
     summaryToSnapshot,
 } from '~/utils/or3/jobs';
@@ -35,7 +35,7 @@ export interface AgentJobUiMeta {
     parent_session_key?: string;
 }
 
-export interface AgentCliJobUiMeta extends AgentJobUiMeta {
+export interface RunnerRunJobUiMeta extends AgentJobUiMeta {
     runner_id: string;
     runner_label?: string;
     mode?: string;
@@ -102,7 +102,7 @@ function fallbackJobKind(job: Pick<JobSnapshot, 'kind' | 'runner_id'>) {
     const explicit = String(job.kind ?? '').trim();
     if (explicit) return explicit;
     const runnerID = String(job.runner_id ?? '').trim();
-    if (runnerID) return `agent_cli:${runnerID}`;
+    if (runnerID) return `runner:${runnerID}`;
     return 'runner';
 }
 
@@ -424,7 +424,7 @@ export function useJobs() {
         loadingJobs.value = true;
         lastListError.value = null;
         try {
-            await loadAgentCliHistory(options);
+            await loadRunnerRunHistory(options);
             listSupported.value = true;
         } catch (error) {
             const err = error as Or3AppError;
@@ -455,21 +455,21 @@ export function useJobs() {
         }
     }
 
-    async function loadAgentCliHistory(
+    async function loadRunnerRunHistory(
         options: { status?: string; limit?: number } = {},
     ) {
         try {
             const params = new URLSearchParams();
             if (options.status) params.set('status', options.status);
             params.set('limit', String(options.limit ?? 50));
-            const response = await api.request<AgentCliListResponse>(
-                `/internal/v1/agent-runs?${params.toString()}`,
+            const response = await api.request<RunnerRunListResponse>(
+                `/internal/v1/runner-runs?${params.toString()}`,
             );
-            const items: PersistedAgentCliJob[] = Array.isArray(response?.items)
+            const items: PersistedRunnerRunJob[] = Array.isArray(response?.items)
                 ? response.items
                 : [];
             if (items.length > 0) {
-                batchUpsertHostJobs(cache, items.map(persistedAgentCliJobToSummary));
+                batchUpsertHostJobs(cache, items.map(persistedRunnerRunJobToSummary));
             }
         } catch (_err) {
             const err = _err as Or3AppError;
@@ -491,7 +491,7 @@ export function useJobs() {
         lastRunnerError.value = null;
         try {
             const response = await api.request<AgentRunnersResponse>(
-                '/internal/v1/agent-runners',
+                '/internal/v1/runner-runners',
             );
             runnerListSupported.value = true;
             agentRunners.value = selectableAgentRunners(
@@ -518,19 +518,19 @@ export function useJobs() {
         }
     }
 
-    async function queueAgentCliJob(
-        request: AgentCliRunRequest,
-        uiMeta?: AgentCliJobUiMeta,
+    async function queueRunnerRunJob(
+        request: RunnerRunRequest,
+        uiMeta?: RunnerRunJobUiMeta,
     ) {
-        const response = await api.request<AgentCliRunResponse>(
-            '/internal/v1/agent-runs',
+        const response = await api.request<RunnerRunResponse>(
+            '/internal/v1/runner-runs',
             { body: request as unknown as Record<string, unknown> },
         );
         const nowIso = new Date().toISOString();
         const label = uiMeta?.runner_label ?? runnerLabel(request.runner_id);
         upsertHostJob(cache, {
             job_id: response.job_id,
-            kind: `agent_cli:${request.runner_id}`,
+            kind: `runner:${request.runner_id}`,
             status: normalizeStatus(response.status ?? 'queued'),
             title: uiMeta?.task || request.task || `${label} task`,
             task: uiMeta?.task ?? request.task,
@@ -667,14 +667,14 @@ export function useJobs() {
         if (!summary || !summary.task || !summary.parent_session_key) {
             return null;
         }
-        if (isCliJob(summary.kind) && summary.runner_id) {
-            return await queueAgentCliJob(
+        if (isRunnerJob(summary.kind) && summary.runner_id) {
+            return await queueRunnerRunJob(
                 {
                     parent_session_key: summary.parent_session_key,
                     runner_id: summary.runner_id,
                     task: summary.task,
-                    mode: summary.mode as AgentCliRunRequest['mode'],
-                    isolation: summary.isolation as AgentCliRunRequest['isolation'],
+                    mode: summary.mode as RunnerRunRequest['mode'],
+                    isolation: summary.isolation as RunnerRunRequest['isolation'],
                     model: summary.model,
                     cwd: summary.cwd,
                     max_turns: undefined,
@@ -746,10 +746,10 @@ export function useJobs() {
         loadingJobs,
         lastListError,
         listSupported,
-        queueAgentCliJob,
+        queueRunnerRunJob,
         loadJobs,
         loadAgentRunners,
-        loadAgentCliHistory,
+        loadRunnerRunHistory,
         fetchJob,
         fetchArtifact,
         subscribeJob,

@@ -11,16 +11,13 @@ import {
 } from './security-policy.js';
 import {
     configureService,
-    createCliInvite,
     createSecureInvite,
     getSetupState,
     installInternPlaceholder,
     issueServiceToken,
-    listLegacyDevices,
     listSecureDevices,
     locateInternBinary,
     restartService,
-    revokeLegacyDevice,
     revokeSecureDevice,
     saveSetupState,
     serviceStatus,
@@ -76,11 +73,8 @@ function registerDesktopIpc() {
     registerIpc(IPC_CHANNELS.internIssueServiceToken, (payload) => issueServiceToken(payload));
     registerIpc(IPC_CHANNELS.internSetAutostart, (payload) => setAutostart(Boolean(payload?.enabled)));
     registerIpc(IPC_CHANNELS.internCreateSecureInvite, (payload) => createSecureInvite(payload));
-    registerIpc(IPC_CHANNELS.internCreateCliInvite, () => createCliInvite());
     registerIpc(IPC_CHANNELS.internListSecureDevices, () => listSecureDevices());
     registerIpc(IPC_CHANNELS.internRevokeSecureDevice, (payload) => revokeSecureDevice(payload?.deviceId));
-    registerIpc(IPC_CHANNELS.internListLegacyDevices, () => listLegacyDevices());
-    registerIpc(IPC_CHANNELS.internRevokeLegacyDevice, (payload) => revokeLegacyDevice(payload?.deviceId));
 }
 
 async function pickDirectory(title) {

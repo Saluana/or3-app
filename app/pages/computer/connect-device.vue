@@ -87,23 +87,6 @@
                 </div>
             </SurfaceCard>
 
-            <details class="rounded-2xl border border-(--or3-border) bg-white/60 p-4">
-                <summary class="cursor-pointer font-mono text-sm font-semibold text-(--or3-text)">
-                    Compatibility options
-                </summary>
-                <p class="mt-2 text-sm leading-6 text-(--or3-text-muted)">
-                    Older one-time code pairing remains available for recovery or older clients. Prefer Add device for new devices.
-                </p>
-                <div class="mt-3 space-y-3">
-                    <UButton label="Generate one-time code" color="neutral" variant="soft" :loading="loadingCode" @click="loadCode" />
-                    <div v-if="cliInvite" class="grid gap-2 sm:grid-cols-2">
-                        <code class="rounded-2xl border border-(--or3-border) bg-white/70 p-3 font-mono text-xs">Request: {{ cliInvite.requestId || '—' }}</code>
-                        <code class="rounded-2xl border border-(--or3-border) bg-white/70 p-3 font-mono text-xs">Code: {{ cliInvite.code || '—' }}</code>
-                    </div>
-                    <p v-if="cliInvite?.message" class="text-sm text-(--or3-text-muted)">{{ cliInvite.message }}</p>
-                    <UButton label="Open pairing settings" color="neutral" variant="soft" to="/settings/pair" />
-                </div>
-            </details>
         </div>
     </AppShell>
 </template>
@@ -115,11 +98,9 @@ import type { HostDeviceInvite } from '~/types/electron-host';
 import { useElectronHostSetup } from '~/composables/useElectronHostSetup';
 
 const host = useElectronHostSetup();
-const { isElectronHostMode, ensureLoaded, createSecureInvite, createCliInvite } = host;
+const { isElectronHostMode, ensureLoaded, createSecureInvite } = host;
 const qrInvite = ref<HostDeviceInvite | null>(null);
-const cliInvite = ref<HostDeviceInvite | null>(null);
 const loadingQr = ref(false);
-const loadingCode = ref(false);
 const qrImageDataUrl = ref('');
 const qrLoading = ref(false);
 const copiedQr = ref(false);
@@ -189,7 +170,6 @@ async function loadQr() {
             requestedRole: selectedAccess.value.requestedRole,
             capabilities: [...selectedAccess.value.capabilities],
         });
-        if (qrInvite.value?.status === 'failed' && !cliInvite.value) await loadCode();
     } finally {
         loadingQr.value = false;
     }
@@ -199,15 +179,6 @@ async function selectAccess(accessId: string) {
     if (selectedAccessId.value === accessId) return;
     selectedAccessId.value = accessId;
     await loadQr();
-}
-
-async function loadCode() {
-    loadingCode.value = true;
-    try {
-        cliInvite.value = await createCliInvite();
-    } finally {
-        loadingCode.value = false;
-    }
 }
 
 async function copyQrText() {

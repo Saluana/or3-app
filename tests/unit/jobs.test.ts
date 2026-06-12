@@ -15,8 +15,8 @@ describe('useJobs', () => {
   it('returns persisted jobs for the active host only', () => {
     const cache = useLocalCache()
     cache.state.value.recentJobs = {
-      alpha: [{ job_id: 'job-alpha', kind: 'agent_cli:codex', status: 'queued', title: 'cli task', updated_at: '2026-01-01T00:00:00.000Z' }],
-      beta: [{ job_id: 'job-beta', kind: 'agent_cli:codex', status: 'completed', title: 'cli task', updated_at: '2026-01-02T00:00:00.000Z' }],
+      alpha: [{ job_id: 'job-alpha', kind: 'runner:codex', status: 'queued', title: 'cli task', updated_at: '2026-01-01T00:00:00.000Z' }],
+      beta: [{ job_id: 'job-beta', kind: 'runner:codex', status: 'completed', title: 'cli task', updated_at: '2026-01-02T00:00:00.000Z' }],
     }
     cache.updateHost({ id: 'alpha', name: 'Alpha', baseUrl: 'http://alpha.test', token: 'alpha-token' })
     cache.updateHost({ id: 'beta', name: 'Beta', baseUrl: 'http://beta.test', token: 'beta-token' })
@@ -38,7 +38,7 @@ describe('useJobs', () => {
     cache.state.value.recentJobs.alpha = [
       {
         job_id: 'job-1',
-        kind: 'agent_cli:codex',
+        kind: 'runner:codex',
         status: 'running',
         title: 'cli task',
         updated_at: '2026-01-01T00:00:00.000Z',
@@ -56,7 +56,7 @@ describe('useJobs', () => {
       if (url.endsWith('/internal/v1/jobs/job-1')) {
         return new Response(JSON.stringify({
           job_id: 'job-1',
-          kind: 'agent_cli:codex',
+          kind: 'runner:codex',
           status: 'completed',
           created_at: '2026-01-01T00:00:00.000Z',
           updated_at: '2026-01-01T00:00:06.000Z',
@@ -123,7 +123,7 @@ describe('useJobs', () => {
     cache.setActiveHost('alpha')
     const fetchSpy = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = input.toString()
-      if (url.endsWith('/internal/v1/agent-runs') && init?.method !== 'GET') {
+      if (url.endsWith('/internal/v1/runner-runs') && init?.method !== 'GET') {
         return new Response(JSON.stringify({ job_id: 'cli-job-1', status: 'queued' }), { status: 202, headers: { 'Content-Type': 'application/json' } })
       }
       if (url.endsWith('/internal/v1/jobs/cli-job-1/stream')) {
@@ -133,8 +133,8 @@ describe('useJobs', () => {
     })
     vi.stubGlobal('fetch', fetchSpy)
 
-    const { jobs, queueAgentCliJob } = useJobs()
-    await queueAgentCliJob(
+    const { jobs, queueRunnerRunJob } = useJobs()
+    await queueRunnerRunJob(
       { parent_session_key: 'sess', runner_id: 'codex', task: 'test' },
 
       { runner_id: 'codex', runner_label: 'Codex', task: 'test' },
@@ -142,18 +142,18 @@ describe('useJobs', () => {
 
     expect(jobs.value.some((j) => j.job_id === 'cli-job-1')).toBe(true)
     const cliJob = jobs.value.find((j) => j.job_id === 'cli-job-1')
-    expect(cliJob?.kind).toBe('agent_cli:codex')
+    expect(cliJob?.kind).toBe('runner:codex')
     expect(cliJob?.runner_id).toBe('codex')
     expect(cliJob?.runner_label).toBe('Codex')
   })
 
-  it('retries CLI jobs through queueAgentCliJob', async () => {
+  it('retries CLI jobs through queueRunnerRunJob', async () => {
     const cache = useLocalCache()
     cache.updateHost({ id: 'alpha', name: 'Alpha', baseUrl: 'http://alpha.test', token: 'alpha-token' })
     cache.setActiveHost('alpha')
     cache.state.value.recentJobs.alpha = [{
       job_id: 'cli-retry',
-      kind: 'agent_cli:codex',
+      kind: 'runner:codex',
       status: 'failed',
       title: 'Codex task',
       task: 'fix a bug',
@@ -167,7 +167,7 @@ describe('useJobs', () => {
     }]
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = input.toString()
-      if (url.endsWith('/internal/v1/agent-runs') && init?.method !== 'GET') {
+      if (url.endsWith('/internal/v1/runner-runs') && init?.method !== 'GET') {
         return new Response(JSON.stringify({ job_id: 'cli-retry-2', status: 'queued' }), { status: 202, headers: { 'Content-Type': 'application/json' } })
       }
       if (url.endsWith('/internal/v1/jobs/cli-retry-2/stream')) {

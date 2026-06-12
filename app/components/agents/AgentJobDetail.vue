@@ -815,7 +815,7 @@ import { computed, ref, watch } from 'vue';
 import type { JobEvent, JobSnapshot } from '~/types/or3-api';
 import {
     isActiveStatus,
-    isCliJob,
+    isRunnerJob,
     isTerminalStatus,
     runnerLabel,
 } from '~/utils/or3/jobs';
@@ -925,7 +925,7 @@ watch(
 
 const title = computed(() => {
     if (!props.job) return 'Agent task';
-    if (isCliJob(props.job.kind)) {
+    if (isRunnerJob(props.job.kind)) {
         return (
             summarizeRunnerPrompt(props.job.task || '') ||
             `${runnerLabel(props.job.runner_id)} task`
@@ -944,7 +944,7 @@ const isLive = computed(() => !!props.job && isActiveStatus(props.job.status));
 const isTerminal = computed(
     () => !!props.job && isTerminalStatus(props.job.status),
 );
-const isCli = computed(() => isCliJob(props.job?.kind));
+const isCli = computed(() => isRunnerJob(props.job?.kind));
 
 const canCancel = computed(() => isLive.value);
 const canRetry = computed(

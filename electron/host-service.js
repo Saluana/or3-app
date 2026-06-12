@@ -143,10 +143,6 @@ function base64UrlBuffer(buffer) {
     return Buffer.from(buffer).toString('base64url');
 }
 
-function decodeBase64Url(raw) {
-    return Buffer.from(String(raw || '').trim(), 'base64url');
-}
-
 function isLoopbackHost(hostname) {
     const host = String(hostname || '').toLowerCase();
     return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]';
@@ -209,68 +205,6 @@ export function buildInviteRoutes(status, appOrigin, config) {
     }
     pushUniqueRoute(routes, { kind: 'loopback', baseUrl: `http://127.0.0.1:${Number(config?.hostService?.listenPort || 9100)}`, priority: 90 });
     return routes.sort((a, b) => a.priority - b.priority);
-}
-
-function readCborValue(data, state = { offset: 0 }) {
-    const first = data[state.offset++];
-    if (first === undefined) throw new Error('Invalid pairing QR payload.');
-    const major = first >> 5;
-    const additional = first & 0x1f;
-    const readLength = () => {
-        if (additional < 24) return additional;
-        if (additional === 24) return data[state.offset++];
-        if (additional === 25) {
-            const value = data.readUInt16BE(state.offset);
-            state.offset += 2;
-            return value;
-        }
-        if (additional === 26) {
-            const value = data.readUInt32BE(state.offset);
-            state.offset += 4;
-            return value;
-        }
-        if (additional === 27) {
-            const value = Number(data.readBigUInt64BE(state.offset));
-            state.offset += 8;
-            return value;
-        }
-        throw new Error('Unsupported pairing QR payload.');
-    };
-    const length = readLength();
-    if (major === 0) return length;
-    if (major === 1) return -1 - length;
-    if (major === 2) {
-        const out = data.subarray(state.offset, state.offset + length);
-        state.offset += length;
-        return out;
-    }
-    if (major === 3) {
-        const out = data.subarray(state.offset, state.offset + length).toString('utf8');
-        state.offset += length;
-        return out;
-    }
-    if (major === 4) {
-        return Array.from({ length }, () => readCborValue(data, state));
-    }
-    if (major === 5) {
-        const out = {};
-        for (let index = 0; index < length; index += 1) {
-            out[String(readCborValue(data, state))] = readCborValue(data, state);
-        }
-        return out;
-    }
-    if (major === 7) {
-        if (additional === 20) return false;
-        if (additional === 21) return true;
-        if (additional === 22 || additional === 23) return null;
-    }
-    throw new Error('Unsupported pairing QR payload.');
-}
-
-function decodeLegacyPairingQR(raw) {
-    const prefix = 'or3pair:v1:';
-    if (!String(raw || '').startsWith(prefix)) throw new Error('Invalid pairing QR prefix.');
-    return readCborValue(decodeBase64Url(String(raw).slice(prefix.length)));
 }
 
 function encodeInviteV2(invite) {
@@ -524,19 +458,16 @@ function builtinAccessProfiles() {
     return {
         reader: {
             maxCapability: 'safe',
-            allowedTools: ['read_file', 'search_file', 'list_dir', 'read_artifact', 'memory_search', 'memory_recent', 'memory_get_pinned'],
             allowedHosts: [],
             writablePaths: [],
         },
         operator: {
             maxCapability: 'guarded',
-            allowedTools: ['read_file', 'search_file', 'list_dir', 'read_artifact', 'write_file', 'edit_file', 'delete_file', 'memory_search', 'memory_recent', 'memory_get_pinned', 'web_search', 'web_fetch', 'web_fetch_markdown', 'exec'],
             allowedHosts: [],
             writablePaths: ['${workspaceDir}'],
         },
         admin: {
             maxCapability: 'privileged',
-            allowedTools: ['read_file', 'search_file', 'list_dir', 'read_artifact', 'write_file', 'edit_file', 'delete_file', 'memory_set_pinned', 'memory_add_note', 'memory_search', 'memory_recent', 'memory_get_pinned', 'web_search', 'web_fetch', 'web_fetch_markdown', 'exec', 'send_message', 'cron'],
             allowedHosts: [],
             writablePaths: ['${workspaceDir}'],
         },
@@ -574,11 +505,7 @@ function ensureElectronServiceAccessProfile(config, hostServiceConfig = {}) {
     profiles.triggers = triggers;
 
 	channels.service = accessLevel;
-    hardening.guardedTools = true;
     tools.enableExec = true;
-	if (accessLevel === 'admin') {
-		hardening.privilegedTools = true;
-	}
 	service.maxCapability = accessLevel === 'admin' ? 'privileged' : 'guarded';
 
 	security.profiles = profiles;
@@ -964,52 +891,10 @@ export async function createSecureInvite(input = {}) {
             }),
         });
         const qrText = String(response.qr || response.qr_text || response.encoded_qr || response.payload || '');
-        let legacyPayload;
-        try {
-            legacyPayload = decodeLegacyPairingQR(qrText);
-        } catch {
-            return {
-                id: String(response.rendezvous_id || response.id || `invite-${Date.now()}`),
-                kind: 'secure-qr',
-                qrText,
-                expiresAt: normalizeExpiry(response.expires_at),
-                serviceBaseUrl: status.baseUrl,
-                instructions: ['Scan this QR or copy the link.', 'It opens pairing and connects automatically.'],
-                status: 'created',
-            };
-        }
-        const routes = buildInviteRoutes(status, input?.appOrigin, config);
-        const invite = {
-            version: 2,
-            kind: 'or3.pair.invite',
-            inviteId: String(response.rendezvous_id || legacyPayload.rendezvousId || response.id || `invite-${Date.now()}`),
-            issuedAtUnixMs: Date.now(),
-            expiresAtUnixMs: Number(response.expires_at || legacyPayload.expiresAtUnixMs || Date.now() + 5 * 60_000),
-            host: {
-                id: String(legacyPayload.hostId || ''),
-                displayName: String(legacyPayload.hostDisplayName || 'This computer'),
-                signingPublicKey: String(legacyPayload.hostSigningPublicKey || ''),
-                noisePublicKey: String(legacyPayload.hostNoisePublicKey || ''),
-            },
-            pairing: {
-                rendezvousId: String(legacyPayload.rendezvousId || response.rendezvous_id || ''),
-                pairingSecret: String(legacyPayload.pairingSecret || ''),
-                qrNonce: String(legacyPayload.qrNonce || ''),
-            },
-            capabilities: Array.isArray(legacyPayload.capabilities) ? legacyPayload.capabilities : requestedCapabilities,
-            routes,
-            checksum: '',
-            legacyQr: qrText,
-        };
-        invite.checksum = inviteChecksum(invite);
-        const inviteLink = createInviteLink(invite, input?.appOrigin);
         return {
-            id: invite.inviteId,
+            id: String(response.rendezvous_id || response.id || `invite-${Date.now()}`),
             kind: 'secure-qr',
-            qrText: inviteLink || `or3pair:v2:${encodeInviteV2(invite)}`,
-            inviteLink,
-            legacyQrText: qrText,
-            routes,
+            qrText,
             expiresAt: normalizeExpiry(response.expires_at),
             serviceBaseUrl: status.baseUrl,
             instructions: ['Scan this QR or copy the link.', 'It opens pairing and connects automatically.'],
@@ -1028,39 +913,6 @@ export async function createSecureInvite(input = {}) {
             instructions: ['Check that secure connections are enabled, then retry.'],
             status: 'failed',
             message,
-        };
-    }
-}
-
-export async function createCliInvite() {
-    const status = await serviceStatus();
-    const baseUrl = status.baseUrl || 'http://127.0.0.1:9100';
-    try {
-        const path = '/internal/v1/pairing/requests';
-        const response = await fetchJson(baseUrl, path, {
-            method: 'POST',
-            headers: await authHeadersFor(path, 'POST'),
-            body: JSON.stringify({ role: 'operator', display_name: 'or3-app', origin: 'electron-host' }),
-        });
-        return {
-            id: String(response.id || response.request_id || `cli-${Date.now()}`),
-            kind: 'cli-code',
-            requestId: Number(response.id || response.request_id || 0),
-            code: String(response.code || ''),
-            expiresAt: String(response.expires_at || new Date(Date.now() + 10 * 60_000).toISOString()),
-            serviceBaseUrl: baseUrl,
-            instructions: ['On the other device, choose use a code.', 'Enter the request ID and code shown here.'],
-            status: 'created',
-        };
-    } catch (error) {
-        return {
-            id: `cli-${Date.now()}`,
-            kind: 'cli-code',
-            expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
-            serviceBaseUrl: baseUrl,
-            instructions: ['Use or3-intern connect-device from a terminal as a fallback.'],
-            status: 'failed',
-            message: error instanceof Error ? error.message : 'Could not create a code.',
         };
     }
 }
@@ -1085,25 +937,6 @@ export async function revokeSecureDevice(deviceId) {
     return { deviceId: String(deviceId), status: 'revoked' };
 }
 
-export async function listLegacyDevices() {
-    const status = await serviceStatus();
-    if (status.state !== 'online') return [];
-    const path = '/internal/v1/devices';
-    const response = await fetchJson(status.baseUrl, path, { headers: await authHeadersFor(path, 'GET') });
-    return response.items || response.devices || [];
-}
-
-export async function revokeLegacyDevice(deviceId) {
-    const status = await serviceStatus();
-    if (status.state !== 'online') throw new Error('Service is offline.');
-    const path = `/internal/v1/devices/${encodeURIComponent(String(deviceId))}/revoke`;
-    await fetchJson(status.baseUrl, path, {
-        method: 'POST',
-        headers: await authHeadersFor(path, 'POST'),
-        body: JSON.stringify({}),
-    });
-    return { deviceId: String(deviceId), status: 'revoked' };
-}
 
 
 export async function issueServiceToken(input = {}) {

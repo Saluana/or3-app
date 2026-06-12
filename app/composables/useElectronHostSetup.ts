@@ -350,12 +350,6 @@ export function useElectronHostSetup() {
         return activeInvite.value;
     }
 
-    async function createCliInvite() {
-        const invite = await desktopBridge()?.intern.createCliInvite();
-        activeInvite.value = invite ?? null;
-        return activeInvite.value;
-    }
-
     return {
         ready,
         capabilities,
@@ -382,6 +376,5 @@ export function useElectronHostSetup() {
         restartService,
         switchMode,
         createSecureInvite,
-        createCliInvite,
     };
 }

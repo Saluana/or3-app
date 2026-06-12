@@ -182,7 +182,7 @@ export function useChatRunners() {
         if (!pinLocked)
             try {
                 const response = await api.request<AgentRunnersResponse>(
-                    '/internal/v1/agent-runners',
+                    '/internal/v1/runner-runners',
                 );
                 agentRunners = response.runners ?? [];
             } catch (err) {
@@ -192,11 +192,11 @@ export function useChatRunners() {
                     const msg =
                         err && typeof err === 'object' && 'message' in err
                             ? String((err as { message?: unknown }).message)
-                            : 'agent-runners failed';
+                            : 'runner-runners failed';
                     errors.push(msg);
                     logger.warn(
                         'refresh:agent-error',
-                        'Agent runner discovery failed',
+                        'Runner discovery failed',
                         { hostId: currentHost, error: msg },
                     );
                 }

@@ -34,29 +34,6 @@
             </div>
         </SurfaceCard>
 
-        <details class="rounded-2xl border border-(--or3-border) bg-white/60 p-4">
-            <summary class="cursor-pointer font-mono text-sm font-semibold text-(--or3-text)">
-                Compatibility devices
-            </summary>
-            <p class="mt-2 text-sm leading-6 text-(--or3-text-muted)">
-                Older short-code pairings are kept separate. Remove anything you no longer recognize.
-            </p>
-            <div v-if="!legacyDevices.length" class="mt-3 rounded-2xl border border-dashed border-(--or3-border) bg-white/60 p-4 text-center text-sm text-(--or3-text-muted)">
-                No compatibility devices are stored.
-            </div>
-            <div v-else class="mt-3 space-y-2">
-                <div v-for="device in legacyDevices" :key="deviceId(device)" class="rounded-2xl border border-(--or3-border) bg-white/70 p-3">
-                    <div class="flex items-center justify-between gap-3">
-                        <div class="min-w-0">
-                            <p class="truncate font-mono text-sm font-semibold">{{ deviceName(device) }}</p>
-                            <p class="mt-1 text-xs text-(--or3-text-muted)">{{ deviceRole(device) }} · {{ deviceStatus(device) }}</p>
-                        </div>
-                        <UButton label="Remove" color="error" variant="soft" size="sm" @click="askRevoke('legacy', device)" />
-                    </div>
-                </div>
-            </div>
-        </details>
-
         <DestructiveActionConfirmModal
             v-model:open="confirmOpen"
             title="Revoke this device?"
@@ -77,15 +54,14 @@ import { useElectronHostSetup } from '~/composables/useElectronHostSetup';
 
 const host = useElectronHostSetup();
 const secureDevices = ref<Array<Record<string, unknown>>>([]);
-const legacyDevices = ref<Array<Record<string, unknown>>>([]);
 const loading = ref(false);
 const revoking = ref(false);
 const error = ref('');
 const revokeError = ref('');
 const confirmOpen = ref(false);
-const pending = ref<{ kind: 'secure' | 'legacy'; device: Record<string, unknown> } | null>(null);
+const pending = ref<Record<string, unknown> | null>(null);
 
-const pendingName = computed(() => (pending.value ? deviceName(pending.value.device) : 'this device'));
+const pendingName = computed(() => (pending.value ? deviceName(pending.value) : 'this device'));
 
 function deviceId(device: Record<string, unknown>) {
     return String(device.device_id || device.DeviceID || device.id || 'unknown');
@@ -109,7 +85,6 @@ async function refresh() {
     try {
         const bridge = window.or3Desktop;
         secureDevices.value = (await bridge?.intern.listSecureDevices()) || [];
-        legacyDevices.value = (await bridge?.intern.listLegacyDevices()) || [];
         await host.refreshStatus();
     } catch (err) {
         error.value = err instanceof Error ? err.message : 'Could not load devices. Retry when OR3 is online.';
@@ -118,8 +93,8 @@ async function refresh() {
     }
 }
 
-function askRevoke(kind: 'secure' | 'legacy', device: Record<string, unknown>) {
-    pending.value = { kind, device };
+function askRevoke(kind: 'secure', device: Record<string, unknown>) {
+    pending.value = device;
     revokeError.value = '';
     confirmOpen.value = true;
 }
@@ -130,9 +105,8 @@ async function confirmRevoke() {
     revokeError.value = '';
     try {
         const bridge = window.or3Desktop;
-        const id = deviceId(pending.value.device);
-        if (pending.value.kind === 'secure') await bridge?.intern.revokeSecureDevice(id);
-        else await bridge?.intern.revokeLegacyDevice(id);
+        const id = deviceId(pending.value);
+        await bridge?.intern.revokeSecureDevice(id);
         confirmOpen.value = false;
         pending.value = null;
         await refresh();
