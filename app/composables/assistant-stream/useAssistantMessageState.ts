@@ -1,5 +1,4 @@
 import type {
-    AssistantReplayToolCall,
     ChatActivityEntry,
     ChatMessage,
     ChatMessagePart,
@@ -617,16 +616,6 @@ export function useAssistantMessageState(
 
         setToolCalls(nextToolCalls);
     };
-    const findReplayableToolCall = (
-        name: string,
-    ): AssistantReplayToolCall | undefined => {
-        const current = readAssistant();
-        const match = [...(current?.toolCalls ?? [])]
-            .reverse()
-            .find((call) => call.name === name);
-        if (!match) return undefined;
-        return { name: match.name, arguments: match.arguments };
-    };
     const { applyEvent, applyFinalText } = createAssistantEventApplier({
         assistantId: options.assistantId,
         readAssistant,
@@ -645,7 +634,6 @@ export function useAssistantMessageState(
         completeRunningActivity,
         addToolCall,
         resolveToolCall,
-        findReplayableToolCall,
         setSawVisibleOutput(value) {
             sawVisibleOutput = value;
         },

@@ -1,18 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-    modeToolPolicy,
     normalizeTurnEvent,
 } from '../../app/composables/useAssistantStream';
 import { previewValue } from '../../app/utils/assistant-stream/activity';
 
 describe('assistant stream hardening helpers', () => {
-    it('builds mode-derived tool policy payloads', () => {
-        expect(modeToolPolicy('ask')).toEqual({ mode: 'ask' });
-        expect(modeToolPolicy('work')).toEqual({ mode: 'work' });
-        expect(modeToolPolicy('admin')).toEqual({ mode: 'admin' });
-    });
-
     it('normalizes enriched job events without losing old fields', () => {
         const normalized = normalizeTurnEvent({
             sequence: 7,

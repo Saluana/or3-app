@@ -49,9 +49,9 @@ describe('isTerminalStatus / isActiveStatus', () => {
 describe('mergeJobSummary', () => {
     const base: RecentJobSummary = {
         job_id: 'j1',
-        kind: 'subagent',
+        kind: 'agent_cli:codex',
         status: 'queued',
-        title: 'Legacy title',
+        title: 'Codex task',
         task: 'Original task',
         category: 'research',
         priority: 'high',
@@ -64,9 +64,9 @@ describe('mergeJobSummary', () => {
     it('returns the new summary when nothing existed', () => {
         const next: RecentJobSummary = {
             job_id: 'j1',
-            kind: 'subagent',
+            kind: 'agent_cli:codex',
             status: 'completed',
-            title: 'Persisted legacy task',
+            title: 'Persisted codex task',
             updated_at: '2026-04-24T11:00:00Z',
         };
         expect(mergeJobSummary(undefined, next)).toEqual(next);
@@ -75,9 +75,9 @@ describe('mergeJobSummary', () => {
     it('lets server-truth fields win while preserving UI metadata', () => {
         const next: RecentJobSummary = {
             job_id: 'j1',
-            kind: 'subagent',
+            kind: 'agent_cli:codex',
             status: 'completed',
-            title: 'Persisted legacy task',
+            title: 'Persisted codex task',
             task: 'Original task',
             updated_at: '2026-04-24T11:00:00Z',
             final_text: 'preview',
@@ -100,9 +100,9 @@ describe('mergeJobSummary', () => {
         };
         const next: RecentJobSummary = {
             job_id: 'j1',
-            kind: 'subagent',
+            kind: 'agent_cli:codex',
             status: 'completed',
-            title: 'Persisted legacy task',
+            title: 'Persisted codex task',
             updated_at: '2026-04-24T12:00:00Z',
         };
         const merged = mergeJobSummary(withPreview, next);
@@ -114,7 +114,7 @@ describe('summaryToSnapshot', () => {
     it('exposes title and task on the snapshot', () => {
         const summary: RecentJobSummary = {
             job_id: 'j1',
-            kind: 'subagent',
+            kind: 'agent_cli:codex',
             status: 'running',
             title: 'Display title',
             task: 'Original task',
@@ -166,9 +166,7 @@ describe('isCliJob', () => {
         expect(isCliJob('agent_cli:gemini')).toBe(true);
     });
 
-    it('returns false for legacy and unknown non-CLI kinds', () => {
-        expect(isCliJob('subagent')).toBe(false);
-        expect(isCliJob('turn')).toBe(false);
+    it('returns false for unknown non-CLI kinds', () => {
         expect(isCliJob(undefined)).toBe(false);
         expect(isCliJob('')).toBe(false);
     });
@@ -196,7 +194,7 @@ describe('formatAgentCliKind', () => {
     });
 
     it('returns generic labels for non-CLI kinds', () => {
-        expect(formatAgentCliKind('turn')).toBe('Turn');
+        expect(formatAgentCliKind('runner_run')).toBe('Runner Run');
         expect(formatAgentCliKind(undefined)).toBe('Agent task');
     });
 });

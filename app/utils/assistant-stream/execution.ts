@@ -613,8 +613,8 @@ export async function fetchAndApplyRunnerTurn(
             backendMessageId: turn.assistant_message_id,
             runnerChatTurnId: turn.id,
             runnerChatSessionId: turn.session_id,
-            agentCliRunId: turn.agent_cli_run_id,
-            jobId: turn.agent_cli_job_id,
+            agentCliRunId: turn.runner_run_id,
+            jobId: turn.runner_job_id,
         });
         return turn;
     }
@@ -642,8 +642,8 @@ export async function fetchAndApplyRunnerTurn(
         backendMessageId: turn.assistant_message_id,
         runnerChatTurnId: turn.id,
         runnerChatSessionId: turn.session_id,
-        agentCliRunId: turn.agent_cli_run_id,
-        jobId: turn.agent_cli_job_id,
+        agentCliRunId: turn.runner_run_id,
+        jobId: turn.runner_job_id,
     });
     return turn;
 }

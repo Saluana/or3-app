@@ -1,5 +1,3 @@
-import type { ToolPolicy } from './or3-api';
-
 export interface Or3HostProfile {
     id: string;
     name: string;
@@ -82,11 +80,6 @@ export interface ChatAttachment {
     content?: string;
 }
 
-export interface AssistantReplayToolCall {
-    name: string;
-    arguments?: string;
-}
-
 export interface AssistantRunnerPermission {
     runnerId?: string;
     kind?: string;
@@ -99,7 +92,6 @@ export interface AssistantSendPayload {
     transportText?: string;
     attachments?: ChatAttachment[];
     mode?: 'ask' | 'work' | 'admin';
-    toolPolicy?: ToolPolicy;
     approvalToken?: string;
     followJobId?: string;
     continueMessageId?: string;

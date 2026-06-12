@@ -15,8 +15,8 @@ describe('useJobs', () => {
   it('returns persisted jobs for the active host only', () => {
     const cache = useLocalCache()
     cache.state.value.recentJobs = {
-      alpha: [{ job_id: 'job-alpha', kind: 'subagent', status: 'queued', title: 'legacy task', updated_at: '2026-01-01T00:00:00.000Z' }],
-      beta: [{ job_id: 'job-beta', kind: 'subagent', status: 'completed', title: 'legacy task', updated_at: '2026-01-02T00:00:00.000Z' }],
+      alpha: [{ job_id: 'job-alpha', kind: 'agent_cli:codex', status: 'queued', title: 'cli task', updated_at: '2026-01-01T00:00:00.000Z' }],
+      beta: [{ job_id: 'job-beta', kind: 'agent_cli:codex', status: 'completed', title: 'cli task', updated_at: '2026-01-02T00:00:00.000Z' }],
     }
     cache.updateHost({ id: 'alpha', name: 'Alpha', baseUrl: 'http://alpha.test', token: 'alpha-token' })
     cache.updateHost({ id: 'beta', name: 'Beta', baseUrl: 'http://beta.test', token: 'beta-token' })
@@ -38,9 +38,9 @@ describe('useJobs', () => {
     cache.state.value.recentJobs.alpha = [
       {
         job_id: 'job-1',
-        kind: 'subagent',
+        kind: 'agent_cli:codex',
         status: 'running',
-        title: 'legacy task',
+        title: 'cli task',
         updated_at: '2026-01-01T00:00:00.000Z',
       },
     ]
@@ -56,7 +56,7 @@ describe('useJobs', () => {
       if (url.endsWith('/internal/v1/jobs/job-1')) {
         return new Response(JSON.stringify({
           job_id: 'job-1',
-          kind: 'subagent',
+          kind: 'agent_cli:codex',
           status: 'completed',
           created_at: '2026-01-01T00:00:00.000Z',
           updated_at: '2026-01-01T00:00:06.000Z',

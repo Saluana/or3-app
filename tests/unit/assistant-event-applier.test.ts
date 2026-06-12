@@ -122,7 +122,6 @@ function createApplier() {
                 },
             );
         },
-        findReplayableToolCall: () => undefined,
         setSawVisibleOutput: () => undefined,
         rawAssistantContent: () => assistant.value.content,
     });

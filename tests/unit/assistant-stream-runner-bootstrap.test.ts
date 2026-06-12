@@ -106,7 +106,7 @@ describe('assistant stream runner bootstrap', () => {
                         session_id: 'rcs_bootstrap',
                         status: 'succeeded',
                         final_text: 'OpenCode says hi.',
-                        agent_cli_job_id: 'job_runner_1',
+                        runner_job_id: 'job_runner_1',
                     };
                 }
                 throw new Error(`Unexpected request path: ${path}`);
@@ -166,7 +166,7 @@ describe('assistant stream runner bootstrap', () => {
                     final_text: '',
                     error_message: 'service restarted',
                     assistant_message_id: 0,
-                    agent_cli_job_id: 'job_aborted',
+                    runner_job_id: 'job_aborted',
                 };
             }
             throw new Error(`Unexpected request path: ${path}`);
@@ -207,7 +207,7 @@ describe('assistant stream runner bootstrap', () => {
             error_message:
                 'Codex authentication failed while refreshing its login token. Run `codex login` to reconnect Codex, then retry the runner turn.',
             assistant_message_id: 2512,
-            agent_cli_job_id: 'job_codex_auth',
+            runner_job_id: 'job_codex_auth',
         }));
 
         await fetchAndApplyRunnerTurn('rcs_codex_auth', 'rct_codex_auth', {
@@ -284,7 +284,7 @@ describe('assistant stream runner bootstrap', () => {
                     session_id: 'rcs_flush',
                     status: 'succeeded',
                     final_text: 'done',
-                    agent_cli_job_id: 'job_flush',
+                    runner_job_id: 'job_flush',
                 };
             }
             throw new Error(`Unexpected request path: ${path}`);
@@ -397,7 +397,7 @@ describe('assistant stream runner bootstrap', () => {
                             },
                         },
                     }),
-                    agent_cli_job_id: 'job_gemini_1',
+                    runner_job_id: 'job_gemini_1',
                 };
             }
             throw new Error(`Unexpected request path: ${path}`);
@@ -442,7 +442,7 @@ describe('assistant stream runner bootstrap', () => {
                     session_id: 'rcs_recover',
                     status: 'succeeded',
                     final_text: 'Runner recovered final answer.',
-                    agent_cli_job_id: 'job_runner_recover',
+                    runner_job_id: 'job_runner_recover',
                 };
             }
             throw new Error(`Unexpected request path: ${path}`);

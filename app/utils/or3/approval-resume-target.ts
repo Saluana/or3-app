@@ -41,10 +41,7 @@ export function isExternalChannelSessionKey(sessionKey?: string) {
 export function resolveApprovalResumeTarget(input: {
     approval?: ApprovalRequest | null;
     response?: Partial<
-        Pick<
-            ApprovalActionResponse,
-            'session_key' | 'request_id' | 'resume_job_id'
-        >
+        Pick<ApprovalActionResponse, 'session_key' | 'request_id'>
     > | null;
 }): ApprovalResumeTarget | null {
     const sessionKey = String(

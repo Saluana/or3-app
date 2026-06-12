@@ -24,7 +24,6 @@ function runnerLabel(runner: Pick<ChatRunnerInfo, 'display_name' | 'id'>) {
 }
 
 function isSelectableRunner(runner: ChatRunnerInfo) {
-    if (runner.runner_selectable === false) return false;
     if (runner.status !== 'available') return false;
     if (
         runner.auth_status &&

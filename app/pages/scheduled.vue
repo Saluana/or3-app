@@ -129,7 +129,7 @@
                         :class="`or3-sched-card__icon--${statusTone(job)}`"
                     >
                         <Icon
-                            :name="job.payload?.kind === 'agent_cli_run' ? 'i-pixelarticons-terminal' : 'i-pixelarticons-calendar'"
+                            :name="job.payload?.kind === 'runner_run' ? 'i-pixelarticons-terminal' : 'i-pixelarticons-calendar'"
                             class="size-4.5"
                         />
                     </span>
@@ -152,11 +152,11 @@
                             </span>
                             <span class="or3-sched-chip">
                                 <Icon
-                                    :name="job.payload?.kind === 'agent_cli_run' ? 'pixelarticons:mood-happy' : 'pixelarticons:zap'"
+                                    :name="job.payload?.kind === 'runner_run' ? 'pixelarticons:mood-happy' : 'pixelarticons:zap'"
                                     class="size-3"
                                 />
                                 {{
-                                    job.payload?.kind === 'agent_cli_run'
+                                    job.payload?.kind === 'runner_run'
                                         ? agentRunnerLabel(
                                               job.payload?.agent_run?.runner_id,
                                           )
@@ -441,7 +441,7 @@ function describeSchedule(job: CronJob) {
 }
 
 function jobPrompt(job: CronJob) {
-    if (job.payload?.kind === 'agent_cli_run') return job.payload?.agent_run?.task || 'No task set.';
+    if (job.payload?.kind === 'runner_run') return job.payload?.agent_run?.task || 'No task set.';
     return job.payload?.message || 'No prompt set.';
 }
 

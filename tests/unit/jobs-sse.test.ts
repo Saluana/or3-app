@@ -19,7 +19,7 @@ describe('applySseEventToCache', () => {
         cache.state.value.recentJobs.alpha = [
             {
                 job_id: 'job-1',
-                kind: 'subagent',
+                kind: 'agent_cli:codex',
                 status: 'queued',
                 title: 'Test task',
                 task: 'Test task',

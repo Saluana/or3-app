@@ -8,7 +8,7 @@ function approvalToolName(approval?: ApprovalRequest | null) {
 
 type ApprovalResumeResponse = Pick<
     ApprovalActionResponse,
-    'request_id' | 'token' | 'resume_job_id'
+    'request_id' | 'token'
 >;
 
 export async function resumeApprovalOperation(input: {
@@ -18,9 +18,6 @@ export async function resumeApprovalOperation(input: {
     resumeTerminal?: (approvalId: number | string, token: string) => Promise<void>;
     resumeRestart?: (approvalId: number | string, token: string) => Promise<void>;
 }) {
-    if (input.response?.resume_job_id?.trim()) {
-        return false;
-    }
     const approvalId = input.response?.request_id ?? input.approval?.id;
     if (approvalId === undefined || approvalId === null || approvalId === '') {
         return false;

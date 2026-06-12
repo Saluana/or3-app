@@ -2,9 +2,7 @@
  * Pick the runner id the chat composer should use by default.
  *
  * Order: the host's `default_runner`, then the first `opencode` entry, then
- * the first selectable entry. The legacy built-in `or3-intern` agent is no
- * longer a selectable runner — chat work is always handed off to a runner
- * (OpenCode, Codex, Claude, Gemini, …) via the runner-first flow.
+ * the first selectable entry.
  */
 export function pickDefaultRunnerId<T extends { id: string }>(
     runners: T[],

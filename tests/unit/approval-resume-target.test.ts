@@ -55,7 +55,6 @@ describe('approval-resume-target', () => {
                 },
                 response: {
                     session_key: 'or3-app:host:session_1',
-                    resume_job_id: 'job-1',
                 },
             }),
         ).toEqual({
@@ -81,7 +80,6 @@ describe('approval-resume-target', () => {
                 },
                 response: {
                     session_key: 'telegram:123',
-                    resume_job_id: 'job-2',
                 },
             }),
         ).toEqual({

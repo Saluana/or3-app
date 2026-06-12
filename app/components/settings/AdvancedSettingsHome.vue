@@ -99,11 +99,11 @@ const hostHeadline = computed(() =>
 const hostDescription = computed(() =>
     hostStatus.value.state === 'online'
         ? 'Connect phones, browsers, and remote apps from this desktop host.'
-        : 'Start or fix the local OR3 Intern service from the sidebar status card.',
+        : 'Start or fix the local or3-intern service from the sidebar status card.',
 );
 const modeDescription = computed(() =>
     hostMode.value
-        ? 'This desktop app manages the OR3 Intern service on this computer.'
+        ? 'This desktop app manages the or3-intern service on this computer.'
         : 'This desktop app behaves like web, iOS, and Android clients.',
 );
 

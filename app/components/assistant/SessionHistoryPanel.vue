@@ -40,7 +40,7 @@
                             @click="emit('open-session', session)"
                         >
                             <strong>{{ session.title || 'Untitled conversation' }}</strong>
-                            <small>{{ session.runner_label || session.runner_id || 'OR3 Intern' }} · {{ session.message_count || 0 }} messages</small>
+                            <small>{{ session.runner_label || session.runner_id || 'Built-in (legacy)' }} · {{ session.message_count || 0 }} messages</small>
                             <small class="flex items-center gap-1.5 mt-1.5" v-if="session.last_message_at"><UIcon name="i-pixelarticons-clock" /> {{ formatDate(session.last_message_at) }}</small>
                             <small v-if="session.parent_session_key">Forked from another conversation</small>
                         </button>

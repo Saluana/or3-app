@@ -358,7 +358,7 @@
                         <section
                             v-if="
                                 selectedCronJob.payload?.kind ===
-                                'agent_cli_run'
+                                'runner_run'
                             "
                         >
                             <p
@@ -955,10 +955,9 @@ function cronConversationLabel(job: CronJob) {
 }
 
 function cronPayloadLabel(job: CronJob) {
-    if (job.payload?.kind === 'agent_cli_run') {
+    if (job.payload?.kind === 'runner_run') {
         return agentRunnerLabel(job.payload?.agent_run?.runner_id);
     }
-    if (job.payload?.kind === 'agent_turn') return 'Legacy scheduled chat task';
     return job.payload?.kind || 'task';
 }
 
@@ -974,8 +973,6 @@ function jobLabel(kind?: string) {
     if (!kind) return 'Agent run';
     if (kind.startsWith('agent_cli:'))
         return `${kind.slice('agent_cli:'.length)} run`;
-    if (kind === 'subagent') return 'Legacy background task';
-    if (kind === 'turn') return 'Assistant reply';
     if (kind === 'exec' || kind === 'terminal') return 'Terminal command';
     if (kind === 'file_list') return 'File listing';
     if (kind === 'file_write') return 'File change';
@@ -995,7 +992,6 @@ function jobIcon(kind?: string) {
         return 'i-pixelarticons-terminal';
     if (kind === 'file_list' || kind === 'file_write')
         return 'i-pixelarticons-folder';
-    if (kind === 'turn') return 'i-pixelarticons-message';
     return 'i-pixelarticons-robot';
 }
 
@@ -1039,7 +1035,7 @@ function approvalDetail(approval: ApprovalRequest) {
 }
 
 function cronPrompt(job: CronJob) {
-    if (job.payload?.kind === 'agent_cli_run')
+    if (job.payload?.kind === 'runner_run')
         return job.payload?.agent_run?.task || '';
     return job.payload?.message || '';
 }

@@ -54,7 +54,7 @@ export function installRunnerChatRequestMock(
                 session_id: sessionId,
                 status: 'succeeded',
                 final_text: '',
-                agent_cli_job_id: jobId,
+                runner_job_id: jobId,
                 ...snapshot,
             };
         }

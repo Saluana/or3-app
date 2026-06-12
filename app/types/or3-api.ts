@@ -1,16 +1,3 @@
-export interface ToolPolicy {
-    mode:
-        | 'allow_all'
-        | 'deny_all'
-        | 'allow_list'
-        | 'deny_list'
-        | 'ask'
-        | 'work'
-        | 'admin';
-    allowed_tools?: string[];
-    blocked_tools?: string[];
-}
-
 export type CronScheduleKind = 'at' | 'every' | 'cron';
 
 export interface CronSchedule {
@@ -34,7 +21,7 @@ export interface CronAgentRunPayload {
 }
 
 export interface CronPayload {
-    kind: 'system_event' | 'agent_cli_run' | string;
+    kind: 'system_event' | 'runner_run' | string;
     message?: string;
     deliver?: boolean;
     channel?: string;
@@ -276,9 +263,6 @@ export interface ChatRunnerInfo extends AgentRunnerInfo {
     default_cwd?: string;
     /** Normalized from `runtime.health` / `runtime.native_health` in the app. */
     native_health?: RunnerNativeHealth;
-    /** False for legacy built-in OR3 sessions in metadata. */
-    runner_selectable?: boolean;
-    legacy_runner_id?: string;
 }
 
 export interface ChatRunnersResponse {
@@ -362,8 +346,8 @@ export interface RunnerChatTurn {
     final_text?: string;
     error?: string;
     error_message?: string;
-    agent_cli_run_id?: string;
-    agent_cli_job_id?: string;
+    runner_run_id?: string;
+    runner_job_id?: string;
     user_message_id?: number;
     assistant_message_id?: number;
     model?: string;
@@ -551,8 +535,6 @@ export interface ChatSessionMeta {
     host_id?: string;
     title: string;
     runner_id?: AgentRunnerId;
-    legacy_runner_id?: string;
-    runner_selectable?: boolean;
     runner_label?: string;
     runner_chat_session_id?: string;
     runner_continuation_mode?: RunnerChatContinuationMode | string;
@@ -1006,7 +988,6 @@ export interface ApprovalActionResponse {
     request_id: number | string;
     token?: string;
     allowlist_id?: number | string;
-    resume_job_id?: string;
     session_key?: string;
     status?: string;
 }

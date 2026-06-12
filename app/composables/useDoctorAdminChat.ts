@@ -2,7 +2,6 @@ import { computed, effectScope, watch } from 'vue';
 import { useActiveHost } from './useActiveHost';
 import { useDoctorChatStore } from './doctor/doctorChatStore';
 import type {
-    AssistantReplayToolCall,
     ChatActivityEntry,
     ChatMessage,
     ChatMessagePart,
@@ -481,14 +480,6 @@ function createDoctorStreamApplier(placeholderID: PlaceholderID) {
         completeRunningActivity,
         addToolCall,
         resolveToolCall,
-        findReplayableToolCall: (name): AssistantReplayToolCall | undefined => {
-            const call = readDoctorMessage()?.toolCalls?.find(
-                (item) => item.name === name,
-            );
-            return call
-                ? { name: call.name, arguments: call.arguments }
-                : undefined;
-        },
         setSawVisibleOutput: () => undefined,
         rawAssistantContent: () => String(readDoctorMessage()?.content ?? ''),
     });
@@ -1547,21 +1538,6 @@ export function useDoctorAdminChat() {
                     ? 'approved and remembered from doctor chat'
                     : 'approved from doctor chat',
             );
-            if (response.resume_job_id) {
-                await followJobStream(
-                    {
-                        jobID: response.resume_job_id,
-                        placeholderID: id,
-                    },
-                    (path, requestOptions) => api.stream(path, requestOptions),
-                    (jobID) =>
-                        api.request<JobSnapshot>(
-                            `/internal/v1/jobs/${encodeURIComponent(jobID)}`,
-                        ),
-                    () => loadSession(store().sessionKey.value),
-                );
-                return true;
-            }
             patchStreamingAssistant(id, {
                 approvalState: 'approved',
                 status: 'complete',
@@ -1606,70 +1582,6 @@ export function useDoctorAdminChat() {
             store().sessionKey.value ?? undefined,
         );
         await loadSession().catch(() => undefined);
-        return true;
-    }
-
-    async function resumeApprovedApprovalFromDesk(options: {
-        resumeJobId: string;
-        approvalRequestId?: number | string;
-        sessionKey?: string;
-        approval?: ApprovalRequest | null;
-    }) {
-        const resumeJobId = String(options.resumeJobId ?? '').trim();
-        const sessionKey = String(
-            options.sessionKey?.trim() || store().sessionKey.value || '',
-        ).trim();
-        if (!resumeJobId || !sessionKey) return false;
-
-        if (store().sessionKey.value !== sessionKey) {
-            await loadSession(sessionKey);
-        }
-
-        const approvalRequestId = options.approvalRequestId;
-        let message = approvalRequestId
-            ? resolveDoctorMessageRef(store().messages.value, approvalRequestId)
-            : undefined;
-        if (!message && approvalRequestId) {
-            message = ensureDoctorApprovalMessage(store(), {
-                approvalRequestId,
-                sessionKey,
-                content: pendingApprovalPlaceholderContent(
-                    options.approval ??
-                        ({
-                            id: approvalRequestId,
-                            type: 'tool_quota',
-                        } as ApprovalRequest),
-                ),
-            });
-        }
-        const placeholderID = message?.id ?? store().nextOptimisticMessageID();
-        patchStreamingAssistant(placeholderID, {
-            approvalState: 'retrying',
-            status: 'attention',
-            error: undefined,
-        });
-        await followJobStream(
-            {
-                jobID: resumeJobId,
-                placeholderID,
-            },
-            (path, requestOptions) => api.stream(path, requestOptions),
-            (jobID) =>
-                api.request<JobSnapshot>(
-                    `/internal/v1/jobs/${encodeURIComponent(jobID)}`,
-                ),
-            () => loadSession(store().sessionKey.value),
-        );
-        const latest = readStreamingAssistant(placeholderID);
-        if (
-            !(latest?.approvalState === 'pending' && latest.approvalRequestId)
-        ) {
-            markDoctorApprovalResolved(
-                approvalRequestId ?? resumeJobId,
-                'approved',
-                sessionKey,
-            );
-        }
         return true;
     }
 
@@ -1760,7 +1672,6 @@ export function useDoctorAdminChat() {
         runPostChecks,
         approvePendingApproval,
         denyPendingApproval,
-        resumeApprovedApprovalFromDesk,
         clearMessages,
         clearError,
         stopStreaming: stopActiveTurn,

@@ -20,7 +20,7 @@ import {
 
 function job(partial: Partial<JobSnapshot> & { job_id: string }): JobSnapshot {
     return {
-        kind: 'subagent',
+        kind: 'agent_cli:codex',
         status: 'queued',
         created_at: '2026-05-24T10:00:00Z',
         updated_at: '2026-05-24T10:00:00Z',

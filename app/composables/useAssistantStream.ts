@@ -1,13 +1,11 @@
 import { useState } from '#app';
 import { computed, ref, watch, type Ref } from 'vue';
-import type { ToolPolicy } from '~/types/or3-api';
 import type { AssistantSendPayload } from '~/types/app-state';
 import { describeApprovalRequest } from '~/utils/assistant-stream/approval';
 import {
     extractErrorCode,
     serializeErrorForLog,
 } from '~/utils/assistant-stream/errors';
-import { clearServiceCapabilityCeilingHost } from '~/utils/assistant-stream/tool-policy-host';
 import { markOrphanClientStreamingFailed } from '~/utils/assistant-stream/orphanStreamingMessage';
 import {
     EMPTY_FINAL_USER_MESSAGE,
@@ -72,18 +70,6 @@ function createTraceId() {
     return `turn_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
-export function forgetServiceCapabilityCeilingHost(hostId?: string | null) {
-    const normalized = hostId?.trim();
-    if (!normalized) return;
-    clearServiceCapabilityCeilingHost(normalized);
-}
-
-export function modeToolPolicy(
-    mode?: AssistantSendPayload['mode'],
-): ToolPolicy {
-    const runtime = useAssistantStreamRuntime();
-    return { mode: mode || runtime.value.chatMode || 'work' };
-}
 export { describeApprovalRequest };
 export { normalizeTurnEvent };
 export type { NormalizedTurnEvent } from '~/utils/assistant-stream/events';

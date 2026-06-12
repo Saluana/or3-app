@@ -227,7 +227,7 @@ const serviceBehaviorOptions = [
 const showSetupOverlay = computed(() => ready.value && shouldShowSetup.value && !dismissed.value);
 
 const progress = computed(() => [
-    { label: 'Find OR3 Intern', done: Boolean(setupState.value.internBinary) || serviceStatus.value.state !== 'not-installed' },
+    { label: 'Find or3-intern', done: Boolean(setupState.value.internBinary) || serviceStatus.value.state !== 'not-installed' },
     { label: 'Apply safe service settings', done: ['starting', 'online'].includes(serviceStatus.value.state) },
     { label: 'Start local service', done: serviceStatus.value.state === 'online' },
 ]);
@@ -235,7 +235,7 @@ const progress = computed(() => [
 const progressTitle = computed(() => {
     if (starting.value) return 'Starting OR3…';
     if (serviceStatus.value.state === 'online') return 'OR3 is ready on this computer';
-    if (serviceStatus.value.state === 'not-installed') return 'OR3 Intern is not installed yet';
+    if (serviceStatus.value.state === 'not-installed') return 'or3-intern is not installed yet';
     if (serviceStatus.value.state === 'error') return 'OR3 could not start';
     return 'Finish setup';
 });

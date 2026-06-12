@@ -148,7 +148,6 @@ describe('useApprovals', () => {
                     JSON.stringify({
                         request_id: 42,
                         token: 'tok-42',
-                        resume_job_id: 'job-resume-42',
                     }),
                     {
                         status: 200,
@@ -176,7 +175,6 @@ describe('useApprovals', () => {
         await expect(approve(42)).resolves.toMatchObject({
             request_id: 42,
             token: 'tok-42',
-            resume_job_id: 'job-resume-42',
         });
         expect(consumeIssuedApprovalToken(42)).toBe('tok-42');
     });

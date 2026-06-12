@@ -8,7 +8,7 @@ describe('cron payload types', () => {
       enabled: true,
       schedule: { kind: 'cron', expr: '0 9 * * 1' },
       payload: {
-        kind: 'agent_cli_run',
+        kind: 'runner_run',
         session_key: 'cron:agents',
         agent_run: {
           runner_id: 'codex',

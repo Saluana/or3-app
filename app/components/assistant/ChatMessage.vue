@@ -305,10 +305,6 @@ import { mergeActivityWithToolParts } from '../../utils/assistant-stream/activit
 import { CHAT_MESSAGE_ACTIONS_KEY } from '../../utils/chat/chat-message-actions';
 import { COMPOSER_APPROVAL_MESSAGE_ID_KEY } from '../../utils/chat/pending-approval-message';
 import {
-    buildApprovedResumePayload,
-    prepareAssistantResumeContinuation,
-} from '../../utils/chat/prepare-assistant-resume';
-import {
     approvalActionErrorMessage,
     approvalStatusFromError,
     canContinueApprovedRequest,
@@ -614,44 +610,6 @@ async function retryApprovedRequest(
     return true;
 }
 
-async function followApprovedResumeJob(
-    jobId: string,
-    options: { allowWhileApprovalBusy?: boolean } = {},
-) {
-    const message = currentMessage();
-    const requestId = message.approvalRequestId;
-    prepareAssistantResumeContinuation(updateMessage, message.id, jobId);
-    if (
-        !canContinueApprovedRequest({
-            isStreaming: isStreaming.value,
-            approvalBusy: approvalBusy.value,
-            allowWhileApprovalBusy: options.allowWhileApprovalBusy,
-        })
-    ) {
-        return true;
-    }
-    const retryPayload = buildApprovedResumePayload(message, jobId);
-    updateMessage(message.id, {
-        retryPayload: message.retryPayload ?? retryPayload,
-    });
-
-    await send(retryPayload);
-
-    const latest = currentMessage();
-    const waitingAgain =
-        latest.approvalState === 'pending' && !!latest.approvalRequestId;
-    const retryFailed =
-        latest.approvalState === 'failed' || latest.status === 'failed';
-    if (!waitingAgain && !retryFailed) {
-        markApprovalResolved(
-            requestId,
-            'approved',
-            message.sourceSessionKey || activeSession.value?.sessionKey,
-        );
-    }
-    return true;
-}
-
 function approvalErrorMessage(error: unknown) {
     return approvalActionErrorMessage(error);
 }
@@ -719,22 +677,18 @@ async function approveApproval(remember = false) {
         const approvalToken =
             consumeIssuedApprovalToken(message.approvalRequestId) ??
             approval.token;
-        retryAttempted = Boolean(approval.resume_job_id || approvalToken);
+        retryAttempted = Boolean(approvalToken);
         toast.add({
             title: 'Approval granted',
             description: approvalGrantedMessage(remember, retryAttempted),
             color: 'success',
             icon: 'i-pixelarticons-check',
         });
-        const retried = approval.resume_job_id
-            ? await followApprovedResumeJob(approval.resume_job_id, {
+        const retried = approvalToken
+            ? await retryApprovedRequest(approvalToken, {
                   allowWhileApprovalBusy: true,
               })
-            : approvalToken
-              ? await retryApprovedRequest(approvalToken, {
-                    allowWhileApprovalBusy: true,
-                })
-              : false;
+            : false;
         if (!retried) {
             markApprovalResolved(
                 message.approvalRequestId,

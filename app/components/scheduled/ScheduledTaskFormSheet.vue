@@ -64,21 +64,6 @@
                             <input v-model="form.name" class="or3-task-input" placeholder="Morning repo summary" />
                         </label>
 
-                        <div
-                            v-if="legacyOr3Schedule"
-                            class="or3-task-callout sm:col-span-2"
-                        >
-                            <Icon
-                                name="i-pixelarticons-warning-box"
-                                class="size-4 shrink-0"
-                            />
-                            <span>
-                                This task used the legacy built-in task path. Pick a
-                                runner below and save to run it through an
-                                external runner.
-                            </span>
-                        </div>
-
                         <label class="or3-task-field sm:col-span-2">
                             <span>What should the agent do?</span>
                             <textarea
@@ -410,8 +395,6 @@ const advancedOpen = ref(false);
 
 type ConversationMode = 'dedicated' | 'existing' | 'custom';
 
-const legacyOr3Schedule = ref(false);
-
 const form = reactive({
     name: '',
     message: '',
@@ -559,7 +542,6 @@ const sessionPickerSummary = computed(() => {
 function resetForm() {
     formError.value = null;
     advancedOpen.value = false;
-    legacyOr3Schedule.value = false;
     form.name = '';
     form.message = '';
     form.runnerId = defaultRunnerId();
@@ -582,10 +564,9 @@ function resetForm() {
 }
 
 function applyEditJob(job: CronJob) {
-    legacyOr3Schedule.value = job.payload?.kind !== 'agent_cli_run';
     form.name = job.name || '';
     form.message =
-        job.payload?.kind === 'agent_cli_run'
+        job.payload?.kind === 'runner_run'
             ? job.payload?.agent_run?.task || ''
             : job.payload?.message || '';
     form.sessionKey = job.payload?.session_key || '';
@@ -625,7 +606,7 @@ function validateForm() {
 
 function buildJobPayload(): Partial<CronJob> {
     const payload = {
-        kind: 'agent_cli_run' as const,
+        kind: 'runner_run' as const,
         session_key: resolveSessionKey(),
         agent_run: {
             runner_id: form.runnerId.trim(),
@@ -782,7 +763,7 @@ function shouldOpenAdvanced(job: CronJob) {
         ) &&
         !String(job.payload?.session_key || '').startsWith('scheduled:');
     const hasAgentAdvanced =
-        job.payload?.kind === 'agent_cli_run' &&
+        job.payload?.kind === 'runner_run' &&
         Boolean(
             job.payload?.agent_run?.cwd ||
                 job.payload?.agent_run?.model ||

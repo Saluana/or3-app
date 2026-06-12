@@ -184,8 +184,6 @@ const activity = computed<ActivityEntry[]>(() => {
 
 function jobLabel(kind?: string): string {
     if (!kind) return 'Activity:';
-    if (kind === 'turn') return 'Assistant reply:';
-    if (kind === 'subagent') return 'Legacy task:';
     if (kind === 'exec' || kind === 'terminal') return 'Executed:';
     if (kind === 'file_list') return 'Listed files in';
     return `${kind.replace(/_/g, ' ')}:`;
@@ -196,7 +194,6 @@ function jobIcon(kind?: string): string {
         return 'i-pixelarticons-terminal';
     if (kind === 'file_list' || kind === 'file_write')
         return 'i-pixelarticons-folder';
-    if (kind === 'turn' || kind === 'subagent') return 'i-pixelarticons-robot';
     return 'i-pixelarticons-analytics';
 }
 

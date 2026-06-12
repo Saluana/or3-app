@@ -200,14 +200,7 @@ import { useChatRuntimeLog } from '~/composables/useChatRuntimeLog';
 import { useChatSessions } from '~/composables/useChatSessions';
 import { useOr3Api } from '~/composables/useOr3Api';
 import { approvalActionErrorMessage } from '~/utils/assistantApproval';
-import { formatApprovalSubjectPreview } from '~/utils/or3/approval-display';
-import { resolveApprovalResumeTarget } from '~/utils/or3/approval-resume-target';
 import { resumeApprovalOperation } from '~/utils/or3/approval-operation-resume';
-import {
-    buildApprovedResumePayload,
-    prepareAssistantResumeContinuation,
-} from '~/utils/chat/prepare-assistant-resume';
-import { useDoctorAdminChat } from '~/composables/useDoctorAdminChat';
 import { useServiceRestart } from '~/composables/useServiceRestart';
 import { useTerminalSession } from '~/composables/useTerminalSession';
 
@@ -232,16 +225,11 @@ const toast = useToast();
 const router = useRouter();
 const chat = useChatSessions();
 const {
-    activeSession,
-    activateSessionByKey,
-    ensureApprovalMessage,
-    findAssistantMessageForApproval,
     markApprovalResolved,
     messages,
     updateMessage,
 } = chat;
 const { send, isStreaming } = useAssistantStream();
-const doctorChat = useDoctorAdminChat();
 const { activeHost } = useActiveHost();
 const api = useOr3Api();
 const runtimeLog = useChatRuntimeLog();
@@ -339,28 +327,9 @@ async function handleApprovalActionFailure(error: unknown, fallback: string) {
     });
 }
 
-function approvalPlaceholderContent(approval?: ApprovalRequest | null) {
-    const preview = approval
-        ? formatApprovalSubjectPreview({
-              type: approval.type,
-              domain: approval.domain,
-              subject: approval.subject,
-          })
-        : '';
-    if (!preview) {
-        return 'Approval is needed before or3-intern can continue.';
-    }
-    return [
-        'Approval is needed before or3-intern can continue.',
-        '',
-        `Requested action: ${preview}`,
-    ].join('\n');
-}
-
 async function followApprovalResumeJob(
     response?: {
         request_id?: number | string;
-        resume_job_id?: string;
         session_key?: string;
         token?: string;
     },
@@ -379,86 +348,6 @@ async function followApprovalResumeJob(
         },
     });
     if (resumedOperation) return;
-
-    const jobId = response?.resume_job_id?.trim();
-    if (!jobId) return;
-    const targetSessionKey =
-        response?.session_key?.trim() ||
-        approval?.requester_session_id?.trim() ||
-        activeSession.value?.sessionKey?.trim() ||
-        '';
-    const target = resolveApprovalResumeTarget({
-        approval,
-        response,
-    });
-
-    if (target?.surface === 'doctor_health') {
-        if (router.currentRoute.value.path !== target.path) {
-            await router.push(target.path);
-            await nextTick();
-        }
-        await doctorChat.resumeApprovedApprovalFromDesk({
-            resumeJobId: jobId,
-            approvalRequestId: response?.request_id ?? approval?.id,
-            sessionKey: target.sessionKey || targetSessionKey,
-            approval,
-        });
-        return;
-    }
-
-    if (target?.surface === 'external_channel') {
-        toast.add({
-            title: 'Approval accepted',
-            description: `or3-intern will continue in ${target.channel ?? 'the original channel'}.`,
-            color: 'success',
-            icon: 'i-pixelarticons-check',
-        });
-        return;
-    }
-
-    if (targetSessionKey) {
-        activateSessionByKey(targetSessionKey, 'Approval follow-up');
-    }
-    const targetMessage =
-        findAssistantMessageForApproval(
-            response?.request_id ?? approval?.id,
-            targetSessionKey || undefined,
-        ) ??
-        ensureApprovalMessage({
-            approvalRequestId:
-                response?.request_id ??
-                approval?.id ??
-                response?.resume_job_id ??
-                '',
-            sessionKey: targetSessionKey || undefined,
-            content: approvalPlaceholderContent(approval),
-            createdAt: approval?.created_at,
-            status: 'attention',
-            approvalState: 'retrying',
-        });
-    const chatPath = target?.path ?? '/';
-    if (router.currentRoute.value.path !== chatPath) {
-        await router.push(chatPath);
-        await nextTick();
-    }
-    if (targetMessage) {
-        prepareAssistantResumeContinuation(
-            updateMessage,
-            targetMessage.id,
-            jobId,
-        );
-        await send(buildApprovedResumePayload(targetMessage, jobId));
-    }
-    const latest = targetMessage
-        ? messages.value.find((message) => message.id === targetMessage.id)
-        : null;
-    if (!(latest?.approvalState === 'pending' && latest.approvalRequestId)) {
-        markApprovalResolved(
-            response?.request_id ?? approval?.id,
-            'approved',
-            targetSessionKey || undefined,
-        );
-    }
 }
 
 async function changeFilter(filter: string) {

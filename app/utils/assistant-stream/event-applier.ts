@@ -1,5 +1,4 @@
 import type {
-    AssistantReplayToolCall,
     ChatActivityEntry,
     ChatMessage,
     ChatMessagePart,
@@ -120,9 +119,6 @@ interface AssistantEventApplierOptions {
         statusOverride?: ChatToolCall['status'],
         toolCallId?: string,
     ) => void;
-    findReplayableToolCall: (
-        name: string,
-    ) => AssistantReplayToolCall | undefined;
     setSawVisibleOutput: (value: boolean) => void;
     appendFinalTextToExistingContent?: boolean;
     rawAssistantContent: () => string;
@@ -788,7 +784,6 @@ export function createAssistantEventApplier(
                     approvalType: approvalMetadata.approvalType,
                     approvalPreview: approvalMetadata.approvalPreview,
                     toolName,
-                    argsJson: options.findReplayableToolCall(toolName)?.arguments,
                 });
                 const content =
                     current?.content?.trim() &&

@@ -1,5 +1,4 @@
 import type { Or3AppErrorCode } from '~/types/app-state';
-import type { ToolPolicy } from '~/types/or3-api';
 import {
     userFacingErrorCopy,
     userFacingErrorToastDescription,
@@ -195,25 +194,6 @@ export function extractApprovalRequestId(
     }
     return undefined;
 }
-
-export function isServiceCapabilityCeilingError(error: unknown) {
-    const message = describeRequestError(error).toLowerCase();
-    return (
-        message.includes('requested tools exceed service capability ceiling') ||
-        message.includes('tool exceeds service capability ceiling')
-    );
-}
-
-export function downgradeToolPolicyForServiceCapability(
-    policy?: ToolPolicy,
-): ToolPolicy | undefined {
-    if (!policy) return undefined;
-    if (policy.mode === 'admin' || policy.mode === 'work') {
-        return { mode: 'ask' };
-    }
-    return policy;
-}
-
 export function showFailureToast(
     toast: ToastLike,
     title: string,

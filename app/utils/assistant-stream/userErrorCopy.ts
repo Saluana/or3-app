@@ -125,12 +125,12 @@ const COPY_BY_CODE: Partial<Record<Or3AppErrorCode, UserFacingErrorCopy>> = {
     runner_missing: {
         title: 'Agent unavailable',
         message: "The selected agent isn't available on this computer.",
-        suggestion: 'Choose OR3 Intern or another agent from the list.',
+        suggestion: 'Pick a different agent from the list or check Settings.',
     },
     runner_auth_missing: {
         title: 'Agent not signed in',
         message: "The selected agent needs to be set up on your computer first.",
-        suggestion: 'Open Settings on the computer or pick OR3 Intern.',
+        suggestion: 'Pick a different agent from the list or configure it in Settings.',
     },
     runner_chat_turn_active: {
         title: 'Still working',
