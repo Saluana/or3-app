@@ -20,8 +20,8 @@
                 :disabled-reason="disabledReason"
                 :submitting="submitting"
                 :submit-error="submitError"
-                :runner-options="agentRunners"
-                :loading-runners="loadingRunners"
+                :runner-options="commandRunnerOptions"
+                :loading-runners="loadingRunners || loadingChatRunners"
                 :runner-list-supported="runnerListSupported"
                 @submit="createJob"
                 @dismiss-error="submitError = null"
@@ -219,6 +219,8 @@ const route = useRoute();
 const toast = useToast();
 const { activeHost, isConnected } = useActiveHost();
 const { activeSession, ensureSession } = useChatSessions();
+const { selectableRunners: selectableChatRunners, loading: loadingChatRunners } =
+    useChatRunners();
 const {
     jobs,
     loadingJobs,
@@ -352,11 +354,22 @@ const selectedJob = computed<JobSnapshot | null>(() => {
     return jobs.value.find((j) => j.job_id === id) ?? null;
 });
 
+const commandRunnerOptions = computed(() => {
+    const seen = new Set<string>();
+    const merged = [];
+    for (const runner of agentRunners.value ?? []) {
+        seen.add(runner.id);
+        merged.push(runner);
+    }
+    for (const runner of selectableChatRunners.value ?? []) {
+        if (seen.has(runner.id)) continue;
+        merged.push(runner);
+    }
+    return merged;
+});
+
 const hasSelectableRunners = computed(
-    () =>
-        agentRunners.value?.some(
-            (runner) => runner.status === 'available',
-        ) ?? false,
+    () => commandRunnerOptions.value.some((runner) => runner.status === 'available'),
 );
 
 const disabledReason = computed<AgentCommandDisabledReason | null>(() => {
