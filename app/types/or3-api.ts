@@ -71,8 +71,6 @@ export interface CronJobResponse {
 export type AgentRunnerId =
     | 'opencode'
     | 'codex'
-    | 'claude'
-    | 'gemini'
     | string;
 
 export type AgentRunnerStatus =
@@ -593,7 +591,7 @@ export interface ChatMessagePageResponse {
     next_cursor?: number;
 }
 
-export type AgentRunMode = 'review' | 'safe_edit' | 'sandbox_auto';
+export type AgentRunMode = 'review' | 'safe_edit';
 export type AgentRunIsolation =
     | 'host_readonly'
     | 'host_workspace_write'

@@ -399,7 +399,7 @@ const form = reactive({
     name: '',
     message: '',
     runnerId: '',
-    mode: 'review' as 'review' | 'safe_edit' | 'sandbox_auto',
+    mode: 'review' as 'review' | 'safe_edit',
     isolation: 'host_readonly' as 'host_readonly' | 'host_workspace_write' | 'sandbox_workspace_write' | 'sandbox_dangerous',
     cwd: '',
     model: '',
@@ -469,7 +469,6 @@ const intervalUnitOptions = [
 const modeOptions = [
     { label: 'Review only', value: 'review' },
     { label: 'Safe edit', value: 'safe_edit' },
-    { label: 'Sandbox auto', value: 'sandbox_auto' },
 ];
 
 const isolationOptions = [
@@ -563,6 +562,13 @@ function resetForm() {
     form.deleteAfterRun = false;
 }
 
+function normalizeScheduledTaskMode(
+    mode: string | undefined,
+): 'review' | 'safe_edit' {
+    if (mode === 'safe_edit') return 'safe_edit';
+    return 'review';
+}
+
 function applyEditJob(job: CronJob) {
     form.name = job.name || '';
     form.message =
@@ -571,7 +577,7 @@ function applyEditJob(job: CronJob) {
             : job.payload?.message || '';
     form.sessionKey = job.payload?.session_key || '';
     form.runnerId = job.payload?.agent_run?.runner_id || defaultRunnerId();
-    form.mode = (job.payload?.agent_run?.mode as typeof form.mode) || 'review';
+    form.mode = normalizeScheduledTaskMode(job.payload?.agent_run?.mode);
     form.isolation = (job.payload?.agent_run?.isolation as typeof form.isolation) || 'host_readonly';
     form.cwd = job.payload?.agent_run?.cwd || '';
     form.model = job.payload?.agent_run?.model || '';

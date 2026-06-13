@@ -665,7 +665,7 @@ export type AgentCategory =
 export type AgentPriority = 'low' | 'balanced' | 'high';
 export type AgentNotify = 'always' | 'complete' | 'never';
 
-export type AgentCommandMode = 'review' | 'safe_edit' | 'sandbox_auto';
+export type AgentCommandMode = 'review' | 'safe_edit';
 
 export interface AgentCommandDisabledReason {
     title: string;
@@ -920,13 +920,6 @@ const modeOptions = computed<
 >(() => [
     { id: 'review', label: 'Review only' },
     { id: 'safe_edit', label: 'Safe workspace edits' },
-    {
-        id: 'sandbox_auto',
-        label: 'Full autonomy in sandbox',
-        disabled:
-            !activeRunnerSupports.value?.safeSandboxFlag ||
-            !activeRunnerSupports.value?.dangerousBypassFlag,
-    },
 ]);
 
 function modeLabel(mode: string): string {
@@ -935,8 +928,6 @@ function modeLabel(mode: string): string {
             return 'Review only';
         case 'safe_edit':
             return 'Safe workspace edits';
-        case 'sandbox_auto':
-            return 'Full autonomy in sandbox';
         default:
             return 'Safe workspace edits';
     }
@@ -1495,8 +1486,6 @@ function modeToIsolation(mode: string): string {
             return 'host_readonly';
         case 'safe_edit':
             return 'host_workspace_write';
-        case 'sandbox_auto':
-            return 'sandbox_dangerous';
         default:
             return 'host_workspace_write';
     }

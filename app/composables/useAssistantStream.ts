@@ -39,7 +39,7 @@ import { useOr3Api } from './useOr3Api';
 interface AssistantStreamRuntime {
     isStreaming: boolean;
     activeJobId: string | null;
-    chatMode: 'ask' | 'work' | 'admin';
+    chatMode: 'ask' | 'work';
     controller: AbortController | null;
     initialized: boolean;
 }
@@ -96,9 +96,9 @@ export function useAssistantStream() {
         },
     });
     const chatMode = computed({
-        get: () => runtime.value.chatMode,
-        set: (value: 'ask' | 'work' | 'admin') => {
-            runtime.value.chatMode = value;
+        get: () => (runtime.value.chatMode === 'ask' ? 'ask' : 'work'),
+        set: (value: 'ask' | 'work') => {
+            runtime.value.chatMode = value === 'ask' ? 'ask' : 'work';
         },
     });
     const { resolveExecutionRoute, routeExecution } = useExecutionRouter({

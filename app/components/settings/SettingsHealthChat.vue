@@ -682,7 +682,7 @@ const {
 } = useDoctorApprovalHydration();
 const authSession = useAuthSession();
 const draft = ref('');
-const chatMode = ref<'ask' | 'work' | 'admin'>('admin');
+const chatMode = ref<'ask' | 'work'>('work');
 const selectedRunnerId = ref('');
 const selectedRunnerModel = ref('');
 const selectedRunnerThinkingLevel = ref('');

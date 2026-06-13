@@ -442,7 +442,7 @@ const props = withDefaults(
         modelValue?: string;
         streaming?: boolean;
         paneId?: string;
-        mode?: 'ask' | 'work' | 'admin';
+        mode?: 'ask' | 'work';
         selectedRunnerId?: string;
         selectedRunnerModel?: string;
         selectedRunnerThinkingLevel?: string;
@@ -462,7 +462,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{
     'update:modelValue': [value: string];
-    'update:mode': [value: 'ask' | 'work' | 'admin'];
+    'update:mode': [value: 'ask' | 'work'];
     'update:selectedRunnerId': [value: string];
     'update:selectedRunnerModel': [value: string];
     'update:selectedRunnerThinkingLevel': [value: string];
@@ -561,19 +561,9 @@ const allModeOptions = [
         icon: 'i-pixelarticons-edit-box',
         description: 'Use normal guarded work tools.',
     },
-    {
-        id: 'admin' as const,
-        label: 'Admin',
-        icon: 'i-pixelarticons-shield',
-        description: 'Expose powerful tools when allowed.',
-    },
 ] as const;
 
-const { activeHost } = useActiveHost();
-const modeOptions = computed(() => {
-    if (activeHost.value?.role === 'admin') return [...allModeOptions];
-    return allModeOptions.filter((option) => option.id !== 'admin');
-});
+const modeOptions = computed(() => [...allModeOptions]);
 
 const selectedMode = computed(() => props.mode ?? 'work');
 const selectedRunnerId = computed(() => props.selectedRunnerId || '');
@@ -781,7 +771,7 @@ function openWorkspaceFilePicker() {
     workspaceFilePickerOpen.value = true;
 }
 
-function selectMode(mode: 'ask' | 'work' | 'admin') {
+function selectMode(mode: 'ask' | 'work') {
     emit('update:mode', mode);
 }
 

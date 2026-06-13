@@ -32,6 +32,15 @@ import {
 import { eventJobId, normalizeRunnerChatEvent, responseJobId } from './events';
 import { useChatRuntimeLog } from '~/composables/useChatRuntimeLog';
 
+function runnerApprovalAutopilotFields(
+    approvalAutopilot: boolean | undefined,
+): { approval_autopilot?: boolean } {
+    if (approvalAutopilot === undefined) {
+        return {};
+    }
+    return { approval_autopilot: approvalAutopilot };
+}
+
 interface StreamApiLike {
     request<T>(
         path: string,
@@ -766,6 +775,9 @@ export async function streamRunnerChat(
                           context.payload.runnerCwd ||
                           context.session.runnerCwd,
                       max_turns: context.payload.runnerMaxTurns || undefined,
+                      ...runnerApprovalAutopilotFields(
+                          context.payload.approvalAutopilot,
+                      ),
                   },
               },
           );
@@ -806,6 +818,9 @@ export async function streamRunnerChat(
                     context.session.runnerIsolation,
                 cwd: context.payload.runnerCwd || context.session.runnerCwd,
                 max_turns: context.payload.runnerMaxTurns || undefined,
+                ...runnerApprovalAutopilotFields(
+                    context.payload.approvalAutopilot,
+                ),
                 ...(context.payload.runnerThinkingLevel
                     ? {
                           thinking_level: context.payload.runnerThinkingLevel,

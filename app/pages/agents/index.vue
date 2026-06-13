@@ -523,7 +523,6 @@ async function createJob(payload: AgentTaskPayload) {
                     mode: payload.mode as
                         | 'review'
                         | 'safe_edit'
-                        | 'sandbox_auto'
                         | undefined,
                     isolation: payload.isolation as
                         | 'host_readonly'

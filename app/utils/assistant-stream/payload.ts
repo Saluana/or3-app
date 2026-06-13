@@ -63,6 +63,7 @@ export function normalizePayload(
         runnerPermission: normalizeRunnerPermissionPayload(
             input.runnerPermission,
         ),
+        approvalAutopilot: input.approvalAutopilot,
     };
 }
 
@@ -89,5 +90,6 @@ export function retryPayloadForStorage(
         runnerMaxTurns: payload.runnerMaxTurns,
         runnerThinkingLevel: payload.runnerThinkingLevel,
         runnerPermission: payload.runnerPermission,
+        approvalAutopilot: payload.approvalAutopilot,
     };
 }

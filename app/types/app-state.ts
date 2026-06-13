@@ -91,7 +91,7 @@ export interface AssistantSendPayload {
     text: string;
     transportText?: string;
     attachments?: ChatAttachment[];
-    mode?: 'ask' | 'work' | 'admin';
+    mode?: 'ask' | 'work';
     approvalToken?: string;
     followJobId?: string;
     continueMessageId?: string;
@@ -108,6 +108,7 @@ export interface AssistantSendPayload {
     runnerMaxTurns?: number;
     runnerThinkingLevel?: string;
     runnerPermission?: AssistantRunnerPermission;
+    approvalAutopilot?: boolean;
 }
 
 export interface ChatMessagePart {

@@ -147,7 +147,7 @@ import type { ChatRunnerInfo } from '~/types/or3-api';
 import type { AssistantSendPayload } from '~/types/app-state';
 
 const draft = defineModel<string>('draft', { required: true });
-const chatMode = defineModel<'ask' | 'work' | 'admin'>('chatMode', {
+const chatMode = defineModel<'ask' | 'work'>('chatMode', {
     required: true,
 });
 const selectedRunnerId = defineModel<string>('selectedRunnerId', {

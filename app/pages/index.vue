@@ -552,6 +552,16 @@ function sendWithMode(payload: Parameters<typeof send>[0]) {
     const sessionContinuationMode =
         activeSession.value?.runnerContinuationMode ||
         continuationModeForRunner(selectedRunnerId.value);
+    const runnerPolicy =
+        chatMode.value === 'ask'
+            ? {
+                  runnerMode: 'review',
+                  runnerIsolation: 'host_readonly',
+              }
+            : {
+                  runnerMode: 'safe_edit',
+                  runnerIsolation: 'host_workspace_write',
+              };
     const resolvedRunnerModel = resolveRunnerModelForSend({
         selected: selectedRunnerModel.value,
         runnerDefault: runner?.default_model,
@@ -561,6 +571,7 @@ function sendWithMode(payload: Parameters<typeof send>[0]) {
             text: payload,
             transportText: payload,
             mode: chatMode.value,
+            ...runnerPolicy,
             runnerId: selectedRunnerId.value,
             runnerModel: resolvedRunnerModel,
             runnerThinkingLevel: selectedRunnerThinkingLevel.value || undefined,
@@ -572,6 +583,9 @@ function sendWithMode(payload: Parameters<typeof send>[0]) {
     void send({
         ...payload,
         mode: payload.mode ?? chatMode.value,
+        runnerMode: payload.runnerMode || runnerPolicy.runnerMode,
+        runnerIsolation:
+            payload.runnerIsolation || runnerPolicy.runnerIsolation,
         runnerId: payload.runnerId || selectedRunnerId.value,
         runnerModel: payload.runnerModel || resolvedRunnerModel,
         runnerThinkingLevel:
