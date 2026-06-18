@@ -321,6 +321,22 @@ export function useChatSessions() {
         options: MessageMutationOptions = {},
     ) {
         const sessionId = message.sessionId;
+        if (message.id) {
+            const existing = findMessageById(message.id);
+            if (existing) {
+                return (
+                    applyMessagePatch(
+                        existing,
+                        {
+                            ...message,
+                            sessionId,
+                            createdAt: message.createdAt ?? existing.createdAt,
+                        },
+                        options,
+                    ) ?? existing
+                );
+            }
+        }
         const complete: ChatMessage = {
             ...message,
             id: message.id ?? createId('msg'),

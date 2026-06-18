@@ -276,6 +276,40 @@ describe('useChatSessions', () => {
         expect(session.lastMessagePreview).toBe('partial');
     });
 
+    it('updates an existing message instead of appending a duplicate id', () => {
+        useLocalCache().updateHost({
+            id: 'test-host',
+            name: 'Test Host',
+            baseUrl: 'http://127.0.0.1:9100',
+            token: 'secret',
+        });
+
+        const chat = useChatSessions();
+        const session = chat.ensureSession();
+
+        chat.addMessage({
+            id: 'backend_2325',
+            sessionId: session.id,
+            role: 'assistant',
+            content: '',
+            status: 'streaming',
+        });
+        chat.addMessage({
+            id: 'backend_2325',
+            sessionId: session.id,
+            role: 'assistant',
+            content: 'Done.',
+            status: 'complete',
+        });
+
+        expect(chat.messages.value).toHaveLength(1);
+        expect(chat.messages.value[0]).toMatchObject({
+            id: 'backend_2325',
+            content: 'Done.',
+            status: 'complete',
+        });
+    });
+
     it('clearSessionMessages keeps the session title', () => {
         useLocalCache().updateHost({
             id: 'test-host',

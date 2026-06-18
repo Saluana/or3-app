@@ -32,6 +32,21 @@ export function sortSessionMessages(messages: ChatMessage[]) {
     return [...messages].sort(compareSessionMessages);
 }
 
+function uniqueMessagesById(messages: ChatMessage[]) {
+    const out: ChatMessage[] = [];
+    const indexById = new Map<string, number>();
+    for (const message of messages) {
+        const existingIndex = indexById.get(message.id);
+        if (existingIndex === undefined) {
+            indexById.set(message.id, out.length);
+            out.push(message);
+            continue;
+        }
+        out[existingIndex] = message;
+    }
+    return out;
+}
+
 /** Ensure a new message sorts after existing session messages. */
 export function createdAtForNewMessage(
     sessionId: string,
@@ -51,7 +66,7 @@ function sortSessionBucket(sessionId: string) {
 }
 
 function rebuildSessionBucket(sessionId: string, messages: ChatMessage[]) {
-    const sorted = sortSessionMessages(messages);
+    const sorted = uniqueMessagesById(sortSessionMessages(messages));
     messagesBySessionId.set(sessionId, sorted);
     for (const message of sorted) {
         messageById.set(message.id, message);
@@ -78,8 +93,11 @@ function touchActiveSessionView() {
 export function reindexMessagesFromCache(messages: ChatMessage[]) {
     messageById.clear();
     messagesBySessionId.clear();
+    const latestById = new Map<string, ChatMessage>();
     for (const message of messages) {
-        messageById.set(message.id, message);
+        latestById.set(message.id, message);
+    }
+    for (const message of latestById.values()) {
         const bucket = messagesBySessionId.get(message.sessionId) ?? [];
         bucket.push(message);
         messagesBySessionId.set(message.sessionId, bucket);
@@ -102,6 +120,13 @@ export function findMessageInIndex(id: string) {
 export function indexMessage(message: ChatMessage) {
     messageById.set(message.id, message);
     const bucket = messagesBySessionId.get(message.sessionId) ?? [];
+    const existingIndex = bucket.findIndex((item) => item.id === message.id);
+    if (existingIndex >= 0) {
+        bucket[existingIndex] = message;
+        sortSessionBucket(message.sessionId);
+        messagesBySessionId.set(message.sessionId, bucket);
+        return;
+    }
     bucket.push(message);
     sortSessionBucket(message.sessionId);
     messagesBySessionId.set(message.sessionId, bucket);

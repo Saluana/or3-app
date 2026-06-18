@@ -191,10 +191,27 @@ function normalizePersistedSessions(
     }));
 }
 
+function dedupeMessagesById(
+    messages: Or3AppState['messages'] = [],
+): Or3AppState['messages'] {
+    const out: Or3AppState['messages'] = [];
+    const indexById = new Map<string, number>();
+    for (const message of messages) {
+        const existingIndex = indexById.get(message.id);
+        if (existingIndex === undefined) {
+            indexById.set(message.id, out.length);
+            out.push(message);
+            continue;
+        }
+        out[existingIndex] = message;
+    }
+    return out;
+}
+
 function normalizePersistedMessages(
     messages: Or3AppState['messages'] = [],
 ): Or3AppState['messages'] {
-    const normalized = messages.map((message) =>
+    const normalized = dedupeMessagesById(messages).map((message) =>
         markOrphanClientStreamingFailed({
             ...message,
             attachments: message.attachments ?? [],
@@ -223,7 +240,7 @@ function normalizePersistedMessages(
             })),
         );
     }
-    return compacted;
+    return dedupeMessagesById(compacted);
 }
 
 function readPersistedState() {

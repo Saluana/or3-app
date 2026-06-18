@@ -1,4 +1,6 @@
 const OR3_LOCAL_SERVICE_ORIGIN = 'http://127.0.0.1:9100';
+const OR3_SERVICE_ORIGIN_ENV =
+    process.env.OR3_APP_SERVICE_ORIGIN || process.env.OR3_LOCAL_SERVICE_ORIGIN || '';
 
 const forwardedHeaders = [
     'accept',
@@ -35,6 +37,27 @@ function hasProxyAuth(headers: Record<string, string | string[] | undefined>) {
     return Boolean(headers.authorization || headers['x-or3-session']);
 }
 
+function isLoopbackHostname(hostname: string) {
+    const normalized = hostname.trim().toLowerCase();
+    return (
+        normalized === 'localhost' ||
+        normalized === '127.0.0.1' ||
+        normalized === '::1' ||
+        normalized === '[::1]'
+    );
+}
+
+function serviceOriginForRequest(requestUrl: URL) {
+    const configured = OR3_SERVICE_ORIGIN_ENV.trim().replace(/\/+$/, '');
+    if (configured) return configured;
+    if (requestUrl.hostname && !isLoopbackHostname(requestUrl.hostname)) {
+        const target = new URL(requestUrl.origin);
+        target.port = '9100';
+        return target.toString().replace(/\/+$/, '');
+    }
+    return OR3_LOCAL_SERVICE_ORIGIN;
+}
+
 export default defineEventHandler(async (event) => {
     const rawPath = String(event.context.params?.path || '').replace(/^\/+/, '');
     if (!rawPath.startsWith('internal/v1/')) {
@@ -47,7 +70,7 @@ export default defineEventHandler(async (event) => {
     }
 
     const requestUrl = getRequestURL(event);
-    const target = `${OR3_LOCAL_SERVICE_ORIGIN}/${rawPath}${requestUrl.search}`;
+    const target = `${serviceOriginForRequest(requestUrl)}/${rawPath}${requestUrl.search}`;
     const incomingHeaders = getHeaders(event);
     if (!publicProxyRoute(rawPath, method) && !hasProxyAuth(incomingHeaders)) {
         throw createError({
