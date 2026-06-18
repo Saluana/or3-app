@@ -313,7 +313,7 @@ const route = useRoute();
 const router = useRouter();
 const toast = useToast();
 const { canEditFile } = useComputerTextFiles();
-const { favoriteDirectories, isFavorite, toggleFavorite } =
+const { favoriteDirectories, isFavorite, removeFavorite, toggleFavorite } =
     useFavoriteDirectories();
 
 const files = useComputerFiles();
@@ -608,17 +608,32 @@ async function handleRootChange(rootId: string) {
 }
 
 function toggleCurrentDirectoryFavorite() {
-    if (!activeRoot.value || !currentRootId.value) return;
-    const added = toggleFavorite(
-        currentRootId.value,
-        currentDirectoryPath.value,
-        activeRoot.value.label,
+    if (!currentRootId.value) return;
+    const existingFavorite = favoriteDirectories.value.find(
+        (favorite) =>
+            favorite.rootId === currentRootId.value &&
+            favorite.path === currentDirectoryPath.value,
     );
+    const rootLabel = activeRoot.value?.label || existingFavorite?.rootLabel;
+    if (!rootLabel) return;
+
+    let added = false;
+    if (activeRoot.value) {
+        added = toggleFavorite(
+            currentRootId.value,
+            currentDirectoryPath.value,
+            rootLabel,
+        );
+    } else if (
+        !removeFavorite(currentRootId.value, currentDirectoryPath.value)
+    ) {
+        return;
+    }
     toast.add({
         title: added ? 'Directory saved' : 'Directory removed',
         description: added
-            ? `Added ${currentDirectoryPath.value === '.' ? activeRoot.value.label : currentDirectoryPath.value} to favorites.`
-            : `Removed ${currentDirectoryPath.value === '.' ? activeRoot.value.label : currentDirectoryPath.value} from favorites.`,
+            ? `Added ${currentDirectoryPath.value === '.' ? rootLabel : currentDirectoryPath.value} to favorites.`
+            : `Removed ${currentDirectoryPath.value === '.' ? rootLabel : currentDirectoryPath.value} from favorites.`,
         color: 'success',
         icon: added ? 'i-pixelarticons-check' : 'i-pixelarticons-close',
     });

@@ -113,6 +113,20 @@ export function useFavoriteDirectories() {
         );
     }
 
+    function removeFavorite(rootId: string, path: string) {
+        const normalizedPath = path?.trim() || '.';
+        const nextFavorites = favoriteDirectories.value.filter(
+            (favorite) =>
+                favorite.rootId !== rootId ||
+                favorite.path !== normalizedPath,
+        );
+        if (nextFavorites.length === favoriteDirectories.value.length) {
+            return false;
+        }
+        savePreferences({ favorites: nextFavorites });
+        return true;
+    }
+
     function toggleFavorite(rootId: string, path: string, rootLabel: string) {
         const normalizedPath = path?.trim() || '.';
         const existingIndex = favoriteDirectories.value.findIndex(
@@ -120,10 +134,7 @@ export function useFavoriteDirectories() {
                 favorite.rootId === rootId && favorite.path === normalizedPath,
         );
         if (existingIndex >= 0) {
-            const nextFavorites = favoriteDirectories.value.filter(
-                (_, index) => index !== existingIndex,
-            );
-            savePreferences({ favorites: nextFavorites });
+            removeFavorite(rootId, normalizedPath);
             return false;
         }
 
@@ -143,6 +154,7 @@ export function useFavoriteDirectories() {
     return {
         favoriteDirectories,
         isFavorite,
+        removeFavorite,
         toggleFavorite,
     };
 }
