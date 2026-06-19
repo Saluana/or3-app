@@ -93,6 +93,21 @@
                             <Icon name="i-pixelarticons-file" class="size-5" />
                             <span>Mention workspace file</span>
                         </button>
+                        <button
+                            type="button"
+                            class="or3-composer-menu__item"
+                            :title="cwd ?? 'Set the working directory for this thread'"
+                            @click="openCwdPicker"
+                        >
+                            <Icon
+                                name="i-pixelarticons-folder"
+                                class="size-5"
+                            />
+                            <span>
+                                <template v-if="displayCwd">{{ displayCwd }}</template>
+                                <template v-else>Set working directory</template>
+                            </span>
+                        </button>
 
                         <div class="or3-composer-menu__divider" />
                         <p class="or3-composer-menu__eyebrow">Runner</p>
@@ -394,6 +409,12 @@
         purpose="file"
         @select-file="addWorkspacePickedFile"
     />
+    <CwdPickerSheet
+        v-model:open="cwdPickerOpen"
+        purpose="directory"
+        :initial-path="cwd"
+        @select="(path) => { setCwd(path); cwdPickerOpen = false; }"
+    />
 </template>
 
 <script setup lang="ts">
@@ -430,6 +451,7 @@ import {
     type FileMentionSuggestionItem,
 } from '../../composables/useFileMentionSuggestions';
 import { useComputerFiles } from '../../composables/useComputerFiles';
+import { useThreadCwd } from '../../composables/useThreadCwd';
 import type {
     AssistantSendPayload,
     ChatAttachment,
@@ -495,8 +517,23 @@ const isDragging = ref(false);
 const isFocused = ref(false);
 const actionMenuOpen = ref(false);
 const workspaceFilePickerOpen = ref(false);
+const cwdPickerOpen = ref(false);
 const dragDepth = ref(0);
 const submitLocked = ref(false);
+
+const { cwd, setCwd } = useThreadCwd();
+
+const displayCwd = computed(() => {
+    if (!cwd.value) return undefined;
+    const parts = cwd.value.replace(/\/$/, '').split('/');
+    const last = parts[parts.length - 1];
+    return last || '/';
+});
+
+function openCwdPicker() {
+    actionMenuOpen.value = false;
+    cwdPickerOpen.value = true;
+}
 const enterCreatesNewLine = ref(false);
 const formState = reactive({
     text: props.modelValue,
@@ -1303,6 +1340,7 @@ async function submit() {
         runnerLabel: runnerOptions.value.find(
             (runner) => runner.id === selectedRunnerId.value,
         )?.label,
+        ...(cwd.value ? { runnerCwd: cwd.value } : {}),
     };
 
     emit('send', payload);
