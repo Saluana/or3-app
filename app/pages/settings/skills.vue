@@ -33,6 +33,26 @@
                 />
             </SurfaceCard>
 
+            <div v-if="!skillsLoading && globalSkillsMissing" class="flex flex-wrap gap-3">
+                <UButton
+                    size="md"
+                    color="primary"
+                    icon="i-pixelarticons-download"
+                    label="Install to global skills folder"
+                    :loading="installing"
+                    @click="installGlobal"
+                />
+                <UButton
+                    v-if="workspaceSkillsMissing"
+                    size="md"
+                    color="secondary"
+                    icon="i-pixelarticons-folder"
+                    label="Install to workspace skills folder"
+                    :loading="installing"
+                    @click="installWorkspace"
+                />
+            </div>
+
             <p v-if="skillsLoading && !skills.length" class="text-center font-mono text-xs text-(--or3-text-muted)">Loading skills...</p>
 
             <SurfaceCard v-if="skillsError" tone="danger" class-name="space-y-2">
@@ -47,8 +67,39 @@
                 description="Install skills into ~/.agents/skills or your OR3 skills folders, then refresh this page."
             />
 
+            <div
+                v-if="skills.length"
+                class="relative"
+            >
+                <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
+                    <Icon name="i-pixelarticons-search" class="size-4 text-(--or3-text-muted)" />
+                </div>
+                <UInput
+                    v-model="searchQuery"
+                    class="w-full"
+                    placeholder="Search skills by name, description, source..."
+                    :ui="{
+                        base: 'block w-full rounded-xl border border-(--or3-border) bg-white/80 pl-10 pr-9 py-2.5 font-mono text-sm text-(--or3-text) placeholder-(--or3-text-muted) outline-none transition focus:border-(--or3-green) focus:ring-1 focus:ring-(--or3-green)/30',
+                    }"
+                />
+                <button
+                    v-if="searchQuery"
+                    class="absolute inset-y-0 right-0 flex items-center pr-3 text-(--or3-text-muted) transition hover:text-(--or3-text)"
+                    @click="searchQuery = ''"
+                >
+                    <Icon name="i-pixelarticons-close" class="size-4" />
+                </button>
+            </div>
+
+            <div
+                v-if="searchQuery && filteredSkills.length"
+                class="text-center font-mono text-xs text-(--or3-text-muted)"
+            >
+                {{ filteredSkills.length }} of {{ skills.length }} skills match
+            </div>
+
             <SurfaceCard
-                v-for="skill in skills"
+                v-for="skill in filteredSkills"
                 :key="skill.key || skill.name"
                 class-name="space-y-3"
             >
@@ -138,7 +189,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import type { Ref } from 'vue'
 import { useSkills } from '~/composables/useSkills'
 import type { SkillItem } from '~/types/or3-api'
@@ -152,13 +203,88 @@ const {
     skillsError,
     loadSkills,
     updateSkill,
+    installBundled,
 } = useSkills()
 
 const apiKeyInputs = ref<Record<string, string>>({})
 const envInputs = ref<Record<string, Record<string, string>>>({})
 const configInputs = ref<Record<string, Record<string, string>>>({})
+const installing = ref(false)
+const searchQuery = ref('')
+
+const filteredSkills = computed(() => {
+    const query = searchQuery.value.trim().toLowerCase()
+    if (!query) return skills.value
+    const scored = skills.value.map((skill) => ({
+        skill,
+        score: fuzzyScore(skill, query),
+    }))
+    const matches = scored.filter((s) => s.score > 0)
+    matches.sort((a, b) => b.score - a.score)
+    return matches.map((s) => s.skill)
+})
+
+const globalSkillsMissing = computed(() => !skills.value.some((s) => s.source === 'global'))
+const workspaceSkillsMissing = computed(() => !skills.value.some((s) => s.source === 'workspace'))
+
+async function installGlobal() {
+    installing.value = true
+    try {
+        await installBundled('global')
+    } finally {
+        installing.value = false
+    }
+}
+
+async function installWorkspace() {
+    installing.value = true
+    try {
+        await installBundled('workspace')
+    } finally {
+        installing.value = false
+    }
+}
 
 type StatusTone = 'green' | 'amber' | 'danger' | 'neutral'
+
+function fuzzyScore(skill: SkillItem, query: string): number {
+    const haystacks = [
+        { text: skill.name, weight: 100 },
+        { text: skill.description, weight: 60 },
+        { text: skill.summary, weight: 50 },
+        { text: skill.source, weight: 30 },
+        { text: skill.location, weight: 20 },
+        { text: skill.key, weight: 80 },
+    ]
+    let best = 0
+    for (const { text, weight } of haystacks) {
+        if (!text) continue
+        const lower = text.toLowerCase()
+        if (lower === query) {
+            best = Math.max(best, weight)
+            continue
+        }
+        if (lower.startsWith(query)) {
+            best = Math.max(best, Math.round(weight * 0.85))
+            continue
+        }
+        if (lower.includes(query)) {
+            best = Math.max(best, Math.round(weight * 0.6))
+            continue
+        }
+        let qi = 0
+        for (const ch of lower) {
+            if (ch === query[qi]) {
+                qi++
+                if (qi === query.length) {
+                    best = Math.max(best, Math.round(weight * 0.35))
+                    break
+                }
+            }
+        }
+    }
+    return best
+}
 
 function statusTone(skill: SkillItem): StatusTone {
     if (skill.status === 'eligible') return 'green'

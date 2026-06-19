@@ -29,6 +29,21 @@ export function useSkills() {
         }
     }
 
+    async function installBundled(target: 'global' | 'workspace'): Promise<string[]> {
+        skillsError.value = null
+        try {
+            const response = await api.request<{ ok: boolean; skills: string[]; targetDir: string }>(
+                '/internal/v1/skills/install-bundled',
+                { method: 'POST', body: { target } },
+            )
+            await loadSkills()
+            return response.skills ?? []
+        } catch (error: any) {
+            skillsError.value = error?.message ?? 'Unable to install bundled skills.'
+            return []
+        }
+    }
+
     async function updateSkill(skill: SkillItem | string, settings: SkillSettingsRequest) {
         const name = typeof skill === 'string' ? skill : skill.name
         skillsSaving.value = { ...skillsSaving.value, [name]: true }
@@ -72,6 +87,7 @@ export function useSkills() {
         skillsError,
         loadSkills,
         updateSkill,
+        installBundled,
         resetSkills,
     }
 }
