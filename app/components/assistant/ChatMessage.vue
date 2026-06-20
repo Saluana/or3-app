@@ -172,6 +172,13 @@
                 >
                     {{ errorStripText }}
                 </p>
+                <details
+                    v-if="message.errorDetails"
+                    class="or3-msg__error-details"
+                >
+                    <summary>Technical details</summary>
+                    <pre>{{ message.errorDetails }}</pre>
+                </details>
 
                 <div
                     class="or3-msg__actions"
@@ -1110,6 +1117,26 @@ function attachmentTooltip(attachment: ChatAttachment): string {
     color: var(--or3-green-dark);
     background: color-mix(in srgb, var(--or3-green-soft) 55%, transparent);
     opacity: 1;
+}
+
+.or3-msg__error-details {
+    margin-top: 0.75rem;
+    border-top: 1px solid var(--or3-border);
+    padding-top: 0.6rem;
+    color: var(--or3-text-muted);
+    font-size: 0.75rem;
+}
+
+.or3-msg__error-details summary {
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.or3-msg__error-details pre {
+    margin-top: 0.5rem;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-family: var(--font-mono, ui-monospace, monospace);
 }
 
 .or3-msg__action:focus-visible {

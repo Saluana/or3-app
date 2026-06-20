@@ -284,6 +284,30 @@ export const SIMPLE_SETTING_SECTIONS: SimpleSettingSection[] = [
                 fieldRefs: [{ section: 'workspace', field: 'allowedDir' }],
                 advancedKeys: ['workspace.allowedDir'],
             },
+            {
+                key: 'filesystem-browsing',
+                label: 'Full filesystem browsing',
+                description:
+                    'Browse and select any folder when choosing working directories and attachments.',
+                kind: 'toggle',
+                fieldRefs: [
+                    { section: 'workspace', field: 'filesystemBrowsing' },
+                ],
+                impacts: ['higher-risk'],
+                advancedKeys: ['workspace.filesystemBrowsing'],
+                toggle: {
+                    on: {
+                        section: 'workspace',
+                        field: 'filesystemBrowsing',
+                        value: true,
+                    },
+                    off: {
+                        section: 'workspace',
+                        field: 'filesystemBrowsing',
+                        value: false,
+                    },
+                },
+            },
         ],
     },
     {

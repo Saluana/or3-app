@@ -144,6 +144,7 @@ export interface ChatMessage {
     runnerChatTurnId?: string;
     agentCliRunId?: string;
     error?: string;
+    errorDetails?: string;
     errorCode?: Or3AppErrorCode;
     approvalRequestId?: number | string;
     approvalType?: string;

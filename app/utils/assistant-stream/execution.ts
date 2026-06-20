@@ -23,6 +23,7 @@ import {
     formatUserFacingErrorInline,
     showFailureToast,
     type ToastLike,
+    userFacingErrorDetails,
 } from './errors';
 import {
     EMPTY_FINAL_USER_MESSAGE,
@@ -962,6 +963,7 @@ export async function handleRunnerExecutionError(
         status: 'failed',
         error: userFacingErrorCopy(context.streamError, friendlyErrorCode)
             .message,
+        errorDetails: userFacingErrorDetails(context.streamError) || undefined,
         errorCode: friendlyErrorCode,
         runnerChatSessionId:
             context.runnerChatTurnForRecovery?.sessionId ||
@@ -1009,6 +1011,7 @@ export async function handleAssistantSendError(
         content: friendly,
         status: 'failed',
         error: userFacingErrorCopy(context.streamError, errorCode).message,
+        errorDetails: userFacingErrorDetails(context.streamError) || undefined,
         errorCode,
     });
     showFailureToast(

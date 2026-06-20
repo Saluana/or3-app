@@ -174,10 +174,14 @@ const FIELD_ALIASES: Record<string, BackendFieldRef> = {
         section: 'workspace',
         field: 'workspace_dir',
     },
-    [refKey('workspace', 'allowedDir')]: {
-        section: 'workspace',
-        field: 'workspace_allowed_dir',
-    },
+	[refKey('workspace', 'allowedDir')]: {
+		section: 'workspace',
+		field: 'workspace_allowed_dir',
+	},
+	[refKey('workspace', 'filesystemBrowsing')]: {
+		section: 'workspace',
+		field: 'filesystem_browsing',
+	},
     [refKey('tools', 'restrictToWorkspace')]: {
         section: 'workspace',
         field: 'workspace_restrict',

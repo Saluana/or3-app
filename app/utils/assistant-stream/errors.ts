@@ -141,6 +141,27 @@ export function describeRequestErrorDetails(error: unknown) {
     return details.join(' · ');
 }
 
+/** Safe diagnostics that can be expanded by the user from a failed chat message. */
+export function userFacingErrorDetails(error: unknown) {
+    if (!error || typeof error !== 'object') return '';
+    const record = error as Record<string, unknown>;
+    const publicMessage = coerceErrorText(record.message || record.error);
+    const detail = coerceErrorText(record.detail);
+    const lines = [
+        detail && detail !== publicMessage ? detail : '',
+        typeof record.code === 'string' ? `Code: ${record.code}` : '',
+        typeof record.status === 'number' ? `HTTP status: ${record.status}` : '',
+        typeof record.request_id === 'string' ||
+        typeof record.request_id === 'number'
+            ? `Request ID: ${record.request_id}`
+            : '',
+        typeof record.trace_id === 'string' && record.trace_id.trim()
+            ? `Trace ID: ${record.trace_id.trim()}`
+            : '',
+    ].filter(Boolean);
+    return lines.join('\n');
+}
+
 export function extractErrorCode(error: unknown): Or3AppErrorCode | undefined {
     if (!error || typeof error !== 'object') return undefined;
     const record = error as Record<string, unknown>;

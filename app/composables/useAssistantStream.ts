@@ -209,6 +209,7 @@ export function useAssistantStream() {
                       ? []
                       : existingAssistant.activityLog,
                   error: undefined,
+                  errorDetails: undefined,
                   errorCode: undefined,
                   approvalRequestId: undefined,
                   approvalState: undefined,

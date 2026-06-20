@@ -139,6 +139,7 @@ function messageMemoDeps(message: ChatMessage) {
         message.status,
         message.content,
         message.error,
+        message.errorDetails,
         message.approvalState,
         message.approvalRequestId,
         toolStateSignature(message),
