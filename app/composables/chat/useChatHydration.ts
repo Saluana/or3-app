@@ -1,6 +1,7 @@
 import type { ChatMessage, ChatSession, ChatToolCall } from '~/types/app-state';
 import type { ChatHistoryMessage } from '~/types/or3-api';
 import { isSyntheticApprovalContinuationUserMessage } from '~/utils/chat/approval-continuation';
+import { EMPTY_STREAM_USER_MESSAGE } from '~/utils/assistant-stream/userErrorCopy';
 import {
     mergeAssistantMessages,
     shouldMergeAssistantRunMessages,
@@ -232,7 +233,35 @@ export function hydrateBackendMessages(
                 continue;
             }
         }
-        const localMatch = listForSession().find(
+        const isDurableRunningAssistant =
+            role === 'assistant' &&
+            (payload.status === 'queued' || payload.status === 'running') &&
+            typeof payload.runner_chat_turn_id === 'string';
+        const durableTurnMatch = isDurableRunningAssistant
+            ? listForSession().find(
+                  (message) =>
+                      message.role === 'assistant' &&
+                      message.runnerChatTurnId ===
+                          payload.runner_chat_turn_id,
+              )
+            : undefined;
+        const orphanLocalMatch =
+            isDurableRunningAssistant && !durableTurnMatch
+            ? [...listForSession()]
+                  .reverse()
+                  .find(
+                      (message) =>
+                          message.role === 'assistant' &&
+                          !message.backendMessageId &&
+                          !message.runnerChatTurnId &&
+                          (message.status === 'streaming' ||
+                              (message.status === 'failed' &&
+                                  message.content ===
+                                      EMPTY_STREAM_USER_MESSAGE)),
+                  )
+            : undefined;
+        const resumableLocalMatch = durableTurnMatch ?? orphanLocalMatch;
+        const localMatch = resumableLocalMatch ?? listForSession().find(
             (message) =>
                 !message.backendMessageId &&
                 !claimedLocalMessageIds.has(message.id) &&
@@ -247,7 +276,16 @@ export function hydrateBackendMessages(
                 {
                     ...patch,
                     backendMessageIds: appendBackendId(localMatch, backendID),
-                    content: localMatch.content || backend.content,
+                    content: orphanLocalMatch
+                        ? backend.content
+                        : localMatch.content || backend.content,
+                    ...(orphanLocalMatch
+                        ? {
+                              error: undefined,
+                              errorCode: undefined,
+                              errorDetails: undefined,
+                          }
+                        : {}),
                     createdAt:
                         localMatch.createdAt || msToIso(backend.created_at),
                 },

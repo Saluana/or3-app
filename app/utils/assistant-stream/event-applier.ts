@@ -342,8 +342,8 @@ export function createAssistantEventApplier(
         const seq = eventSequence(event);
         const seqKey = seq !== undefined ? `seq:${seq}` : '';
         const deltaFingerprint = String(
-            payload?.delta ??
-                payload?.text ??
+            payload?.text ??
+                payload?.delta ??
                 payload?.content ??
                 payload?.chunk ??
                 '',
@@ -387,8 +387,8 @@ export function createAssistantEventApplier(
         });
 
         const delta = String(
-            payload?.delta ??
-                payload?.text ??
+            payload?.text ??
+                payload?.delta ??
                 payload?.content ??
                 payload?.chunk ??
                 '',

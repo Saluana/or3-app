@@ -194,7 +194,7 @@ function runnerEventType(raw: unknown, payload: Record<string, unknown>) {
 
 function runnerDeltaText(payload: Record<string, unknown>) {
     return String(
-        payload.delta ?? payload.text ?? payload.content ?? payload.chunk ?? '',
+        payload.text ?? payload.delta ?? payload.content ?? payload.chunk ?? '',
     );
 }
 
@@ -202,13 +202,16 @@ function upsertHydratedTool(
     state: {
         toolCalls: ChatToolCall[];
         toolParts: ChatMessagePart[];
+        orderedParts: ChatMessagePart[];
         activities: ChatActivityEntry[];
     },
     call: ChatToolCall,
     includeGenericActivity = true,
 ) {
     state.toolCalls = upsertById(state.toolCalls, call);
-    state.toolParts = upsertById(state.toolParts, toolPart(call));
+    const part = toolPart(call);
+    state.toolParts = upsertById(state.toolParts, part);
+    state.orderedParts = upsertById(state.orderedParts, part);
     if (!includeGenericActivity) return;
     state.activities = upsertById(
         state.activities,
@@ -223,17 +226,61 @@ function hydratedRunnerEventState(
     reasoningText?: string;
     toolCalls: ChatToolCall[];
     toolParts: ChatMessagePart[];
+    orderedParts: ChatMessagePart[];
     activities: ChatActivityEntry[];
 } {
     if (!Array.isArray(rawEvents)) {
-        return { toolCalls: [], toolParts: [], activities: [] };
+        return {
+            toolCalls: [],
+            toolParts: [],
+            orderedParts: [],
+            activities: [],
+        };
     }
 
     const state = {
         reasoningText: '',
         toolCalls: [] as ChatToolCall[],
         toolParts: [] as ChatMessagePart[],
+        orderedParts: [] as ChatMessagePart[],
         activities: [] as ChatActivityEntry[],
+    };
+    let activeTextPartId = '';
+    let textPartSequence = 0;
+
+    const closeTextPart = () => {
+        activeTextPartId = '';
+    };
+    const appendAssistantText = (value: string) => {
+        if (!value) return;
+        if (!activeTextPartId) {
+            textPartSequence += 1;
+            activeTextPartId = `text:runner:${textPartSequence}`;
+            state.orderedParts.push({
+                id: activeTextPartId,
+                type: 'text',
+                content: value,
+            });
+            return;
+        }
+        const index = state.orderedParts.findIndex(
+            (part) => part.id === activeTextPartId,
+        );
+        const current = state.orderedParts[index];
+        if (index < 0 || !current || current.type !== 'text') {
+            activeTextPartId = '';
+            appendAssistantText(value);
+            return;
+        }
+        const existing = current.content ?? '';
+        // OpenCode may emit either true deltas or cumulative part snapshots.
+        // Preserve both without duplicating a growing snapshot on hydration.
+        const content = value.startsWith(existing)
+            ? value
+            : existing.endsWith(value)
+              ? existing
+              : `${existing}${value}`;
+        state.orderedParts[index] = { ...current, content };
     };
 
     for (const raw of rawEvents) {
@@ -251,7 +298,17 @@ function hydratedRunnerEventState(
             continue;
         }
 
+        if (
+            type === 'text_delta' ||
+            (type === 'content.delta' &&
+                String(payload.stream_kind ?? '') === 'assistant_text')
+        ) {
+            appendAssistantText(delta);
+            continue;
+        }
+
         if (type === 'tool_call') {
+            closeTextPart();
             const name = String(payload.name ?? 'tool').trim() || 'tool';
             const id =
                 String(
@@ -274,6 +331,7 @@ function hydratedRunnerEventState(
         }
 
         if (type === 'tool_result') {
+            closeTextPart();
             const name = String(payload.name ?? 'tool').trim() || 'tool';
             const id =
                 String(
@@ -303,6 +361,7 @@ function hydratedRunnerEventState(
             type === 'item.updated' ||
             type === 'item.completed'
         ) {
+            closeTextPart();
             const itemType = String(payload.item_type ?? 'unknown');
             const status = canonicalActivityStatus(
                 payload.status ??
@@ -457,6 +516,10 @@ export function buildHydrationPatch(
             typeof payload.runner_chat_turn_id === 'string'
                 ? payload.runner_chat_turn_id
                 : undefined,
+        jobId:
+            typeof payload.runner_job_id === 'string'
+                ? payload.runner_job_id
+                : undefined,
         approvalRequestId:
             typeof payload.approval_request_id === 'string' ||
             typeof payload.approval_request_id === 'number'
@@ -530,27 +593,35 @@ export function buildHydrationPatch(
                   }
                 : undefined,
         status:
-            payload.status === 'approval_required' ? 'attention' : 'complete',
+            payload.status === 'approval_required'
+                ? 'attention'
+                : payload.status === 'queued' || payload.status === 'running'
+                  ? 'streaming'
+                  : payload.status === 'failed' ||
+                      payload.status === 'aborted' ||
+                      payload.status === 'timed_out'
+                    ? 'failed'
+                    : 'complete',
     };
     const runnerEventState = hydratedRunnerEventState(
         payload.runner_chat_events,
         msToIso(backend.created_at),
     );
-    const mergedToolCalls = toolCalls;
+    const mergedToolCalls = [...toolCalls];
     for (const call of runnerEventState.toolCalls) {
         const index = mergedToolCalls.findIndex((item) => item.id === call.id);
         if (index >= 0)
             mergedToolCalls[index] = { ...mergedToolCalls[index], ...call };
         else mergedToolCalls.push(call);
     }
-    const mergedToolParts = toolParts;
+    const mergedToolParts = [...toolParts];
     for (const part of runnerEventState.toolParts) {
         const index = mergedToolParts.findIndex((item) => item.id === part.id);
         if (index >= 0)
             mergedToolParts[index] = { ...mergedToolParts[index], ...part };
         else mergedToolParts.push(part);
     }
-    const mergedActivities = toolActivities;
+    const mergedActivities = [...toolActivities];
     for (const activity of runnerEventState.activities) {
         const index = mergedActivities.findIndex(
             (item) => item.id === activity.id,
@@ -567,18 +638,21 @@ export function buildHydrationPatch(
     }
     if (mergedToolCalls.length) {
         patch.toolCalls = mergedToolCalls;
-        patch.parts = [
-            ...(backend.content.trim()
-                ? [
-                      {
-                          id: `text:${backendID}`,
-                          type: 'text' as const,
-                          content: backend.content,
-                      },
-                  ]
-                : []),
-            ...mergedToolParts,
-        ];
+        const orderedParts = [...runnerEventState.orderedParts];
+        if (!orderedParts.some((part) => part.type === 'tool')) {
+            orderedParts.push(...mergedToolParts);
+        }
+        if (
+            backend.content.trim() &&
+            !orderedParts.some((part) => part.type === 'text')
+        ) {
+            orderedParts.push({
+                id: `text:${backendID}`,
+                type: 'text',
+                content: backend.content,
+            });
+        }
+        patch.parts = orderedParts;
         patch.activityLog = mergedActivities.slice(-30);
     }
     return patch;

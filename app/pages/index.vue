@@ -483,7 +483,13 @@ watch(
             return;
         }
         if (!previous?.hostReady || next.hostId !== previous.hostId) {
-            void sessionHistory.refresh();
+            void sessionHistory.refresh().then(async () => {
+                const current = activeSession.value;
+                if (!current?.runnerChatSessionId) return;
+                await sessionHistory.hydrate(current.sessionKey, 100, {
+                    replaceLocal: false,
+                });
+            });
         }
     },
     { immediate: true },

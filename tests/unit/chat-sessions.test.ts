@@ -5,6 +5,7 @@ import {
     useChatSessions,
 } from '../../app/composables/useChatSessions';
 import { useLocalCache } from '../../app/composables/useLocalCache';
+import { EMPTY_STREAM_USER_MESSAGE } from '../../app/utils/assistant-stream/userErrorCopy';
 
 describe('useChatSessions', () => {
     afterEach(() => {
@@ -464,6 +465,14 @@ describe('useChatSessions', () => {
                             },
                         },
                         {
+                            type: 'text_delta',
+                            payload: {
+                                type: 'content.delta',
+                                stream_kind: 'assistant_text',
+                                delta: 'I will check. ',
+                            },
+                        },
+                        {
                             type: 'item.started',
                             payload: {
                                 type: 'item.started',
@@ -489,6 +498,14 @@ describe('useChatSessions', () => {
                                 },
                             },
                         },
+                        {
+                            type: 'text_delta',
+                            payload: {
+                                type: 'content.delta',
+                                stream_kind: 'assistant_text',
+                                delta: 'Done.',
+                            },
+                        },
                     ],
                 },
             },
@@ -503,12 +520,88 @@ describe('useChatSessions', () => {
             status: 'complete',
             result: 'ok',
         });
-        expect(assistant?.parts?.some((part) => part.type === 'tool')).toBe(
-            true,
-        );
+        expect(assistant?.parts?.map((part) => part.type)).toEqual([
+            'text',
+            'tool',
+            'text',
+        ]);
+        expect(assistant?.parts?.[0]?.content).toBe('I will check. ');
+        expect(assistant?.parts?.[1]?.toolCallId).toBe('cmd-1');
+        expect(assistant?.parts?.[2]?.content).toBe('Done.');
         expect(assistant?.activityLog?.[0]).toMatchObject({
             type: 'command_execution',
             status: 'complete',
         });
+    });
+
+    it('hydrates a durable running runner turn as resumable streaming state', () => {
+        useLocalCache().updateHost({
+            id: 'test-host',
+            name: 'Test Host',
+            baseUrl: 'http://127.0.0.1:9100',
+            token: 'secret',
+        });
+
+        const chat = useChatSessions();
+        const session = chat.activateSessionByKey(
+            'or3-app:live',
+            'Live runner history',
+        );
+        if (!session) throw new Error('expected session');
+        chat.addMessage({
+            sessionId: session.id,
+            role: 'assistant',
+            content: EMPTY_STREAM_USER_MESSAGE,
+            status: 'failed',
+        });
+
+        chat.hydrateBackendMessages(session, [
+            {
+                id: 30,
+                session_key: 'or3-app:live',
+                role: 'assistant',
+                content: '',
+                created_at: 1_717_171_720_000,
+                payload: {
+                    transport: 'runner_chat',
+                    runner_id: 'opencode',
+                    runner_chat_session_id: 'rcs-live',
+                    runner_chat_turn_id: 'rct-live',
+                    runner_job_id: 'job-live',
+                    status: 'running',
+                },
+            },
+        ]);
+
+        expect(chat.messages.value).toHaveLength(1);
+        expect(chat.messages.value[0]).toMatchObject({
+            status: 'streaming',
+            content: '',
+            runnerId: 'opencode',
+            runnerChatSessionId: 'rcs-live',
+            runnerChatTurnId: 'rct-live',
+            jobId: 'job-live',
+        });
+
+        const hydrated = chat.messages.value[0];
+        if (!hydrated) throw new Error('expected hydrated assistant');
+        chat.updateMessage(hydrated.id, { content: 'Partial live output' });
+        chat.hydrateBackendMessages(session, [
+            {
+                id: 30,
+                session_key: 'or3-app:live',
+                role: 'assistant',
+                content: '',
+                created_at: 1_717_171_720_000,
+                payload: {
+                    runner_chat_session_id: 'rcs-live',
+                    runner_chat_turn_id: 'rct-live',
+                    runner_job_id: 'job-live',
+                    status: 'running',
+                },
+            },
+        ]);
+        expect(chat.messages.value).toHaveLength(1);
+        expect(chat.messages.value[0]?.content).toBe('Partial live output');
     });
 });
