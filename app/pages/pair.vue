@@ -41,6 +41,7 @@ import {
     type PairingQRCodeV1,
 } from '~/utils/or3/secure-connections';
 import { usePairing } from '~/composables/usePairing';
+import { createOr3InternTransport } from '~/utils/or3/intern-compat';
 
 const router = useRouter();
 const pairing = usePairing();
@@ -93,34 +94,28 @@ function candidateRoutes(routes: PairingInviteRouteV2[]) {
 }
 
 async function checkRoute(route: PairingInviteRouteV2, timeoutMs = 900) {
-    const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
-    try {
-        const response = await fetch(`${route.baseUrl}/internal/v1/health`, {
-            method: 'GET',
-            headers: { Accept: 'application/json' },
-            signal: controller.signal,
-        });
-        const contentType = response.headers.get('content-type') || '';
-        if (!response.ok || !contentType.toLowerCase().includes('application/json')) {
-            throw new Error('route unavailable');
-        }
-        const health = await response.json().catch(() => null) as {
-            status?: unknown;
-            health?: unknown;
-        } | null;
-        const status = typeof health?.status === 'string'
+    const health = await createOr3InternTransport(route.baseUrl).request<{
+        status?: unknown;
+        health?: unknown;
+    }>('/internal/v1/health', {
+        method: 'GET',
+        requireAuth: false,
+        timeoutMs,
+    });
+    const status =
+        typeof health?.status === 'string'
             ? health.status.toLowerCase()
             : typeof health?.health === 'string'
               ? health.health.toLowerCase()
-              : typeof (health?.status as { health?: unknown } | undefined)?.health === 'string'
-                ? String((health?.status as { health?: unknown }).health).toLowerCase()
+              : typeof (health?.status as
+                      | { health?: unknown }
+                      | undefined)?.health === 'string'
+                ? String(
+                      (health?.status as { health?: unknown }).health,
+                  ).toLowerCase()
                 : '';
-        if (status !== 'ok') throw new Error('route unavailable');
-        return route;
-    } finally {
-        window.clearTimeout(timeout);
-    }
+    if (status !== 'ok') throw new Error('route unavailable');
+    return route;
 }
 
 async function chooseRoute(routes: PairingInviteRouteV2[]) {

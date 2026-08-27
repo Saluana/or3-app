@@ -1,4 +1,8 @@
 import type { Or3SseEvent } from '~/types/or3-api';
+import {
+    parseInternSseBlock,
+    readInternSseStream,
+} from '@or3/intern-client';
 import { serializeErrorForLog } from '~/utils/assistant-stream/errors';
 import { createLogger } from '~/utils/logger';
 
@@ -13,63 +17,23 @@ export function parseSseChunk(chunk: string): Or3SseEvent[] {
 }
 
 export function parseSseBlock(block: string): Or3SseEvent {
-    const lines = block.split(/\r?\n/);
-    const data: string[] = [];
-    const event: Or3SseEvent = { data: '' };
-
-    for (const line of lines) {
-        if (!line || line.startsWith(':')) continue;
-        const separator = line.indexOf(':');
-        const field = separator === -1 ? line : line.slice(0, separator);
-        const rawValue = separator === -1 ? '' : line.slice(separator + 1);
-        const value = rawValue.startsWith(' ') ? rawValue.slice(1) : rawValue;
-
-        if (field === 'event') event.event = value;
-        if (field === 'id') event.id = value;
-        if (field === 'retry') event.retry = Number(value);
-        if (field === 'data') data.push(value);
+    const event = parseInternSseBlock(block);
+    if (event.data && event.json === undefined) {
+        logger.warn('parse:invalid_json', 'SSE data was not valid JSON', {
+            event: event.event,
+            preview: event.data.slice(0, 300),
+            ...serializeErrorForLog(
+                new SyntaxError('Invalid SSE JSON payload'),
+            ),
+        });
     }
-
-    event.data = data.join('\n');
-
-    if (event.data) {
-        try {
-            event.json = JSON.parse(event.data);
-        } catch (error) {
-            logger.warn('parse:invalid_json', 'SSE data was not valid JSON', {
-                event: event.event,
-                preview: event.data.slice(0, 300),
-                ...serializeErrorForLog(error),
-            });
-            event.json = undefined;
-        }
-    }
-
-    return event;
+    return event as Or3SseEvent;
 }
 
 export async function* readSseStream(
     stream: ReadableStream<Uint8Array>,
 ): AsyncIterable<Or3SseEvent> {
-    const reader = stream.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    try {
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-            const parts = buffer.split(/(?:\r?\n){2,}/);
-            buffer = parts.pop() ?? '';
-            for (const part of parts) {
-                if (part.trim()) yield parseSseBlock(part);
-            }
-        }
-
-        buffer += decoder.decode();
-        if (buffer.trim()) yield parseSseBlock(buffer);
-    } finally {
-        reader.releaseLock();
+    for await (const event of readInternSseStream(stream)) {
+        yield event as Or3SseEvent;
     }
 }

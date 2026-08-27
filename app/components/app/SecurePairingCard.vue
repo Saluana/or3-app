@@ -92,6 +92,7 @@ import {
 } from '../../utils/or3/secure-connections';
 import { usePairing } from '../../composables/usePairing';
 import { useActiveHost } from '../../composables/useActiveHost';
+import { createOr3InternTransport } from '../../utils/or3/intern-compat';
 
 const { activeHost } = useActiveHost();
 const {
@@ -170,20 +171,15 @@ function uniqueBaseUrls(values: Array<string | undefined>) {
 }
 
 async function routeIsHealthy(baseUrl: string, timeoutMs = 750) {
-    const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
     try {
-        const response = await fetch(`${baseUrl}/internal/v1/health`, {
-            method: 'GET',
-            headers: { Accept: 'application/json' },
-            signal: controller.signal,
-        });
-        const contentType = response.headers.get('content-type') || '';
-        if (!response.ok || !contentType.toLowerCase().includes('application/json')) return false;
-        const health = await response.json().catch(() => null) as {
+        const health = await createOr3InternTransport(baseUrl).request<{
             status?: unknown;
             health?: unknown;
-        } | null;
+        }>('/internal/v1/health', {
+            method: 'GET',
+            requireAuth: false,
+            timeoutMs,
+        });
         const status = typeof health?.status === 'string'
             ? health.status.toLowerCase()
             : typeof health?.health === 'string'
@@ -192,8 +188,6 @@ async function routeIsHealthy(baseUrl: string, timeoutMs = 750) {
         return status === 'ok';
     } catch {
         return false;
-    } finally {
-        window.clearTimeout(timeout);
     }
 }
 

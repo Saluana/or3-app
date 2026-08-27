@@ -9,7 +9,11 @@ import {
     suppressOr3ApiNetworkErrorLogsFor,
 } from '~/utils/or3ApiNetworkLogs';
 
-import { readSseStream } from '~/utils/or3/sse';
+import {
+    createOr3InternTransport,
+    internErrorDetails,
+    isInternClientError,
+} from '~/utils/or3/intern-compat';
 import {
     buildSecureSessionStartPayload,
     loadSecureConnectionState,
@@ -66,6 +70,7 @@ export interface Or3ApiRequestOptions {
     body?: unknown;
     headers?: Record<string, string>;
     signal?: AbortSignal;
+    timeoutMs?: number;
     baseUrl?: string;
     acceptSse?: boolean;
     requireAuth?: boolean;
@@ -352,11 +357,16 @@ export function useOr3Api() {
         });
     }
 
-    function buildUrl(path: string, explicitBaseUrl?: string) {
+    function resolveBaseUrl(explicitBaseUrl?: string) {
         const baseUrl = explicitBaseUrl || activeHost.value?.baseUrl;
         if (!baseUrl) throw mapError(0, 'No or3-intern host is configured');
-        const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-        return `${normalizeBaseUrl(baseUrl)}${normalizedPath}`;
+        return baseUrl;
+    }
+
+    function buildUrl(path: string, explicitBaseUrl?: string) {
+        return createOr3InternTransport(
+            resolveBaseUrl(explicitBaseUrl),
+        ).buildUrl(path);
     }
 
     async function resolveElectronHostToken(method: string, path: string) {
@@ -449,35 +459,49 @@ export function useOr3Api() {
                 enrollment,
                 routeId,
             );
-            const response = await fetch(
-                `${normalizeBaseUrl(explicitBaseUrl || host.baseUrl)}/internal/v1/secure-connections/sessions`,
-                {
-                    method: 'POST',
-                    headers: {
-                        Accept: 'application/json',
-                        'Content-Type': 'application/json',
+            try {
+                const result = await createOr3InternTransport(
+                    explicitBaseUrl || host.baseUrl,
+                ).request<{ claims?: unknown }>(
+                    '/internal/v1/secure-connections/sessions',
+                    {
+                        method: 'POST',
+                        headers: {
+                            Accept: 'application/json',
+                            'Content-Type': 'application/json',
+                        },
+                        body,
+                        requireAuth: false,
                     },
-                    body: JSON.stringify(body),
-                },
-            );
-            if (!response.ok) {
-                const payload = await readError(response);
-                throw mapError(response.status, payload);
+                );
+                if (!validateSecureSessionClaims(result.claims)) {
+                    throw {
+                        code: 'auth_required',
+                        status: 401,
+                        message:
+                            'The computer returned an invalid secure session.',
+                    } satisfies Or3AppError;
+                }
+                updateHost({
+                    ...host,
+                    status: 'online',
+                    lastSeenAt: new Date().toISOString(),
+                });
+                return result.claims;
+            } catch (error) {
+                const details = internErrorDetails(error);
+                if (isInternClientError(error) && details?.status) {
+                    throw mapError(
+                        details.status,
+                        details.payload as
+                            | string
+                            | Or3ApiErrorPayload
+                            | undefined,
+                        error,
+                    );
+                }
+                throw error;
             }
-            const result = (await response.json()) as { claims?: unknown };
-            if (!validateSecureSessionClaims(result.claims)) {
-                throw {
-                    code: 'auth_required',
-                    status: 401,
-                    message: 'The computer returned an invalid secure session.',
-                } satisfies Or3AppError;
-            }
-            updateHost({
-                ...host,
-                status: 'online',
-                lastSeenAt: new Date().toISOString(),
-            });
-            return result.claims;
         })();
 
         secureSessionCache[hostId] = { pending };
@@ -589,22 +613,45 @@ export function useOr3Api() {
                   ? (options.body as FormData)
                   : JSON.stringify(options.body);
 
-        let response: Response;
+        let response: Response | undefined;
+        let responseText = '';
+        const baseUrl = resolveBaseUrl(options.baseUrl);
+        const transport = createOr3InternTransport(baseUrl);
         try {
-            response = await fetch(buildUrl(path, options.baseUrl), {
+            responseText = await transport.request<string>(path, {
                 method,
                 headers,
                 body: requestBody,
                 signal: options.signal,
+                timeoutMs: options.timeoutMs,
+                requireAuth: false,
+                responseType: 'text',
+                acceptedStatuses: () => true,
+                onResponse(context) {
+                    response = context.response;
+                },
             });
         } catch (error) {
-            if (isAbortError(error)) {
+            if (
+                isAbortError(error) ||
+                (isInternClientError(error) && error.code === 'aborted')
+            ) {
                 throw {
                     code: 'aborted',
                     status: 0,
                     message: 'Request was stopped.',
                     cause: error,
                 } satisfies Or3AppError;
+            }
+            if (isInternClientError(error) && error.code === 'timeout') {
+                throw mapError(
+                    408,
+                    {
+                        code: 'timeout',
+                        message: error.message,
+                    },
+                    error,
+                );
             }
             if (trackHostStatus && shouldUpdateHostStatusFromRequest()) {
                 updateActiveHostStatus('offline', options.baseUrl);
@@ -626,8 +673,18 @@ export function useOr3Api() {
             } satisfies Or3AppError;
         }
 
+        if (!response) {
+            throw mapError(0, 'The service did not return a response');
+        }
+        let payload: string | Or3ApiErrorPayload | undefined;
+        if (responseText) {
+            try {
+                payload = JSON.parse(responseText) as Or3ApiErrorPayload;
+            } catch {
+                payload = responseText;
+            }
+        }
         if (!response.ok) {
-            const payload = await readError(response);
             const challenge = toAuthChallenge(payload, response.status);
             if (challenge && options.onAuthChallenge) {
                 const shouldRetry = await options.onAuthChallenge(challenge);
@@ -715,7 +772,16 @@ export function useOr3Api() {
             updateActiveHostStatus('online', options.baseUrl);
         }
         if (response.status === 204) return undefined as T;
-        return (await response.json()) as T;
+        if (!responseText) return undefined as T;
+        try {
+            return JSON.parse(responseText) as T;
+        } catch (error) {
+            throw mapError(
+                response.status,
+                'The service returned invalid JSON.',
+                error,
+            );
+        }
     }
 
     async function* stream(
@@ -787,22 +853,102 @@ export function useOr3Api() {
                   ? (options.body as FormData)
                   : JSON.stringify(options.body);
 
-        let response: Response;
+        let response: Response | undefined;
+        let streamOpened = false;
+        const baseUrl = resolveBaseUrl(options.baseUrl);
         try {
-            response = await fetch(buildUrl(path, options.baseUrl), {
+            const events = createOr3InternTransport(baseUrl).stream(path, {
                 method,
                 headers,
                 body: requestBody,
                 signal: options.signal,
+                timeoutMs: options.timeoutMs,
+                requireAuth: false,
+                reconnect: false,
+                async onResponse(context) {
+                    response = context.response;
+                    if (!context.response.ok) return;
+                    if (options.onOpen) await options.onOpen(context.response);
+                    streamOpened = true;
+                    logger.info('stream:open', 'SSE stream opened', {
+                        path,
+                        status: context.response.status,
+                        requestId:
+                            context.response.headers.get('X-Request-Id') ||
+                            undefined,
+                        responseTraceId:
+                            context.response.headers.get('X-Trace-Id') ||
+                            undefined,
+                    });
+                },
             });
+            for await (const event of events) {
+                yield event as Or3SseEvent;
+            }
         } catch (error) {
-            if (isAbortError(error)) {
+            if (
+                isAbortError(error) ||
+                (isInternClientError(error) && error.code === 'aborted')
+            ) {
                 throw {
                     code: 'aborted',
                     status: 0,
                     message: 'Request was stopped.',
                     cause: error,
                 } satisfies Or3AppError;
+            }
+            if (isInternClientError(error) && error.code === 'timeout') {
+                throw mapError(
+                    408,
+                    {
+                        code: 'timeout',
+                        message: error.message,
+                    },
+                    error,
+                );
+            }
+            const details = internErrorDetails(error);
+            const status = response?.status ?? details?.status;
+            const payload = details?.payload as
+                | string
+                | Or3ApiErrorPayload
+                | undefined;
+            if (status) {
+                const challenge = toAuthChallenge(payload, status);
+                if (challenge && options.onAuthChallenge) {
+                    const shouldRetry =
+                        await options.onAuthChallenge(challenge);
+                    if (shouldRetry !== false) {
+                        yield* stream(path, {
+                            ...options,
+                            onAuthChallenge: undefined,
+                        });
+                        return;
+                    }
+                }
+                logger.warn(
+                    'stream:error_response',
+                    'Stream returned an error response',
+                    {
+                        path,
+                        status,
+                        ...serializeErrorForLog(
+                            typeof payload === 'object'
+                                ? payload
+                                : { message: payload },
+                        ),
+                        requestId:
+                            response?.headers.get('X-Request-Id') ||
+                            details?.requestId,
+                        responseTraceId:
+                            response?.headers.get('X-Trace-Id') ||
+                            (typeof payload === 'object' &&
+                            typeof payload.trace_id === 'string'
+                                ? payload.trace_id
+                                : undefined),
+                    },
+                );
+                throw mapError(status, payload, error);
             }
             logHostNetworkError(
                 logger,
@@ -819,81 +965,10 @@ export function useOr3Api() {
                 message: 'Could not reach the selected computer.',
                 cause: error,
             } satisfies Or3AppError;
-        }
-
-        if (!response.ok) {
-            const payload = await readError(response);
-            const challenge = toAuthChallenge(payload, response.status);
-            if (challenge && options.onAuthChallenge) {
-                const shouldRetry = await options.onAuthChallenge(challenge);
-                if (shouldRetry !== false) {
-                    yield* stream(path, {
-                        ...options,
-                        onAuthChallenge: undefined,
-                    });
-                    return;
-                }
-            }
-            logger.warn(
-                'stream:error_response',
-                'Stream returned an error response',
-                {
-                    path,
-                    status: response.status,
-                    ...serializeErrorForLog(
-                        typeof payload === 'object' ? payload : { message: payload },
-                    ),
-                    requestId:
-                        response.headers.get('X-Request-Id') ||
-                        (typeof payload === 'object'
-                            ? payload.request_id
-                            : undefined),
-                    responseTraceId:
-                        response.headers.get('X-Trace-Id') ||
-                        (typeof payload === 'object' &&
-                        typeof payload.trace_id === 'string'
-                            ? payload.trace_id
-                            : undefined),
-                },
-            );
-            throw mapError(response.status, payload);
-        }
-        if (options.onOpen) await options.onOpen(response);
-        if (!response.body)
-            throw {
-                code: 'stream_failed',
-                message: 'The service did not return a stream.',
-            } satisfies Or3AppError;
-
-        logger.info('stream:open', 'SSE stream opened', {
-            path,
-            status: response.status,
-            requestId: response.headers.get('X-Request-Id') || undefined,
-            responseTraceId: response.headers.get('X-Trace-Id') || undefined,
-        });
-        try {
-            yield* readSseStream(response.body);
-        } catch (error) {
-            if (isAbortError(error)) {
-                throw {
-                    code: 'aborted',
-                    status: 0,
-                    message: 'Request was stopped.',
-                    cause: error,
-                } satisfies Or3AppError;
-            }
-            logHostNetworkError(
-                logger,
-                'stream:read',
-                options.baseUrl || activeHost.value?.baseUrl,
-                {
-                    path,
-                    ...serializeErrorForLog(error),
-                },
-            );
-            throw error;
         } finally {
-            logger.info('stream:close', 'SSE stream closed', { path });
+            if (streamOpened) {
+                logger.info('stream:close', 'SSE stream closed', { path });
+            }
         }
     }
 
